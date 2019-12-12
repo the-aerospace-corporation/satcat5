@@ -1,0 +1,187 @@
+--------------------------------------------------------------------------
+-- Copyright 2019 The Aerospace Corporation
+--
+-- This file is part of SatCat5.
+--
+-- SatCat5 is free software: you can redistribute it and/or modify it under
+-- the terms of the GNU Lesser General Public License as published by the
+-- Free Software Foundation, either version 3 of the License, or (at your
+-- option) any later version.
+--
+-- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+-- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+-- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+-- License for more details.
+--
+-- You should have received a copy of the GNU Lesser General Public License
+-- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+--------------------------------------------------------------------------
+--
+-- Testbench for the RMII transceiver port
+--
+-- This is a unit test for the RMII transceiver, which connects two
+-- blocks back-to-back to confirm correct operation under a variety
+-- of conditions, including inactive ports.
+--
+-- The complete test takes about 29 milliseconds.
+--
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     work.common_types.all;
+use     work.switch_types.all;
+
+entity port_rmii_tb is
+    -- Unit testbench top level, no I/O ports
+end port_rmii_tb;
+
+architecture tb of port_rmii_tb is
+
+-- Clock and reset generation.
+signal clk_50               : std_logic := '0';
+signal reset_p              : std_logic := '1';
+
+-- Source and sink streams.
+signal rxdata_a, rxdata_b   : port_rx_m2s;
+signal txdata_a, txdata_b   : port_tx_m2s;
+signal txctrl_a, txctrl_b   : port_tx_s2m;
+signal rxdone_a, rxdone_b   : std_logic;
+signal rxcount              : integer := 0;
+
+-- RMII link between the two units under test.
+signal a2b_clk              : std_logic;
+signal a2b_data, b2a_data   : std_logic_vector(1 downto 0);
+signal a2b_en,   b2a_en     : std_logic;
+signal a2b_er,   b2a_er     : std_logic;
+signal mode_fast            : std_logic := '0';
+
+begin
+
+-- Clock generation.
+clk_50 <= not clk_50 after 10 ns;
+
+-- Streaming source and sink for each link:
+u_src_a2b : entity work.port_test_common
+    generic map(
+    DSEED1  => 1234,
+    DSEED2  => 5678)
+    port map(
+    txdata  => txdata_a,
+    txctrl  => txctrl_a,
+    rxdata  => rxdata_b,
+    rxdone  => rxdone_b,
+    rxcount => rxcount);
+
+u_src_b2a : entity work.port_test_common
+    generic map(
+    DSEED1  => 67890,
+    DSEED2  => 12345)
+    port map(
+    txdata  => txdata_b,
+    txctrl  => txctrl_b,
+    rxdata  => rxdata_a,
+    rxdone  => rxdone_a,
+    rxcount => rxcount);
+
+-- Two units under test, connected back-to-back.
+uut_a : entity work.port_rmii
+    generic map(MODE_CLKOUT => true)
+    port map(
+    rmii_txd    => a2b_data,
+    rmii_txen   => a2b_en,
+    rmii_txer   => a2b_er,
+    rmii_rxd    => b2a_data,
+    rmii_rxen   => b2a_en,
+    rmii_rxer   => b2a_er,
+    rmii_clkin  => clk_50,
+    rmii_clkout => a2b_clk,
+    rx_data     => rxdata_a,
+    tx_data     => txdata_a,
+    tx_ctrl     => txctrl_a,
+    lock_refclk => clk_50,
+    mode_fast   => mode_fast,
+    reset_p     => reset_p);
+
+uut_b : entity work.port_rmii
+    generic map(MODE_CLKOUT => false)
+    port map(
+    rmii_txd    => b2a_data,
+    rmii_txen   => b2a_en,
+    rmii_txer   => b2a_er,
+    rmii_rxd    => a2b_data,
+    rmii_rxen   => a2b_en,
+    rmii_rxer   => a2b_er,
+    rmii_clkin  => a2b_clk,
+    rmii_clkout => open,
+    rx_data     => rxdata_b,
+    tx_data     => txdata_b,
+    tx_ctrl     => txctrl_b,
+    lock_refclk => clk_50,
+    mode_fast   => mode_fast,
+    reset_p     => reset_p);
+
+-- Inspect raw waveforms to verify various constraints.
+p_inspect : process(a2b_clk)
+    variable clk_repeat : integer := 0;
+    variable idle_count : integer := 0;
+    variable nybb_count : integer := 0;
+begin
+    if falling_edge(a2b_clk) then
+        -- Check if this is 10 Mbps or 100 Mbps mode.
+        if (mode_fast = '1') then
+            clk_repeat := 1;
+        else
+            clk_repeat := 10;
+        end if;
+
+        -- Inter-packet gap >= 12 bytes (48 clocks).
+        if (a2b_en = '1') then
+            if (idle_count /= 0) then
+                assert (idle_count >= 48*clk_repeat)
+                    report "Inter-packet gap violation: " & integer'image(idle_count)
+                    severity error;
+            end if;
+            idle_count := 0;
+        else
+            idle_count := idle_count + 1;
+        end if;
+
+        -- Verify preamble insertion.
+        if (a2b_en = '1') then
+            nybb_count := nybb_count + 1;
+            if (nybb_count <= 31*clk_repeat) then
+                assert (a2b_data = "01")
+                    report "Missing preamble" severity error;
+            elsif (nybb_count <= 32*clk_repeat) then
+                assert (a2b_data = "11")
+                    report "Missing start-of-frame" severity error;
+            end if;
+        else
+            nybb_count := 0;
+        end if;
+    end if;
+end process;
+
+p_done : process
+begin
+    reset_p     <= '1';
+    mode_fast   <= '0';
+    rxcount     <= 30;
+    wait for 1 us;
+    reset_p     <= '0';
+    wait until (rxdone_a = '1' and rxdone_b = '1');
+    report "Finished 10 Mbps test.";
+
+    reset_p     <= '1';
+    mode_fast   <= '1';
+    rxcount     <= 100;
+    wait for 1 us;
+    reset_p     <= '0';
+    wait until (rxdone_a = '1' and rxdone_b = '1');
+    report "Finished 100 Mbps test.";
+
+    wait;
+end process;
+
+end tb;

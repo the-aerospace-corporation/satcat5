@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<!-- Copyright 2019 The Aerospace Corporation.
+
+This file is part of SatCat5.
+
+SatCat5 is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with SatCat5.  If not, see [https://www.gnu.org/licenses/] -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="100mm"
+   height="35mm"
+   viewBox="0 0 100 35"
+   version="1.1"
+   id="svg6540"
+   inkscape:version="0.92.4 (5da689c313, 2019-01-14)"
+   sodipodi:docname="interface_sgmii.svg">
+  <defs
+     id="defs6534" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.4"
+     inkscape:cx="-32.046123"
+     inkscape:cy="84.082824"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1680"
+     inkscape:window-height="987"
+     inkscape:window-x="1912"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:snap-grids="true" />
+  <metadata
+     id="metadata6537">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-262)">
+    <rect
+       style="opacity:1;fill:#c8c8c8;fill-opacity:1;stroke:#000000;stroke-width:0.44103381;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="rect6548-1"
+       width="24.987415"
+       height="32.889812"
+       x="73.700714"
+       y="263.71378" />
+    <rect
+       style="opacity:1;fill:#c8c8c8;fill-opacity:1;stroke:#000000;stroke-width:0.44176409;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="rect6548"
+       width="24.986687"
+       height="32.999783"
+       x="1.2710378"
+       y="263.12509" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="29.120098"
+       y="267.76685"
+       id="text7224-5"><tspan
+         sodipodi:role="line"
+         x="29.120098"
+         y="267.76685"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332"
+         id="tspan7226-0">TXp</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="85.258972"
+       y="276.82114"
+       id="text7383"><tspan
+         sodipodi:role="line"
+         id="tspan7381"
+         x="85.258972"
+         y="280.03964"
+         style="stroke-width:0.26458332" /><tspan
+         sodipodi:role="line"
+         x="85.258972"
+         y="284.44937"
+         style="stroke-width:0.26458332"
+         id="tspan7385" /></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="28.93111"
+       y="287.86938"
+       id="text7224-5-46"><tspan
+         sodipodi:role="line"
+         x="28.93111"
+         y="287.86938"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332"
+         id="tspan7226-0-17">RXp</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="29.304756"
+       y="272.84512"
+       id="text7224-5-6"><tspan
+         sodipodi:role="line"
+         x="29.304756"
+         y="272.84512"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332"
+         id="tspan7226-0-3">TXn</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="29.115768"
+       y="293.47684"
+       id="text7224-5-46-6"><tspan
+         sodipodi:role="line"
+         x="29.115768"
+         y="293.47684"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;stroke-width:0.26458332"
+         id="tspan7226-0-17-2">RXn</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="70.393509"
+       y="267.84015"
+       id="text7224-5-65"><tspan
+         sodipodi:role="line"
+         x="70.393509"
+         y="267.84015"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;writing-mode:lr-tb;text-anchor:end;stroke-width:0.26458332"
+         id="tspan7226-0-4">RXp</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="70.811203"
+       y="287.94269"
+       id="text7224-5-46-2"><tspan
+         sodipodi:role="line"
+         x="70.811203"
+         y="287.94269"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;writing-mode:lr-tb;text-anchor:end;stroke-width:0.26458332"
+         id="tspan7226-0-17-0">TXp</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="70.393509"
+       y="272.91843"
+       id="text7224-5-6-0"><tspan
+         sodipodi:role="line"
+         x="70.393509"
+         y="272.91843"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;writing-mode:lr-tb;text-anchor:end;stroke-width:0.26458332"
+         id="tspan7226-0-3-4">RXn</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="70.811203"
+       y="293.55014"
+       id="text7224-5-46-6-6"><tspan
+         sodipodi:role="line"
+         x="70.811203"
+         y="293.55014"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:end;writing-mode:lr-tb;text-anchor:end;stroke-width:0.26458332"
+         id="tspan7226-0-17-2-5">TXn</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="85.812355"
+       y="270.40671"
+       id="text7095-8"><tspan
+         sodipodi:role="line"
+         x="85.812355"
+         y="270.40671"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7097-4">Network</tspan><tspan
+         sodipodi:role="line"
+         x="85.812355"
+         y="274.81644"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7125">Endpoint</tspan><tspan
+         sodipodi:role="line"
+         x="85.812355"
+         y="279.22617"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7387" /><tspan
+         sodipodi:role="line"
+         x="85.812355"
+         y="283.63586"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7127">SGMII</tspan><tspan
+         sodipodi:role="line"
+         x="85.812355"
+         y="288.04559"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7391">MAC-to-MAC</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="13.382312"
+       y="270.0058"
+       id="text7095"><tspan
+         sodipodi:role="line"
+         x="13.382312"
+         y="270.0058"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7097">SatCat5</tspan><tspan
+         sodipodi:role="line"
+         x="13.382312"
+         y="274.41553"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7131">FPGA</tspan><tspan
+         sodipodi:role="line"
+         x="13.382312"
+         y="278.82526"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7379" /><tspan
+         sodipodi:role="line"
+         x="13.382312"
+         y="283.23495"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7133">SGMII</tspan><tspan
+         sodipodi:role="line"
+         x="13.382312"
+         y="287.64468"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7389">MAC-to-MAC</tspan></text>
+    <g
+       id="g8707">
+      <path
+         inkscape:connector-curvature="0"
+         id="path8593"
+         d="M 26.006764,268.38831 H 73.589957"
+         style="fill:none;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path8593-5"
+         d="M 26.458331,273.81115 H 73.639924"
+         style="fill:none;stroke:#000000;stroke-width:0.26346442px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+      <path
+         transform="matrix(1.069065,0,0,1,102.84436,-19.222133)"
+         inkscape:transform-center-y="-6.6783729e-06"
+         inkscape:transform-center-x="-0.33092268"
+         d="m -27.364472,287.61044 -1.985566,1.14637 v -2.29273 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="1.0471976"
+         sodipodi:arg1="0"
+         sodipodi:r2="0.66185516"
+         sodipodi:r1="1.3237104"
+         sodipodi:cy="287.61044"
+         sodipodi:cx="-28.688183"
+         sodipodi:sides="3"
+         id="path7141-4-6-2-9-5"
+         style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.28934079;stroke-linecap:butt;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         sodipodi:type="star" />
+      <path
+         transform="matrix(1.069065,0,0,1,102.76676,-13.799293)"
+         inkscape:transform-center-y="-6.6783729e-06"
+         inkscape:transform-center-x="-0.33092268"
+         d="m -27.364472,287.61044 -1.985566,1.14637 v -2.29273 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="1.0471976"
+         sodipodi:arg1="0"
+         sodipodi:r2="0.66185516"
+         sodipodi:r1="1.3237104"
+         sodipodi:cy="287.61044"
+         sodipodi:cx="-28.688183"
+         sodipodi:sides="3"
+         id="path7141-4-6-2-9-58"
+         style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.28934079;stroke-linecap:butt;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         sodipodi:type="star" />
+      <path
+         sodipodi:nodetypes="ccccccccc"
+         inkscape:connector-curvature="0"
+         id="path8684"
+         d="m 73.589957,268.38827 1.928976,0.0509 v 0.70219 l 0.437757,0.43775 -0.859283,0.81763 0.861651,0.83389 -0.83487,0.84875 0.808254,0.78049 -0.416348,0.41635 v 0.54911 h -1.810737"
+         style="fill:none;stroke:#000000;stroke-width:0.15552552px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+    </g>
+    <g
+       transform="matrix(-1,0,0,1,100.21571,20.28761)"
+       id="g8707-5">
+      <path
+         inkscape:connector-curvature="0"
+         id="path8593-4"
+         d="M 26.006764,268.38831 H 73.589957"
+         style="fill:none;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path8593-5-7"
+         d="M 26.458331,273.81115 H 73.639924"
+         style="fill:none;stroke:#000000;stroke-width:0.26346442px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+      <path
+         transform="matrix(1.069065,0,0,1,102.84436,-19.222133)"
+         inkscape:transform-center-y="-6.6783729e-06"
+         inkscape:transform-center-x="-0.33092268"
+         d="m -27.364472,287.61044 -1.985566,1.14637 v -2.29273 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="1.0471976"
+         sodipodi:arg1="0"
+         sodipodi:r2="0.66185516"
+         sodipodi:r1="1.3237104"
+         sodipodi:cy="287.61044"
+         sodipodi:cx="-28.688183"
+         sodipodi:sides="3"
+         id="path7141-4-6-2-9-5-7"
+         style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.28934079;stroke-linecap:butt;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         sodipodi:type="star" />
+      <path
+         transform="matrix(1.069065,0,0,1,102.76676,-13.799293)"
+         inkscape:transform-center-y="-6.6783729e-06"
+         inkscape:transform-center-x="-0.33092268"
+         d="m -27.364472,287.61044 -1.985566,1.14637 v -2.29273 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="1.0471976"
+         sodipodi:arg1="0"
+         sodipodi:r2="0.66185516"
+         sodipodi:r1="1.3237104"
+         sodipodi:cy="287.61044"
+         sodipodi:cx="-28.688183"
+         sodipodi:sides="3"
+         id="path7141-4-6-2-9-58-4"
+         style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.28934079;stroke-linecap:butt;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         sodipodi:type="star" />
+      <path
+         sodipodi:nodetypes="ccccccccc"
+         inkscape:connector-curvature="0"
+         id="path8684-4"
+         d="m 73.589957,268.38827 1.928976,0.0509 v 0.70219 l 0.437757,0.43775 -0.859283,0.81763 0.861651,0.83389 -0.83487,0.84875 0.808254,0.78049 -0.416348,0.41635 v 0.54911 h -1.810737"
+         style="fill:none;stroke:#000000;stroke-width:0.15552552px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+    </g>
+  </g>
+</svg>

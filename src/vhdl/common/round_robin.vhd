@@ -1,0 +1,150 @@
+--------------------------------------------------------------------------
+-- Copyright 2019 The Aerospace Corporation
+--
+-- This file is part of SatCat5.
+--
+-- SatCat5 is free software: you can redistribute it and/or modify it under
+-- the terms of the GNU Lesser General Public License as published by the
+-- Free Software Foundation, either version 3 of the License, or (at your
+-- option) any later version.
+--
+-- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+-- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+-- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+-- License for more details.
+--
+-- You should have received a copy of the GNU Lesser General Public License
+-- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+--------------------------------------------------------------------------
+--
+-- Round-robin priority scheduler
+--
+-- This block implements a scheduler for sharing access from multiple
+-- sources to a single output port.  When the output port is contested,
+-- priority is assigned using the round-robin rule. In short: to assign
+-- the next source, count up (with wraparound) from the previous source,
+-- stopping at the first one that has data ready.  That source is held
+-- until the end-of-frame, and then another is selected.
+--
+-- For simplicity, the block handles flow-control signals only; data and
+-- metadata must be MUXed separately.
+--
+-- This block supports 100% throughput, but to support reasonable timing
+-- it does have a single-cycle decision latency under certain conditions.
+--
+-- Note: For any given input, once in_valid is asserted it MUST be held
+--       high for the full duration of the packet.  If this constraint
+--       is not followed then the scheduler may switch inputs prematurely.
+--
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     work.common_types.all;
+
+entity round_robin is
+    generic (
+    INPUT_COUNT : integer); -- Number of input ports
+    port (
+    -- Flow control signals for each input port.
+    in_last     : in  std_logic_vector(INPUT_COUNT-1 downto 0);
+    in_valid    : in  std_logic_vector(INPUT_COUNT-1 downto 0);
+    in_ready    : out std_logic_vector(INPUT_COUNT-1 downto 0);
+    in_select   : out integer range 0 to INPUT_COUNT-1;
+    in_error    : out std_logic;
+
+    -- Flow control signals for the shared output port.
+    out_last    : out std_logic;
+    out_valid   : out std_logic;
+    out_ready   : in  std_logic;
+
+    -- System clock (no reset needed).
+    clk         : in  std_logic);
+end round_robin;
+
+architecture round_robin of round_robin is
+
+-- Convenience types.
+subtype port_slv is std_logic_vector(INPUT_COUNT-1 downto 0);
+subtype port_idx is integer range 0 to INPUT_COUNT-1;
+
+-- Simple priority encoder, returns index of first '1' bit.
+function get_priority(x: port_slv) return port_idx is
+begin
+    for n in 0 to INPUT_COUNT-2 loop
+        if (x(n) = '1') then
+            return n;
+        end if;
+    end loop;
+    return INPUT_COUNT-1;
+end function;
+
+-- Internal copies of output signals.
+signal in_error_i   : std_logic := '0';
+signal out_last_i   : std_logic := '0';
+signal out_valid_i  : std_logic := '0';
+
+-- Selection state.
+signal select_curr  : port_idx := 0;
+signal select_next  : port_idx := 0;
+signal select_mask  : port_slv := (others => '0');
+
+begin
+
+-- Drive output signals.
+out_last    <= out_last_i;
+out_valid   <= out_valid_i;
+in_select   <= select_curr;
+in_error    <= in_error_i;
+
+-- Combinational logic for each flow-control signal.
+out_last_i  <= in_last(select_curr);
+out_valid_i <= in_valid(select_curr);
+gen_ready : for n in in_ready'range generate
+    in_ready(n) <= out_ready and bool2bit(select_curr = n);
+end generate;
+
+-- Choose the next selection index using two priority encoders:
+-- The first only considers ports counting up from the previous selection.
+-- The second considers all ports, to handle the wraparound case.
+p_priority : process(in_valid, select_mask, select_curr)
+begin
+    -- Combinational logic only.
+    if (or_reduce(in_valid and select_mask) = '1') then
+        select_next <= get_priority(in_valid and select_mask);
+    elsif (or_reduce(in_valid) = '1') then
+        select_next <= get_priority(in_valid);
+    else
+        select_next <= select_curr;
+    end if;
+end process;
+
+-- State machine for updating the selection index.
+p_select : process(clk)
+begin
+    if rising_edge(clk) then
+        if (out_valid_i = '0' or out_last_i = '1') then
+            -- Update selection between packets or just after end of packet.
+            select_curr <= select_next;
+            -- Do the same for the priority-encoder mask (see above).
+            for n in select_mask'range loop
+                select_mask(n) <= bool2bit(n > select_next);
+            end loop;
+        end if;
+    end if;
+end process;
+
+-- Input sanity check:
+-- Verify that each input is following the "valid held high" rule.
+p_check : process(clk)
+    variable expect_valid : port_slv := (others => '0');
+begin
+    if rising_edge(clk) then
+        assert (in_error_i = '0')
+            report "Input flow control violation" severity error;
+        in_error_i <= or_reduce(expect_valid and not in_valid);
+        expect_valid := in_valid and not in_last;
+    end if;
+end process;
+
+end round_robin;

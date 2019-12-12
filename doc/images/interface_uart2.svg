@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<!-- Copyright 2019 The Aerospace Corporation.
+
+This file is part of SatCat5.
+
+SatCat5 is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with SatCat5.  If not, see [https://www.gnu.org/licenses/] -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="100mm"
+   height="30mm"
+   viewBox="0 0 100 30"
+   version="1.1"
+   id="svg6540"
+   inkscape:version="0.92.4 (5da689c313, 2019-01-14)"
+   sodipodi:docname="interface_uart2.svg">
+  <defs
+     id="defs6534" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.979899"
+     inkscape:cx="158.96883"
+     inkscape:cy="47.320217"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1680"
+     inkscape:window-height="987"
+     inkscape:window-x="1912"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata6537">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-267)">
+    <rect
+       style="opacity:1;fill:#c8c8c8;fill-opacity:1;stroke:#000000;stroke-width:0.39118648;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="rect6548"
+       width="25.014814"
+       height="25.846952"
+       x="2.3260517"
+       y="269.25821" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="14.585025"
+       y="274.41574"
+       id="text7095"><tspan
+         sodipodi:role="line"
+         x="14.585025"
+         y="274.41574"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7097">SatCat5</tspan><tspan
+         sodipodi:role="line"
+         x="14.585025"
+         y="278.82547"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7279">FPGA</tspan><tspan
+         sodipodi:role="line"
+         x="14.585025"
+         y="283.2352"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7297" /><tspan
+         sodipodi:role="line"
+         x="14.585025"
+         y="287.6449"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7291">2-Wire</tspan><tspan
+         sodipodi:role="line"
+         x="14.585025"
+         y="292.05463"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7277">UART</tspan></text>
+    <rect
+       style="opacity:1;fill:#c8c8c8;fill-opacity:1;stroke:#000000;stroke-width:0.39118651;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="rect6548-1"
+       width="25.014814"
+       height="25.846956"
+       x="71.548859"
+       y="269.78506" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="83.807838"
+       y="274.81665"
+       id="text7095-8"><tspan
+         sodipodi:role="line"
+         x="83.807838"
+         y="274.81665"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7097-4">Network</tspan><tspan
+         sodipodi:role="line"
+         x="83.807838"
+         y="279.22638"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7125">Endpoint</tspan><tspan
+         sodipodi:role="line"
+         x="83.807838"
+         y="283.63611"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7299" /><tspan
+         sodipodi:role="line"
+         x="83.807838"
+         y="288.04581"
+         style="font-style:italic;text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7127">2-Wire</tspan><tspan
+         sodipodi:role="line"
+         x="83.807838"
+         y="292.45554"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7285"><tspan
+           style="font-style:italic"
+           id="tspan7289">UART</tspan></tspan></text>
+    <g
+       transform="matrix(-1,0,0,1,99.214086,24.390949)"
+       id="g7179-8">
+      <path
+         inkscape:connector-curvature="0"
+         id="path7135-6"
+         d="M 27.52876,261.18588 H 71.761868"
+         style="fill:none;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+      <path
+         inkscape:transform-center-y="-6.6783729e-06"
+         inkscape:transform-center-x="-0.33092466"
+         d="m 71.232699,261.18588 -1.985565,1.14637 v -2.29273 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="1.0471976"
+         sodipodi:arg1="0"
+         sodipodi:r2="0.66185516"
+         sodipodi:r1="1.3237104"
+         sodipodi:cy="261.18588"
+         sodipodi:cx="69.908989"
+         sodipodi:sides="3"
+         id="path7141-8"
+         style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.28934079;stroke-linecap:butt;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         sodipodi:type="star" />
+    </g>
+    <g
+       transform="translate(-0.210177,18.02103)"
+       id="g7179-6">
+      <path
+         inkscape:connector-curvature="0"
+         id="path7135-9"
+         d="M 27.52876,261.18588 H 71.761868"
+         style="fill:none;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1" />
+      <path
+         inkscape:transform-center-y="-6.6783729e-06"
+         inkscape:transform-center-x="-0.33092466"
+         d="m 71.232699,261.18588 -1.985565,1.14637 v -2.29273 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="1.0471976"
+         sodipodi:arg1="0"
+         sodipodi:r2="0.66185516"
+         sodipodi:r1="1.3237104"
+         sodipodi:cy="261.18588"
+         sodipodi:cx="69.908989"
+         sodipodi:sides="3"
+         id="path7141-0"
+         style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.28934079;stroke-linecap:butt;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         sodipodi:type="star" />
+    </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:center;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="49.382603"
+       y="277.64526"
+       id="text7224-5"><tspan
+         sodipodi:role="line"
+         x="49.382603"
+         y="277.64526"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:center;writing-mode:lr-tb;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7226-0">RxD</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:center;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="49.125053"
+       y="284.51804"
+       id="text7224-5-4"><tspan
+         sodipodi:role="line"
+         x="49.125053"
+         y="284.51804"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:center;writing-mode:lr-tb;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan7226-0-1">TxD</tspan></text>
+  </g>
+</svg>
