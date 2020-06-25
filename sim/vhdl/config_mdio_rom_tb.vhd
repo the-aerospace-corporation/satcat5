@@ -21,7 +21,7 @@
 --
 -- This testbench connects the ROM-based MDIO controller to a simple MDIO
 -- receiver, and confirms that commands are received with the expected
--- format and timing.  Since config_mdio_rom uses the io_mdio_master block
+-- format and timing.  Since config_mdio_rom uses the io_mdio_writer block
 -- internally, this test also indirectly covers that block.
 --
 -- A full test takes less than 30 milliseconds.
@@ -30,7 +30,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity config_mdio_rom_tb is

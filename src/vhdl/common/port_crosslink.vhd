@@ -31,8 +31,9 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
+use     work.synchronization.all;
 
 entity port_crosslink is
     generic (
@@ -61,6 +62,9 @@ architecture port_crosslink of port_crosslink is
 constant PAD_REQ_A2B : boolean := RUNT_PORTA and not RUNT_PORTB;
 constant PAD_REQ_B2A : boolean := RUNT_PORTB and not RUNT_PORTA;
 
+-- Synchronized reset signal.
+signal reset_sync       : std_logic;
+
 -- Rate limiter state machine.
 signal rxa_data_valid   : std_logic := '0';
 signal rxb_data_valid   : std_logic := '0';
@@ -71,21 +75,28 @@ begin
 -- Drive clocks and control signals for each port.
 rxa_data.clk        <= ref_clk;
 rxa_data.rxerr      <= '0';
-rxa_data.reset_p    <= reset_p;
+rxa_data.reset_p    <= reset_sync;
 rxa_data.write      <= rxa_data_valid and xfer_ready;
 
 txa_ctrl.clk        <= ref_clk;
 txa_ctrl.txerr      <= '0';
-txa_ctrl.reset_p    <= reset_p;
+txa_ctrl.reset_p    <= reset_sync;
 
 rxb_data.clk        <= ref_clk;
 rxb_data.rxerr      <= '0';
-rxb_data.reset_p    <= reset_p;
+rxb_data.reset_p    <= reset_sync;
 rxb_data.write      <= rxb_data_valid and xfer_ready;
 
 txb_ctrl.clk        <= ref_clk;
 txb_ctrl.txerr      <= '0';
-txb_ctrl.reset_p    <= reset_p;
+txb_ctrl.reset_p    <= reset_sync;
+
+-- Re-synchronize the reset signal.
+u_rsync : sync_reset
+    port map(
+    in_reset_p  => reset_p,
+    out_reset_p => reset_sync,
+    out_clk     => ref_clk);
 
 -- Rate limiter state machine.
 p_rate : process(ref_clk)
@@ -94,7 +105,7 @@ p_rate : process(ref_clk)
 begin
     if rising_edge(ref_clk) then
         xfer_ready <= bool2bit(count = 0);
-        if (reset_p = '1' or count = 0) then
+        if (reset_sync = '1' or count = 0) then
             count := RATE_MAX;
         else
             count := count - 1;
@@ -116,7 +127,7 @@ gen_a_mod : if PAD_REQ_A2B generate
         out_valid   => rxb_data_valid,
         out_ready   => xfer_ready,
         clk         => ref_clk,
-        reset_p     => reset_p);
+        reset_p     => reset_sync);
 end generate;
 
 gen_a_pass : if not PAD_REQ_A2B generate
@@ -141,7 +152,7 @@ gen_b_mod : if PAD_REQ_B2A generate
         out_valid   => rxa_data_valid,
         out_ready   => xfer_ready,
         clk         => ref_clk,
-        reset_p     => reset_p);
+        reset_p     => reset_sync);
 end generate;
 
 gen_b_pass : if not PAD_REQ_B2A generate

@@ -186,6 +186,7 @@ begin
         else
             err_out_i <= '0';
         end if;
+        prev_correction := stat_correction;
     end if;
 end process;
 

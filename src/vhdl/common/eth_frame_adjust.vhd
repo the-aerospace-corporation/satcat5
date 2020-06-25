@@ -39,12 +39,13 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
 entity eth_frame_adjust is
     generic (
     MIN_FRAME   : integer := 64;        -- Minimum output frame size
+    APPEND_FCS  : boolean := true;      -- Append new FCS to output?
     STRIP_FCS   : boolean := true);     -- Remove FCS from input?
     port (
     -- Input data stream (with or without FCS, AXI flow control).
@@ -92,7 +93,7 @@ signal fcs_crc32    : crc_word_t := CRC_INIT;
 begin
 
 -- Optionally remove FCS from the end of each packet.
-gen_direct : if not STRIP_FCS generate
+gen_nostrip : if not STRIP_FCS generate
     -- Input has already had FCS removed, no need to modify.
     frm_data    <= in_data;
     frm_last    <= in_valid and in_last;
@@ -208,54 +209,64 @@ begin
     end if;
 end process;
 
--- Recalculate and append the CRC.
-pad_ready <= fcs_ready and not fcs_ovr; -- Upstream flow control
-pad_write <= pad_valid and pad_ready;
+-- Optionally append a new FCS to the end of each packet.
+gen_noappend : if not APPEND_FCS generate
+    fcs_data  <= pad_data;
+    fcs_last  <= pad_last;
+    fcs_valid <= pad_valid;
+    pad_ready <= fcs_ready;
+end generate;
 
-p_crc : process(clk)
-    variable bcount : integer range 0 to 3 := 0;
-begin
-    if rising_edge(clk) then
-        -- Relay data until end, then append FCS.
-        if (pad_write = '1') then
-            -- Relay normal data until end of frame.
-            fcs_data  <= pad_data;
-            fcs_last  <= '0';
-            fcs_valid <= '1';
-            fcs_ovr   <= pad_last;
-        elsif (fcs_ovr = '1' and fcs_ready = '1') then
-            -- Append each FCS byte, flipping polarity and bit order.
-            -- (CRC is MSB-first, but Ethernet convention is LSB-first.)
-            fcs_data  <= not flip_byte(fcs_crc32(31 downto 24));
-            fcs_valid <= '1';
-            fcs_last  <= bool2bit(bcount = 3);
-            fcs_ovr   <= bool2bit(bcount < 3) or not fcs_ready;
-        elsif (fcs_ready = '1') then
-            -- Mark previous byte as consumed.
-            fcs_valid <= '0';
-            fcs_last  <= '0';
-        end if;
+gen_append : if APPEND_FCS generate
+    -- Recalculate and append the CRC.
+    pad_ready <= fcs_ready and not fcs_ovr; -- Upstream flow control
+    pad_write <= pad_valid and pad_ready;
 
-        -- Update the CRC word and output byte counter.
-        if (reset_p = '1') then
-            -- General reset.
-            fcs_crc32 <= CRC_INIT;
-            bcount    := 0;
-        elsif (pad_write = '1') then
-            -- Normal data, update CRC.
-            fcs_crc32 <= crc_next(fcs_crc32, pad_data);
-            bcount    := 0;
-        elsif (fcs_ovr = '1' and fcs_ready = '1') then
-            -- Emit next byte from CRC.
-            fcs_crc32 <= fcs_crc32(23 downto 0) & x"FF";
-            if (bcount < 3) then
-                bcount := bcount + 1;
-            else
-                bcount := 0;
+    p_crc : process(clk)
+        variable bcount : integer range 0 to 3 := 0;
+    begin
+        if rising_edge(clk) then
+            -- Relay data until end, then append FCS.
+            if (pad_write = '1') then
+                -- Relay normal data until end of frame.
+                fcs_data  <= pad_data;
+                fcs_last  <= '0';
+                fcs_valid <= '1';
+                fcs_ovr   <= pad_last;
+            elsif (fcs_ovr = '1' and fcs_ready = '1') then
+                -- Append each FCS byte, flipping polarity and bit order.
+                -- (CRC is MSB-first, but Ethernet convention is LSB-first.)
+                fcs_data  <= not flip_byte(fcs_crc32(31 downto 24));
+                fcs_valid <= '1';
+                fcs_last  <= bool2bit(bcount = 3);
+                fcs_ovr   <= bool2bit(bcount < 3) or not fcs_ready;
+            elsif (fcs_ready = '1') then
+                -- Mark previous byte as consumed.
+                fcs_valid <= '0';
+                fcs_last  <= '0';
+            end if;
+
+            -- Update the CRC word and output byte counter.
+            if (reset_p = '1') then
+                -- General reset.
+                fcs_crc32 <= CRC_INIT;
+                bcount    := 0;
+            elsif (pad_write = '1') then
+                -- Normal data, update CRC.
+                fcs_crc32 <= crc_next(fcs_crc32, pad_data);
+                bcount    := 0;
+            elsif (fcs_ovr = '1' and fcs_ready = '1') then
+                -- Emit next byte from CRC.
+                fcs_crc32 <= fcs_crc32(23 downto 0) & x"FF";
+                if (bcount < 3) then
+                    bcount := bcount + 1;
+                else
+                    bcount := 0;
+                end if;
             end if;
         end if;
-    end if;
-end process;
+    end process;
+end generate;
 
 -- Final output stage
 out_data  <= fcs_data;

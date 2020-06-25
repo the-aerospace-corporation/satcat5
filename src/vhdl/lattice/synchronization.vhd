@@ -25,7 +25,7 @@
 -- See xilinx/synchronization.vhd for descriptions of the blocks
 --
 -- NOTE: Designs should only include ONE such implementation!  If your project
--- includes "synchronization", don't include "synchronization_microsemi".
+-- includes "xilinx/synchronization.vhd", don't include "lattice/synchronization.vhd".
 --
 
 library IEEE;

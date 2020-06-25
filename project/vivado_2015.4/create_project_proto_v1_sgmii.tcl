@@ -31,7 +31,7 @@ set constr_impl "./switch_proto_v1_sgmii_impl.xdc"
 
 # List HDL source files, grouped by type.
 set files_main [list \
- "[file normalize "../../src/vhdl/common/common_types.vhd"]"\
+ "[file normalize "../../src/vhdl/common/common_functions.vhd"]"\
  "[file normalize "../../src/vhdl/common/config_port_eth.vhd"]"\
  "[file normalize "../../src/vhdl/common/config_port_uart.vhd"]"\
  "[file normalize "../../src/vhdl/common/config_read_command.vhd"]"\
@@ -44,14 +44,15 @@ set files_main [list \
  "[file normalize "../../src/vhdl/common/eth_frame_check.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_common.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_preambles.vhd"]"\
- "[file normalize "../../src/vhdl/common/io_mdio_master.vhd"]"\
- "[file normalize "../../src/vhdl/common/io_spi_master.vhd"]"\
- "[file normalize "../../src/vhdl/common/io_spi_slave.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_mdio_writer.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_spi_clkin.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_spi_clkout.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_uart.vhd"]"\
  "[file normalize "../../src/vhdl/common/led_types.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_binary.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_brute.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_generic.vhd"]"\
+ "[file normalize "../../src/vhdl/common/mac_lookup_lutram.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_parshift.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_simple.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_stream.vhd"]"\
@@ -61,7 +62,7 @@ set files_main [list \
  "[file normalize "../../src/vhdl/common/port_rgmii.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_sgmii_common.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_auto.vhd"]"\
- "[file normalize "../../src/vhdl/common/port_serial_spi.vhd"]"\
+ "[file normalize "../../src/vhdl/common/port_serial_spi_clkin.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_uart_2wire.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_uart_4wire.vhd"]"\
  "[file normalize "../../src/vhdl/common/round_robin.vhd"]"\
@@ -74,6 +75,7 @@ set files_main [list \
  "[file normalize "../../src/vhdl/xilinx/clkgen_sgmii.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/io_7series.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/lcd_control.vhd"]"\
+ "[file normalize "../../src/vhdl/xilinx/lutram_7series.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/port_sgmii_xilinx.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/scrub_xilinx.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/sgmii_data_slip.vhd"]"\

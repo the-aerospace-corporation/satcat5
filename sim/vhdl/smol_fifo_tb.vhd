@@ -31,7 +31,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity smol_fifo_tb_helper is
     generic (
@@ -213,7 +213,7 @@ end helper;
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity smol_fifo_tb is
     -- Testbench --> No I/O ports

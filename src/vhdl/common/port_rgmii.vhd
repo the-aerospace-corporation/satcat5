@@ -50,7 +50,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
@@ -89,17 +89,24 @@ signal txen, txen_d     : std_logic := '0';
 signal txdata           : std_logic_vector(7 downto 0) := (others => '0');
 signal txmeta           : std_logic_vector(3 downto 0);
 signal txdv, txerr      : std_logic := '0';
-signal txready          : std_logic := '0';
 
 signal rxclk            : std_logic;
-signal rxlock, rxpkt_d  : std_logic := '0';
-signal rxdata, rxdata_d : std_logic_vector(7 downto 0) := (others => '0');
+signal rxlock           : std_logic := '0';
+signal rxdata           : std_logic_vector(7 downto 0) := (others => '0');
 signal rxdv, rxerr      : std_logic;
-signal rxdv_d, rxerr_d  : std_logic := '0';
 signal rxdiv_t          : std_logic := '0'; -- Toggle in rxclk domain
 signal rxdiv_s          : std_logic;        -- Strobe in clk_125 domain
 
+signal reset_sync       : std_logic;        -- Reset sync'd to clk_125
+
 begin
+
+-- Synchronize the external reset signal.
+u_rsync : sync_reset
+    port map(
+    in_reset_p  => reset_p,
+    out_reset_p => reset_sync,
+    out_clk     => clk_125);
 
 -- Instantiate platform-specific I/O structures:
 -- Note: For symmetry with clock input path, set DELAY_NSEC = 0.0 on all
@@ -185,7 +192,7 @@ p_detect : process(clk_125)
 begin
     if rising_edge(clk_125) then
         -- Activate or deactivate the transmit clock.
-        if (reset_p = '1') then
+        if (reset_sync = '1') then
             -- Interface shutdown.
             txen <= '0';
             count_tx := 0;
@@ -208,7 +215,7 @@ begin
         txen_d <= txen;
 
         -- Enable receiver after two clock-activity strobes.
-        if (reset_p = '1' or count_rx = 0) then
+        if (reset_sync = '1' or count_rx = 0) then
             -- Reset or clock watchdog reached zero --> Shutdown.
             rxlock  <= '0';
             rxfirst := '0';

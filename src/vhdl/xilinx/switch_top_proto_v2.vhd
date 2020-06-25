@@ -92,11 +92,10 @@ signal slow_tx_data  : array_tx_m2s(PORTS_EOS+1 downto 0);
 signal slow_tx_ctrl  : array_tx_s2m(PORTS_EOS+1 downto 0);
 
 -- Error reporting infrastructure.
-constant SWITCH_ERR_TYPES : integer := 9;
-signal slow_err_t   : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
-signal fast_err_t   : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
-signal err_ignore   : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
-signal swerr_vec_t  : std_logic_vector(2*SWITCH_ERR_TYPES-1 downto 0);
+signal slow_err_t   : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal fast_err_t   : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal err_ignore   : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal swerr_vec_t  : std_logic_vector(2*SWITCH_ERR_WIDTH-1 downto 0);
 signal scrub_req_t  : std_logic;
 
 -- Prevent renaming of clocks and other key nets.
@@ -234,9 +233,9 @@ u_core_fast : entity work.switch_core
     DATAPATH_BYTES  => 3,
     IBUF_KBYTES     => 4,
     OBUF_KBYTES     => 16,
-    MAC_LOOKUP_TYPE => "PARSHIFT",
-    MAC_LOOKUP_DLY  => 15,
-    MAC_TABLE_SIZE  => 32)
+    MAC_LOOKUP_TYPE => "LUTRAM",
+    MAC_LOOKUP_DLY  => 5,
+    MAC_TABLE_SIZE  => 64)
     port map(
     ports_rx_data   => fast_rx_data,
     ports_tx_data   => fast_tx_data,
@@ -275,8 +274,7 @@ u_aux : entity work.switch_aux
     CORE_COUNT      => 2,
     SCRUB_CLK_HZ    => 25000000,
     STARTUP_MSG     => "PROTO_V2_" & BUILD_DATE,
-    STATUS_LED_LIT  => '1',
-    SWERR_TYPES     => SWITCH_ERR_TYPES)
+    STATUS_LED_LIT  => '1')
     port map(
     swerr_vec_t     => swerr_vec_t,
     swerr_ignore    => err_ignore,

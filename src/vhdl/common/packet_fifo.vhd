@@ -33,7 +33,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.synchronization.all;
 
 entity packet_fifo is
@@ -42,7 +42,7 @@ entity packet_fifo is
     OUTPUT_BYTES    : integer;          -- Width of output port
     BUFFER_KBYTES   : integer;          -- Buffer size (kilobytes)
     FLUSH_TIMEOUT   : integer := -1;    -- Stale data timeout (optional)
-    MIN_PKT_BYTES   : integer := 64;    -- Minimum packet size (bytes)
+    MAX_PACKETS     : integer := 64;    -- Maximum queued packets
     MAX_PKT_BYTES   : integer := 1536); -- Maximum packet size (bytes)
     port (
     -- Input port does not use flow control.
@@ -82,7 +82,6 @@ constant OUTPUT_RATIO   : integer := FIFO_BYTES / OUTPUT_BYTES;
 constant NBYTES_WIDTH   : integer := log2_ceil(MAX_PKT_BYTES+INPUT_BYTES);
 constant BCOUNT_WIDTH   : integer := log2_ceil(OUTPUT_BYTES);
 constant MAX_PKT_WORDS  : integer := (MAX_PKT_BYTES + FIFO_BYTES - 1) / FIFO_BYTES;
-constant MAX_PACKETS    : integer := (1024*BUFFER_KBYTES) / MIN_PKT_BYTES;
 subtype addr_t is integer range 0 to FIFO_DEPTH-1;
 subtype nwords_t is integer range 0 to FIFO_DEPTH;
 subtype nbytes_t is unsigned(NBYTES_WIDTH-1 downto 0);
@@ -93,7 +92,7 @@ function get_bcount(x : std_logic_vector) return integer is
 begin
     -- Extract the byte-count field from the final FIFO word.
     if (BCOUNT_WIDTH > 0) then
-        return u2i(to_01(x(x'left-1 downto OUTPUT_WIDTH)));
+        return u2i(to_01_vec(x(x'left-1 downto OUTPUT_WIDTH)));
     else
         return OUTPUT_BYTES-1;
     end if;

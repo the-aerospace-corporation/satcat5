@@ -12,7 +12,7 @@ The design provides four UART ports on the PMOD connectors, one 10/100Mbps ether
 
 # Building
 
-The design has been tested on both Arty A7 35T and 100T variants with Vivado 2018.2 and 2018.3.
+The design has been tested on both Arty A7 35T and 100T variants with Vivado 2015.4, 2018.2, or 2018.3.
 Follow these steps to build the design and deploy to your Arty A7 board.
 
 1. Obtain and install [Digilent board files](https://reference.digilentinc.com/vivado/installing-vivado/start) for Vivado
@@ -33,12 +33,12 @@ The `.bin` files generated in `project/vivado_2015.4/backups` can also be used t
 
 # Running the Chat Demo
 
-1. Once the board has been connected and programmed as described above, follow the readme in `test/python` to install dependencies for the chat demo.
+1. Once the board has been connected and programmed as described above, follow the readme in `test/chat_client` to install dependencies for the chat demo.
 1. Run the chat demo with `python3 chat_client.py`, selecting the configuration and status UART (provided over the micro-USB programming cable) and your UART PMOD and ethernet ports.
 1. Enjoy testing SatCat5 performance!
 
 ## Notes
-* The UART ports are fixed at 921600 baud by default in the example design and the ethernet link operates at 100Mbps unless forced to 10Mbps by lowering `GPO_RMII_FAST` in `swtich_cfg.py`.
+* The UART ports are fixed at 921,600 baud by default in the example design and the ethernet link operates at 100Mbps unless forced to 10Mbps by lowering `GPO_RMII_FAST` in `swtich_cfg.py`.
 * The `RESET` button may be pressed to reset the switch logic and ethernet PHY without reloading device configuration.
 
 

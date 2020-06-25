@@ -34,7 +34,8 @@ entity port_sgmii_xilinx is
     generic (
     TX_INVERT   : boolean := false;     -- Invert Tx polarity
     RX_INVERT   : boolean := false;     -- Invert Rx polarity
-    RX_BIAS_EN  : boolean := false);    -- Enable split-termination biasing
+    RX_BIAS_EN  : boolean := false;     -- Enable split-termination biasing
+    RX_TERM_EN  : boolean := true);     -- Enable internal termination
     port (
     -- External SGMII interfaces (direct to FPGA pins)
     sgmii_rxp   : in  std_logic;
@@ -83,6 +84,7 @@ u_tx : entity work.sgmii_serdes_tx
 u_rx : entity work.sgmii_serdes_rx
     generic map(
     BIAS_ENABLE => RX_BIAS_EN,
+    DIFF_TERM   => RX_TERM_EN,
     POL_INVERT  => RX_INVERT,
     REFCLK_MHZ  => 200)
     port map(

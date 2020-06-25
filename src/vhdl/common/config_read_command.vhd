@@ -52,7 +52,7 @@
 library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
 entity config_read_command is
@@ -72,7 +72,7 @@ entity config_read_command is
     cmd_valid   : in  std_logic;
     cmd_ready   : out std_logic;
 
-    -- SPI master interface
+    -- SPI command interface
     spi_csb     : out std_logic;    -- Chip select
     spi_sck     : out std_logic;    -- Clock
     spi_sdo     : out std_logic;    -- Data (FPGA to ASIC)
@@ -219,7 +219,7 @@ end process;
 -- SPI interface
 gen_spi_en : if (SPI_BAUD > 0) generate
     spi_valid <= cmd_valid and opcode_spi;
-    u_spi : entity work.io_spi_master
+    u_spi : entity work.io_spi_clkout
         generic map(
         CLKREF_HZ   => CLKREF_HZ,
         SPI_BAUD    => SPI_BAUD,
@@ -246,7 +246,7 @@ end generate;
 -- MDIO interface
 gen_mdio_en : if (MDIO_BAUD > 0) generate
     mdio_valid <= cmd_valid and opcode_mdio;
-    u_mdio : entity work.io_mdio_master
+    u_mdio : entity work.io_mdio_writer
         generic map(
         CLKREF_HZ   => CLKREF_HZ,
         MDIO_BAUD   => MDIO_BAUD)

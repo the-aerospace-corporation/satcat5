@@ -24,7 +24,7 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.numeric_std.all;
 
-package COMMON_TYPES is
+package COMMON_FUNCTIONS is
 -- Functions
     -- Convert a standard logic vector to an unsigned integer
     function U2I(a: std_logic_vector) return natural;
@@ -55,11 +55,11 @@ package COMMON_TYPES is
     function min(a,b : integer) return integer;
 
     -- Map 'X', 'U' to '0'
-    function to_01(a: std_logic_vector) return std_logic_vector;
-    function to_01(a: std_logic)        return std_logic;
+    function to_01_vec(a: std_logic_vector) return std_logic_vector;
+    function to_01_std(a: std_logic)        return std_logic;
 end package;
 
-package body COMMON_TYPES is
+package body COMMON_FUNCTIONS is
     function U2I(a: std_logic_vector) return natural is
     begin
         return TO_INTEGER(UNSIGNED(a));
@@ -142,7 +142,7 @@ package body COMMON_TYPES is
 
     -- This function is useful to avoid having X's in simulation when feedback
     -- loops are present.  Note that it synthesizes to no hardware.
-    function to_01(a: std_logic_vector) return std_logic_vector is
+    function to_01_vec(a: std_logic_vector) return std_logic_vector is
         variable result : std_logic_vector(a'range);
     begin
         result := a;
@@ -158,7 +158,7 @@ package body COMMON_TYPES is
         return result;
     end;
 
-    function to_01(a: std_logic) return std_logic is
+    function to_01_std(a: std_logic) return std_logic is
         variable result : std_logic;
     begin
         result := a;

@@ -38,7 +38,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity mac_lookup_binary is
     generic (
@@ -258,8 +258,7 @@ p_search : process(clk)
     constant BROADCAST_ADDR : mac_addr_t := (others => '1');
     variable dst_idx_lo, dst_idx_hi : table_idx_t := 0;
     variable src_idx_lo, src_idx_hi : table_idx_t := 0;
-    variable dst_found, dst_done : std_logic := '0';
-    variable src_found, src_done, src_bcast : std_logic := '0';
+    variable dst_done, src_found, src_done, src_bcast : std_logic := '0';
     variable scrub_idx : table_idx_t := 0;
 begin
     if rising_edge(clk) then
@@ -326,7 +325,6 @@ begin
             end if;
             -- Reset overall search state.
             dst_done    := bool2bit(mac_dst = BROADCAST_ADDR);
-            dst_found   := bool2bit(mac_dst = BROADCAST_ADDR);
             src_done    := bool2bit(mac_src = BROADCAST_ADDR);
             src_found   := bool2bit(mac_src = BROADCAST_ADDR);
             src_bcast   := bool2bit(mac_src = BROADCAST_ADDR);
@@ -356,8 +354,7 @@ begin
             if (dst_done = '1') then            -- Done / no further action
                 read_addr   <= read_addr_d;
             elsif (read_eq_dst = '1') then
-                dst_found   := '1';             -- Exact match
-                dst_done    := '1';
+                dst_done    := '1';             -- Exact match
                 dst_idx_lo  := read_addr_d;
                 dst_idx_hi  := read_addr_d;
                 read_addr   <= read_addr_d;

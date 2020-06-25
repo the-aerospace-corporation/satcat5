@@ -54,10 +54,11 @@ vmap unisim $UNISIM_PATH
 
 # Shared libraries, including generic and platform-specific:
 project addfolder common_lib
-project addfile ../../src/vhdl/common/common_types.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/common_functions.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/eth_frame_common.vhd VHDL common_lib
 project addfile ../../src/vhdl/xilinx/io_7series.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/led_types.vhd VHDL common_lib
+project addfile ../../src/vhdl/xilinx/lutram_7series.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/smol_fifo.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/slip_decoder.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/slip_encoder.vhd VHDL common_lib
@@ -66,9 +67,9 @@ project addfile ../../src/vhdl/xilinx/synchronization.vhd VHDL common_lib
 
 # Common VHDL (switch functions):
 project addfolder common_sw
-project addfile ../../src/vhdl/common/io_mdio_master.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/io_spi_master.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/io_spi_slave.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_mdio_writer.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_spi_clkin.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_spi_clkout.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_uart.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/error_reporting.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_dec8b10b.vhd VHDL common_sw
@@ -80,11 +81,12 @@ project addfile ../../src/vhdl/common/eth_preambles.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_file2rom.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_mdio_rom.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_read_command.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/config_send_status.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_port_eth.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_port_uart.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/config_send_status.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_lookup_binary.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_lookup_brute.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/mac_lookup_lutram.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_lookup_parshift.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_lookup_simple.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_lookup_stream.vhd VHDL common_sw
@@ -92,12 +94,14 @@ project addfile ../../src/vhdl/common/mac_lookup_generic.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_delay.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_fifo.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_adapter.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/port_axi_mailbox.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_crosslink.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_rgmii.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_rmii.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_sgmii_common.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_serial_auto.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/port_serial_spi.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/port_serial_spi_clkin.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/port_serial_spi_clkout.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_serial_uart_2wire.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_serial_uart_4wire.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_statistics.vhd VHDL common_sw
@@ -141,6 +145,7 @@ project addfile ../../sim/vhdl/lcd_control_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_lookup_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_delay_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_fifo_tb.vhd VHDL test
+project addfile ../../sim/vhdl/port_axi_mailbox_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_rgmii_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_rmii_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_sgmii_common_tb.vhd VHDL test

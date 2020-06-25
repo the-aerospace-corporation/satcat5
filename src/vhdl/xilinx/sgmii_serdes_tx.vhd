@@ -20,7 +20,7 @@
 -- SGMII Transmitter using OSERDESE2
 --
 -- This block accepts a 10-bit parallel data (as from an 8b/10b encoder)
--- and serializes the 1250 Mbps output using a master/slave pair of
+-- and serializes the 1250 Mbps output using a leader/follower pair of
 -- Xilinx 7-Series OSERDESE2 primitives.
 --
 -- To save power, this output enters tristate while in reset.
@@ -31,7 +31,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 library unisim;
 use     unisim.vcomponents.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity sgmii_serdes_tx is
     generic (
@@ -76,7 +76,7 @@ u_out: OBUFTDS
     generic map (IOSTANDARD => get_iotype, SLEW => "FAST")
     port map (I => ser_dq, T => ser_tq, O => TxD_p_pin, OB => TxD_n_pin);
 
--- Master serializer
+-- Leader serializer
 u_ser0 : OSERDESE2
     generic map (
     DATA_RATE_OQ    => "DDR",   -- DDR, SDR
@@ -84,7 +84,7 @@ u_ser0 : OSERDESE2
     DATA_WIDTH      => 10,      -- Parallel data width (2-8,10,14)
     INIT_OQ         => '0',     -- Initial value of OQ output (1’b0,1’b1)
     INIT_TQ         => '1',     -- Initial value of TQ output (1’b0,1’b1)
-    SERDES_MODE     => "MASTER", -- MASTER, SLAVE
+    SERDES_MODE     => "MASTER",-- Can't do anything about Xilinx terminology...
     SRVAL_OQ        => '0',     -- OQ output value when SR is used (1’b0,1’b1)
     SRVAL_TQ        => '1',     -- TQ output value when SR is used (1’b0,1’b1)
     TBYTE_CTL       => "FALSE", -- Enable tristate byte operation (FALSE, TRUE)
@@ -119,7 +119,7 @@ u_ser0 : OSERDESE2
     TBYTEIN     => '0',
     TCE         => '1');
 
--- Slave serializer
+-- Follower serializer
 u_ser1 : OSERDESE2
     generic map (
     DATA_RATE_OQ    => "DDR",   -- DDR, SDR
@@ -127,7 +127,7 @@ u_ser1 : OSERDESE2
     DATA_WIDTH      => 10,      -- Parallel data width (2-8,10,14)
     INIT_OQ         => '0',     -- Initial value of OQ output (1’b0,1’b1)
     INIT_TQ         => '1',     -- Initial value of TQ output (1’b0,1’b1)
-    SERDES_MODE     => "SLAVE", -- MASTER, SLAVE
+    SERDES_MODE     => "SLAVE", -- Can't do anything about Xilinx terminology...
     SRVAL_OQ        => '0',     -- OQ output value when SR is used (1’b0,1’b1)
     SRVAL_TQ        => '1',     -- TQ output value when SR is used (1’b0,1’b1)
     TBYTE_CTL       => "FALSE", -- Enable tristate byte operation (FALSE, TRUE)

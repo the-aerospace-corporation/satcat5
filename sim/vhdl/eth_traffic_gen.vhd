@@ -28,7 +28,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity eth_traffic_gen is
@@ -38,8 +38,8 @@ entity eth_traffic_gen is
     INIT_SEED2  : positive := 5678;         -- PRNG seed (part 2)
     AUTO_START  : boolean := true);         -- Continuous mode?
     port (
-    clk         : in  std_logic;            -- Master clock
-    reset_p     : in  std_logic;            -- Master reset
+    clk         : in  std_logic;            -- Global clock
+    reset_p     : in  std_logic;            -- Global reset
     pkt_start   : in  std_logic := '0';     -- Manual packet start strobe
     pkt_len     : in  integer := -1;        -- Override packet length (bytes)
     pkt_etype   : in  boolean := false;     -- If specified, use Ethertype

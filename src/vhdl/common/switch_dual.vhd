@@ -24,7 +24,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
@@ -42,13 +42,13 @@ entity switch_dual is
     ports_tx_ctrl   : in  array_tx_s2m(1 downto 0);
 
     -- Error events are marked by toggling these bits.
-    errvec_t        : out std_logic_vector(8 downto 0));
+    errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0));
 end switch_dual;
 
 architecture switch_dual of switch_dual is
 
-signal errvec_0 : std_logic_vector(8 downto 0);
-signal errvec_1 : std_logic_vector(8 downto 0);
+signal errvec_0 : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal errvec_1 : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
 begin
 

@@ -17,9 +17,9 @@
 -- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 --------------------------------------------------------------------------
 --
--- Testbench for the SPI-master and SPI-slave interface blocks
+-- Testbench for the SPI interface blocks (clock-in and clock-out)
 --
--- This testbench connects an SPI-master and SPI-slave back-to-back,
+-- This testbench connects both SPI-interface variants back-to-back,
 -- to confirm successful bidirectional communication in each of the
 -- four main SPI modes (Mode 0/1/2/3/).
 --
@@ -30,7 +30,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
 entity io_spi_tb_helper is
@@ -38,8 +38,8 @@ entity io_spi_tb_helper is
     SPI_BAUD    : integer;
     SPI_MODE    : integer);
     port (
-    refclk_a    : std_logic;    -- Refclk for SPI master
-    refclk_b    : std_logic;    -- Refclk for SPI slave
+    refclk_a    : std_logic;    -- Refclk for SPI-clkout
+    refclk_b    : std_logic;    -- Refclk for SPI-clkin
     reset_p     : std_logic);
 end io_spi_tb_helper;
 
@@ -147,7 +147,7 @@ begin
             txb_valid   <= '0';
         elsif (txb_valid = '0' or txb_ready = '1') then
             -- B2A data stream must always be ready.
-            -- (If starved, slave block will insert filler characters.)
+            -- (If starved, either block will insert filler characters.)
             txb_valid <= '1';
             for n in txb_data'range loop
                 uniform(seed1b, seed2b, rand);
@@ -157,8 +157,8 @@ begin
     end if;
 end process;
 
--- UUT: Master
-uut_a : entity work.io_spi_master
+-- UUT: Clock source
+uut_a : entity work.io_spi_clkout
     generic map(
     CLKREF_HZ   => 100000000,
     SPI_BAUD    => SPI_BAUD,
@@ -177,8 +177,8 @@ uut_a : entity work.io_spi_master
     ref_clk     => refclk_a,
     reset_p     => reset_p);
 
--- UUT: Slave
-uut_b : entity work.io_spi_slave
+-- UUT: Clock follower
+uut_b : entity work.io_spi_clkin
     generic map(SPI_MODE => SPI_MODE)
     port map(
     spi_csb     => spi_csb,
@@ -191,8 +191,7 @@ uut_b : entity work.io_spi_slave
     tx_ready    => txb_ready,
     rx_data     => rxb_data,
     rx_write    => rxb_write,
-    refclk      => refclk_b,
-    reset_p     => reset_p);
+    refclk      => refclk_b);
 
 -- Measure the actual SCLK baud rate.
 p_baud : process

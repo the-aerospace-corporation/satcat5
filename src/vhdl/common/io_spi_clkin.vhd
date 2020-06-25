@@ -17,19 +17,19 @@
 -- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 --------------------------------------------------------------------------
 --
--- Generic SPI-slave interface
+-- Generic SPI interface with clock input
 --
--- This module implements a generic four-wire SPI interface.  It is
--- always configured as an SPI slave (end user supplies serial clock).
+-- This module implements a generic four-wire SPI interface.  This variant
+-- acts as an SPI follower, used when the remote device drives the clock.
 --
 -- To minimize required FPGA resources, the input clock is treated as a regular
 -- signal, oversampled by the global reference clock.  (Typically 50-125 MHz vs.
 -- ~10 Mbps max for a typical SPI interface.)  As a result, all inputs are
 -- asynchronous and must use metastability buffers for safe operation.
 --
--- In both modes, the master sets the rate of transmission by providing the
--- serial clock.  If either end of the link does not currently have data to
--- transmit, it should repeatedly send the SLIP inter-frame token (0xC0).
+-- In both modes, the clock source sets the rate of data transmission.
+-- If either end of the link does not currently have data to transmit,
+-- it should repeatedly send the SLIP inter-frame token (0xC0).
 --
 -- Received data is written a byte at a time with no option for flow-control.
 -- Transmit data uses an AXI-style valid/ready handshake.  HOWEVER, if a byte
@@ -46,21 +46,21 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;  -- For byte_t
 use     work.synchronization.all;
 
-entity io_spi_slave is
+entity io_spi_clkin is
     generic (
     IDLE_BYTE   : byte_t := x"00";  -- Fixed pattern when idle
     OUT_REG     : boolean := true;  -- Enable register on SDO, SDT signals?
     SPI_MODE    : integer := 3);    -- SPI clock phase & polarity
     port (
     -- External SPI interface.
-    spi_csb     : in  std_logic;    -- Chip-select bar (master to slave)
-    spi_sclk    : in  std_logic;    -- Serial clock in (master to slave)
-    spi_sdi     : in  std_logic;    -- Serial data in (user to switch)
-    spi_sdo     : out std_logic;    -- Serial data out (switch to user)
+    spi_csb     : in  std_logic;    -- Chip-select bar (from clock-source)
+    spi_sclk    : in  std_logic;    -- Serial clock in (from clock-source)
+    spi_sdi     : in  std_logic;    -- Serial data in (from clock-source)
+    spi_sdo     : out std_logic;    -- Serial data out (to clock-source)
     spi_sdt     : out std_logic;    -- Tristate signal for SDO (optional).
 
     -- Internal byte interface.
@@ -71,11 +71,10 @@ entity io_spi_slave is
     rx_write    : out std_logic;
 
     -- Clock and reset
-    refclk      : in  std_logic;    -- Reference clock (refclk >> spi_sck*)
-    reset_p     : in  std_logic);   -- Reset / shutdown
-end io_spi_slave;
+    refclk      : in  std_logic);   -- Reference clock (refclk >> spi_sck*)
+end io_spi_clkin;
 
-architecture io_spi_slave of io_spi_slave is
+architecture io_spi_clkin of io_spi_clkin is
 
 -- Break down SPI mode index into CPOL and CPHA.
 constant CPOL : std_logic := bool2bit(SPI_MODE = 2 or SPI_MODE = 3);
@@ -243,4 +242,4 @@ begin
     end if;
 end process;
 
-end io_spi_slave;
+end io_spi_clkin;

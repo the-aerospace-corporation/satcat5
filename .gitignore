@@ -35,3 +35,6 @@ project/icecube2_2017.8/**
 !project/icecube2_2017.8/*/*.prj
 !project/icecube2_2017.8/*/*.pcf
 !project/icecube2_2017.8/*/*.sdc
+
+# Ignore all libero-created subfolders
+project/libero_12.3/*/

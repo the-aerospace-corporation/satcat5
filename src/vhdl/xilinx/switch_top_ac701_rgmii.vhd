@@ -19,7 +19,7 @@
 --
 -- Top-level design: Extended RGMII + EoS switch for Xilinx AC701
 --
--- This module represents the extended configuration of the AC Galaxy Ethernet
+-- This module represents the extended configuration of the Prototype V1 Ethernet
 -- Switch, with several gigabit-Ethernet, EoS-SPI, and EoS-UART ports.  This
 -- version is designed to work with the Xilinx AC701 eval board and a custom
 -- FMC interface board.
@@ -112,10 +112,9 @@ signal slow_tx_data  : array_tx_m2s(SLOW_PORTS downto 0);
 signal slow_tx_ctrl  : array_tx_s2m(SLOW_PORTS downto 0);
 
 -- Error reporting for UART, LCD.
-constant SWITCH_ERR_TYPES : integer := 9;
-signal slow_err_t   : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
-signal fast_err_t   : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
-signal swerr_vec_t  : std_logic_vector(2*SWITCH_ERR_TYPES-1 downto 0);
+signal slow_err_t   : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal fast_err_t   : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal swerr_vec_t  : std_logic_vector(2*SWITCH_ERR_WIDTH-1 downto 0);
 signal scrub_req_t  : std_logic;
 signal msg_lcd_dat  : std_logic_vector(7 downto 0);
 signal msg_lcd_wr   : std_logic;
@@ -287,9 +286,9 @@ u_core_fast : entity work.switch_core
     DATAPATH_BYTES  => 3,
     IBUF_KBYTES     => 4,
     OBUF_KBYTES     => 16,
-    MAC_LOOKUP_TYPE => "PARSHIFT",
-    MAC_LOOKUP_DLY  => 15,
-    MAC_TABLE_SIZE  => 32)
+    MAC_LOOKUP_TYPE => "LUTRAM",
+    MAC_LOOKUP_DLY  => 5,
+    MAC_TABLE_SIZE  => 64)
     port map(
     ports_rx_data   => fast_rx_data,
     ports_tx_data   => fast_tx_data,
@@ -326,8 +325,7 @@ u_aux : entity work.switch_aux
     CORE_COUNT      => 2,
     SCRUB_CLK_HZ    => 25000000,
     STARTUP_MSG     => "AC701_RGMII_" & BUILD_DATE,
-    STATUS_LED_LIT  => '1',
-    SWERR_TYPES     => SWITCH_ERR_TYPES)
+    STATUS_LED_LIT  => '1')
     port map(
     swerr_vec_t     => swerr_vec_t,
     clock_stopped   => clk_stopped,

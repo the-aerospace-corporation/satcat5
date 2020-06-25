@@ -52,7 +52,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity sgmii_data_sync is
     generic (
@@ -87,6 +87,8 @@ subtype shift_word is std_logic_vector(4*LANE_COUNT-1 downto 0);
 subtype output_word is std_logic_vector(LANE_COUNT-1 downto 0);
 
 -- Realigned data stream.
+signal in_data_d    : shift_word := (others => '0');
+signal in_next_d    : std_logic := '0';
 signal slip_data    : shift_word;
 signal slip_next    : std_logic;
 
@@ -112,14 +114,23 @@ signal score_track  : integer range -TRACK_MAX to TRACK_MAX := 0;
 
 begin
 
+-- Simple delay register helps with routing and timing.
+p_inbuf : process(clk)
+begin
+    if rising_edge(clk) then
+        in_data_d   <= in_data;
+        in_next_d   <= in_next;
+    end if;
+end process;
+
 -- Repeat or drop samples to keep data window aligned as desired.
 u_slip : entity work.sgmii_data_slip
     generic map(
     IN_WIDTH    => 4*LANE_COUNT,
     OUT_WIDTH   => 4*LANE_COUNT)
     port map(
-    in_data     => in_data,
-    in_next     => in_next,
+    in_data     => in_data_d,
+    in_next     => in_next_d,
     out_data    => slip_data,
     out_next    => slip_next,
     slip_early  => trk_late,    -- Note polarity swap!

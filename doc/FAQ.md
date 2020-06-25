@@ -14,7 +14,7 @@ SatCat5 is a mixed-media Ethernet switch that lets a variety of devices communic
 
 An [Ethernet frame](https://en.wikipedia.org/wiki/Ethernet_frame) is just a series of bytes.  You can send those bytes over any medium you like. Ethernet frames can include higher-layer protocols like UDP and TCP/IP, but they don't have to.
 
-On interfaces that don't already have frame-boundary indicators (like SPI and UART), SatCat5 uses ITU RFC1055 [SLIP encoding](https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol) as a simple way to mark the start and end of each frame.  These interfaces don't require inter-packet gaps or preambles.
+On interfaces that don't already have frame-boundary indicators (like SPI and UART), SatCat5 uses [IETF RFC 1055](https://tools.ietf.org/html/rfc1055) [SLIP encoding](https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol) as a simple way to mark the start and end of each frame.  These interfaces don't require inter-packet gaps or preambles.
 
 ### Don't you mean octets?
 
@@ -40,7 +40,7 @@ Even a multi-port gigabit network switch can be run for less than 700 mW in MAC-
 
 ### What is MAC-to-MAC mode?
 
-The biggest power hog in a regular Ethernet network isn't the switch logic; it's the transceivers. You need one on each end of every link, together they draw about 1W per port. They need that power to cross building-scale distances up to 100m, but not everyone needs that.
+The biggest power hog in a regular Ethernet network isn't the switch logic; it's the transceivers. You need one on each end of every 1000BASE-T link, together they draw about 1W per port. They need that power to cross building-scale distances up to 100m, but not everyone needs that.
 
 Instead, we can leverage the various [Media-Independent Interfaces](https://en.wikipedia.org/wiki/Media-independent_interface) that have become de-facto standards.  These are typically used to allow a device (the MAC) to communicate with a specialized physical-layer transceiver (the PHY).
 
@@ -64,7 +64,11 @@ We include an example [MDIO interface](../src/vhdl/common/demo_config.vhd) if th
 
 ### What FPGAs are supported?
 
-Currently we support Xilinx 7-series FPGAs (Artix7, Kintex7, Virtex7), as well as the Lattice iCE40.
+Currently we support several FPGA platforms:
+
+* Lattice iCE40
+* Microsemi PolarFire
+* Xilinx 7-series FPGAs (Artix7, Kintex7, Virtex7, Zynq-7000)
 
 We hope to add support for other FPGA platforms [soon](CHANGELOG.md).
 
@@ -84,7 +88,8 @@ If not, launch Vivado and run the following commands:
 
     cd \[your SatCat5 download folder\]
     cd project/vivado_2015.4/
-    source create_project_proto_v2.tcl
+    set argv 35t
+    source create_project_arty_a7.tcl
 
 Each TCL script creates a new Vivado project, configured for different platforms or different port configurations.
 
@@ -98,7 +103,7 @@ The switch_core logic is a shared-medium, output queued switch. This architectur
 
 ### What switch features are supported?
 
-This is a Layer-2 Ethernet switch.  It directs packets based on destination MAC address.  The MAC-address(es) associated with each port are learned automatically by inspecting the source MAC address of each frame. Packets with an unrecognized destination are treated as broadcast packets.
+The core of SatCat5 is a Layer-2 Ethernet switch.  It directs packets based on destination MAC address.  The MAC-address(es) associated with each port are learned automatically by inspecting the source MAC address of each frame. Packets with an unrecognized destination are treated as broadcast packets.
 
 The switch supports broadcast packets (destination MAC FF:FF:FF:FF:FF:FF) and will send such packets to every port except the original ingress port.
 
@@ -118,11 +123,11 @@ A simple method is to take [six random bytes](https://www.random.org/cgi-bin/ran
 
 ### How are each device's MAC addresses associated with specific ports?
 
-The switch is self-learning: it monitors source and destination MAC addresses to determine where to send future packets. To save FPGA resources, MAC tables are typically limited to a fixed maximum number of addresses for the entire network (typically ~32 unique addresses).
+The switch is self-learning: it monitors source and destination MAC addresses to determine where to send future packets. To save FPGA resources, MAC tables are typically limited to a fixed maximum number of addresses for the entire network (typically ~64 unique addresses).
 
 ### How big can the network be?
 
-The MAC-learning and MAC-lookup system is resource-intensive. The example designs are limited to a maximum network size of 32 devices. This can be increased at the cost of additional FPGA resources.
+The MAC-learning and MAC-lookup system is resource-intensive. The example designs are limited to a maximum network size of 64 devices. This can be increased at the cost of additional FPGA resources.
 
 ### Why is the example design segmented into two parts?
 
@@ -130,7 +135,7 @@ Each instance of the "switch_core" block is a network segment, with different ru
 
 The low-speed segment services all SPI and UART ports. It is always powered on and ready to receive frames. It has an 8-bit datapath and relatively small buffer sizes. This segment allows runt frames (see below), and only allows one MAC address per port.
 
-The high-speed segment services all gigabit Ethernet ports. It can be shut down to save power. It has a 24-bit datapath and larger buffer sizes, to better accommodate bursty traffic. Since any port could be another gigabit Ethernet switch, it has a full MAC-lookup engine so that any port can have any number of MAC addresses (up to a preset total).
+The high-speed segment services all gigabit Ethernet ports. It can be shut down to save power. It has a 24-bit datapath and larger buffer sizes, to better accommodate bursty traffic. Since any port could be another gigabit Ethernet switch, it has a full MAC-lookup engine so that any port can have any number of MAC addresses (up to a preset total).  We've tested designs with datapaths up to 48-bits wide.
 
 The port_crosslink block bridges the two, performing any required conversions. Datapath widths in all cases are set such that the individual port is the only relevant throughput limit.
 
@@ -140,7 +145,7 @@ All network segments support normal frames (i.e., 64-1522 bytes).
 
 If configured, any segment can also accept jumbo frames (up to 9022 bytes). Using jumbo frames increases the required buffer sizes (see discussion below).
 
-If configured, low-speed segment(s) can also accept runt frames (as few as 18 bytes). Runt frames are only allowed on network segments with an 8-bit datapath and one MAC per port. (Use the "STREAM" type for MAC-lookup.)
+If configured, low-speed segment(s) can also accept runt frames (as few as 18 bytes). In some cases, this can save a lot of wasted time on UART ports.
 
 ### What happens if network segments have different capabilities?
 
@@ -148,9 +153,11 @@ As they cross to a segment with different rules, runt frames have their payload 
 
 Jumbo frames are simply dropped if they cross to a segment that doesn't support them. This is usually the desired behavior, since jumbo traffic usually isn't intended or well-suited for low-speed network nodes.
 
-### Why are there five different MAC-lookup implementations!? Which one do I pick?
+### Why are there six different MAC-lookup implementations!? Which one do I pick?
 
-Big picture: There is a tradeoff between complexity, network size, resource usage, and maximum latency.
+For most applications, we recommend the "LUTRAM" implementation.  It's well-suited to most networks, with very fast lookup and relatively low resource usage.
+
+Big picture: there is a tradeoff between complexity, network size, resource usage, and maximum latency.
 
 If the MAC-lookup isn't ready before the end of the frame, it will produce a MAC-table error.  As a result, network segments with runt frames or wide datapaths require lower latency, since the minimum frame length is shorter or divided into fewer clock cycles.
 
@@ -160,15 +167,17 @@ Each implementation has different strengths and weaknesses:
 
 * BRUTE: Resource-intensive but effective. Uses a separate matching engine for each potential address, resulting in heavy resource usage but near-instant results.
 
+* LUTRAM: Well-rounded, with very fast lookup and moderate resource usage.
+
 * PARSHIFT: A balance between BRUTE and SIMPLE. Each matching engine is a serial search against a handful of addresses. Instantiating several engines in parallel allows larger searches with modest latency.
 
 * SIMPLE: One-at-a-time search through unordered entries block-RAM.
 
-* STREAM: Optimized for low-speed segments, matches one byte at a time. Only allows one MAC address per port; anything else is directed to a special "uplink" port, generally connected to the high-speed segment.
+* STREAM: Optimized for low-speed segments, matches one byte at a time. Very low resource usage, but not compatible with all networks. Only allows one MAC address per port; anything else is directed to a special "uplink" port, generally connected to the high-speed segment.
 
 Some implementations include options for eviction of stale addresses that haven't been used in a while. Implementations that depend on table ordering (e.g., BINARY) also have periodic integrity checks to better recover from SEU.
 
-The example design uses PARSHIFT for the high-speed segment and STREAM for the low-speed segment.
+All example designs use LUTRAM for each switch segment.
 
 ### What is the MAC_LOOKUP_DLY parameter for?
 
@@ -178,11 +187,11 @@ Any given MAC-lookup configuration will have a range of possible latency values.
 
 However, if the minimum latency is nonzero, then delaying the main datapath can give additional margin. The maximum safe delay depends on the minimum MAC-lookup latency and the datapath width.
 
-If in doubt, run the switch_core unit test with the desired MAC-lookup and MAC_LOOKUP_DLY configuration.
+If in doubt, run the switch_core unit test with the desired configuration, and watch for warning messages.
 
 ### What is the SCRUB_TIMEOUT parameter for?
 
-Some MAC-lookup table types will periodically "scrub" their contents to evict stale addresses. This process occurs whenever scrub_req_t is changed, typically about once a second.  If a given source address hasn't been used for at least N such intervals, then it may be evicted.
+Some MAC-lookup table types will periodically "scrub" their contents to evict stale addresses. This process occurs whenever scrub_req_t is changed, typically about once a second.  If a given source address hasn't been used for at least N such intervals, then it may be evicted. Others don't use this parameter at all.
 
 ### How do I choose the switch_core datapath width?
 
@@ -240,15 +249,15 @@ The Pi-Wire can be used in 4-wire UART mode or in SPI mode.
 
 In 4-wire UART mode, the flow-control signals are ignored and the Pi-Wire software is always ready to accept new data. As a result, the interface is completely symmetric, which means that the Pi-Wire can be connected to a SatCat5 switch or to a SatCat5 device.
 
-In SPI mode, the Raspberry Pi must act as an SPI master. As a result, it can only connect to a SatCat5 switch.
+In SPI mode, the Raspberry Pi must act as an SPI clock source. As a result, it can only connect to a SatCat5 switch.
 
 ## Reference Design: Arty
 
 ### What's the Arty reference design?
 
-The [Arty board](https://reference.digilentinc.com/reference/programmable-logic/arty/start) is a low-cost FPGA development board made by Digilent.  It includes an Artix-7 FPGA, a 10/100 Ethernet port, and a number of PMOD ports.
+The [Arty A7](https://reference.digilentinc.com/reference/programmable-logic/arty/start) is a low-cost FPGA development board made by Digilent.  It includes an Artix-7 FPGA, a 10/100 Ethernet port, and a number of PMOD ports.
 
-SatCat5 includes a reference design for an Ethernet switch. When installed on this platform, it becomes a five-port SatCat5 switch with one regular Ethernet port and four SPI/UART ports.
+SatCat5 includes a reference design for an Ethernet switch. When installed on the Arty A7, it becomes a five-port SatCat5 switch with one regular Ethernet port and four SPI/UART ports.
 
 Further details specific to this design are included [here](ARTY_A7.md).
 
@@ -276,7 +285,7 @@ Initial design concepts used a two-tiered approach in an attempt to save power. 
 
 We ultimately decided not to pursue this approach. As a result, the software that configures and boots the SJA1105 is currently incomplete and non-functional.
 
-### Why are there three Xilinx projects?
+### Why are there so many Xilinx projects?
 
 Each project is an example design showing different switch capabilities, and has a separate corresponding top-level VHDL file under /src/vhdl/xilinx. They use progressively more FPGA resources. Due to differences in FPGA usage and clock infrastructure, their power draw varies substantially.
 
@@ -290,8 +299,7 @@ The "_sgmii" design is the most capable. It provides all of the above plus an SG
 
 By default:
 
-* PMOD1 is an Ethernet-over-SPI port
-* PMOD2-4 are Ethernet-over-UART ports
+* PMOD1-4 is an Ethernet-over-serial port that can auto-detect SPI or UART mode
 * PMOD5 is only used to configure the automotive switch
 
 Each PMOD port has a DIP switch that is used to set level-shifter direction.  Referring to the photo below, SPI ports (top) should be set with switch 1/2/3/4 = 0/0/1/0 (respectively).  UART ports (bottom) should be set with switch 1/2/3/4 = 0/1/0/1.
@@ -302,17 +310,17 @@ The UART ports are compatible with common USB-UART devices from [Digilent](https
 
 ### How do I use the RJ45 connectors?
 
-On startup, these ports are inactive. A separate Python application (see test/python/switch_cfg.py) is required to activate them and order the FPGA to configure the transceivers using a sequence of [MDIO commands](https://en.wikipedia.org/wiki/Management_Data_Input/Output). These configuration commands are loaded through a separate UART interface (see demo_config.vhd).
+On startup, these ports are inactive. A separate [Python application](../test/chat_client/README.md) is required to activate them and order the FPGA to configure the transceivers using a sequence of [MDIO commands](https://en.wikipedia.org/wiki/Management_Data_Input/Output). These configuration commands are loaded through a separate UART interface.
 
 Once configured, the RJ45 connectors are plug-and-play.  The transceiver automatically establishes connections with most off-the-shelf Ethernet devices.  (Including other switches.)  Note that 10/100/1000 negotiation is not supported; the FPGA only supports 1000 Mbps mode.
 
-### How do I run the Python demo application?
+### How do I run the Chat-client demo application?
 
-![Screenshot of the Python demo application](images/chat_screenshot.png)
+![Screenshot of the Chat-client demo application](images/chat_screenshot.png)
 
-The Python demo application is used to configure the transceivers (see above). It also acts as a demo that can send and receive raw Ethernet frames as a simple text "chatroom". The same application is used to control UART and gigabit Ethernet interfaces attached to the host PC.
+The Python Chat-client demo is used to configure the transceivers (see above). It also acts as a demo that can send and receive raw Ethernet frames as a simple text "chatroom". The same application is used to control UART and gigabit Ethernet interfaces attached to the host PC.
 
-To run it, switch to the test/python folder and run "python chat_client.py". Refer to the [README](../test/python/README.md) for prerequisites and other details.
+To run it, switch to the test/chat_client folder and run "python chat_client.py". Refer to the [README](../test/chat_client/README.md) for prerequisites and other details.
 
 # Copyright Notice
 

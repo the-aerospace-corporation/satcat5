@@ -24,7 +24,7 @@
 -- implementations of these structures for Lattice iCE40 FPGAs.
 --
 -- NOTE: Most designs should only include ONE such implementation.  If
--- you include io_xilinx.vhd in your project, don't include io_microsemi.
+-- you include io_xilinx.vhd in your project, don't include io_ice40.
 --
 
 library ieee;

@@ -28,7 +28,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity lcd_control is
     generic (
@@ -65,7 +65,6 @@ signal strobe_1kHz      : std_logic := '0';
 signal wr_byte      : std_logic := '0';  -- Normal write strobe
 signal wr_nybb      : std_logic := '0';  -- Special write (one nibble only)
 signal wr_is_cmd    : std_logic := '0';
-signal wr_done      : std_logic := '0';
 signal wr_data      : char_t := (others => '0');
 
 -- Higher-level controller commands.
@@ -122,7 +121,6 @@ p_lcd : process(strm_clk)
     variable state_ctr : integer range 0 to 5 := 0;
 begin
     if rising_edge(strm_clk) then
-        wr_done  <= '0';
         cmd_busy <= wr_byte or wr_nybb or bool2bit(state_ctr > 0);
 
         if (reset_p = '1') then
@@ -148,9 +146,8 @@ begin
                     when 2 =>  -- Enable high; write second nibble
                         lcd_e   <= '1';
                         lcd_db  <= wr_data(3 downto 0);
-                    when 1 =>  -- Enable low; set "done" flag.
+                    when 1 =>  -- Enable low;.
                         lcd_e   <= '0';
-                        wr_done <= '1';
                     when 0 => assert(false); -- If statement above already excludes state_ctr = 0
                 end case;
                 state_ctr := state_ctr - 1;

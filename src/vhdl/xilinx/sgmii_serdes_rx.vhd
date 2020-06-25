@@ -38,13 +38,14 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all;
 library unisim;
 use     unisim.vcomponents.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity sgmii_serdes_rx is
     generic (
     IN_FIFO_LOC : string := "";     -- Location of IN_FIFO (or use RAMB32X1D)
     POL_INVERT  : boolean := false; -- Invert input polarity
     BIAS_ENABLE : boolean := false; -- Enable split-termination biasing.
+    DIFF_TERM   : boolean := true;  -- Enable internal termination?
     REFCLK_MHZ  : integer := 200);  -- IDELAYCTRL reference freq. (MHz)
     port (
     -- Top-level LVDS input pair.
@@ -120,7 +121,7 @@ begin
 u_rxbuf : IBUFDS_DIFF_OUT
     generic map (
     IBUF_LOW_PWR => FALSE,
-    DIFF_TERM    => not BIAS_ENABLE,
+    DIFF_TERM    => DIFF_TERM,
     IOSTANDARD   => get_iotype)
     port map (
     I => RxD_p_pin, IB => RxD_n_pin,
@@ -280,13 +281,18 @@ p_sreg : process(clk_625_00)
     -- For inverted inputs (P/N switched), then negate RxD_P instead.
     -- (Sometimes need to swap pins for PCB layout optimization.)
     function make_mask return slv8 is
+        -- Temporary variable forces "7 downto 0" vs. "0 to 7".
+        -- (Workaround because "01010101" is ambiguous.)
+        variable tmp : slv8;
     begin
         if (POL_INVERT) then
-            return "01010101";  -- Inverted input
+            tmp := "01010101";  -- Inverted input
         else
-            return "10101010";  -- Normal input
+            tmp := "10101010";  -- Normal input
         end if;
+        return tmp;
     end function;
+
     constant NEG_MASK   : slv8 := make_mask;
     -- Adjust latch phase:
     --  * Zero is precisely aligned with clk_125.

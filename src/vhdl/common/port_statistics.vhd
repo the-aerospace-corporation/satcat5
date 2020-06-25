@@ -42,7 +42,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
@@ -60,10 +60,7 @@ entity port_statistics is
     -- Generic internal port interface (monitor only)
     rx_data     : in  port_rx_m2s;
     tx_data     : in  port_tx_m2s;
-    tx_ctrl     : in  port_tx_s2m;
-
-    -- Other control
-    reset_p     : in  std_logic);       -- Reset / shutdown
+    tx_ctrl     : in  port_tx_s2m);
 end port_statistics;
 
 architecture port_statistics of port_statistics is
@@ -111,7 +108,7 @@ p_stats_rx : process(rx_data.clk)
 begin
     if rising_edge(rx_data.clk) then
         -- On demand, update the latched value.
-        if (reset_p = '1') then
+        if (rx_data.reset_p = '1') then
             lat_rcvd_bytes  <= (others => '0');
             lat_rcvd_frames <= (others => '0');
         elsif (stats_req_rx = '1') then
@@ -120,7 +117,7 @@ begin
         end if;
 
         -- Working counters are updated on each byte and each frame.
-        if (reset_p = '1') then
+        if (rx_data.reset_p = '1') then
             wrk_rcvd_bytes  <= (others => '0');
             wrk_rcvd_frames <= (others => '0');
         elsif (stats_req_rx = '1' and rx_last = '0') then
@@ -135,7 +132,7 @@ begin
         end if;
 
         -- Count bytes within each frame, so the increment is atomic.
-        if (reset_p = '1' or rx_last = '1') then
+        if (rx_data.reset_p = '1' or rx_last = '1') then
             frm_bytes := COUNT_ONE;
         elsif (rx_byte = '1') then
             frm_bytes := frm_bytes + 1;
@@ -149,7 +146,7 @@ p_stats_tx : process(tx_ctrl.clk)
 begin
     if rising_edge(tx_ctrl.clk) then
         -- On demand, update the latched value.
-        if (reset_p = '1') then
+        if (tx_ctrl.reset_p = '1') then
             lat_sent_bytes  <= (others => '0');
             lat_sent_frames <= (others => '0');
         elsif (stats_req_tx = '1') then
@@ -158,7 +155,7 @@ begin
         end if;
 
         -- Working counters are updated on each byte and each frame.
-        if (reset_p = '1') then
+        if (tx_ctrl.reset_p = '1') then
             wrk_sent_bytes  <= (others => '0');
             wrk_sent_frames <= (others => '0');
         elsif (stats_req_tx = '1' and tx_last = '0') then
@@ -173,7 +170,7 @@ begin
         end if;
 
         -- Count bytes within each frame, so the increment is atomic.
-        if (reset_p = '1' or tx_last = '1') then
+        if (tx_ctrl.reset_p = '1' or tx_last = '1') then
             frm_bytes := COUNT_ONE;
         elsif (tx_byte = '1') then
             frm_bytes := frm_bytes + 1;
@@ -187,13 +184,13 @@ u_req_rx : sync_toggle2pulse
     in_toggle   => stats_req_t,
     out_strobe  => stats_req_rx,
     out_clk     => rx_data.clk,
-    reset_p     => reset_p);
+    reset_p     => rx_data.reset_p);
 
 u_req_tx : sync_toggle2pulse
     port map(
     in_toggle   => stats_req_t,
     out_strobe  => stats_req_tx,
     out_clk     => tx_ctrl.clk,
-    reset_p     => reset_p);
+    reset_p     => tx_ctrl.reset_p);
 
 end port_statistics;

@@ -33,7 +33,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity sgmii_data_slip is
     generic (
@@ -108,7 +108,7 @@ begin
             slip_ready_i <= '1';
         end if;
 
-        -- Update the master shift register and clock-enable strobe.
+        -- Update the shift register and clock-enable strobe.
         if (in_next = '1') then
             sreg_data <= sreg_data(OUT_WIDTH-1 downto 0) & in_data; -- MSB first
             sreg_next <= not flag_drop; -- Drive output unless we need to drop.

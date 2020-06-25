@@ -21,7 +21,7 @@
 --
 -- This is a self-checking unit test for the Ethernet-over-Serial UART port.
 -- It connects two transceivers back to back to confirm operation, with a
--- separate emulated "master" to randomize flow-control.
+-- separate emulated controller to randomize flow-control.
 --
 -- The complete test takes about 700 milliseconds.
 --
@@ -30,7 +30,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity port_serial_uart_4wire_tb is
@@ -73,7 +73,7 @@ clk_125 <= not clk_125 after 4 ns;
 reset_p <= '0' after 1 us;
 
 -- Flow control randomization and rules check.
-p_uart_master : process(clk_125)
+p_uart_control: process(clk_125)
     -- PRNG state:
     variable  seed1      : positive := 1234;
     variable  seed2      : positive := 5678;

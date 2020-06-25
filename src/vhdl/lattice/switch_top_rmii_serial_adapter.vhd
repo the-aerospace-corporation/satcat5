@@ -63,7 +63,6 @@ architecture rmii of switch_top_rmii_serial_adapter is
 
 -- Synthesized 25 MHz and 50 MHz clocks
 signal clk_25_00    : std_logic;
-signal clk_50_00    : std_logic;
 
 -- Logical port for each interface to the switch core.
 constant PORTS_RMII  : integer := 1;
@@ -76,15 +75,14 @@ signal adj_tx_data  : port_tx_m2s;
 signal adj_tx_ctrl  : port_tx_s2m;
 
 -- Error reporting
-constant SWITCH_ERR_TYPES : integer := 9;
-signal switch_err_t     : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
+signal switch_err_t     : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
 -- Global asynchronous reset.
 signal ext_reset_p  : std_logic;
 signal stat_led_g_raw : std_logic;
 
 attribute KEEP : string;
-attribute KEEP of clk_25_00, clk_50_00 : signal is "true";
+attribute KEEP of clk_25_00 : signal is "true";
 
 component rmii_serial_adapter_pll_dev port(
     REFERENCECLK    : in  std_logic;
@@ -105,7 +103,7 @@ u_clkgen : rmii_serial_adapter_pll_dev
     REFERENCECLK    => clk_12,
     PLLOUTCOREA     => open,
     PLLOUTCOREB     => open,
-    PLLOUTGLOBALA   => clk_50_00,
+    PLLOUTGLOBALA   => open,
     PLLOUTGLOBALB   => clk_25_00,
     RESET           => '1',
     LOCK            => stat_led_lock);
@@ -169,14 +167,12 @@ u_core : entity work.switch_dual
     ports_tx_ctrl   => tx_ctrl,
     errvec_t        => switch_err_t);
 
-
 -- Auxiliary functions for error-reporting, etc.
 u_aux : entity work.switch_aux
     generic map(
     SCRUB_CLK_HZ    => 25_000_000,
-    STARTUP_MSG     => "ARTY_A7_Ref_" & BUILD_DATE,
-    STATUS_LED_LIT  => '1',
-    SWERR_TYPES     => SWITCH_ERR_TYPES)
+    STARTUP_MSG     => "iCE40_Ref_" & BUILD_DATE,
+    STATUS_LED_LIT  => '1')
     port map(
     swerr_vec_t     => switch_err_t,
     status_led_grn  => stat_led_g_raw,
@@ -192,4 +188,3 @@ u_aux : entity work.switch_aux
 stat_led_g <= stat_led_g_raw and ext_reset_n;
 
 end rmii;
-

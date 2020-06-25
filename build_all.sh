@@ -31,6 +31,7 @@ $RUN_VIVADO create_project_proto_v1_sgmii.tcl
 $RUN_VIVADO create_project_proto_v2.tcl
 $RUN_VIVADO create_project_arty_a7.tcl -tclargs 35T
 $RUN_VIVADO create_project_arty_a7.tcl -tclargs 100T
+$RUN_VIVADO create_project_converter_zed.tcl
 
 # Build each Vivado project
 # (Note that project names are case-sensitive!)
@@ -40,3 +41,4 @@ $RUN_VIVADO build_project.tcl -tclargs switch_proto_v1_sgmii
 $RUN_VIVADO build_project.tcl -tclargs switch_proto_v2
 $RUN_VIVADO build_project.tcl -tclargs switch_arty_a7_35t
 $RUN_VIVADO build_project.tcl -tclargs switch_arty_a7_100t
+$RUN_VIVADO build_project.tcl -tclargs converter_zed

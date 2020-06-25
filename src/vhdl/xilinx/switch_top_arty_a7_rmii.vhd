@@ -19,9 +19,10 @@
 --
 -- Top-level design: Baseline RMII + EoS switch for Digilent Arty A7
 --
--- This module represents the reference configuration of the AC Galaxy Ethernet
--- Switch, with several EoS-SPI and EoS-UART ports and a single 100 Mbps uplink
--- port to the external high-bandwidth switch.
+-- This module represents a reference configuration of a SatCat5 Ethernet
+-- Switch on an off-the-shelf board.
+-- It contains several EoS-SPI and EoS-UART ports and a single 100 Mbps uplink
+-- port to an external high-bandwidth switch.
 --
 
 library ieee;
@@ -100,14 +101,12 @@ signal adj_tx_data  : port_tx_m2s;
 signal adj_tx_ctrl  : port_tx_s2m;
 
 -- Error reporting for UART, LCD.
-constant SWITCH_ERR_TYPES : integer := 9;
-signal switch_err_t : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
+signal switch_err_t : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 signal scrub_req_t  : std_logic;
 signal msg_lcd_dat  : std_logic_vector(7 downto 0);
 signal msg_lcd_wr   : std_logic;
 
 signal ext_reset_p  : std_logic;
-signal dbg_rmii_rst : std_logic;
 
 attribute KEEP : string;
 attribute KEEP of clk_100, clk_50_00 : signal is "true";
@@ -121,7 +120,7 @@ u_clkbuf : BUFG
     );
 
 rmii_refclk <= clk_50_00;
-rmii_mode   <= '1'; -- TODO: Is this enough to keep it driven high for RMII mode?
+rmii_mode   <= '1';
 ext_reset_p <= not ext_reset_n; -- external reset is active low, inverting beacuse logic expects active high
 rmii_resetn <= ext_reset_n;
 
@@ -242,8 +241,7 @@ u_aux : entity work.switch_aux
     generic map(
     SCRUB_CLK_HZ    => 100_000_000,
     STARTUP_MSG     => "ARTY_A7_Ref_" & BUILD_DATE,
-    STATUS_LED_LIT  => '1',
-    SWERR_TYPES     => SWITCH_ERR_TYPES)
+    STATUS_LED_LIT  => '1')
     port map(
     swerr_vec_t     => switch_err_t,
     status_led_grn  => stat_led_g,

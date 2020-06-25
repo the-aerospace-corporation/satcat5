@@ -37,7 +37,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM, SIN, COS, etc.
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.lfsr_sim_types.all;
 
 entity sgmii_data_sync_tb is

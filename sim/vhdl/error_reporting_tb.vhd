@@ -34,7 +34,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.synchronization.all;
 
 entity error_reporting_tb is

@@ -31,7 +31,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- For UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;  -- For BYTE_T
 
 entity slip_decoder_tb is

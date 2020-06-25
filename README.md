@@ -22,7 +22,9 @@ More information is available in the [Frequently Asked Questions](doc/FAQ.md).
 
 This project is effectively a set of building blocks, ready to be used to build your own custom Ethernet switch. The switch can be optimized to your needs, tailored to your preferred platform, port count, interface types, etc.
 
-However, we do include a reference design that showcases many of the available features. The reference design is for a [prototype](doc/images/prototype.jpg) that we built to develop, test, and demonstrate the SatCat5 switch. It is intended to run on an off-the-shelf FPGA development board that is attached to a [custom PCB](test/proto_pcb). The custom PCB includes Ethernet transceivers, PMOD connectors, and other I/O. The current version has been tested with Xilinx 7-series FPGAs. Support for other FPGA platforms is a future goal.
+However, we do include several reference designs that showcase many of the available features. The easiest way to get started is with the [Digilent Arty A7](https://store.digilentinc.com/arty-a7-artix-7-fpga-development-board-for-makers-and-hobbyists/), a low-cost FPGA development board. We've included a reference design that specifically targets this board. PMOD connector pinouts are chosen to be directly compatible with off-the-shelf USB-UART adapters.
+
+Other reference designs include the [prototype](doc/images/prototype.jpg) that we built to develop, test, and demonstrate the SatCat5 switch. It is intended to run on many off-the-shelf FPGA development boards, using an FMC port to attached to a [custom PCB](test/proto_pcb). The custom PCB includes Ethernet transceivers, PMOD connectors, and other I/O.
 
 The main expected users of this project are cubesat and smallsat developers.  By encouraging everyone to use this technology, we create a mutually-compatible ecosystem that will make it easier to develop new small-satellite payloads, and simultaneously make it easier to integrate those payloads into vehicles.
 
@@ -30,7 +32,7 @@ However, we think the same technology might be useful to other embedded systems,
 
 # Getting Started
 
-If you'd like to build the example design, you'll need the [Vivado Design Suite](https://www.xilinx.com/products/design-tools/vivado.html). We've tested with version 2015.4 and 2016.3, but it should work as-is with most other versions. Once it's installed, simply run the "build_all.sh" script in the root folder. (Or follow the equivalent steps under Windows.)
+If you'd like to build the Arty example design, you'll need the [Vivado Design Suite](https://www.xilinx.com/products/design-tools/vivado.html). We've tested with version 2015.4, 2016.3, and 2019.1, but it should work as-is with most other versions as well. Once it's installed, simply run the "build_all.sh" script in the root folder. (Or follow the equivalent steps under Windows.)
 
 If you'd like to build your own design, create a new top-level VHDL file and add the following:
 
@@ -47,6 +49,8 @@ More information is available in the [Frequently Asked Questions](doc/FAQ.md).
 
 * doc: Documentation and associated images.
 * project: Project files for building the design or running simulations
+  * icecube2_2017.8: Project files for building example designs in Lattice iCEcube2. (Tested with version 2017.8.)
+  * libero_12.3: Project files for building example designs in Microsemi Libero. (Tested with version 12.3.)
   * modelsim_10.0a: Project files for running VHDL simulations in ModelSim. (Tested with version 10.0a.)
   * vivado_2015.4: Project files for building or simulating the design on Xilinx FPGAs. (Tested with Vivado version 2015.4.)
 * sim: Simulation and verification of the VHDL design.
@@ -54,11 +58,14 @@ More information is available in the [Frequently Asked Questions](doc/FAQ.md).
   * test: Test data for various unit-test simulations.
   * vhdl: VHDL unit tests for individual functional blocks.
 * src: Source code for the core SatCat5 design
-  * vhdl/common: VHDL implementation of functional blocks.  (Common / all platforms)
-  * vhdl/xilinx: VHDL implementation of functional blocks.  (Xilinx-specific, Including AC701 top-level files.)
+  * vhdl/common: VHDL implementation of most functional blocks.  (Common / all platforms)
+  * vhdl/lattice: Platform-specific VHDL for the Lattice iCE40.
+  * vhdl/microsemi: Platform-specific VHDL for the Microsemi Polarfire.
+  * vhdl/xilinx: Platform-specific VHDL for Xilinx Artix7 and Kintex7. (Including Arty and AC701 example designs.)
 * test: Additional testing, including the prototype reference design.
+  * chat_client: A demo application that implements chatroom functions using raw Ethernet frames.
+  * pi_wire: A tool for connecting to SatCat5 with a Raspberry Pi.
   * proto_pcb: PCB design files for the prototype reference design.
-  * python: A demo application that implements chatroom functions using raw Ethernet frames.
 
 # Style Guidelines
 

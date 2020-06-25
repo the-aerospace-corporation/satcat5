@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 
-# Synthesis constraints for switch_top_proto_v2
+# Synthesis constraints for switch_proto_v2
 # Define pin locations and I/O standards only.
 
 #####################################################################

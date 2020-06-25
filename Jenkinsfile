@@ -50,6 +50,8 @@ pipeline {
             archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1/*.rpt'
             archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v2/switch_proto_v2.runs/impl_1/switch_top_proto_v2.bit'
             archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v2/switch_proto_v2.runs/impl_1/*.rpt'
+            archiveArtifacts artifacts: 'project/vivado_2015.4/converter_zed/converter_zed.runs/impl_1/converter_zed_top.sysdef'
+            archiveArtifacts artifacts: 'project/vivado_2015.4/converter_zed/converter_zed.runs/impl_1/*.rpt'
             // Archive sim results
             archiveArtifacts artifacts: 'sim/vhdl/xsim_tmp/simulate_*.log'
         }

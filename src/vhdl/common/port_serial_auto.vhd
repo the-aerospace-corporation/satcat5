@@ -36,10 +36,18 @@
 -- I/O is assigned as follows in each mode:
 --
 --     Idx  Name         Pin 0       Pin 1       Pin 2       Pin 3
+--     N/A  Shutdown     Pullup*     Pullup*     Pullup*     Pullup*
 --     (0)  Auto         Pullup      Pullup      Pullup      Pullup
 --     (1)  SPI          CSb (E2S)   MOSI (E2S)  MISO (S2E)  SCK (E2S)
 --     (2)  UART (norm)  RTSb (E2S)  RxD (S2E)   TxD (E2S)   CTSb (S2E)
 --     (3)  UART (swap)  CTSb (S2E)  TxD (E2S)   RxD (S2E)   RTSb (E2S)
+--
+-- Note: Weak pullup resistors are required in auto-detect mode.  Default
+--       configuration enables the FPGA's built-in pullups (PULLUP_EN), but
+--       this can be bypassed safely if external pullups are provided.
+--       While in shutdown, all pins can remain in pullup mode (default),
+--       or they can be forcibly driven to logic zero (FORCE_ZERO) to
+--       prevent parasitic power leaching.
 -- Note: "E2S" = Endpoint to switch (i.e., FPGA input)
 --       "S2E" = Switch to endpoint (i.e., FPGA output)
 -- Note: In the table above, input/output labels refer to the switch FPGA.
@@ -51,7 +59,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;  -- For byte_t
 use     work.switch_types.all;
 use     work.synchronization.all;
@@ -61,6 +69,8 @@ entity port_serial_auto is
     CLKREF_HZ   : integer;              -- Reference clock rate (Hz)
     SPI_MODE    : integer := 3;         -- SPI clock phase & polarity
     UART_BAUD   : integer := 921600;    -- UART baud rate
+    PULLUP_EN   : boolean := true;      -- Enable FPGA pullups on ext_pads?
+    FORCE_SHDN  : boolean := false;     -- In shutdown, drive ext_pads to zero?
     START_TYPE  : integer := 0);        -- Port type on startup (0 = auto)
     port (
     -- External 4-wire interface.
@@ -128,6 +138,7 @@ signal lock_uart2   : std_logic := '0';
 signal wdog_rst_p   : std_logic := '1';
 
 -- SLIP encoder and decoder.
+signal reset_sync   : std_logic;
 signal codec_reset  : std_logic := '1';
 signal dec_data     : byte_t := SLIP_FEND;
 signal dec_write    : std_logic := '0';
@@ -144,10 +155,17 @@ tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= codec_reset;
 tx_ctrl.txerr   <= '0';     -- No error states
 
+-- Synchronize the external reset signal.
+u_rsync : sync_reset
+    port map(
+    in_reset_p  => reset_p,
+    out_reset_p => reset_sync,
+    out_clk     => refclk);
+
 -- Instantiate each top-level bidirectional pin.
 gen_pads : for n in ext_pads'range generate
     u_bidir : entity work.bidir_io
-        generic map (EN_PULLUP => true)
+        generic map (EN_PULLUP => PULLUP_EN)
         port map(
         io_pin  => ext_pads(n),
         d_in    => ext_din(n),
@@ -156,16 +174,26 @@ gen_pads : for n in ext_pads'range generate
 end generate;
 
 -- Map logical signals to output signals.
-ext_dout(0) <= uart0_rtsb;
-ext_dout(1) <= spi_sdo when (det_mode = MODE_SPI) else uart0_txd;
-ext_dout(2) <= spi_sdo when (det_mode = MODE_SPI) else uart0_txd;
-ext_dout(3) <= uart0_rtsb;
+-- If FORCE_SHDN is enabled, drive all pins to zero while in reset.
+-- Otherwise, assign control of each pin according to detected state.
+ext_dout(0) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else uart0_rtsb;
+ext_dout(1) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else spi_sdo when (det_mode = MODE_SPI) else uart0_txd;
+ext_dout(2) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else spi_sdo when (det_mode = MODE_SPI) else uart0_txd;
+ext_dout(3) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else uart0_rtsb;
 
-ext_tris(0) <= bool2bit(det_mode /= MODE_UART2);
-ext_tris(1) <= bool2bit(det_mode /= MODE_UART1);
-ext_tris(2) <= spi_sdt when (det_mode = MODE_SPI)
+ext_tris(0) <= '0' when (FORCE_SHDN and reset_sync = '1')
           else bool2bit(det_mode /= MODE_UART2);
-ext_tris(3) <= bool2bit(det_mode /= MODE_UART1);
+ext_tris(1) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else bool2bit(det_mode /= MODE_UART1);
+ext_tris(2) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else spi_sdt when (det_mode = MODE_SPI)
+          else bool2bit(det_mode /= MODE_UART2);
+ext_tris(3) <= '0' when (FORCE_SHDN and reset_sync = '1')
+          else bool2bit(det_mode /= MODE_UART1);
 
 -- Map input pins to logical signals.
 spi_csb      <= ext_din(0);
@@ -189,7 +217,7 @@ u_ctsb2 : sync_buffer
     out_clk  => refclk);
 
 -- Raw interfaces (one SPI, one Tx UART, two Rx UART)
-u_spi : entity work.io_spi_slave
+u_spi : entity work.io_spi_clkin
     generic map (
     IDLE_BYTE   => SLIP_FEND,
     SPI_MODE    => SPI_MODE)
@@ -204,8 +232,7 @@ u_spi : entity work.io_spi_slave
     tx_ready    => spi_tx_ready,
     rx_data     => spi_rx_data,
     rx_write    => spi_rx_write,
-    refclk      => refclk,
-    reset_p     => reset_p);
+    refclk      => refclk);
 
 u_uart0 : entity work.io_uart_tx
     generic map (
@@ -217,7 +244,7 @@ u_uart0 : entity work.io_uart_tx
     tx_valid    => uart0_valid,
     tx_ready    => uart0_ready,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 u_uart1 : entity work.io_uart_rx
     generic map (
@@ -229,7 +256,7 @@ u_uart1 : entity work.io_uart_rx
     rx_data     => uart1_data,
     rx_write    => uart1_write,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 u_uart2 : entity work.io_uart_rx
     generic map (
@@ -241,7 +268,7 @@ u_uart2 : entity work.io_uart_rx
     rx_data     => uart2_data,
     rx_write    => uart2_write,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 -- Mode detection state machine.
 lock_any    <= lock_spi or lock_uart1 or lock_uart2;
@@ -256,7 +283,7 @@ begin
         if (cfg_write = '1') then
             -- Direct command (overrides watchdog)
             det_mode <= cfg_mode;
-        elsif (reset_p = '1' or wdog_rst_p = '1') then
+        elsif (reset_sync = '1' or wdog_rst_p = '1') then
             -- Global or watchdog reset
             det_mode <= START_TYPE;
         elsif (det_mode = MODE_AUTO) then
@@ -271,7 +298,7 @@ begin
         end if;
 
         -- Reset SLIP encoder and decoder while in AUTO mode.
-        if (reset_p = '1' or wdog_rst_p = '1') then
+        if (reset_sync = '1' or wdog_rst_p = '1') then
             codec_reset <= '1';
         elsif (lock_any = '1') then
             codec_reset <= '0';
@@ -306,16 +333,15 @@ enc_ready    <= (uart0_ready and not uart1_ctsb) when (det_mode = MODE_UART1)
 
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
-p_wdog : process(refclk, reset_p)
+p_wdog : process(refclk)
     constant TIMEOUT : integer := 2*CLKREF_HZ;
     variable wdog_ctr : integer range 0 to TIMEOUT := TIMEOUT;
 begin
-    if (reset_p = '1') then
-        wdog_rst_p  <= '1';
-        wdog_ctr    := TIMEOUT;
-    elsif rising_edge(refclk) then
+    if rising_edge(refclk) then
         wdog_rst_p  <= bool2bit(wdog_ctr = 0);
-        if ((det_mode = MODE_AUTO) or (dec_write = '1')) then
+        if (reset_sync = '1') then
+            wdog_ctr := TIMEOUT;        -- Port reset/shutdown
+        elsif ((det_mode = MODE_AUTO) or (dec_write = '1')) then
             wdog_ctr := TIMEOUT;        -- Activity detect
         elsif (wdog_ctr > 0) then
             wdog_ctr := wdog_ctr - 1;   -- Countdown to zero

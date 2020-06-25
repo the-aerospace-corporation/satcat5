@@ -21,7 +21,7 @@
 --
 -- The "Management Data Input/Output" (MDIO) is an interface defined in
 -- IEEE 802.3, Part 3.  It is commonly used to configure Ethernet PHY
--- transceivers.  This block implements a bus master that issues a
+-- transceivers.  This block implements a bus writer that issues a
 -- fixed series of MDIO commands as soon as it is released from reset,
 -- with an optional delay period before each command.
 --
@@ -46,7 +46,7 @@
 library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;  -- For byte_t
 
 entity config_mdio_rom is
@@ -113,7 +113,6 @@ end process;
 -- Delay countdown state machine latches new values during ST_READ.
 delay_req <= unsigned(rom_data(31 downto 26));
 p_dly : process(ref_clk)
-    variable ct_start : std_logic := '1';
     variable ct_inner : integer range 0 to ONE_MSEC-1 := 0;
     variable ct_outer : integer range 0 to 63 := 0;
 begin
@@ -199,7 +198,7 @@ cmd_valid <= bool2bit(cmd_state = ST_DATA);
 cmd_last  <= bool2bit(cmd_state = ST_DATA and cmd_bcount = 7);
 
 -- Low-level MDIO interface.
-u_mdio : entity work.io_mdio_master
+u_mdio : entity work.io_mdio_writer
     generic map(
     CLKREF_HZ   => CLKREF_HZ,
     MDIO_BAUD   => MDIO_BAUD)

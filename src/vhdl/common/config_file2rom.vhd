@@ -22,6 +22,7 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.std_logic_textio.all;
 use ieee.numeric_std.all;
 use std.textio.all;
 
@@ -32,64 +33,88 @@ package CONFIG_FILE2ROM is
 
     -- Read binary files, one byte at a time.  Each byte is concatenated
     -- into a single big-endian std_logic_vector.
-    impure function read_bin_file(filename : string) return std_logic_vector;
+    -- NOTE: Auto-width does NOT work correctly in Vivado 2016.3.
+    impure function read_bin_file(
+        filename    : string;           -- Filename to be read
+        ovr_width   : integer := -1)    -- Output width, if known
+        return std_logic_vector;
 
     -- Read plaintext files where each line is a hexadecimal string.
     -- Valid characters (0-9, A-F, a-f) are interpreted as hexadecimal
     -- values and concatenated into a single big-endian std_logic_vector.
     -- Whitespace and all other values are ignored.
-    impure function read_hex_file(filename : string) return std_logic_vector;
+    impure function read_hex_file(
+        filename    : string;           -- Filename to be read
+        ovr_width   : integer := -1)    -- Output width, if known
+        return std_logic_vector;
 
     -- Helper function to decode hexadecimal characters.
     -- Valid characters (0-9, A-F, a-f) return 0-15, others return "XXXX".
     function hex_decode(x : character) return nybble_t;
 
     -- Helper functions for determining the length (in bits) of a given input.
-    impure function len_bin_file(filename : string) return integer;
-    impure function len_hex_file(filename : string) return integer;
+    impure function len_bin_file(
+        filename    : string;           -- Filename to be read
+        ovr_width   : integer := -1)    -- Override length, if known
+        return integer;
+    impure function len_hex_file(
+        filename    : string;           -- Filename to be read
+        ovr_width   : integer := -1)    -- Override length, if known
+        return integer;
 end package;
 
 package body CONFIG_FILE2ROM is
-    impure function read_bin_file(filename : string) return std_logic_vector is
+    impure function read_bin_file(
+        filename    : string;
+        ovr_width   : integer := -1)
+        return std_logic_vector
+    is
         -- Pre-open file to determine length, allocate accordingly.
-        constant NBITS : integer := len_bin_file(filename);
+        constant NBITS  : integer := len_bin_file(filename, ovr_width);
         variable result : std_logic_vector(NBITS-1 downto 0);
         -- Working variables used to read the file.
-        file in_file : rom_file_t is filename;
+        file in_file : rom_file_t open read_mode is filename;
         variable c   : character;           -- Raw character
         variable d   : integer;             -- Decoded value
-        variable n   : integer := NBITS;    -- Write index
+        variable wr  : integer := NBITS;    -- Write index
     begin
-        while n > 0 loop
+        while wr > 0 and not endfile(in_file) loop
             -- Read and decode next character...
             read(in_file, c);
             d := character'pos(c);
             -- Write result to the output array.
-            result(n-1 downto n-8) := std_logic_vector(to_unsigned(d,8));
-            n := n - 8;
+            result(wr-1 downto wr-8) := std_logic_vector(to_unsigned(d,8));
+            wr := wr - 8;
         end loop;
         return result;
     end function;
 
-    impure function read_hex_file(filename : string) return std_logic_vector is
+    impure function read_hex_file(
+        filename    : string;
+        ovr_width   : integer := -1)
+        return std_logic_vector
+    is
         -- Pre-open file to determine length, allocate accordingly.
-        constant NBITS : integer := len_hex_file(filename);
+        constant NBITS  : integer := len_hex_file(filename, ovr_width);
         variable result : std_logic_vector(NBITS-1 downto 0);
         -- Working variables used to read the file.
-        file in_file : rom_file_t is filename;
+        file in_file : TEXT open read_mode is filename;
+        variable ln  : LINE;                -- Line buffer
         variable c   : character;           -- Raw character
         variable d   : nybble_t;            -- Decoded value
-        variable n   : integer := NBITS;    -- Write index
+        variable wr  : integer := NBITS;    -- Write index
     begin
-        while n > 0 loop
-            -- Read and decode next character...
-            read(in_file, c);
-            d := hex_decode(c);
-            -- If valid, write result to the output array.
-            if (d(0) /= 'X') then
-                result(n-1 downto n-4) := d;
-                n := n - 4;
-            end if;
+        while wr > 0 and not endfile(in_file) loop
+            -- Read line and decode each character...
+            readline(in_file, ln);
+            for n in ln'range loop
+                -- Write each valid hex character to the output array.
+                d := hex_decode(ln(n));
+                if (d(0) /= 'X') then
+                    result(wr-1 downto wr-4) := d;
+                    wr := wr - 4;
+                end if;
+            end loop;
         end loop;
         return result;
     end function;
@@ -125,34 +150,65 @@ package body CONFIG_FILE2ROM is
         return y;
     end function;
 
-    impure function len_bin_file(filename : string) return integer is
-        file in_file : rom_file_t is filename;
+    -- 
+    impure function len_bin_file(
+        filename    : string;
+        ovr_width   : integer := -1)
+        return integer
+    is
+        file in_file : rom_file_t;
+        variable fst : file_open_status;
         variable c   : character;
         variable len : integer := 0;
     begin
+        -- If width is known, return that value.
+        if (ovr_width >= 0) then
+            return ovr_width;
+        end if;
+        -- Otherwise, attempt to open the file...
+        file_open(fst, in_file, filename, READ_MODE);
+        assert (fst = OPEN_OK) report "Can't read file: " & filename;
+        -- ...and then scan the contents.
         while not endfile(in_file) loop
             -- Read next character and increment length.
             read(in_file, c);
             len := len + 8; -- Each character = 8 output bits
         end loop;
+        file_close(in_file);
         return len;
     end function;
 
-    impure function len_hex_file(filename : string) return integer is
-        file in_file : rom_file_t is filename;
-        variable c   : character;
+    impure function len_hex_file(
+        filename    : string;
+        ovr_width   : integer := -1)
+        return integer
+    is
+        file in_file : TEXT;
+        variable fst : file_open_status;
+        variable ln  : LINE;
         variable d   : nybble_t;
         variable len : integer := 0;
     begin
+        -- If width is known, return that value.
+        if (ovr_width >= 0) then
+            return ovr_width;
+        end if;
+        -- Otherwise, attempt to open the file...
+        file_open(fst, in_file, filename, READ_MODE);
+        assert (fst = OPEN_OK) report "Can't read file: " & filename;
+        -- ...and then scan the contents.
         while not endfile(in_file) loop
-            -- Read and decode next character...
-            read(in_file, c);
-            d := hex_decode(c);
-            -- If decode succeeds, increment length.
-            if (d(0) /= 'X') then
-                len := len + 4; -- Each hex character = 4 output bits
-            end if;
+            -- Read next line and decode each character.
+            readline(in_file, ln);
+            for n in ln'range loop
+                -- Increment length only for valid hex characters.
+                d := hex_decode(ln(n));
+                if (d(0) /= 'X') then
+                    len := len + 4; -- Each hex character = 4 output bits
+                end if;
+            end loop;
         end loop;
+        file_close(in_file);
         return len;
     end function;
 end package body;

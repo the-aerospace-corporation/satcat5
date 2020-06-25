@@ -27,7 +27,7 @@
 
 
 
-add_file -vhdl -lib work "../../../src/vhdl/common/common_types.vhd"
+add_file -vhdl -lib work "../../../src/vhdl/common/common_functions.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/eth_dec8b10b.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/eth_enc8b10b.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/eth_enc8b10b_table.vhd"
@@ -35,7 +35,7 @@ add_file -vhdl -lib work "../../../src/vhdl/common/eth_frame_adjust.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/eth_frame_check.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/eth_frame_common.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/eth_preambles.vhd"
-add_file -vhdl -lib work "../../../src/vhdl/common/io_spi_slave.vhd"
+add_file -vhdl -lib work "../../../src/vhdl/common/io_spi_clkin.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/io_uart.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/led_types.vhd"
 add_file -vhdl -lib work "../../../src/vhdl/common/mac_lookup_binary.vhd"

@@ -28,10 +28,9 @@
 
 library ieee;
 use     ieee.std_logic_1164.all;
-use     ieee.std_logic_unsigned.all;
 library unisim;
 use     unisim.vcomponents.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.synchronization.all;
 
 entity clkgen_rgmii_xilinx is

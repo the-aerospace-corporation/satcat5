@@ -20,7 +20,7 @@
 -- Ethernet preamble insertion and removal
 --
 -- The Ethernet standard requires that each packet be preceded by
--- an eight-byte preamble (0x55, 0x55, ..., 0x5D) and followed by
+-- an eight-byte preamble (0x55, 0x55, ..., 0xD5) and followed by
 -- at least twelve bytes of idle time.  This file defines a block
 -- that inserts these fields into the output stream, and a separate
 -- block that removes the preamble from the input stream.

@@ -43,7 +43,7 @@ compile_all()
     # Find source files in each folder.
     # Use "grep -v" to ignore specific filenames.
     find_vhdl "../../src/vhdl/common" | add_to_prj
-    find_vhdl "../../src/vhdl/xilinx" | grep -v scrub_xilinx | add_to_prj
+    find_vhdl "../../src/vhdl/xilinx" | grep -v scrub_xilinx | grep -v converter_zed_top | add_to_prj
     find_vhdl "../../sim/vhdl" | add_to_prj
 
     # Compile design files
@@ -63,13 +63,21 @@ compile_all()
 }
 
 # Simulate a single file ($1) for a given time ($2)
+# Optional: Set a single generic ($3) to specified value ($4)
 simulate_one()
 {
-    # Pre-simulation setup (aka "Elabortion")
+    # Does this simulation need to set any generic parameters?
+    if [[ $# -eq 4 ]]; then
+        vars_xelab="--generic_top $3=$4"
+    else
+        vars_xelab=""
+    fi
+
+    # Pre-simulation setup (aka "Elaboration")
     echo "******************** ELABORATING $1"
     opts_xelab="--relax --debug off --mt auto -m64 -L xil_defaultlib -L unisims_ver -L unimacro_ver -L secureip --snapshot tb_snapshot"
     args_xelab="xil_defaultlib.$1 -log elaborate_$1.log"
-    (cd xsim_tmp && xelab $opts_xelab $args_xelab)
+    (cd xsim_tmp && xelab $vars_xelab $opts_xelab $args_xelab)
 
     # Prep a TCL script for Vivado to run.
     echo "******************** SIMULATING $1 for $2"
@@ -89,7 +97,7 @@ simulate_one()
 simulate_all()
 {
     # Run each unit test for the designated time:
-    simulate_one config_file2rom_tb 1us
+    simulate_one config_file2rom_tb 1us TEST_DATA_FOLDER $test_data_folder
     simulate_one config_mdio_rom_tb 30ms
     simulate_one config_port_eth_tb 4ms
     simulate_one config_port_uart_tb 16ms
@@ -103,11 +111,12 @@ simulate_all()
     simulate_one mac_lookup_tb 4ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_fifo_tb 10ms
+    simulate_one port_axi_mailbox_tb 4ms
     simulate_one port_rgmii_tb 1ms
     simulate_one port_rmii_tb 29ms
     simulate_one port_sgmii_common_tb 1ms
     simulate_one port_serial_auto_tb 200ms
-    simulate_one port_serial_spi_tb 120ms
+    simulate_one port_serial_spi_tb 85ms
     simulate_one port_serial_uart_4wire_tb 700ms
     simulate_one port_serial_uart_2wire_tb 470ms
     simulate_one port_statistics_tb 2ms
@@ -122,6 +131,7 @@ simulate_all()
 
 # Initial setup
 start_time=$(date +%T.%N)
+test_data_folder=$(realpath ../data)
 source /opt/Xilinx/Vivado/2015.4/settings64.sh
 
 # Create project and compile VHDL source.

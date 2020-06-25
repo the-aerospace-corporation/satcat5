@@ -12,7 +12,13 @@ Supported FPGA platforms: Lattice iCE40, Xilinx 7-Series
 
 Supported Ethernet interfaces: RMII, RGMII, SGMII, SPI, UART
 
-Also included: Example designs for the Arty A7 as well as several [custom boards](../test/proto_pcb/README.md), the [PiWire](../test/pi_wire/readme.md) adapter software, a Python-based mixed-media-Ethernet [chatroom demo](../test/python/README.md), and Jenkins scripts for continuous integration and testing.
+Also included: Example designs for the Arty A7 as well as several [custom boards](../test/proto_pcb/README.md), the [PiWire](../test/pi_wire/readme.md) adapter software, a Python-based mixed-media-Ethernet [chatroom demo](../test/chat_client/README.md), and Jenkins scripts for continuous integration and testing.
+
+## v1.1.0
+
+Added platform support for the Microsemi Polarfire.
+
+New features including improved MAC-address lookup, a virtual port (AXI-mailbox), SPI ports with an output clock, and improved build scripting.
 
 # Copyright Notice
 

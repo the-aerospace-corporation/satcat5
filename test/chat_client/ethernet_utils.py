@@ -23,10 +23,11 @@ Define interface for sending and receiving raw-Ethernet-frames,
 which is functionally equivalent to serial_utils::AsyncSLIPPort.
 '''
 
-import scapy.all as sca
+from scapy import all as sca
 import threading
 import traceback
 from time import sleep
+import os
 
 def mac2str(bytes):
     '''Convert MAC bytes to string (e.g., '8C:DC:D4:48:0D:8B')'''
@@ -39,20 +40,15 @@ def str2mac(str):
 def list_eth_interfaces():
     '''
     Returns a list of all Ethernet interfaces and MAC addresses.
-    (Except those that map to an Aero-NET IP address.)
-
-    TODO
-    ----
-    Test this on Linux? ScaPy has serious cross-platform issues.
-    Prefer to use sca.get_if_list() but it seems to be broken?
     '''
     result = {}
-    for os_name in sorted(sca.ifaces):
-        # Note: Windows os_name is a GUID string -> don't show to user
-        dev = sca.ifaces.data[os_name]
-        if not dev.ip.startswith('10.3.56.'):
-            label = dev.data['netid'] + ': ' + dev.name
-            result[label] = dev
+    if os.name =='nt':
+        ifs = sca.get_windows_if_list()
+        for interface in ifs:
+            result[interface['description']] = interface['name']
+    else:
+        result = sca.get_if_list()
+    
     return result
 
 class AsyncEthernetPort:
@@ -60,8 +56,9 @@ class AsyncEthernetPort:
     def __init__(self, ifobj, logger):
         '''Initialize member variables.'''
         self._iface = ifobj
-        self.lbl = ifobj.data['netid']
-        self.mac = str2mac(ifobj.mac)
+        #self.lbl = ifobj.data['netid']
+        self.lbl = ifobj
+        self.mac = str2mac(sca.get_if_hwaddr(ifobj))
         self._callback = None
         self._log = logger
         self._rx_run = True
@@ -102,8 +99,12 @@ class AsyncEthernetPort:
         Send frame with Dst, Src, Type, Payload (no checksum).
 
         Create and send ScaPy frame.  (Tool adds checksum.)
+        Zero-pad runt data so frame + CRC is at least 64 bytes
         '''
         try:
+            if len(eth_frm) < 60:
+                len_pad = 60 - len(eth_frm)
+                eth_frm += len_pad * b'\x00'
             sca.sendp(sca.Ether(eth_frm), iface=self._iface)
         except:
             self._log.error(self.lbl + ':\n' + traceback.format_exc())

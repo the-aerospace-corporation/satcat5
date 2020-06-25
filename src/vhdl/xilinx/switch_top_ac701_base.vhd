@@ -19,7 +19,7 @@
 --
 -- Top-level design: Baseline RMII + EoS switch for Xilinx AC701
 --
--- This module represents the simplest configuration of the AC Galaxy Ethernet
+-- This module represents the simplest configuration of the Prototype V1 Ethernet
 -- Switch, with several EoS-SPI and EoS-UART ports and a single 100 Mbps uplink
 -- port to the external high-bandwidth switch.
 --
@@ -100,8 +100,7 @@ signal adj_tx_data  : port_tx_m2s;
 signal adj_tx_ctrl  : port_tx_s2m;
 
 -- Error reporting for UART, LCD.
-constant SWITCH_ERR_TYPES : integer := 9;
-signal switch_err_t : std_logic_vector(SWITCH_ERR_TYPES-1 downto 0);
+signal switch_err_t : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 signal scrub_req_t  : std_logic;
 signal msg_lcd_dat  : std_logic_vector(7 downto 0);
 signal msg_lcd_wr   : std_logic;
@@ -231,8 +230,7 @@ u_aux : entity work.switch_aux
     generic map(
     SCRUB_CLK_HZ    => 25000000,
     STARTUP_MSG     => "AC701_Base_" & BUILD_DATE,
-    STATUS_LED_LIT  => '1',
-    SWERR_TYPES     => SWITCH_ERR_TYPES)
+    STATUS_LED_LIT  => '1')
     port map(
     swerr_vec_t     => switch_err_t,
     status_led_grn  => stat_led_g,

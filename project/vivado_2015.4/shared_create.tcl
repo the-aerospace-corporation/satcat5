@@ -31,8 +31,25 @@ set_property "simulator_language" "Mixed" $obj
 set_property "target_language" "VHDL" $obj
 set proj_dir [get_property directory [current_project]]
 
+# Set board if defined
+if {[info exists target_board]} {
+    set_property "board_part" $target_board $obj
+}
+
+# Helper scripts are usually in the current working folder,
+# but certain configurations need to override this setting.
+if {![info exists script_dir]} {
+    set script_dir [file normalize .]
+}
+
+# Default puts all files from $files_main into "xil_defaultlib",
+# but user can override target library as needed.
+if {![info exists target_lib]} {
+    set target_lib "xil_defaultlib"
+}
+
 # Make a copy of the dummy "debug" constraints file.
-file copy -force "./shared_debug.xdc" "./$target_proj/constr_debug.xdc"
+file copy -force "$script_dir/shared_debug.xdc" "./$target_proj/constr_debug.xdc"
 
 # Add each file and set properties.
 set src_files [get_filesets sources_1]
@@ -40,13 +57,13 @@ set src_files [get_filesets sources_1]
 foreach fi $files_main {
     set file_obj [add_files -norecurse -fileset $src_files $fi]
     set_property "file_type" "VHDL" $file_obj
-    set_property "library" "xil_defaultlib" $file_obj
+    set_property "library" $target_lib $file_obj
 }
 
 set_property "top" $target_top $src_files
 
 # Create the Soft Error Mitigation (SEM) core.
-source generate_sem.tcl
+source "$script_dir/generate_sem.tcl"
 generate_sem sem_0
 
 # Add/Import each constraints file and set properties.
@@ -87,7 +104,7 @@ if {[string equal [get_runs -quiet synth_1] ""]} {
 set obj [get_runs synth_1]
 set_property "needs_refresh" "1" $obj
 set_property "part" $target_part $obj
-set_property "steps.synth_design.tcl.pre" "$proj_dir/../shared_presynth.tcl" $obj
+set_property "steps.synth_design.tcl.pre" "$script_dir/shared_presynth.tcl" $obj
 set_property "steps.synth_design.args.more options" -value "-generic BUILD_DATE=\$TCL_BUILD_DATE" -object $obj
 current_run -synthesis [get_runs synth_1]
 
@@ -103,7 +120,7 @@ set_property "needs_refresh" "1" $obj
 set_property "part" $target_part $obj
 set_property "steps.write_bitstream.args.readback_file" "0" $obj
 set_property "steps.write_bitstream.args.verbose" "0" $obj
-set_property "STEPS.WRITE_BITSTREAM.TCL.POST" "$proj_dir/../shared_postbit.tcl" $obj
+set_property "STEPS.WRITE_BITSTREAM.TCL.POST" "$script_dir/shared_postbit.tcl" $obj
 current_run -implementation [get_runs impl_1]
 
 # Done!

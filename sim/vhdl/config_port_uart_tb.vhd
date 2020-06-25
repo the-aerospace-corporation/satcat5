@@ -30,7 +30,7 @@ library ieee;
 use     ieee.math_real.all;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;  -- For byte_t
 
 entity config_port_uart_tb is

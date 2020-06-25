@@ -33,7 +33,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
@@ -45,6 +45,7 @@ entity switch_core is
     DATAPATH_BYTES  : integer;          -- Width of shared pipeline
     IBUF_KBYTES     : integer := 2;     -- Input buffer size (kilobytes)
     OBUF_KBYTES     : integer;          -- Output buffer size (kilobytes)
+    OBUF_PACKETS    : integer := 64;    -- Output buffer max packets
     MAC_LOOKUP_TYPE : string;           -- MAC lookup (BINARY, BRUTE, SIMPLE, ...)
     MAC_TABLE_SIZE  : integer;          -- Max stored MAC addresses
     MAC_LOOKUP_DLY  : integer := 0;     -- Matched delay for MAC lookup? (optional)
@@ -58,7 +59,7 @@ entity switch_core is
     ports_tx_ctrl   : in  array_tx_s2m(PORT_COUNT-1 downto 0);
 
     -- Error events are marked by toggling these bits.
-    errvec_t        : out std_logic_vector(8 downto 0);
+    errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
     -- System interface.
     scrub_req_t     : in  std_logic;    -- Request MAC-lookup scrub
@@ -132,13 +133,14 @@ signal errtog_ovr_rx    : std_logic := '0';
 signal errtog_ovr_tx    : std_logic := '0';
 signal errtog_mii_tx    : std_logic := '0';
 signal errtog_mii_rx    : std_logic := '0';
-signal errtog_sched     : std_logic := '0';
+
+-- Synchronized version of external reset.
+signal core_reset_sync  : std_logic;
 
 begin
 
 -- Drive the final error vector:
-errvec_t <= errtog_sched        -- Bit 8
-          & errtog_pkt_crc      -- Bit 7
+errvec_t <= errtog_pkt_crc      -- Bit 7
           & errtog_mii_tx       -- Bit 6
           & errtog_mii_rx       -- Bit 5
           & errtog_mac_tbl      -- Bit 4
@@ -192,6 +194,13 @@ begin
     end if;
 end process;
 
+-- Synchronize the external reset signal.
+u_rsync : sync_reset
+    port map(
+    in_reset_p  => core_reset_p,
+    out_reset_p => core_reset_sync,
+    out_clk     => core_clk);
+
 ----------------------------- INPUT LOGIC ---------------------------
 -- For each input port...
 gen_input : for n in PORT_COUNT-1 downto 0 generate
@@ -199,7 +208,7 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
     -- Clocks that come directly from a record do not correctly propagate
     -- process sensitivity events in XSIM 2015.4 and 2016.3.
     -- This has no effect on synthesis results.
-    eth_chk_clk(n) <= to_01(ports_rx_data(n).clk);
+    eth_chk_clk(n) <= to_01_std(ports_rx_data(n).clk);
 
     -- Check each frame and drive the commit / revert strobes.
     u_frmchk : entity work.eth_frame_check
@@ -290,7 +299,7 @@ u_delay : entity work.packet_delay
     out_last        => pktout_last,
     out_write       => pktout_write,
     io_clk          => core_clk,
-    reset_p         => core_reset_p);
+    reset_p         => core_reset_sync);
 
 -- MAC-address lookup (one of several implementation options).
 u_lookup : entity work.mac_lookup_generic
@@ -315,7 +324,7 @@ u_lookup : entity work.mac_lookup_generic
     error_full      => macerr_ovr,
     error_table     => macerr_tbl,
     clk             => core_clk,
-    reset_p         => core_reset_p);
+    reset_p         => core_reset_sync);
 
 pktout_pready <= pktout_write and pktout_last;
 
@@ -329,7 +338,7 @@ u_scrub_req : sync_toggle2pulse
 -- For each output port...
 gen_output : for n in PORT_COUNT-1 downto 0 generate
     -- Clock workaround (refer to eth_chk_clk for details).
-    pktout_clk(n) <= to_01(ports_tx_ctrl(n).clk);
+    pktout_clk(n) <= to_01_std(ports_tx_ctrl(n).clk);
 
     -- Drive the commit / revert strobes for this channel.
     pktout_commit(n) <= pktout_write and pktout_last and pktout_pdst(n);
@@ -340,7 +349,8 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         generic map(
         INPUT_BYTES     => DATAPATH_BYTES,
         OUTPUT_BYTES    => 1,
-        BUFFER_KBYTES   => OBUF_KBYTES)
+        BUFFER_KBYTES   => OBUF_KBYTES,
+        MAX_PACKETS     => OBUF_PACKETS)
         port map(
         in_clk          => core_clk,
         in_data         => pktout_data,

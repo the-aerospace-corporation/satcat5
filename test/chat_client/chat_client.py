@@ -541,7 +541,7 @@ class ChatControl(qtw.QMainWindow):
         for lbl in self.list_uart.keys():
             self.cbo_config.addItem(lbl)
             self.cbo_client.addItem(lbl)
-        for lbl in self.list_eth.keys():
+        for lbl in self.list_eth:
             self.cbo_client.addItem(lbl)
         # Create GUI layout.
         layout0 = qtw.QFormLayout()
@@ -686,9 +686,9 @@ class ChatControl(qtw.QMainWindow):
         if port_name in self.list_uart.keys():
             obj = serial_utils.AsyncSLIPPort(
                 self.list_uart[port_name], logger)
-        elif port_name in self.list_eth.keys():
+        elif port_name in self.list_eth:
             obj = ethernet_utils.AsyncEthernetPort(
-                self.list_eth[port_name], logger)
+                port_name, logger)
         else:
             logger.warning('No such port name')
             return

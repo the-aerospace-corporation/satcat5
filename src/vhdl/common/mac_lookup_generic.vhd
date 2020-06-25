@@ -20,17 +20,23 @@
 -- MAC-address lookup, generic wrapper
 --
 -- This simple wrapper instantiates the selected implementation of the
--- MAC lookup table (BINARY, BRUTE, SIMPLE, or STREAM).
+-- MAC lookup table.  The possible options are:
+--  * BINARY    - Binary search through BRAM, slow but scales well
+--  * BRUTE     - Brute-force matching, resource hog but very fast
+--  * LUTRAM    - Two-stage CAM using LUTRAM, fast with moderate size
+--  * PARSHIFT  - Partially parallelized search, balanced size/speed
+--  * SIMPLE    - Naive search, lightweight but very slow
+--  * STREAM    - Fast and lightweight, but only one address per port
 --
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity mac_lookup_generic is
     generic (
-    IMPL_TYPE       : string;       -- BINARY, BRUTE, SIMPLE, or STREAM
+    IMPL_TYPE       : string;       -- Type: BINARY, STREAM, etc.
     INPUT_WIDTH     : integer;      -- Width of main data port
     PORT_COUNT      : integer;      -- Number of Ethernet ports
     TABLE_SIZE      : integer;      -- Max stored MAC addresses
@@ -105,6 +111,30 @@ end generate;
 
 gen_brute : if (IMPL_TYPE = "BRUTE") generate
     u_mac : entity work.mac_lookup_brute
+        generic map(
+        INPUT_WIDTH     => INPUT_WIDTH,
+        PORT_COUNT      => PORT_COUNT,
+        TABLE_SIZE      => TABLE_SIZE)
+        port map(
+        in_psrc         => in_pmask,
+        in_data         => in_data,
+        in_last         => in_last,
+        in_valid        => in_valid,
+        in_ready        => in_ready,
+        out_pdst        => out_pdst,
+        out_valid       => out_valid,
+        out_ready       => out_ready,
+        error_full      => error_full,
+        error_table     => error_table,
+        clk             => clk,
+        reset_p         => reset_p);
+
+    scrub_busy   <= '0'; -- Unused
+    scrub_remove <= '0'; -- Unused
+end generate;
+
+gen_lutram : if (IMPL_TYPE = "LUTRAM") generate
+    u_mac : entity work.mac_lookup_lutram
         generic map(
         INPUT_WIDTH     => INPUT_WIDTH,
         PORT_COUNT      => PORT_COUNT,

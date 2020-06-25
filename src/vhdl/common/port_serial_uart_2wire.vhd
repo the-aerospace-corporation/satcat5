@@ -36,9 +36,10 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;  -- For byte_t
 use     work.switch_types.all;
+use     work.synchronization.all;
 
 entity port_serial_uart_2wire is
     generic (
@@ -71,7 +72,8 @@ signal raw_ready    : std_logic;
 signal pkt_nodata   : std_logic := '0';
 signal pkt_running  : std_logic := '0';
 
--- Activity detection
+-- Internal reset signals.
+signal reset_sync   : std_logic;
 signal wdog_rst_p   : std_logic := '1';
 
 -- SLIP encoder and decoder
@@ -85,10 +87,17 @@ begin
 
 -- Forward clock and reset signals.
 rx_data.clk     <= refclk;
-rx_data.reset_p <= reset_p;
+rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= wdog_rst_p;
 tx_ctrl.txerr   <= '0';     -- No error states
+
+-- Synchronize the external reset signal.
+u_rsync : sync_reset
+    port map(
+    in_reset_p  => reset_p,
+    out_reset_p => reset_sync,
+    out_clk     => refclk);
 
 -- Transmit and receive UARTs:
 u_rx : entity work.io_uart_rx
@@ -100,7 +109,7 @@ u_rx : entity work.io_uart_rx
     rx_data     => dec_data,
     rx_write    => dec_write,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 u_tx : entity work.io_uart_tx
     generic map(
@@ -112,7 +121,7 @@ u_tx : entity work.io_uart_tx
     tx_valid    => raw_valid,
     tx_ready    => raw_ready,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 -- Raw transmit interface (flow control and idle insertion)
 raw_data  <= SLIP_FEND when (pkt_nodata = '1') else enc_data;
@@ -137,11 +146,11 @@ end process;
 
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
-p_wdog : process(refclk, reset_p)
+p_wdog : process(refclk, reset_sync)
     constant TIMEOUT : integer := 2*CLKREF_HZ;
     variable wdog_ctr : integer range 0 to TIMEOUT := TIMEOUT;
 begin
-    if (reset_p = '1') then
+    if (reset_sync = '1') then
         wdog_rst_p  <= '1';
         wdog_ctr    := TIMEOUT;
     elsif rising_edge(refclk) then
@@ -165,7 +174,7 @@ u_enc : entity work.slip_encoder
     out_valid   => enc_valid,
     out_ready   => enc_ready,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 u_dec : entity work.slip_decoder
     port map (
@@ -176,6 +185,6 @@ u_dec : entity work.slip_decoder
     out_last    => rx_data.last,
     decode_err  => rx_data.rxerr,
     refclk      => refclk,
-    reset_p     => reset_p);
+    reset_p     => reset_sync);
 
 end port_serial_uart_2wire;

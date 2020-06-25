@@ -20,23 +20,24 @@
 -- Testbench for Ethernet-over-Serial SPI port
 --
 -- This is a self-checking unit test for the Ethernet-over-Serial SPI port.
--- It connects two slave transceivers back-to-back to confirm operation, with
--- a separate emulated "master" to generate clock and chip-select strobes.
+-- It connects a the clock-in and clock-out variants back-to-back to confirm
+-- correct operation.
 --
--- The complete test takes about 120 milliseconds.
+-- The complete test takes about 81 milliseconds.
 --
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity port_serial_spi_tb_helper is
     generic(
     SPI_MODE    : integer;
-    REFCLK_HZ   : integer := 125000000);
+    SPI_BAUD    : integer := 10_000_000;
+    REFCLK_HZ   : integer := 125_000_000);
     port(
     refclk      : in  std_logic;
     reset_p     : in  std_logic;
@@ -52,6 +53,9 @@ constant SPI_CPOL   : std_logic := bool2bit(SPI_MODE >= 2);
 -- Number of packets before declaring "done".
 constant RX_PACKETS : integer := 100;
 
+-- Flow control for the clock-source block.
+signal ext_pause    : std_logic := '1';
+
 -- Streaming source and sink for each link:
 signal txdata_a, txdata_b   : port_tx_m2s;
 signal txctrl_a, txctrl_b   : port_tx_s2m;
@@ -66,37 +70,26 @@ signal spi_tria, spi_trib   : std_logic;
 
 begin
 
--- We connect two SPI slaves back-to-back.  Emulate an SPI Mode 3 "master"
--- by generating periodic transactions (32 bit burst before idle).
-p_spi_master : process
-    -- Baud rate and idle-time settings.
-    constant IDLE_TIME  : time := 1 us;     -- 1.0 usec off, 3.3 usec on
-    constant HALF_BIT   : time := 50 ns;    -- 2 * 50 ns = 100 ns --> 10 Mbps
-    -- PRNG state.
-    variable seed1      : positive := 1234;
-    variable seed2      : positive := 5678;
-    variable rand       : real := 0.0;
+-- Pause the clock source at psuedorandom intervals.
+p_flow : process
+    variable seed1  : positive := 1234;
+    variable seed2  : positive := 5678;
+    variable rand   : real := 0.0;
+    variable ctr    : integer := 0;
 begin
-    -- Wait for a brief idle period.
-    spi_csb  <= '1';
-    spi_sclk <= SPI_CPOL;
-    wait for IDLE_TIME;
-    wait for IDLE_TIME;
+    -- Brief idle period.
+    ext_pause <= '1';
+    wait for 10 us;
 
-    -- 10% chance of traffic to another device. (CSB stays high)
+    -- Allow traffic for up to N chunks.
     uniform(seed1, seed2, rand);
-    spi_csb <= bool2bit(rand < 0.1);
-    spi_csb <= '0';
+    ctr := 1 + integer(floor(10.0 * rand));
 
-    -- Generate 32 block strobes.
-    for n in 1 to 32 loop
-        wait for HALF_BIT;
-        spi_sclk <= not SPI_CPOL;
-        wait for HALF_BIT;
-        spi_sclk <= SPI_CPOL;
+    ext_pause <= '0';
+    while (ctr > 0) loop
+        wait until falling_edge(spi_csb);
+        ctr := ctr - 1;
     end loop;
-    wait for HALF_BIT;
-    spi_csb  <= '1';
 end process;
 
 -- Streaming source and sink for each link:
@@ -123,23 +116,26 @@ u_src_b2a : entity work.port_test_common
     rxcount => RX_PACKETS);
 
 -- Two units under test, connected back-to-back.
-uut_a : entity work.port_serial_spi
+uut_a : entity work.port_serial_spi_clkout
     generic map(
     CLKREF_HZ   => REFCLK_HZ,
+    SPI_BAUD    => SPI_BAUD,
     SPI_MODE    => SPI_MODE)
     port map(
     spi_csb     => spi_csb,
     spi_sclk    => spi_sclk,
     spi_sdi     => spi_sdia,
     spi_sdo     => spi_sdoa,
-    spi_sdt     => spi_tria,
     rx_data     => rxdata_a,
     tx_data     => txdata_a,
     tx_ctrl     => txctrl_a,
+    ext_pause   => ext_pause,
     refclk      => refclk,
     reset_p     => reset_p);
 
-uut_b : entity work.port_serial_spi
+spi_tria <= '0';    -- Not used
+
+uut_b : entity work.port_serial_spi_clkin
     generic map(
     CLKREF_HZ   => REFCLK_HZ,
     SPI_MODE    => SPI_MODE)

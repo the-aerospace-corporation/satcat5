@@ -34,7 +34,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity port_statistics_tb is
@@ -179,8 +179,7 @@ uut : entity work.port_statistics
     sent_frames => uut_tx_frm,
     rx_data     => rx_data,
     tx_data     => tx_data,
-    tx_ctrl     => tx_ctrl,
-    reset_p     => reset_p);
+    tx_ctrl     => tx_ctrl);
 
 -- Running sum over each trial.
 p_sum : process(clk_100)

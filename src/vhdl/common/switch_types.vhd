@@ -53,4 +53,7 @@ package SWITCH_TYPES is
     type array_rx_m2s is array(natural range<>) of port_rx_m2s;
     type array_tx_m2s is array(natural range<>) of port_tx_m2s;
     type array_tx_s2m is array(natural range<>) of port_tx_s2m;
+
+    -- Error reporting: Width of the errvec_t signal from switch_core.
+    constant SWITCH_ERR_WIDTH : integer := 8;
 end package;

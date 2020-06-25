@@ -30,14 +30,14 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity port_serial_auto_tb_helper is
     generic(
     PORT_TYPE   : string;       -- SPI, UART1, UART2
     RX_PACKETS  : integer;      -- Declare "done" after N packets
-    REFCLK_HZ   : integer := 125000000);
+    REFCLK_HZ   : integer := 125_000_000);
     port(
     refclk      : in  std_logic;
     reset_p     : in  std_logic;
@@ -48,14 +48,10 @@ architecture helper of port_serial_auto_tb_helper is
 
 -- Certain parameters are not auto-detected.
 constant SPI_MODE   : integer := 3;         -- SPI clock phase & polarity
-constant UART_BAUD  : integer := 921600;    -- UART baud rate
+constant UART_BAUD  : integer := 921_600;   -- UART baud rate
 constant SPI_CPOL   : std_logic := bool2bit(SPI_MODE >= 2);
 
 -- Interface-specific support signals.
-signal spi_clk10    : std_logic := SPI_CPOL;
-signal spi_csb      : std_logic := '1';
-signal spi_sdo      : std_logic := '0';
-signal spi_sdt      : std_logic := '0';
 signal uart_ctsb    : std_logic := '1';
 
 -- Streaming source and sink for each link:
@@ -70,8 +66,6 @@ signal ext_pads : std_logic_vector(3 downto 0);
 begin
 
 -- Interface-specific support signals.
-spi_clk10 <= not spi_clk10 after 50 ns; -- 1 / (2*50ns) = 10 MHz
-spi_csb   <= reset_p after 1 us;        -- SPI permanently enabled after reset
 uart_ctsb <= reset_p after 1 us;        -- UART permanently ready to receive
 
 -- Streaming source and sink for each link:
@@ -114,26 +108,21 @@ uut_a : entity work.port_serial_auto
 -- Instantiate the appropriate counterpart.
 -- (And any other required support signals.)
 gen_spi : if (PORT_TYPE = "SPI") generate
-    uut_b : entity work.port_serial_spi
+    uut_b : entity work.port_serial_spi_clkout
         generic map(
         CLKREF_HZ   => REFCLK_HZ,
+        SPI_BAUD    => 10_000_000,
         SPI_MODE    => SPI_MODE)
         port map(
         spi_csb     => ext_pads(0),
         spi_sclk    => ext_pads(3),
         spi_sdi     => ext_pads(2),
-        spi_sdo     => spi_sdo,
-        spi_sdt     => spi_sdt,
+        spi_sdo     => ext_pads(1),
         rx_data     => rxdata_b,
         tx_data     => txdata_b,
         tx_ctrl     => txctrl_b,
         refclk      => refclk,
         reset_p     => reset_p);
-
-    -- Connecting two SPI slaves -> inject CSb and CLK.
-    ext_pads(0) <= spi_csb;
-    ext_pads(3) <= spi_clk10 or spi_csb;
-    ext_pads(1) <= 'Z' when (spi_sdt = '1') else spi_sdo;
 end generate;
 
 --                      Pin 0       Pin 1       Pin 2       Pin 3

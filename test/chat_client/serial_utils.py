@@ -197,7 +197,7 @@ def slipEncode(data):
 
 class AsyncSLIPPort:
     '''SLIP port wrapper. Same interface as ethernet_utils::AsyncEthernetPort.'''
-    def __init__(self, portname, logger, verbose=False):
+    def __init__(self, portname, logger, zeropad=False, verbose=False):
         '''
         Create a new "locally administered" MAC address.
         16 MSBs are 0xAE20 ("Aero"), then 32 random LSBs.
@@ -209,6 +209,7 @@ class AsyncSLIPPort:
         # All other initialization...
         self._callback = None
         self._logger = logger
+        self._zeropad = zeropad
         self._verbose = verbose
         self._serial = AsyncSerialPort(
             logger=logger,
@@ -252,9 +253,9 @@ class AsyncSLIPPort:
         '''
         Send frame with Dst, Src, Type, Payload (no checksum).
 
-        Zero-pad so frame + CRC is at least 64 bytes.
+        Optionally zero-pad so frame + CRC is at least 64 bytes.
         '''
-        if len(eth_usr) < 60:
+        if self._zeropad and len(eth_usr) < 60:
             len_pad = 60 - len(eth_usr)
             eth_usr += len_pad * b'\x00'
         # Add checksum and apply SLIP encoding.

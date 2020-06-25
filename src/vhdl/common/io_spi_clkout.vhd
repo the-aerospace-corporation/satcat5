@@ -17,7 +17,7 @@
 -- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 --------------------------------------------------------------------------
 --
--- A simple byte-by-byte SPI master.
+-- A simple byte-by-byte SPI controller (clock output).
 --
 -- The state machine generates SCK, CSB, and MOSI, at a fixed baud rate.
 -- All SPI modes are supported.  The "last" strobe is used to assert and
@@ -27,11 +27,11 @@
 library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;
 use     work.synchronization.all;
 
-entity io_spi_master is
+entity io_spi_clkout is
     generic (
     CLKREF_HZ   : integer;          -- Main clock rate (Hz)
     SPI_BAUD    : integer;          -- SPI baud rate (bps)
@@ -47,7 +47,7 @@ entity io_spi_master is
     rcvd_data   : out byte_t;
     rcvd_write  : out std_logic;
 
-    -- SPI master interface
+    -- SPI interface with output clock
     spi_csb     : out std_logic;        -- Chip select
     spi_sck     : out std_logic;        -- Clock
     spi_sdo     : out std_logic;        -- MOSI
@@ -56,9 +56,9 @@ entity io_spi_master is
     -- System interface
     ref_clk     : in  std_logic;        -- Reference clock
     reset_p     : in  std_logic);
-end io_spi_master;
+end io_spi_clkout;
 
-architecture rtl of io_spi_master is
+architecture rtl of io_spi_clkout is
 
 constant CPOL : std_logic := bool2bit(SPI_MODE = 2 or SPI_MODE = 3);
 constant CPHA : std_logic := bool2bit(SPI_MODE = 1 or SPI_MODE = 3);

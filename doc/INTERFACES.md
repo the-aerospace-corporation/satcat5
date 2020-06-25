@@ -19,7 +19,7 @@ The nontraditional interfaces are IEEE 802.3 compliant, except:
 
 Runt frames may have a payload as short as zero bytes; all other fields are required as normal.  This minimizes unnecessary per-packet overhead, which would otherwise be costly at these relatively low bit-rates.
 
-The switch will preserve runt frames as-is when relayed to supported interfaces.  At also zero-pads the payload field before transmission to traditional media without runt packet support.  As such, runt packets should never use the EtherType field as a length, since the length may change.  In addition, higher-layer software must be prepared for the length to change, since packets switched over mixed networks may be zero-padded.
+The switch will preserve runt frames as-is when relayed to supported interfaces.  It also zero-pads the payload field before transmission to traditional media without runt packet support.  As such, runt packets should never use the EtherType field as a length, since the length may change.  In addition, higher-layer software must be prepared for the length to change, since packets switched over mixed networks may be zero-padded.
 
 To provide framing information, these interfaces are SLIP encoded (IETF RFC 1055).  This provides indication of frame boundaries, and may also be used to indicate idle periods.  When transmitting, Ethernet frames should be calculated normally, including the FCS.  The entire frame is then SLIP-encoded just before transmission to the switch.
 
@@ -29,16 +29,16 @@ When external connectors are used, we recommend compatibility with [Digilent's 6
 
 ![Diagram of SPI interface](images/interface_spi.svg)
 
-The Serial Peripheral Interface uses four wires for bidirectional communication:
+The Serial Peripheral Interface uses four wires for bidirectional communication. By convention, the "master" is the clock-source:
 
 * CSb: Chip-select bar, active-low, driven by endpoint (PMOD pin 1)
 * MOSI: Master out / slave in, driven by endpoint (PMOD pin 2)
 * MISO: Master in / slave out, driven by switch (PMOD pin 3)
 * SCK: Serial clock, driven by endpoint (PMOD pin 4)
 
-The Ethernet switch is always the SPI slave; the microcontroller endpoint should generate the clock and drive CSb and MOSI.
+The Ethernet switch is always the SPI clock sink; the microcontroller endpoint should generate the clock and drive CSb and MOSI.
 
-All clock-phasing modes are supported, but SPI Mode 3 is preferred.  Other modes typically require an FPGA rebuild. The maximum supported bit-rate depends on the internal reference clock; refer to io_spi_slave for details.
+All clock-phasing modes are supported, but SPI Mode 3 is preferred.  Other modes typically require an FPGA rebuild. The maximum supported bit-rate depends on the internal reference clock; refer to io_spi_clkin for details.
 
 In SPI, transmitting and receiving data occurs simultaneously.  All exchanges are byte-aligned, and transmitted MSB-first per SPI convention.
 
@@ -152,6 +152,17 @@ The [Serial Gigabit Media Indendent Interface](https://web.archive.org/web/20150
 Each LVDS pair must be impedance-controlled (100-ohm differential) and terminated at the receiving end. (Preferably inside the receiving device; most FPGAs provide this capability.)  Clock recovery must be performed by each LVDS receiver.  To facilitate this, allow optional AC-coupling, provide framing, and exchange link-status metadata, the signal is 8b/10b encoded.  As such, the LVDS line-rate of 1250 Mbaud supports user transfer rates up to 1000 Mbps.
 
 The SGMII standard operates at a fixed line rate of 1250 Mbaud.  There are provisions to support operation at 10, 100, or 1000 Mbps, but only the 1000 Mbps mode is currently supported by the SatCat5 switch.
+
+### GMII
+The [Gigabit Media Independent Interface](https://web.archive.org/web/20100620164048/http://people.ee.duke.edu/~mbrooke/ece4006/spring2003/G5/802-3zStandard.pdf) (GMII) uses 24 signals, although COL and CS are not supported by the SatCat5 port. The 22 requried signals are:
+
+* GTXCLK, TXEN, TXER, TXD[7:0]: clock, enable, error, and data from MAC to PHY.
+* RXCLK, RXDV, RXER, RXD[7:0]: clock, valid, error, and data from PHY to MAC.
+
+GMII is not widely used for MAC to PHY interfaces due to its high pin count, but it is common between cores within FPGAs.
+The SatCat5 GMII port is intended to connect third-party Ethernet IPs, such as the Xilinx Zynq-7000 PS Ethernet MAC, to a SatCat5 switch or network.
+Support for use with external GMII interfaces may be added in a future release.
+
 
 # Copyright Notice
 

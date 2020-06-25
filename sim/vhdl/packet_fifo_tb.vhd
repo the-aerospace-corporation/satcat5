@@ -39,7 +39,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity packet_fifo_tb_single is
     generic (
@@ -57,6 +57,7 @@ architecture single of packet_fifo_tb_single is
 
 constant MIN_PKT_WORDS : integer := MIN_PKT_BYTES / OUTER_BYTES;
 constant MAX_PKT_WORDS : integer := MAX_PKT_BYTES / OUTER_BYTES;
+constant MAX_PACKETS   : integer := (1024 * BUFFER_KBYTES) / MIN_PKT_BYTES;
 
 -- Clock generation.
 constant OUTER_PERIOD : time := 1 us / OUTER_CLOCK_MHZ;
@@ -226,7 +227,7 @@ uut1 : entity work.packet_fifo
     INPUT_BYTES     => OUTER_BYTES,
     OUTPUT_BYTES    => INNER_BYTES,
     BUFFER_KBYTES   => BUFFER_KBYTES,
-    MIN_PKT_BYTES   => MIN_PKT_BYTES,
+    MAX_PACKETS     => MAX_PACKETS,
     MAX_PKT_BYTES   => MAX_PKT_BYTES)
     port map(
     in_clk          => outer_clk,
@@ -250,7 +251,7 @@ uut2 : entity work.packet_fifo
     INPUT_BYTES     => INNER_BYTES,
     OUTPUT_BYTES    => OUTER_BYTES,
     BUFFER_KBYTES   => BUFFER_KBYTES,
-    MIN_PKT_BYTES   => MIN_PKT_BYTES,
+    MAX_PACKETS     => MAX_PACKETS,
     MAX_PKT_BYTES   => MAX_PKT_BYTES)
     port map(
     in_clk          => inner_clk,

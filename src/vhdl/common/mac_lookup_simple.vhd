@@ -36,7 +36,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity mac_lookup_simple is
     generic (
@@ -252,7 +252,7 @@ end process;
 --      Otherwise, create a new table entry unless full.
 p_search : process(clk)
     constant BROADCAST : mac_addr_t := (others => '1');
-    variable found_src, found_dst : std_logic := '0';
+    variable found_src : std_logic := '0';
     variable found_idx : table_idx_t := 0;
 begin
     if rising_edge(clk) then
@@ -270,13 +270,11 @@ begin
             -- New search, check for broadcast addresses.
             search_dst  <= not in_psrc;
             search_wren <= not bool2bit(mac_src = BROADCAST);
-            found_dst   := bool2bit(mac_dst = BROADCAST);
             found_src   := '0';
             found_idx   := 0;
         elsif (search_state /= SEARCH_IDLE and search_state /= SEARCH_START) then
             -- During readout, look for specific matches (note two-cycle lag).
             if (mac_dst = search_rdval.mac) then
-                found_dst := '1';
                 search_dst <= search_rdval.mask;
             end if;
             if (mac_src = search_rdval.mac) then

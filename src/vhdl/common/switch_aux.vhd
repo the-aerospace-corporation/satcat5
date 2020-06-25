@@ -26,8 +26,9 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.led_types.all;
+use     work.switch_types.all;
 use     work.synchronization.all;
 
 entity switch_aux is
@@ -35,15 +36,15 @@ entity switch_aux is
     SCRUB_CLK_HZ    : integer;          -- Scrubbing clock frequency (Hz)
     STARTUP_MSG     : string;           -- On-boot message (e.g., build date)
     STATUS_LED_LIT  : std_logic;        -- Polarity for status LEDs
-    CORE_COUNT      : integer := 1;     -- Number of switch_core units
-    SWERR_TYPES     : integer := 9);    -- Number of error types
+    UART_BAUD       : integer := 921600;-- Baud rate for status UART
+    CORE_COUNT      : integer := 1);    -- Number of switch_core units
     port (
     -- Concatenated error vector from each switch_core.
     -- (Each is a "toggle" indicator in any clock domain.)
-    swerr_vec_t     : in  std_logic_vector(SWERR_TYPES*CORE_COUNT-1 downto 0);
+    swerr_vec_t     : in  std_logic_vector(SWITCH_ERR_WIDTH*CORE_COUNT-1 downto 0);
 
     -- Ignore specific error types (optional).
-    swerr_ignore    : in  std_logic_vector(SWERR_TYPES-1 downto 0) := (others => '0');
+    swerr_ignore    : in  std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0) := (others => '0');
 
     -- Optional error strobe for the clock.
     clock_stopped   : in  std_logic := '0';
@@ -71,8 +72,8 @@ signal scrub_err    : std_logic;
 signal scrub_req_ti : std_logic := '0';
 
 -- Clock-crossing for error signals.
-signal swerr_sync   : std_logic_vector(SWERR_TYPES*CORE_COUNT-1 downto 0);
-signal error_vec    : std_logic_vector(SWERR_TYPES downto 0);
+signal swerr_sync   : std_logic_vector(SWITCH_ERR_WIDTH*CORE_COUNT-1 downto 0);
+signal error_vec    : std_logic_vector(SWITCH_ERR_WIDTH downto 0);
 signal error_any    : std_logic := '0';
 
 begin
@@ -122,9 +123,9 @@ begin
         error_vec(0) <= scrub_err;
 
         -- Bitwise-OR switch error strobes from each core.
-        for n in 0 to SWERR_TYPES-1 loop
+        for n in 0 to SWITCH_ERR_WIDTH-1 loop
             for c in err_temp'range loop
-                err_temp(c) := swerr_sync(SWERR_TYPES*c + n);
+                err_temp(c) := swerr_sync(SWITCH_ERR_WIDTH*c + n);
             end loop;
             error_vec(n+1) <= or_reduce(err_temp) and not swerr_ignore(n);
         end loop;
@@ -135,10 +136,10 @@ end process;
 u_uart : entity work.error_reporting
     generic map(
     CLK_HZ          => SCRUB_CLK_HZ,
-    OUT_BAUD        => 921600,
+    OUT_BAUD        => UART_BAUD,
     OK_CLOCKS       => SCRUB_CLK_HZ,
     START_MSG       => STARTUP_MSG,
-    ERR_COUNT       => SWERR_TYPES+1,
+    ERR_COUNT       => SWITCH_ERR_WIDTH+1,
     ERR_MSG00       => "SCRUB_SEU",
     ERR_MSG01       => "OVR_RX",
     ERR_MSG02       => "OVR_TX",
@@ -147,8 +148,7 @@ u_uart : entity work.error_reporting
     ERR_MSG05       => "MAC_TBL",
     ERR_MSG06       => "MII_RX",
     ERR_MSG07       => "MII_TX",
-    ERR_MSG08       => "PKT_CRC",
-    ERR_MSG09       => "PKT_END")
+    ERR_MSG08       => "PKT_CRC")
     port map(
     err_uart        => status_uart,
     aux_data        => status_aux_dat,

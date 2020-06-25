@@ -36,7 +36,7 @@
 -- As with sync_toggle2pulse, set OUT_BUFFER = true for glitch-free operation.
 --
 -- NOTE: Designs should only include ONE such implementation!  If your project
--- includes "synchronization", don't include "synchronization_microsemi".
+-- includes "xilinx/synchronization.vhd", don't include "lattice/synchronization.vhd".
 --
 
 library IEEE;

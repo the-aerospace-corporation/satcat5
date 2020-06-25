@@ -36,6 +36,7 @@
 -- for the "timing statistics" report):
 --   BINARY:    2.6 msec
 --   BRUTE:     0.5 msec
+--   LUTRAM:    0.4 msec
 --   PARSHIFT:  0.7 msec
 --   SIMPLE:    4.0 msec
 --   STREAM:    2.0 msec
@@ -49,7 +50,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
-use     work.common_types.all;
+use     work.common_functions.all;
 
 entity mac_lookup_tb_single is
     generic (
@@ -57,9 +58,11 @@ entity mac_lookup_tb_single is
     INPUT_WIDTH     : integer;          -- Width of main data port
     PORT_COUNT      : integer;          -- Number of Ethernet ports
     TABLE_SIZE      : integer;          -- Max stored MAC addresses
+    VERBOSITY       : integer := 0;     -- Verbosity level (0/1/2)
     MAX_LATENCY     : integer := 999;   -- Maximum allowed latency
     SCRUB_TIMEOUT   : integer := 7);    -- Timeout for stale entries
     port (
+    got_stats       : out std_logic;
     scrub_req       : in  std_logic;
     clk             : in  std_logic;
     reset_p         : in  std_logic);
@@ -74,6 +77,7 @@ begin
         IMPL_TYPE = "SIMPLE") then
         return '1'; -- Scrubbing supported
     elsif (IMPL_TYPE = "BRUTE" or
+        IMPL_TYPE = "LUTRAM" or
         IMPL_TYPE = "PARSHIFT" or
         IMPL_TYPE = "STREAM") then
         return '0'; -- Scrubbing not required.
@@ -149,12 +153,15 @@ signal scrub_remove : std_logic := '0';
 signal error_full   : std_logic := '0';     -- No room for new address
 signal error_table  : std_logic := '0';     -- Table integrity check failed
 
+-- Overall test state
+signal got_result   : std_logic := '0';
+
 -- Diagnostic functions.
 impure function pkt_str return string is
 begin
     return integer'image(pkt_mode)
         & "." & integer'image(pkt_count)
-        & "(" & IMPL_TYPE & ")";
+        & " (" & IMPL_TYPE & ")";
 end function;
 
 begin
@@ -219,6 +226,17 @@ p_src : process(clk)
         return to_unsigned(idx mod 256, 8);
     end function;
 
+    function should_print(idx: integer) return boolean is
+    begin
+        if (VERBOSITY = 2) then     -- Always
+            return true;
+        elsif (VERBOSITY = 1) then  -- Sometimes
+            return (idx < 10) or (idx mod 100) = 0;
+        elsif (VERBOSITY = 0) then  -- Rarely
+            return (idx mod 1000) = 0;
+        end if;
+    end function;
+
     constant BYTES_PER_CLOCK : integer := INPUT_WIDTH / 8;
     variable seed1      : positive := 1234;
     variable seed2      : positive := 5678;
@@ -252,11 +270,9 @@ begin
             if (rand < in_rate) then
                 -- If we're starting a new packet, select parameters.
                 if (bcount >= pkt_len) then
-                    -- Periodically report start of new packet.
-                    if ((pkt_count < 3) or
-                        (pkt_count = 10) or
-                        ((pkt_count mod 100) = 0)) then
-                        report "Starting packet " & pkt_str;
+                    -- Depending on verbosity, periodically report start of new packet.
+                    if should_print(pkt_count) then
+                        report "Starting packet " & pkt_str;    -- Occasionally
                     end if;
                     -- Reset generator state.
                     bcount := 0;
@@ -499,9 +515,10 @@ uut : entity work.mac_lookup_generic
     reset_p         => reset_p);
 
 -- Confirm expected outputs.
+got_stats <= got_result;
+
 p_check : process(clk)
     variable elapsed, time_cnt, time_min, time_max, time_sum : integer := 0;
-    variable got_result : std_logic := '0';
 begin
     if rising_edge(clk) then
         -- Check the two error strobes.
@@ -546,9 +563,9 @@ begin
                     & "-" & integer'image(time_max)
                     & ", Mean " & real'image(real(time_sum) / real(time_cnt));
             end if;
-            got_result := '1';
+            got_result <= '1';
         elsif (out_valid = '0') then
-            got_result := '0';
+            got_result <= '0';
         end if;
     end if;
 end process;
@@ -564,6 +581,7 @@ end single;
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.common_functions.all;
 
 entity mac_lookup_tb is
     -- Unit testbench top level, no I/O ports
@@ -574,6 +592,7 @@ architecture tb of mac_lookup_tb is
 signal clk_100      : std_logic := '0';
 signal reset_p      : std_logic := '1';
 signal scrub_req    : std_logic := '0';
+signal got_stats    : std_logic_vector(5 downto 0);
 
 begin
 
@@ -601,29 +620,17 @@ begin
     end if;
 end process;
 
+-- Detect when all instances are done.
+p_done : process
+begin
+    while (and_reduce(got_stats) /= '1') loop
+        wait until rising_edge(clk_100);
+    end loop;
+    report "All tests completed!";
+    wait;
+end process;
+
 -- Instantiate each test configuration.
-u_simple : entity work.mac_lookup_tb_single
-    generic map(
-    IMPL_TYPE       => "SIMPLE",
-    INPUT_WIDTH     => 8,
-    PORT_COUNT      => 8,
-    TABLE_SIZE      => 31)
-    port map (
-    scrub_req       => scrub_req,
-    clk             => clk_100,
-    reset_p         => reset_p);
-
-u_parshift : entity work.mac_lookup_tb_single
-    generic map(
-    IMPL_TYPE       => "PARSHIFT",
-    INPUT_WIDTH     => 24,
-    PORT_COUNT      => 11,
-    TABLE_SIZE      => 32)
-    port map (
-    scrub_req       => scrub_req,
-    clk             => clk_100,
-    reset_p         => reset_p);
-
 u_binary : entity work.mac_lookup_tb_single
     generic map(
     IMPL_TYPE       => "BINARY",
@@ -632,6 +639,7 @@ u_binary : entity work.mac_lookup_tb_single
     TABLE_SIZE      => 31,
     MAX_LATENCY     => 14)
     port map (
+    got_stats       => got_stats(0),
     scrub_req       => scrub_req,
     clk             => clk_100,
     reset_p         => reset_p);
@@ -643,6 +651,43 @@ u_brute : entity work.mac_lookup_tb_single
     PORT_COUNT      => 9,
     TABLE_SIZE      => 31)
     port map (
+    got_stats       => got_stats(1),
+    scrub_req       => scrub_req,
+    clk             => clk_100,
+    reset_p         => reset_p);
+
+u_lutram : entity work.mac_lookup_tb_single
+    generic map(
+    IMPL_TYPE       => "LUTRAM",
+    INPUT_WIDTH     => 40,
+    PORT_COUNT      => 12,
+    TABLE_SIZE      => 32)
+    port map (
+    got_stats       => got_stats(2),
+    scrub_req       => scrub_req,
+    clk             => clk_100,
+    reset_p         => reset_p);
+
+u_parshift : entity work.mac_lookup_tb_single
+    generic map(
+    IMPL_TYPE       => "PARSHIFT",
+    INPUT_WIDTH     => 24,
+    PORT_COUNT      => 11,
+    TABLE_SIZE      => 32)
+    port map (
+    got_stats       => got_stats(3),
+    scrub_req       => scrub_req,
+    clk             => clk_100,
+    reset_p         => reset_p);
+
+u_simple : entity work.mac_lookup_tb_single
+    generic map(
+    IMPL_TYPE       => "SIMPLE",
+    INPUT_WIDTH     => 8,
+    PORT_COUNT      => 8,
+    TABLE_SIZE      => 31)
+    port map (
+    got_stats       => got_stats(4),
     scrub_req       => scrub_req,
     clk             => clk_100,
     reset_p         => reset_p);
@@ -654,6 +699,7 @@ u_stream : entity work.mac_lookup_tb_single
     PORT_COUNT      => 9,   -- Note: 1 uplink + 8 endpoints
     TABLE_SIZE      => -1)  -- Not applicable
     port map (
+    got_stats       => got_stats(5),
     scrub_req       => scrub_req,
     clk             => clk_100,
     reset_p         => reset_p);

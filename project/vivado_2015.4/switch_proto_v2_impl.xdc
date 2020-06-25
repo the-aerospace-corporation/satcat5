@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 
-# Synthesis constraints for switch_top_ext_ac701
+# Synthesis constraints for switch_proto_v2
 # This file is for added constraints required ONLY during implementation.
 
 #####################################################################

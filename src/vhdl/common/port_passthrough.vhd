@@ -25,7 +25,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_types.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
@@ -43,7 +43,7 @@ entity port_passthrough is
     port_tx_ctrl   : in  port_tx_s2m;
 
     -- Error events are marked by toggling these bits.
-    errvec_t        : out std_logic_vector(8 downto 0));
+    errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0));
 end port_passthrough;
 
 architecture port_passthrough of port_passthrough is
@@ -173,8 +173,7 @@ begin
 end process;
 
 -- Drive the final error vector:
-errvec_t <= errtog_sched        -- Bit 8
-          & errtog_pkt_crc      -- Bit 7
+errvec_t <= errtog_pkt_crc      -- Bit 7
           & errtog_mii_tx       -- Bit 6
           & errtog_mii_rx       -- Bit 5
           & errtog_mac_tbl      -- Bit 4
