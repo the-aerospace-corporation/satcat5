@@ -134,10 +134,13 @@ signal rd_adj_valid : std_logic;
 signal rd_adj_ready : std_logic;
 
 -- Buffer one AXI-write transaction.
+signal prewr_valid  : std_logic := '0';
+signal prewr_ready  : std_logic := '0';
 signal wr_gotaddr   : std_logic := '0';
 signal wr_gotdata   : std_logic := '0';
 signal wr_exec      : std_logic := '0';
 signal wr_valid     : std_logic := '0';
+signal wr_rpend     : std_logic := '0';
 signal wr_valid2    : std_logic := '0';
 signal wr_addr      : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
 signal wr_data      : std_logic_vector(31 downto 0) := (others => '0');
@@ -168,7 +171,6 @@ tx_ctrl.reset_p <= port_reset_p;
 -- AXI command responses are always "OK" ('00').
 axi_rresp   <= "00";
 axi_bresp   <= "00";
-axi_bvalid  <= '1';
 
 -- Hold port reset at least N clock cycles.
 port_areset <= cmd_reset_p or not axi_aresetn;
@@ -220,9 +222,12 @@ u_rd_adj : entity work.eth_frame_adjust
 -- data-before-address or address-before-data without blocking.
 axi_awready <= not wr_gotaddr;
 axi_wready  <= not wr_gotdata;
-wr_exec     <= (wr_gotaddr or axi_awvalid)
-           and (wr_gotdata or axi_wvalid)
-           and (cmd_ready or not wr_valid);
+axi_bvalid  <= wr_rpend;
+prewr_valid <= (wr_gotaddr or axi_awvalid)
+           and (wr_gotdata or axi_wvalid);
+prewr_ready <= (cmd_ready or not wr_valid)
+           and (axi_bready or not wr_rpend);
+wr_exec     <= prewr_valid and prewr_ready;
 
 p_axi_wr : process(axi_clk)
 begin
@@ -258,6 +263,15 @@ begin
             wr_valid <= '1';    -- New data received
         elsif (cmd_valid = '0' or cmd_ready = '1') then
             wr_valid <= '0';    -- Command executed
+        end if;
+
+        -- Update the response-pending flag.
+        if (axi_aresetn = '0') then
+            wr_rpend <= '0';    -- Global reset
+        elsif (wr_exec = '1') then
+            wr_rpend <= '1';    -- New data received
+        elsif (axi_bready = '1') then
+            wr_rpend <= '0';    -- Response accepted
         end if;
     end if;
 end process;

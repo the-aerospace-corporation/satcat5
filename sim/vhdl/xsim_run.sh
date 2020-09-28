@@ -111,7 +111,7 @@ simulate_all()
     simulate_one mac_lookup_tb 4ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_fifo_tb 10ms
-    simulate_one port_axi_mailbox_tb 4ms
+    simulate_one port_axi_mailbox_tb 6ms
     simulate_one port_rgmii_tb 1ms
     simulate_one port_rmii_tb 29ms
     simulate_one port_sgmii_common_tb 1ms
