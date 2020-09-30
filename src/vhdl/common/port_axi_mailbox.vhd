@@ -222,7 +222,7 @@ u_rd_adj : entity work.eth_frame_adjust
 -- data-before-address or address-before-data without blocking.
 axi_awready <= not wr_gotaddr;
 axi_wready  <= not wr_gotdata;
-axi_bvalid  <= wr_rpend;
+axi_bvalid  <= wr_rpend and axi_aresetn;
 prewr_valid <= (wr_gotaddr or axi_awvalid)
            and (wr_gotdata or axi_wvalid);
 prewr_ready <= (cmd_ready or not wr_valid)
@@ -287,9 +287,10 @@ cmd_reset_p <= wr_valid2 and bool2bit(wr_opcode = 255);
 
 -- Buffer one read transaction, and assert interrupt flag
 -- whenever received data is available to be read.
+-- (Note: Read value for CPU is valid even if FIFO is empty.)
 axi_arready  <= axi_rready or not rd_pending;
 axi_rdata    <= rd_adj_valid & rd_adj_last & "0000000000000000000000" & rd_adj_data;
-axi_rvalid   <= rd_pending;     -- Valid even if FIFO is empty
+axi_rvalid   <= rd_pending and axi_aresetn;
 rd_adj_ready <= rd_pending and axi_rready;
 irq_out      <= rd_avail;
 
