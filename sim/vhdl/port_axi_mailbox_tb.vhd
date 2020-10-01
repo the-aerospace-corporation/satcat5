@@ -92,6 +92,10 @@ signal a_bcount,  b_bcount  : natural := 0;
 signal a_arcount, b_arcount : natural := 0;
 signal a_rcount,  b_rcount  : natural := 0;
 
+-- Check for illegal data-change events on the read pipe.
+signal a_rdata_d, b_rdata_d : std_logic_vector(31 downto 0) := (others => '0');
+signal a_rcheck,  b_rcheck  : std_logic := '0';
+
 begin
 
 -- Clock and reset generation.
@@ -190,6 +194,16 @@ begin
             report "Running B-write disparity." severity error;
         assert ( equal_pm2(b_arcount, b_rcount) )
             report "Running B-read disparity." severity error;
+
+        -- Check for illegal data-change events on the read pipe.
+        assert (a_rcheck = '0' or a_rdata = a_rdata_d)
+            report "Illegal A-rdata change." severity error;
+        assert (b_rcheck = '0' or b_rdata = b_rdata_d)
+            report "Illegal B-rdata change." severity error;
+        a_rdata_d   <= a_rdata;
+        b_rdata_d   <= b_rdata;
+        a_rcheck    <= a_rvalid and not a_rready;
+        b_rcheck    <= b_rvalid and not b_rready;
 
         -- Set A/B polling rates using sine^2 and cosine^2,
         -- so we gradually transition between edge cases.

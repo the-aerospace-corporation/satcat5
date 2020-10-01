@@ -114,12 +114,14 @@ end port_axi_mailbox;
 architecture rtl of port_axi_mailbox is
 
 -- Compare AXI address against configured address, with wildcard option.
-function address_match(addr : unsigned) return boolean is
+function address_match(addr : std_logic_vector) return std_logic is
 begin
     if (REG_ADDR < 0) then
-        return true;    -- Match any address
+        return '1';     -- Match any address
+    elsif (addr = i2s(REG_ADDR, ADDR_WIDTH)) then
+        return '1';     -- Match specific address
     else
-        return addr = to_unsigned(REG_ADDR, ADDR_WIDTH);
+        return '0';     -- No match
     end if;
 end function;
 
@@ -142,11 +144,12 @@ signal wr_exec      : std_logic := '0';
 signal wr_valid     : std_logic := '0';
 signal wr_rpend     : std_logic := '0';
 signal wr_valid2    : std_logic := '0';
-signal wr_addr      : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
+signal wr_addr      : std_logic_vector(ADDR_WIDTH-1 downto 0) := (others => '0');
 signal wr_data      : std_logic_vector(31 downto 0) := (others => '0');
 signal wr_opcode    : integer range 0 to 255 := 0;
 
 -- Buffer one read transaction.
+signal rd_buffer    : std_logic_vector(31 downto 0) := (others => '0');
 signal rd_pending   : std_logic := '0';
 signal rd_avail     : std_logic := '0';
 
@@ -234,7 +237,7 @@ begin
     if rising_edge(axi_clk) then
         if (axi_awvalid = '1' and wr_gotaddr = '0') then
             -- Latch new address when ready.
-            wr_addr <= unsigned(axi_awaddr);
+            wr_addr <= axi_awaddr;
         end if;
 
         if (axi_wvalid = '1' and wr_gotdata = '0') then
@@ -278,7 +281,7 @@ end process;
 
 -- Parse and execute the buffered write command.
 -- (Combinational logic, so we don't need a FIFO.)
-wr_valid2   <= wr_valid and bool2bit(address_match(wr_addr));
+wr_valid2   <= wr_valid and address_match(wr_addr);
 wr_opcode   <= U2I(wr_data(31 downto 24));
 cmd_data    <= wr_data(7 downto 0);
 cmd_last    <= bool2bit(wr_opcode = 3);
@@ -289,22 +292,27 @@ cmd_reset_p <= wr_valid2 and bool2bit(wr_opcode = 255);
 -- whenever received data is available to be read.
 -- (Note: Read value for CPU is valid even if FIFO is empty.)
 axi_arready  <= axi_rready or not rd_pending;
-axi_rdata    <= rd_adj_valid & rd_adj_last & "0000000000000000000000" & rd_adj_data;
+axi_rdata    <= rd_buffer;
 axi_rvalid   <= rd_pending and axi_aresetn;
-rd_adj_ready <= rd_pending and axi_rready;
+rd_adj_ready <= (axi_arvalid and address_match(axi_araddr))
+            and (axi_rready or not rd_pending);
 irq_out      <= rd_avail;
 
 p_axi_rd : process(axi_clk)
 begin
     if rising_edge(axi_clk) then
+        -- Update the read-pending flag.
         if (axi_aresetn = '0') then
             rd_pending <= '0';  -- Interface reset
-        elsif (rd_pending = '1' and axi_rready = '0') then
-            rd_pending <= '1';  -- Hold until reply is consumed
-        elsif (axi_arvalid = '1' and address_match(unsigned(axi_araddr))) then
+        elsif (rd_adj_ready = '1') then
             rd_pending <= '1';  -- Start of new read transaction
-        else
-            rd_pending <= '0';  -- Idle
+        elsif (axi_rready = '1') then
+            rd_pending <= '0';  -- Reply consumed
+        end if;
+
+        -- Latch output word to ensure it remains stable.
+        if (rd_adj_ready = '1') then
+            rd_buffer <= rd_adj_valid & rd_adj_last & "0000000000000000000000" & rd_adj_data;
         end if;
 
         -- Buffer helps with routing and timing.
