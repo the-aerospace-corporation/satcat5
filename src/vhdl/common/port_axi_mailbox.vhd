@@ -114,12 +114,14 @@ end port_axi_mailbox;
 architecture rtl of port_axi_mailbox is
 
 -- Compare AXI address against configured address, with wildcard option.
-function address_match(addr : unsigned) return boolean is
+function address_match(addr : std_logic_vector) return std_logic is
 begin
     if (REG_ADDR < 0) then
-        return true;    -- Match any address
+        return '1';     -- Match any address
+    elsif (addr = i2s(REG_ADDR, ADDR_WIDTH)) then
+        return '1';     -- Match specific address
     else
-        return addr = to_unsigned(REG_ADDR, ADDR_WIDTH);
+        return '0';     -- No match
     end if;
 end function;
 
@@ -134,16 +136,20 @@ signal rd_adj_valid : std_logic;
 signal rd_adj_ready : std_logic;
 
 -- Buffer one AXI-write transaction.
+signal prewr_valid  : std_logic := '0';
+signal prewr_ready  : std_logic := '0';
 signal wr_gotaddr   : std_logic := '0';
 signal wr_gotdata   : std_logic := '0';
 signal wr_exec      : std_logic := '0';
 signal wr_valid     : std_logic := '0';
+signal wr_rpend     : std_logic := '0';
 signal wr_valid2    : std_logic := '0';
-signal wr_addr      : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
+signal wr_addr      : std_logic_vector(ADDR_WIDTH-1 downto 0) := (others => '0');
 signal wr_data      : std_logic_vector(31 downto 0) := (others => '0');
 signal wr_opcode    : integer range 0 to 255 := 0;
 
 -- Buffer one read transaction.
+signal rd_buffer    : std_logic_vector(31 downto 0) := (others => '0');
 signal rd_pending   : std_logic := '0';
 signal rd_avail     : std_logic := '0';
 
@@ -168,7 +174,6 @@ tx_ctrl.reset_p <= port_reset_p;
 -- AXI command responses are always "OK" ('00').
 axi_rresp   <= "00";
 axi_bresp   <= "00";
-axi_bvalid  <= '1';
 
 -- Hold port reset at least N clock cycles.
 port_areset <= cmd_reset_p or not axi_aresetn;
@@ -220,16 +225,19 @@ u_rd_adj : entity work.eth_frame_adjust
 -- data-before-address or address-before-data without blocking.
 axi_awready <= not wr_gotaddr;
 axi_wready  <= not wr_gotdata;
-wr_exec     <= (wr_gotaddr or axi_awvalid)
-           and (wr_gotdata or axi_wvalid)
-           and (cmd_ready or not wr_valid);
+axi_bvalid  <= wr_rpend and axi_aresetn;
+prewr_valid <= (wr_gotaddr or axi_awvalid)
+           and (wr_gotdata or axi_wvalid);
+prewr_ready <= (cmd_ready or not wr_valid)
+           and (axi_bready or not wr_rpend);
+wr_exec     <= prewr_valid and prewr_ready;
 
 p_axi_wr : process(axi_clk)
 begin
     if rising_edge(axi_clk) then
         if (axi_awvalid = '1' and wr_gotaddr = '0') then
             -- Latch new address when ready.
-            wr_addr <= unsigned(axi_awaddr);
+            wr_addr <= axi_awaddr;
         end if;
 
         if (axi_wvalid = '1' and wr_gotdata = '0') then
@@ -259,12 +267,21 @@ begin
         elsif (cmd_valid = '0' or cmd_ready = '1') then
             wr_valid <= '0';    -- Command executed
         end if;
+
+        -- Update the response-pending flag.
+        if (axi_aresetn = '0') then
+            wr_rpend <= '0';    -- Global reset
+        elsif (wr_exec = '1') then
+            wr_rpend <= '1';    -- New data received
+        elsif (axi_bready = '1') then
+            wr_rpend <= '0';    -- Response accepted
+        end if;
     end if;
 end process;
 
 -- Parse and execute the buffered write command.
 -- (Combinational logic, so we don't need a FIFO.)
-wr_valid2   <= wr_valid and bool2bit(address_match(wr_addr));
+wr_valid2   <= wr_valid and address_match(wr_addr);
 wr_opcode   <= U2I(wr_data(31 downto 24));
 cmd_data    <= wr_data(7 downto 0);
 cmd_last    <= bool2bit(wr_opcode = 3);
@@ -273,23 +290,29 @@ cmd_reset_p <= wr_valid2 and bool2bit(wr_opcode = 255);
 
 -- Buffer one read transaction, and assert interrupt flag
 -- whenever received data is available to be read.
+-- (Note: Read value for CPU is valid even if FIFO is empty.)
 axi_arready  <= axi_rready or not rd_pending;
-axi_rdata    <= rd_adj_valid & rd_adj_last & "0000000000000000000000" & rd_adj_data;
-axi_rvalid   <= rd_pending;     -- Valid even if FIFO is empty
-rd_adj_ready <= rd_pending and axi_rready;
+axi_rdata    <= rd_buffer;
+axi_rvalid   <= rd_pending and axi_aresetn;
+rd_adj_ready <= (axi_arvalid and address_match(axi_araddr))
+            and (axi_rready or not rd_pending);
 irq_out      <= rd_avail;
 
 p_axi_rd : process(axi_clk)
 begin
     if rising_edge(axi_clk) then
+        -- Update the read-pending flag.
         if (axi_aresetn = '0') then
             rd_pending <= '0';  -- Interface reset
-        elsif (rd_pending = '1' and axi_rready = '0') then
-            rd_pending <= '1';  -- Hold until reply is consumed
-        elsif (axi_arvalid = '1' and address_match(unsigned(axi_araddr))) then
+        elsif (rd_adj_ready = '1') then
             rd_pending <= '1';  -- Start of new read transaction
-        else
-            rd_pending <= '0';  -- Idle
+        elsif (axi_rready = '1') then
+            rd_pending <= '0';  -- Reply consumed
+        end if;
+
+        -- Latch output word to ensure it remains stable.
+        if (rd_adj_ready = '1') then
+            rd_buffer <= rd_adj_valid & rd_adj_last & "0000000000000000000000" & rd_adj_data;
         end if;
 
         -- Buffer helps with routing and timing.

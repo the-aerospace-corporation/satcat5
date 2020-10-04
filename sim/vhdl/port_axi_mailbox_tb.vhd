@@ -24,7 +24,7 @@
 -- connected back-to-back with another identical port.  Both are polled
 -- at random intervals to evaluate flow control corner cases.
 --
--- The complete test takes about 3.7 milliseconds.
+-- The complete test takes about 5.7 milliseconds.
 --
 
 library ieee;
@@ -71,16 +71,30 @@ signal a_wr_cmd,  b_wr_cmd  : opcode_t;
 signal a_rate,    b_rate    : real := 0.0;
 
 -- AXI control signals for each UUT.
-signal a_awvalid, b_awvalid : std_logic;
+signal a_awvalid, b_awvalid : std_logic := '0';
 signal a_awready, b_awready : std_logic;
 signal a_wdata,   b_wdata   : std_logic_vector(31 downto 0);
-signal a_wvalid,  b_wvalid  : std_logic;
+signal a_wvalid,  b_wvalid  : std_logic := '0';
 signal a_wready,  b_wready  : std_logic;
-signal a_arvalid, b_arvalid : std_logic;
+signal a_arvalid, b_arvalid : std_logic := '0';
 signal a_arready, b_arready : std_logic;
 signal a_rdata,   b_rdata   : std_logic_vector(31 downto 0);
 signal a_rvalid,  b_rvalid  : std_logic;
 signal a_rready,  b_rready  : std_logic;
+signal a_bresp,   b_bresp   : std_logic_vector(1 downto 0);
+signal a_bvalid,  b_bvalid  : std_logic;
+signal a_bready,  b_bready  : std_logic := '0';
+
+-- Count transactions on each pipe (AW, W, B, AR, R)
+signal a_awcount, b_awcount : natural := 0;
+signal a_wcount,  b_wcount  : natural := 0;
+signal a_bcount,  b_bcount  : natural := 0;
+signal a_arcount, b_arcount : natural := 0;
+signal a_rcount,  b_rcount  : natural := 0;
+
+-- Check for illegal data-change events on the read pipe.
+signal a_rdata_d, b_rdata_d : std_logic_vector(31 downto 0) := (others => '0');
+signal a_rcheck,  b_rcheck  : std_logic := '0';
 
 begin
 
@@ -106,6 +120,11 @@ b_rready <= a_wready;
 
 -- Randomly issue read and write commands at designated rate.
 p_poll : process(clk_100)
+    function equal_pm2(a,b : natural) return boolean is
+    begin
+        return (a+2 = b) or (a+1 = b) or (a = b) or (a = b+1) or (a = b+2);
+    end function;
+
     variable seed1 : positive := 678109;
     variable seed2 : positive := 167190;
     variable rand  : real := 0.0;
@@ -116,32 +135,75 @@ begin
         -- On new or continued command, set "valid" high.
         -- If no new command and previous was consumed, set "valid" low.
         uniform(seed1, seed2, rand);
-        if (rand < a_rate) then
+        if (reset_n = '1' and rand < a_rate) then
             a_awvalid <= '1';
         elsif (a_awready = '1') then
             a_awvalid <= '0';
         end if;
 
         uniform(seed1, seed2, rand);
-        if (rand < a_rate) then
+        if (reset_n = '1' and rand < a_rate) then
             a_arvalid <= '1';
-        elsif (a_awready = '1') then
+        elsif (a_arready = '1') then
             a_arvalid <= '0';
         end if;
 
         uniform(seed1, seed2, rand);
-        if (rand < b_rate) then
+        if (reset_n = '1' and rand < b_rate) then
             b_awvalid <= '1';
-        elsif (a_awready = '1') then
+        elsif (b_awready = '1') then
             b_awvalid <= '0';
         end if;
 
         uniform(seed1, seed2, rand);
-        if (rand < b_rate) then
+        if (reset_n = '1' and rand < b_rate) then
             b_arvalid <= '1';
-        elsif (a_awready = '1') then
+        elsif (b_arready = '1') then
             b_arvalid <= '0';
         end if;
+
+        -- The write-response "ready" strobes don't require any state.
+        uniform(seed1, seed2, rand);
+        a_bready <= bool2bit(rand < a_rate);
+
+        uniform(seed1, seed2, rand);
+        b_bready <= bool2bit(rand < b_rate);
+
+        -- Count transactions on each pipe (AW, W, B, AR, R)
+        a_awcount   <= a_awcount + u2i(a_awvalid and a_awready);
+        a_wcount    <= a_wcount  + u2i(a_wvalid  and a_wready);
+        a_bcount    <= a_bcount  + u2i(a_bvalid  and a_bready);
+        a_arcount   <= a_arcount + u2i(a_arvalid and a_arready);
+        a_rcount    <= a_rcount  + u2i(a_rvalid  and a_rready);
+        b_awcount   <= b_awcount + u2i(b_awvalid and b_awready);
+        b_wcount    <= b_wcount  + u2i(b_wvalid  and b_wready);
+        b_bcount    <= b_bcount  + u2i(b_bvalid  and b_bready);
+        b_arcount   <= b_arcount + u2i(b_arvalid and b_arready);
+        b_rcount    <= b_rcount  + u2i(b_rvalid  and b_rready);
+
+        -- Sanity check on the running-disparity counts.
+        assert ( equal_pm2(a_awcount, a_wcount)
+             and equal_pm2(a_awcount, a_bcount)
+             and equal_pm2(a_wcount,  a_bcount) )
+            report "Running A-write disparity." severity error;
+        assert ( equal_pm2(a_arcount, a_rcount) )
+            report "Running A-read disparity." severity error;
+        assert ( equal_pm2(b_awcount, b_wcount)
+             and equal_pm2(b_awcount, b_bcount)
+             and equal_pm2(b_wcount,  b_bcount) )
+            report "Running B-write disparity." severity error;
+        assert ( equal_pm2(b_arcount, b_rcount) )
+            report "Running B-read disparity." severity error;
+
+        -- Check for illegal data-change events on the read pipe.
+        assert (a_rcheck = '0' or a_rdata = a_rdata_d)
+            report "Illegal A-rdata change." severity error;
+        assert (b_rcheck = '0' or b_rdata = b_rdata_d)
+            report "Illegal B-rdata change." severity error;
+        a_rdata_d   <= a_rdata;
+        b_rdata_d   <= b_rdata;
+        a_rcheck    <= a_rvalid and not a_rready;
+        b_rcheck    <= b_rvalid and not b_rready;
 
         -- Set A/B polling rates using sine^2 and cosine^2,
         -- so we gradually transition between edge cases.
@@ -192,8 +254,8 @@ uut_a : entity work.port_axi_mailbox
     axi_wvalid  => a_wvalid,
     axi_wready  => a_wready,
     axi_bresp   => open,    -- Not tested
-    axi_bvalid  => open,
-    axi_bready  => '1',
+    axi_bvalid  => a_bvalid,
+    axi_bready  => a_bready,
     axi_araddr  => REG_ADDR_U,
     axi_arvalid => a_arvalid,
     axi_arready => a_arready,
@@ -219,8 +281,8 @@ uut_b : entity work.port_axi_mailbox
     axi_wvalid  => b_wvalid,
     axi_wready  => b_wready,
     axi_bresp   => open,    -- Not tested
-    axi_bvalid  => open,
-    axi_bready  => '1',
+    axi_bvalid  => b_bvalid,
+    axi_bready  => b_bready,
     axi_araddr  => REG_ADDR_U,
     axi_arvalid => b_arvalid,
     axi_arready => b_arready,
