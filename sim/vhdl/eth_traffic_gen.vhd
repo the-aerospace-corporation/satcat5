@@ -47,6 +47,7 @@ entity eth_traffic_gen is
     mac_src     : in  unsigned(7 downto 0); -- Source address (repeat 6x)
     out_rate    : in  real := 1.0;          -- Average flow-control rate
     out_port    : out port_rx_m2s;          -- Output data (see switch_types)
+    out_bcount  : out natural;              -- Remaining bytes (0 = last)
     out_valid   : out std_logic;            -- Alternate flow control mode
     out_ready   : in  std_logic := '1');    -- Alternate flow-control mode
 end eth_traffic_gen;
@@ -91,6 +92,7 @@ end function;
 signal out_data     : std_logic_vector(7 downto 0) := (others => '0');
 signal out_valid_i  : std_logic := '0';
 signal out_last     : std_logic := '0';
+signal out_bcount_i : natural := 0;
 
 begin
 
@@ -102,6 +104,7 @@ out_port.data       <= out_data;
 out_port.write      <= out_valid_i and out_ready;
 out_port.last       <= out_last;
 out_valid           <= out_valid_i;
+out_bcount          <= out_bcount_i;
 
 -- Self-test of CRC algorithm using fixed reference packets.
 p_self_test : process
@@ -118,7 +121,7 @@ p_self_test : process
 
     -- Follow the literal definition from IEEE 802.3 standard.
     function crc_literal(pkt : std_logic_vector) return crc_word_t is
-        constant NBYTES : integer := pkt'length / 8;
+        constant NBYTES : natural := pkt'length / 8;
         variable tmp : crc_byte_t;
         variable crc : crc_word_t := (others => '0');
     begin
@@ -142,7 +145,7 @@ p_self_test : process
 
     -- Simpler CRC calculation method.
     function crc_simpler(pkt : std_logic_vector) return crc_word_t is
-        constant NBYTES : integer := pkt'length / 8;
+        constant NBYTES : natural := pkt'length / 8;
         variable tmp : crc_byte_t;
         variable crc : crc_word_t := (others => '1');
     begin
@@ -157,7 +160,7 @@ p_self_test : process
 
     -- Convert CRC value to hex string.
     function crc_str(crc : crc_word_t) return string is
-        variable tmp : integer range 0 to 15;
+        variable tmp : natural range 0 to 15;
         variable result : string(1 to 8);
     begin
         for n in 7 downto 0 loop
@@ -187,7 +190,7 @@ p_self_test : process
 
     -- Check calculated FCS against expected value.
     -- (Use both methods, to demonstrate they produce the same result.)
-    variable test_num : integer := 0;
+    variable test_num : natural := 0;
 
     procedure ref_check(pkt : std_logic_vector; ref : crc_word_t) is
         variable uut1 : crc_word_t := crc_literal(pkt);
@@ -228,8 +231,8 @@ end process;
 -- Data generation.
 p_src : process(clk)
     -- Valid range for Ethernet frame length (includes header and CRC).
-    constant MIN_FRAME_BYTES : integer := 64;
-    constant MAX_FRAME_BYTES : integer := 1522;
+    constant MIN_FRAME_BYTES : natural := 64;
+    constant MAX_FRAME_BYTES : natural := 1522;
 
     -- Separate PRNG state for data and flow control.
     -- This ensures two units with the same seed generate the same
@@ -318,6 +321,9 @@ begin
             out_valid_i <= '0';
             out_last    <= '0';
         end if;
+
+        -- External copy of remaining bytes counter.
+        out_bcount_i <= pkt_rem;
     end if;
 end process;
 

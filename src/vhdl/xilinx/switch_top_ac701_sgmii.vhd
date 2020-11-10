@@ -295,7 +295,7 @@ u_rgmii1 : entity work.port_rgmii
 --   sgmii_*[0] = Eth2 = ctrl_gpo(2)
 --   sgmii_*[1] = Eth3 = ctrl_gpo(3)
 gen_sgmii : for n in 0 to PORTS_SGMII-1 generate
-    u_sgmii : entity work.port_sgmii_xilinx
+    u_sgmii : entity work.port_sgmii_gpio
         port map(
         sgmii_rxp   => sgmii_rxp(n),
         sgmii_rxn   => sgmii_rxn(n),

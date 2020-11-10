@@ -6,23 +6,26 @@ This log will be updated for each new release, but may not reflect the latest de
 
 ## v1.0.0
 
-Initial release of the SatCat5 mixed-media Ethernet switch.
-
-Supported FPGA platforms: Lattice iCE40, Xilinx 7-Series
-
-Supported Ethernet interfaces: RMII, RGMII, SGMII, SPI, UART
-
-Also included: Example designs for the Arty A7 as well as several [custom boards](../test/proto_pcb/README.md), the [PiWire](../test/pi_wire/readme.md) adapter software, a Python-based mixed-media-Ethernet [chatroom demo](../test/chat_client/README.md), and Jenkins scripts for continuous integration and testing.
+* Initial release of the SatCat5 mixed-media Ethernet switch.
+* Supported FPGA platforms: Lattice iCE40, Xilinx 7-Series
+* Supported Ethernet interfaces: RMII, RGMII, SGMII, SPI, UART
+* Also included: Example designs for the Arty A7 as well as several [custom boards](../test/proto_pcb/README.md), the [PiWire](../test/pi_wire/readme.md) adapter software, a Python-based mixed-media-Ethernet [chatroom demo](../test/chat_client/README.md), and Jenkins scripts for continuous integration and testing.
 
 ## v1.1.0
 
-Added platform support for the Microsemi Polarfire.
+* Added platform support for the Microsemi Polarfire.
+* New features including improved MAC-address lookup, a virtual port (AXI-mailbox), SPI ports with an output clock, and improved build scripting.
 
-New features including improved MAC-address lookup, a virtual port (AXI-mailbox), SPI ports with an output clock, and improved build scripting.
+## v1.2.0
+
+* Added contribution guidelines, issue templates, and pull-request templates to encourage outside contributions.
+* Added IPv4 router block.
+* New switch management features including traffic counters and per-port promiscuous-mode.
+* Xilinx platform: Added block-diagram IP-core wrappers for many functional blocks.
 
 # Copyright Notice
 
-Copyright 2019 The Aerospace Corporation
+Copyright 2019, 2020 The Aerospace Corporation
 
 This file is part of SatCat5.
 

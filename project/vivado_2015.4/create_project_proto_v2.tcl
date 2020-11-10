@@ -26,8 +26,8 @@
 set target_proj "switch_proto_v2"
 set target_part "xc7a50tftg256-2"
 set target_top "switch_top_proto_v2"
-set constr_synth "./switch_proto_v2_synth.xdc"
-set constr_impl "./switch_proto_v2_impl.xdc"
+set constr_synth "constraints/switch_proto_v2_synth.xdc"
+set constr_impl "constraints/switch_proto_v2_impl.xdc"
 
 # List HDL source files, grouped by type.
 set files_main [list \
@@ -70,7 +70,7 @@ set files_main [list \
  "[file normalize "../../src/vhdl/xilinx/clkgen_sgmii.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/io_7series.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/lutram_7series.vhd"]"\
- "[file normalize "../../src/vhdl/xilinx/port_sgmii_xilinx.vhd"]"\
+ "[file normalize "../../src/vhdl/xilinx/port_sgmii_gpio.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/scrub_xilinx.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/sgmii_data_slip.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/sgmii_data_sync.vhd"]"\

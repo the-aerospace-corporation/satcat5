@@ -48,14 +48,14 @@ def list_uart_interfaces():
     return result
 
 def ethernet_crc(pkt):
+    '''Given byte-string, calculate Ethernet-FCS (CRC32)'''
     crc_int = crc32(pkt) & 0xFFFFFFFF
     return pack('<L', crc_int)
 
 def crc_self_test():
-    '''
-    Define each reference packet:
-    https://www.cl.cam.ac.uk/research/srg/han/ACS-P35/ethercrc/
-    '''
+    '''Self-test function to verify CRC parameters.'''
+    # Define each reference packet:
+    # https://www.cl.cam.ac.uk/research/srg/han/ACS-P35/ethercrc/
     PKT1 = b"\xFF\xFF\xFF\xFF\xFF\xFF\x00\x20\xAF\xB7\x80\xB8\x08\x06\x00" \
          + b"\x01\x08\x00\x06\x04\x00\x01\x00\x20\xAF\xB7\x80\xB8\x80\xE8" \
          + b"\x0F\x94\x00\x00\x00\x00\x00\x00\x80\xE8\x0F\xDE\xDE\xDE\xDE" \
@@ -82,7 +82,13 @@ def crc_self_test():
 class AsyncSerialPort:
     '''Frame-based UART class with adjustable delimiter.'''
     def __init__(self, logger, callback, msg_delim=b'\n'):
-        '''Initialize member variables.'''
+        '''
+        Initialize member variables.
+        Keyword arguments:
+        logger -- A Logger object, i.e., logging.getLogger(xx)
+        callback -- Function to be called for each received frame (or None).
+        msg_delim -- Character that marks inter-frame boundaries, default '\n'
+        '''
         self._baudrate = 0
         self._callback = callback
         self._delim = msg_delim
@@ -97,6 +103,12 @@ class AsyncSerialPort:
         self._tx_thread = None
 
     def open(self, portname, baudrate=921600):
+        '''
+        Open the specified UART port.
+        Keyword arguments:
+        portname -- Name of the UART interface, suitable for Serial constructor.
+        baudrate -- Baud rate of the UART port, in bits per second. (Default 921,600)
+        '''
         self._lbl = portname
         try:
             # Cleanup if already open.
@@ -129,12 +141,19 @@ class AsyncSerialPort:
             self._log.error(self._lbl + ':\n' + traceback.format_exc())
 
     def close(self):
+        '''Close this UART port, if open.'''
         if not (self._rx_thread is None):
             self._run = False           # Stop main work loop
             self._rx_thread.join()      # Wait for thread to exit cleanly
             self._port.close()          # Closing port should stop thread
 
     def msg_send(self, data, blocking=False):
+        '''
+        Send a message over this UART port.
+        Keyword arguments:
+        data -- Byte string to be sent
+        blocking -- Wait to finish before returning? (Default false)
+        '''
         with self._tx_lock:
             if blocking:
                 self._port.write(data)
@@ -142,6 +161,7 @@ class AsyncSerialPort:
                 self._tx_buff += data
 
     def _rx_loop(self):
+        '''Main loop for the receive thread.'''
         self._log.info(self._lbl + ': Rx loop start')
         rx_buff = b''   # Empty working buffer
         while self._run:
@@ -163,6 +183,7 @@ class AsyncSerialPort:
         self._log.info(self._lbl + ': Rx loop done')
 
     def _tx_loop(self):
+        '''Main loop for the transmit thread.'''
         self._log.info(self._lbl + ': Tx loop start')
         while self._run:
             with self._tx_lock:
@@ -201,6 +222,11 @@ class AsyncSLIPPort:
         '''
         Create a new "locally administered" MAC address.
         16 MSBs are 0xAE20 ("Aero"), then 32 random LSBs.
+        Keyword arguments:
+        portname -- UART port name (see AsyncSerialPort)
+        logger -- Python logger object for error messages
+        zeropad -- Enable zero-padding of short frames to at least 64 bytes (default false)
+        verbose -- Enable additional status messages in log (default false)
         '''
         rand1 = randrange(65536)
         rand2 = randrange(65536)
@@ -218,12 +244,15 @@ class AsyncSLIPPort:
         self._serial.open(portname, 921600)
 
     def close(self):
+        '''Close this UART port.'''
         self._serial.close()
 
     def is_uart(self):
+        '''Is this object a UART or a true Ethernet port?'''
         return True
 
     def set_callback(self, callback):
+        '''Set callback function for received frames.'''
         self._callback = callback
 
     def msg_rcvd(self, slip_frm):
@@ -252,7 +281,6 @@ class AsyncSLIPPort:
     def msg_send(self, eth_usr):
         '''
         Send frame with Dst, Src, Type, Payload (no checksum).
-
         Optionally zero-pad so frame + CRC is at least 64 bytes.
         '''
         if self._zeropad and len(eth_usr) < 60:

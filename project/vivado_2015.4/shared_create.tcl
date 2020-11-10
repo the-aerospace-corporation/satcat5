@@ -49,7 +49,7 @@ if {![info exists target_lib]} {
 }
 
 # Make a copy of the dummy "debug" constraints file.
-file copy -force "$script_dir/shared_debug.xdc" "./$target_proj/constr_debug.xdc"
+file copy -force "$script_dir/constraints/shared_debug.xdc" "./$target_proj/constr_debug.xdc"
 
 # Add each file and set properties.
 set src_files [get_filesets sources_1]
@@ -59,8 +59,6 @@ foreach fi $files_main {
     set_property "file_type" "VHDL" $file_obj
     set_property "library" $target_lib $file_obj
 }
-
-set_property "top" $target_top $src_files
 
 # Create the Soft Error Mitigation (SEM) core.
 source "$script_dir/generate_sem.tcl"
@@ -89,10 +87,15 @@ set_property "file_type" "XDC" $file_obj
 
 # Set 'sim_1' fileset object
 #create_fileset -simset sim_1
-set obj [get_filesets sim_1]
-set_property "top" $target_top $obj
-set_property "xelab.nosort" "1" $obj
-set_property "xelab.unifast" "" $obj
+set sim_files [get_filesets sim_1]
+set_property "xelab.nosort" "1" $sim_files
+set_property "xelab.unifast" "" $sim_files
+
+# Set the top-level file, if specified.
+if {[info exists target_top]} {
+    set_property "top" $target_top $src_files
+    set_property "top" $target_top $sim_files
+}
 
 # Create 'synth_1' run (if not found)
 if {[string equal [get_runs -quiet synth_1] ""]} {

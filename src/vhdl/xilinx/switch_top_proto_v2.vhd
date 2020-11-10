@@ -208,7 +208,7 @@ end generate;
 
 -- Define each SGMII port.
 gen_sgmii : for n in 0 to PORTS_SGMII-1 generate
-    u_sgmii : entity work.port_sgmii_xilinx
+    u_sgmii : entity work.port_sgmii_gpio
         port map(
         sgmii_rxp   => sgmii_rxp(n+1),
         sgmii_rxn   => sgmii_rxn(n+1),

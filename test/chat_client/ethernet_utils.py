@@ -39,7 +39,9 @@ def str2mac(str):
 
 def list_eth_interfaces():
     '''
-    Returns a list of all Ethernet interfaces and MAC addresses.
+    Returns a dictionary of all Ethernet interfaces and MAC addresses.
+    Keys are human-readable labels, values are ScaPy interface-ID strings.
+    The formatting of ID strings is platform-specific.
     '''
     result = {}
     if os.name =='nt':
@@ -47,18 +49,24 @@ def list_eth_interfaces():
         for interface in ifs:
             result[interface['description']] = interface['name']
     else:
-        result = sca.get_if_list()
-    
+        ifs = sca.get_if_list()
+        for interface in ifs:
+            result[interface] = interface
     return result
 
 class AsyncEthernetPort:
     '''Ethernet port wrapper. Same interface as serial_utils::AsyncSLIPPort.'''
-    def __init__(self, ifobj, logger):
-        '''Initialize member variables.'''
-        self._iface = ifobj
-        #self.lbl = ifobj.data['netid']
-        self.lbl = ifobj
-        self.mac = str2mac(sca.get_if_hwaddr(ifobj))
+    def __init__(self, label, iface, logger):
+        '''
+        Initialize member variables.
+        Keyword arguments:
+        label -- Human-readable label for this interface.
+        iface -- ScaPy interface-ID string.  (See list_eth_interfaces.)
+        logger -- Logger object for reporting status and errors.
+        '''
+        self._iface = iface
+        self.lbl = label
+        self.mac = str2mac(sca.get_if_hwaddr(iface))
         self._callback = None
         self._log = logger
         self._rx_run = True
@@ -78,9 +86,11 @@ class AsyncEthernetPort:
             self._rx_thread.join()
 
     def is_uart(self):
+        '''Is this interface a UART or a true Ethernet port?'''
         return False
 
     def set_callback(self, callback):
+        '''Set callback function for received frames.'''
         self._callback = callback
 
     def msg_rcvd(self, packet):
@@ -110,6 +120,7 @@ class AsyncEthernetPort:
             self._log.error(self.lbl + ':\n' + traceback.format_exc())
 
     def _rx_loop(self):
+        '''Main loop for the receive thread.'''
         self._log.info(self.lbl + ': Rx loop start')
         while self._rx_run:
             try:

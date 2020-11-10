@@ -26,8 +26,8 @@
 set target_part "xc7a200tfbg676-2"
 set target_proj "switch_proto_v1_base"
 set target_top "switch_top_ac701_base"
-set constr_synth "./switch_proto_v1_base_synth.xdc"
-set constr_impl "./switch_proto_v1_base_impl.xdc"
+set constr_synth "constraints/switch_proto_v1_base_synth.xdc"
+set constr_impl "constraints/switch_proto_v1_base_impl.xdc"
 
 # List HDL source files, grouped by type.
 set files_main [list \

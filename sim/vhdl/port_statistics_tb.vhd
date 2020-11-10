@@ -102,7 +102,6 @@ begin
     if rising_edge(clk_100) then
         -- Randomize length at the start of each new frame,
         -- and keep track of the total statistics.
-        -- Update
         if (test_start = '1') then
             rx_frem     := test_frames - 1;
             rx_brem     := rand_len;
