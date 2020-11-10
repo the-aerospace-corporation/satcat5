@@ -43,13 +43,14 @@ use     work.common_functions.all;
 
 entity packet_fifo_tb_single is
     generic (
-    OUTER_BYTES     : integer;          -- Width of input/output ports
-    INNER_BYTES     : integer;          -- Width of inter-FIFO port
-    OUTER_CLOCK_MHZ : integer;          -- Rate of input/output ports
-    INNER_CLOCK_MHZ : integer;          -- Rate of inter-FIFO ports
-    BUFFER_KBYTES   : integer;          -- Buffer size (kilobytes)
-    MIN_PKT_BYTES   : integer := 64;    -- Minimum packet size (bytes)
-    MAX_PKT_BYTES   : integer := 250);  -- Maximum packet size (bytes)
+    OUTER_BYTES     : natural;          -- Width of input/output ports
+    INNER_BYTES     : natural;          -- Width of inter-FIFO port
+    OUTER_CLOCK_MHZ : natural;          -- Rate of input/output ports
+    INNER_CLOCK_MHZ : natural;          -- Rate of inter-FIFO ports
+    BUFFER_KBYTES   : natural;          -- Buffer size (kilobytes)
+    META_WIDTH      : natural := 0;     -- Metadata width (optional)
+    MIN_PKT_BYTES   : natural := 64;    -- Minimum packet size (bytes)
+    MAX_PKT_BYTES   : natural := 250);  -- Maximum packet size (bytes)
     -- No I/O ports
 end packet_fifo_tb_single;
 
@@ -58,6 +59,8 @@ architecture single of packet_fifo_tb_single is
 constant MIN_PKT_WORDS : integer := MIN_PKT_BYTES / OUTER_BYTES;
 constant MAX_PKT_WORDS : integer := MAX_PKT_BYTES / OUTER_BYTES;
 constant MAX_PACKETS   : integer := (1024 * BUFFER_KBYTES) / MIN_PKT_BYTES;
+
+subtype meta_t is std_logic_vector(META_WIDTH-1 downto 0);
 
 -- Clock generation.
 constant OUTER_PERIOD : time := 1 us / OUTER_CLOCK_MHZ;
@@ -69,6 +72,7 @@ signal outer_clk    : std_logic := '0';
 signal in_index     : integer := 0;
 signal in_drop_en   : std_logic := '0';
 signal in_data      : std_logic_vector(8*OUTER_BYTES-1 downto 0) := (others => '0');
+signal in_meta      : meta_t := (others => '0');
 signal in_last_com  : std_logic := '0';
 signal in_last_rev  : std_logic := '0';
 signal in_valid     : std_logic := '0';
@@ -79,6 +83,7 @@ signal in_overflow  : std_logic;
 -- Transfer from first FIFO to second FIFO.
 signal mid_data     : std_logic_vector(8*INNER_BYTES-1 downto 0);
 signal mid_bcount   : integer range 0 to INNER_BYTES-1;
+signal mid_meta     : meta_t := (others => '0');
 signal mid_last     : std_logic;
 signal mid_valid    : std_logic;
 signal mid_ready    : std_logic := '0';
@@ -90,6 +95,7 @@ signal out_index    : integer := 0;
 signal out_total    : integer := 0;
 signal out_ref      : std_logic_vector(8*OUTER_BYTES-1 downto 0) := (others => '0');
 signal out_data     : std_logic_vector(8*OUTER_BYTES-1 downto 0);
+signal out_meta     : meta_t := (others => '0');
 signal out_last     : std_logic;
 signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
@@ -163,6 +169,7 @@ p_input : process(outer_clk)
     variable rand           : real := 0.0;
     variable len, count     : integer := 0;
     variable seed_temp      : integer := 0;
+    variable meta           : meta_t := (others => '0');
 begin
     if rising_edge(outer_clk) then
         -- Check for start of new packet.
@@ -170,6 +177,7 @@ begin
             in_data <= (others => '0');
             len     := 0;
             count   := 0;
+            meta    := (others => '0');
         elsif (in_valid = '0' or in_ready = '1') then
             -- Generate next output word...
             if (count >= len) then
@@ -186,10 +194,14 @@ begin
                 for n in 1 to 10000 loop
                     uniform(seed1, seed2, rand);
                 end loop;
-                -- Select packet length and reset word-count.
+                -- Select packet length/metadata and reset word-count.
                 uniform(seed1, seed2, rand);
                 len := MIN_PKT_WORDS + integer(floor(
                     rand * real(MAX_PKT_WORDS - MIN_PKT_WORDS)));
+                for n in meta'range loop
+                    uniform(seed1, seed2, rand);
+                    meta(n) := bool2bit(rand < 0.5);
+                end loop;
                 count := 0;
             else
                 -- The rest is random, seeded by packet index.
@@ -202,10 +214,13 @@ begin
         end if;
 
         -- Drive the last-word strobes.
+        -- (Metadata is latched concurrently.)
         if (len = 0 or count < len) then
+            in_meta     <= (others => 'X');
             in_last_com <= '0';
             in_last_rev <= '0';
         else
+            in_meta     <= meta;
             in_last_com <= not in_drop_en;
             in_last_rev <= in_drop_en;
         end if;
@@ -227,11 +242,13 @@ uut1 : entity work.packet_fifo
     INPUT_BYTES     => OUTER_BYTES,
     OUTPUT_BYTES    => INNER_BYTES,
     BUFFER_KBYTES   => BUFFER_KBYTES,
+    META_WIDTH      => META_WIDTH,
     MAX_PACKETS     => MAX_PACKETS,
     MAX_PKT_BYTES   => MAX_PKT_BYTES)
     port map(
     in_clk          => outer_clk,
     in_data         => in_data,
+    in_pkt_meta     => in_meta,
     in_last_commit  => in_last_com,
     in_last_revert  => in_last_rev,
     in_write        => in_write,
@@ -239,6 +256,7 @@ uut1 : entity work.packet_fifo
     out_clk         => inner_clk,
     out_data        => mid_data,
     out_bcount      => mid_bcount,
+    out_pkt_meta    => mid_meta,
     out_last        => mid_last,
     out_valid       => mid_valid,
     out_ready       => mid_ready,
@@ -251,12 +269,14 @@ uut2 : entity work.packet_fifo
     INPUT_BYTES     => INNER_BYTES,
     OUTPUT_BYTES    => OUTER_BYTES,
     BUFFER_KBYTES   => BUFFER_KBYTES,
+    META_WIDTH      => META_WIDTH,
     MAX_PACKETS     => MAX_PACKETS,
     MAX_PKT_BYTES   => MAX_PKT_BYTES)
     port map(
     in_clk          => inner_clk,
     in_data         => mid_data,
     in_bcount       => mid_bcount,
+    in_pkt_meta     => mid_meta,
     in_last_commit  => mid_last,
     in_last_revert  => '0',
     in_write        => mid_write,
@@ -264,6 +284,7 @@ uut2 : entity work.packet_fifo
     out_clk         => outer_clk,
     out_data        => out_data,
     out_bcount      => open,
+    out_pkt_meta    => out_meta,
     out_last        => out_last,
     out_valid       => out_valid,
     out_ready       => out_ready,
@@ -274,6 +295,7 @@ p_check : process(outer_clk)
     variable seed1, seed2   : positive := 1;
     variable rand           : real := 0.0;
     variable ref_len, count : integer := 0;
+    variable ref_meta       : meta_t := (others => '0');
     variable got_packet     : std_logic := '0';
 begin
     if rising_edge(outer_clk) then
@@ -282,6 +304,7 @@ begin
             out_index   <= 0;
             ref_len     := 0;
             count       := 0;
+            ref_meta    := (others => '0');
             got_packet  := '0';
         elsif (out_valid = '1' and out_ready = '1') then
             -- Is this the start of a new packet?
@@ -294,15 +317,21 @@ begin
                 for n in 1 to 10000 loop
                     uniform(seed1, seed2, rand);
                 end loop;
-                -- Predict expected length and reset state.
+                -- Predict expected length, metadata, and reset state.
                 uniform(seed1, seed2, rand);
                 ref_len := MIN_PKT_WORDS + integer(floor(
                     rand * real(MAX_PKT_WORDS - MIN_PKT_WORDS)));
+                for n in ref_meta'range loop
+                    uniform(seed1, seed2, rand);
+                    ref_meta(n) := bool2bit(rand < 0.5);
+                end loop;
                 got_packet := '1';
             elsif (count <= ref_len) then
                 -- Check each expected output word.
                 assert (out_data = out_ref)
                     report "Output data mismatch" severity error;
+                assert (out_meta = ref_meta)
+                    report "Output metadata mismatch" severity error;
             else
                 report "Output exceeded expected length." severity error;
             end if;
@@ -420,6 +449,7 @@ u1 : entity work.packet_fifo_tb_single
     generic map(
     OUTER_BYTES     => 1,
     INNER_BYTES     => 1,
+    META_WIDTH      => 8,
     OUTER_CLOCK_MHZ => 50,
     INNER_CLOCK_MHZ => 50,
     BUFFER_KBYTES   => 2);

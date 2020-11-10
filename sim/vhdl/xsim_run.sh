@@ -43,7 +43,7 @@ compile_all()
     # Find source files in each folder.
     # Use "grep -v" to ignore specific filenames.
     find_vhdl "../../src/vhdl/common" | add_to_prj
-    find_vhdl "../../src/vhdl/xilinx" | grep -v scrub_xilinx | grep -v converter_zed_top | add_to_prj
+    find_vhdl "../../src/vhdl/xilinx" | egrep -v "(converter_zed_top|port_sgmii_gtx|scrub_xilinx)" | add_to_prj
     find_vhdl "../../sim/vhdl" | add_to_prj
 
     # Compile design files
@@ -97,11 +97,13 @@ simulate_one()
 simulate_all()
 {
     # Run each unit test for the designated time:
+    simulate_one bram_fifo_tb 10ms
     simulate_one config_file2rom_tb 1us TEST_DATA_FOLDER $test_data_folder
     simulate_one config_mdio_rom_tb 30ms
     simulate_one config_port_eth_tb 4ms
     simulate_one config_port_uart_tb 16ms
     simulate_one config_send_status_tb 1ms
+    simulate_one config_stats_tb 3ms
     simulate_one error_reporting_tb 10ms
     simulate_one eth_all8b10b_tb 2ms
     simulate_one eth_frame_adjust_tb 8ms
@@ -111,7 +113,9 @@ simulate_all()
     simulate_one mac_lookup_tb 4ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_fifo_tb 10ms
+    simulate_one packet_inject_tb 10ms
     simulate_one port_axi_mailbox_tb 6ms
+    simulate_one port_inline_status_tb 4ms
     simulate_one port_rgmii_tb 1ms
     simulate_one port_rmii_tb 29ms
     simulate_one port_sgmii_common_tb 1ms
@@ -121,11 +125,19 @@ simulate_all()
     simulate_one port_serial_uart_2wire_tb 470ms
     simulate_one port_statistics_tb 2ms
     simulate_one round_robin_tb 20ms
+    simulate_one router_arp_cache_tb 2ms
+    simulate_one router_arp_proxy_tb 2ms
+    simulate_one router_arp_request_tb 1ms
+    simulate_one router_arp_update_tb 1ms
+    simulate_one router_ip_gateway_tb 22ms
+    simulate_one router_mac_replace_tb 11ms
+    simulate_one router_inline_top_tb 2ms
     simulate_one sgmii_data_slip_tb 16ms
     simulate_one sgmii_serdes_rx_tb 1ms
     simulate_one sgmii_data_sync_tb 110ms
     simulate_one slip_decoder_tb 20us
     simulate_one slip_encoder_tb 4ms
+    simulate_one smol_fifo_tb 10ms
     simulate_one switch_core_tb 12ms
 }
 

@@ -42,11 +42,13 @@ use     work.common_functions.all;
 use     work.eth_frame_common.all;
 use     work.switch_types.all;
 
-entity eth_frame_check_tb is
-    -- Unit testbench top level, no I/O ports
-end eth_frame_check_tb;
+entity eth_frame_check_tb_helper is
+    generic (
+    STRIP_FCS   : boolean := true;
+    OUTPUT_REG  : boolean := true);
+end eth_frame_check_tb_helper;
 
-architecture tb of eth_frame_check_tb is
+architecture tb of eth_frame_check_tb_helper is
 
 -- Clock and reset generation.
 signal clk_100      : std_logic := '0';
@@ -57,12 +59,14 @@ signal pkt_len      : integer := 256;
 signal pkt_etype    : boolean := false;
 
 signal in_port      : port_rx_m2s;
+signal in_port_rem  : natural := 0;
 signal in_rate      : real := 0.0;
 signal in_data      : std_logic_vector(7 downto 0) := (others => '0');
 signal in_last      : std_logic := '0';
 signal in_write     : std_logic := '0';
-signal in_commit    : std_logic := '0';
-signal in_revert    : std_logic := '0';
+signal mod_write    : std_logic := '0';
+signal mod_commit   : std_logic := '0';
+signal mod_revert   : std_logic := '0';
 
 -- Output stream.
 signal out_data     : std_logic_vector(7 downto 0);
@@ -71,8 +75,6 @@ signal out_commit   : std_logic;
 signal out_revert   : std_logic;
 
 -- Matched-delay FIFO.
-signal fifo_in      : std_logic_vector(9 downto 0);
-signal fifo_out     : std_logic_vector(9 downto 0);
 signal ref_data     : std_logic_vector(7 downto 0);
 signal ref_commit   : std_logic;
 signal ref_revert   : std_logic;
@@ -107,7 +109,8 @@ u_src : entity work.eth_traffic_gen
     mac_dst     => x"DD",
     mac_src     => x"CC",
     out_rate    => in_rate,
-    out_port    => in_port);
+    out_port    => in_port,
+    out_bcount  => in_port_rem);
 
 -- Packet state machine and data-replacement.
 -- (Allows generation of various types of invalid packets.)
@@ -148,10 +151,19 @@ begin
         else
             in_data <= in_port.data;
         end if;
-        in_last   <= in_port.last;
-        in_write  <= in_port.write;
-        in_commit <= in_port.last and pkt_valid;
-        in_revert <= in_port.last and not pkt_valid;
+        in_last     <= in_port.last;
+        in_write    <= in_port.write;
+
+        -- If STRIP_FCS is set, remove last four bytes from reference.
+        if (STRIP_FCS) then
+            mod_write   <= in_port.write and bool2bit(in_port_rem >= 4);
+            mod_commit  <= in_port.write and bool2bit(in_port_rem = 4) and pkt_valid;
+            mod_revert  <= in_port.write and bool2bit(in_port_rem = 4) and not pkt_valid;
+        else
+            mod_write   <= in_port.write;
+            mod_commit  <= in_port.last and pkt_valid;
+            mod_revert  <= in_port.last and not pkt_valid;
+        end if;
 
         -- Randomize packet length BEFORE start of each packet.
         if (pkt_rem = 2 and in_port.write = '1') then
@@ -191,6 +203,9 @@ end process;
 
 -- Unit under test
 uut : entity work.eth_frame_check
+    generic map(
+    STRIP_FCS   => STRIP_FCS,
+    OUTPUT_REG  => OUTPUT_REG)
     port map(
     in_data     => in_data,
     in_last     => in_last,
@@ -203,23 +218,23 @@ uut : entity work.eth_frame_check
     reset_p     => reset_p);
 
 -- Matched-delay FIFO.
-fifo_in     <= in_commit & in_revert & in_data;
-ref_commit  <= fifo_out(9);
-ref_revert  <= fifo_out(8);
-ref_data    <= fifo_out(7 downto 0);
-
 u_fifo : entity work.smol_fifo
     generic map(
-    IO_WIDTH     => 10,
-    DEPTH_LOG2   => 6)   -- FIFO depth = 2^N
+    IO_WIDTH    => 8,
+    META_WIDTH  => 2,
+    DEPTH_LOG2  => 6)   -- FIFO depth = 2^N
     port map(
-    in_data      => fifo_in,
-    in_write     => in_write,
-    out_data     => fifo_out,
-    out_valid    => ref_valid,
-    out_read     => out_write,
-    reset_p      => reset_p,
-    clk          => clk_100);
+    in_data     => in_data,
+    in_meta(0)  => mod_commit,
+    in_meta(1)  => mod_revert,
+    in_write    => mod_write,
+    out_data    => ref_data,
+    out_meta(0) => ref_commit,
+    out_meta(1) => ref_revert,
+    out_valid   => ref_valid,
+    out_read    => out_write,
+    reset_p     => reset_p,
+    clk         => clk_100);
 
 -- Output checking.
 p_check : process(clk_100)
@@ -253,4 +268,35 @@ begin
     end if;
 end process;
 
+end tb;
+
+-----------------------------------------------------------
+
+entity eth_frame_check_tb is
+    -- Unit testbench top level, no I/O ports
+end eth_frame_check_tb;
+
+architecture tb of eth_frame_check_tb is
+begin
+
+uut0 : entity work.eth_frame_check_tb_helper
+    generic map(
+    STRIP_FCS   => false,
+    OUTPUT_REG  => false);
+
+uut1 : entity work.eth_frame_check_tb_helper
+    generic map(
+    STRIP_FCS   => false,
+    OUTPUT_REG  => true);
+
+uut2 : entity work.eth_frame_check_tb_helper
+    generic map(
+    STRIP_FCS   => true,
+    OUTPUT_REG  => false);
+
+uut3 : entity work.eth_frame_check_tb_helper
+    generic map(
+    STRIP_FCS   => true,
+    OUTPUT_REG  => true);
+    
 end tb;

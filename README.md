@@ -67,20 +67,19 @@ More information is available in the [Frequently Asked Questions](doc/FAQ.md).
   * pi_wire: A tool for connecting to SatCat5 with a Raspberry Pi.
   * proto_pcb: PCB design files for the prototype reference design.
 
-# Style Guidelines
+# Contributing
 
-* All VHDL functional blocks MUST include an automated unit test:
-  * Test failures are indicated using "report" or "assert" statements with severity of "error" or higher.
-  * A comment at the top of the file should indicate the runtime required to complete the test.
-  * Add your unit test to the [Jenkins shell script](sim/vhdl/xsim_run.sh).
-  * Names such as "Tx" and "Rx" should usually refer to the switch FPGA context. (i.e., "Tx" should be an FPGA output.)
-* Indent size four spaces, spaces only (no tab characters),
-* No trailing spaces at end of line.
-* All reset signals indicate polarity (_p = Active High, _n = Active Low).
+We encourage you to contribute to SatCat5! Please check out the [guidelines here](doc/CONTRIBUTING.md) for information on how to submit bug reports and code changes.
+
+# Patents
+
+Portions of SatCat5 are patent pending, USPTO application number 16/708,306.
+
+In accordance with SatCat5's LGPL license agreement, we grant a royalty-free license for use of this technology. Refer to section 11 of the GPLv3 license for details.
 
 # Copyright Notice
 
-Copyright 2019 The Aerospace Corporation
+Copyright 2019, 2020 The Aerospace Corporation
 
 This file is part of SatCat5.
 

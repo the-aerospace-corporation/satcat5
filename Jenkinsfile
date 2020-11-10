@@ -17,6 +17,11 @@
 
 pipeline {
     agent { label 'Vivado2015.4' }
+
+    options {
+        timeout(time: 3, unit: 'HOURS')
+    }
+
     stages {
         stage ('Test') {
             steps {

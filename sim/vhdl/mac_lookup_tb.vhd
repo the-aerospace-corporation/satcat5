@@ -123,6 +123,7 @@ subtype port_mask_t is std_logic_vector(PORT_COUNT-1 downto 0);
 signal in_rate      : real := 0.0;
 signal pkt_count    : integer := 0;
 signal pkt_mode     : integer := 0;
+signal cfg_delay    : integer := 0;
 signal scrub_count  : integer := 0;
 signal scrub_rem    : integer := 0;
 signal ignore_ovr   : std_logic := '0';
@@ -150,10 +151,12 @@ signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
 signal scrub_busy   : std_logic := '0';
 signal scrub_remove : std_logic := '0';
+signal cfg_prmask   : port_mask_t := (others => '0');
 signal error_full   : std_logic := '0';     -- No room for new address
 signal error_table  : std_logic := '0';     -- Table integrity check failed
 
 -- Overall test state
+signal got_packet   : std_logic := '0';
 signal got_result   : std_logic := '0';
 
 -- Diagnostic functions.
@@ -214,11 +217,22 @@ p_src : process(clk)
         end if;
     end function;
 
-    function make_mask(idx: integer) return port_mask_t is
-        variable temp : port_mask_t := (others => '0');
+    function make_dstmask(pmask : port_mask_t; src, dst: integer) return port_mask_t is
+        variable dstmask, srcmask, result : port_mask_t := (others => '0');
     begin
-        temp(idx mod PORT_COUNT) := '1';
-        return temp;
+        -- Set the destination mask.
+        if (dst < 0) then
+            dstmask := (others => '1');         -- Broadcast
+        else
+            dstmask(dst mod PORT_COUNT) := '1'; -- Single port
+        end if;
+        -- Set the source mask.
+        assert (src >= 0) report "Invalid source" severity error;
+        srcmask(src mod PORT_COUNT) := '1';
+        -- Set flag for promiscuous ports or designated destination,
+        -- but never send a packet back to its source.  (Loops are BAD.)
+        result := (pmask or dstmask) and not srcmask;
+        return result;
     end function;
 
     function make_mac(idx: integer) return unsigned is
@@ -226,14 +240,14 @@ p_src : process(clk)
         return to_unsigned(idx mod 256, 8);
     end function;
 
-    function should_print(idx: integer) return boolean is
+    impure function should_print(idx: integer) return boolean is
     begin
         if (VERBOSITY = 2) then     -- Always
             return true;
         elsif (VERBOSITY = 1) then  -- Sometimes
             return (idx < 10) or (idx mod 100) = 0;
         elsif (VERBOSITY = 0) then  -- Rarely
-            return (idx mod 1000) = 0;
+            return (got_result = '0') and (idx mod 1000) = 0;
         end if;
     end function;
 
@@ -248,9 +262,11 @@ p_src : process(clk)
     variable pkt_dst    : unsigned(7 downto 0) := (others => '0');
     variable pkt_src    : unsigned(7 downto 0) := (others => '0');
     variable pkt_len    : integer := 0;
+    variable cfg_change : std_logic := '0';
     variable mac_known  : std_logic_vector(255 downto 0) := (others => '0');
 begin
     if rising_edge(clk) then
+        cfg_change := '0';
         if (reset_p = '1') then
             -- Reset packet generation.
             in_pdst     <= (others => '0'); -- Mask
@@ -272,7 +288,7 @@ begin
                 if (bcount >= pkt_len) then
                     -- Depending on verbosity, periodically report start of new packet.
                     if should_print(pkt_count) then
-                        report "Starting packet " & pkt_str;    -- Occasionally
+                        report "Starting packet " & pkt_str;
                     end if;
                     -- Reset generator state.
                     bcount := 0;
@@ -344,19 +360,16 @@ begin
                     -- Generate destination port mask.
                     if (temp_dst = 255) then
                         -- Broadcast packet.
-                        in_pdst <= not make_mask(temp_src);
+                        in_pdst <= make_dstmask(cfg_prmask, temp_src, -1);
                     elsif (mac_known(temp_dst) = '1') then
                         -- Normal packet to known port.
-                        in_pdst <= make_mask(temp_dst);
+                        in_pdst <= make_dstmask(cfg_prmask, temp_src, temp_dst);
                     elsif (UPLINK_MODE = '0') then
                         -- Unknown packet / Normal mode --> Broadcast.
-                        in_pdst <= not make_mask(temp_src);
-                    elsif (temp_src /= 0) then
-                        -- Unknown packet / Uplink mode + Not P0 --> Port 0.
-                        in_pdst <= make_mask(0);
+                        in_pdst <= make_dstmask(cfg_prmask, temp_src, -1);
                     else
-                        -- Unknown packet / Uplink mode + From P0 --> Dropped.
-                        in_pdst <= (others => '0');
+                        -- Unknown packet / Uplink mode --> Port 0 (except loopback).
+                        in_pdst <= make_dstmask(cfg_prmask, temp_src, 0);
                     end if;
                     -- Update the known-port mask by inspecting source address.
                     if (UPLINK_MODE = '0' or temp_src /= 0) then
@@ -422,6 +435,11 @@ begin
                     pkt_mode  <= pkt_mode + 1;
                     -- Next phase will clear table (no traffic).
                     mac_known := (others => '0');
+                elsif (pkt_mode > 4 and pkt_count = 500) then
+                    -- Configuration change every N frames.
+                    pkt_count <= 0;
+                    pkt_mode  <= pkt_mode + 1;
+                    cfg_change := '1';
                 else
                     -- All other conditions.
                     pkt_count <= pkt_count + 1;
@@ -437,6 +455,27 @@ begin
             end if;
         end if;
 
+        -- Update the test configuration at start of each phase.
+        if (reset_p = '1') then
+            -- Default configuration.
+            cfg_delay   <= 0;
+            cfg_prmask  <= (others => '0');
+        elsif (cfg_change = '1') then
+            -- Configuration change request.
+            cfg_delay   <= 32;    -- Pause for N cycles
+        elsif (cfg_delay > 0) then
+            -- Countdown while pipeline is flushed.
+            cfg_delay   <= cfg_delay - 1;
+            -- Just before we restart, re-randomize test configuration:
+            if (cfg_delay = 1) then
+                -- Set/clear the promiscuous-port flags.
+                for n in cfg_prmask'range loop
+                    uniform(seed1, seed2, rand);
+                    cfg_prmask(n) <= bool2bit(rand < 0.05);
+                end loop;
+            end if;
+        end if;
+
         -- Output flow-control randomization.
         uniform(seed1, seed2, rand);
         out_ready <= bool2bit(rand < 0.5) and not reset_p;
@@ -446,6 +485,7 @@ end process;
 -- Drive the input rate
 in_rate <= 0.8 when (pkt_mode < 5)      -- 80% for Modes 0-4
       else 0.0 when (scrub_rem > 0)     -- Wait until scrubbing completed
+      else 0.0 when (cfg_delay > 0)     -- Wait after configuration change
       else 1.0;                         -- 100% for random traffic gen.
 
 p_rate : process(clk)
@@ -509,6 +549,7 @@ uut : entity work.mac_lookup_generic
     scrub_req       => scrub_req,
     scrub_busy      => scrub_busy,
     scrub_remove    => scrub_remove,
+    cfg_prmask      => cfg_prmask,
     error_full      => error_full,
     error_table     => error_table,
     clk             => clk,
@@ -543,7 +584,10 @@ begin
 
         -- Measure min/avg/max latency.
         elapsed := to_integer(in_time - unsigned(ref_time));
-        if (pkt_mode = 5 and out_valid = '1' and got_result = '0') then
+        if (reset_p = '1') then
+            got_packet <= '0';
+            got_result <= '0';
+        elsif (pkt_mode > 4 and out_valid = '1' and got_packet = '0') then
             -- Alarm if elapsed time exceeds threshold.
             assert (elapsed <= MAX_LATENCY)
                 report "Exceeded maximum latency near " & pkt_str;
@@ -556,16 +600,19 @@ begin
             end if;
             time_sum := time_sum + elapsed;
             time_cnt := time_cnt + 1;
+            -- Don't double-count this packet.
+            got_packet <= not out_ready;
             -- Report results after N test packets.
             if (time_cnt = 2000) then
                 report "Timing statistics: " & IMPL_TYPE
                     & " Range " & integer'image(time_min)
                     & "-" & integer'image(time_max)
                     & ", Mean " & real'image(real(time_sum) / real(time_cnt));
+                got_result <= '1';
             end if;
-            got_result <= '1';
-        elsif (out_valid = '0') then
-            got_result <= '0';
+        elsif (out_valid = '1' and out_ready = '1') then
+            -- Result consumed, ready to count results again.
+            got_packet <= '0';
         end if;
     end if;
 end process;

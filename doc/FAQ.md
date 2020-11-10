@@ -30,6 +30,10 @@ We think this might be useful for Internet-of-Things applications, but even more
 
 Yes! That's a big part of why we chose the LGPL license, so you can use our VHDL building blocks to link together a custom SatCat5 switch for your application. We anticipate most users will need some degree of tailoring, so we've tried to make it as easy as we can.
 
+### Can I help?
+
+Yes! We welcome outside contributions including bug reports and code changes. Please check [the guide here](CONTRIBUTING.md) for more information.
+
 ### What about power consumption?
 
 Most Ethernet switches require several watts to operate. SatCat5 uses a small fraction of that.
@@ -322,9 +326,25 @@ The Python Chat-client demo is used to configure the transceivers (see above). I
 
 To run it, switch to the test/chat_client folder and run "python chat_client.py". Refer to the [README](../test/chat_client/README.md) for prerequisites and other details.
 
+## Legal
+
+### Why do you require a Contributor License Agreement?
+
+Without some kind of contract, it is unlikely that The Aerospace Corporation would be able to accept outside contributions to SatCat5.  We felt that a Contribtor License Agreement (CLA) is less invasive than a full copyright assignment.
+
+The CLA protects the rights of The Aerospace Corporation, our customers, and you as the contributor. [You can find our CLA and related information here](https://aerospace.org/cla).
+
+### What parts of SatCat5 are patent pending?
+
+We currently have one relevant USPTO application, number 16/708,306, titled "Mixed Media Ethernet Switch".
+
+This section will be updated if and when that application is granted.
+
+In accordance with SatCat5's LGPL license agreement, we grant a royalty-free license for use of this technology. Refer to section 11 of the GPLv3 license for details.
+
 # Copyright Notice
 
-Copyright 2019 The Aerospace Corporation
+Copyright 2019, 2020 The Aerospace Corporation
 
 This file is part of SatCat5.
 

@@ -45,7 +45,13 @@ logger.info('Starting logger...')
 logger.setLevel('WARNING')
 
 def create_hamlet_generator():
-    '''Infinite generator function for lines from Hamlet.'''
+    '''
+    Infinite generator function for lines from Hamlet.
+    Usage:
+        obj = create_hamlet_generator()
+        print(next(obj))
+        print(next(obj))
+    '''
     # Open the source file from Project Gutenberg.
     file = open('hamlet_oss.txt')
     para = ''   # Paragraph accumulator (see below)
@@ -217,7 +223,11 @@ class ChatClient(qtw.QMainWindow):
         self.update_recipients()
 
     def connect(self, port_obj):
-        '''Connect to specified port object.'''
+        '''
+        Connect to specified port object.
+        Keyword arguments:
+        port_obj -- AsyncEthernetPort or AsyncSLIPPort object
+        '''
         # Connect and start both worker threads.
         self.port = port_obj
         self._heartbeat_run = True
@@ -322,6 +332,7 @@ class ChatClient(qtw.QMainWindow):
         self.update_status()
 
     def update_status(self):
+        '''Update displayed messages and rate information.'''
         with self.batch_lock:
             # Update sent and received frame counts.
             self.txt_sentcount.setText('%d' % self.sent_count)
@@ -346,10 +357,15 @@ class ChatClient(qtw.QMainWindow):
             self.txt_rxrate.setText('%.1f kbps' % self.rxrate_kbps)
 
     def update_username(self):
+        '''Update the username that's sent in the heartbeat message.'''
         self.username = self.txt_username.text()
 
     def frame_rcvd_raw(self, frame_bytes):
-        '''Callback for each received message.'''
+        '''
+        Callback for each received message.
+        Keyword arguments:
+        frame_bytes -- Byte string containing a raw Ethernet frame.
+        '''
         # Sanity check packet length.
         if len(frame_bytes) < 14:
             logger.warning(self.port.lbl + ': Packet too short.')
@@ -395,6 +411,8 @@ class ChatClient(qtw.QMainWindow):
         '''
         Decode string from chat or heartbeat frame (payload only)
         Some errors are expected; just return an empty string.
+        Keyword arguments:
+        payload -- Byte string containing only the payload of a chat or heartbeat frame.
         '''
         # Sanity check before reading length:
         if len(payload) < 2:
@@ -415,14 +433,24 @@ class ChatClient(qtw.QMainWindow):
             return ethernet_utils.mac2str(mac_src)
 
     def frame_rcvd_beat(self, mac_src, msg_str):
-        '''Received heartbeat message, update recipient list as needed.'''
+        '''
+        Received heartbeat message, update recipient list as needed.
+        Keyword arguments:
+        mac_src -- Byte string, length 6, containing the sender's MAC address.
+        msg_str -- Decoded username string, see _decode_string(...).
+        '''
         # Add new or updated recipient (MAC + label) to the list.
         lbl_str = self._format_address(mac_src, msg_str)
         logger.info(self.port.lbl + ': Got heartbeat ' + lbl_str)
         self.rcvd_macs[mac_src] = lbl_str
 
     def frame_rcvd_chat(self, mac_src, msg_str):
-        '''Received chat message, update displayed list.'''
+        '''
+        Received chat message, update displayed list.
+        Keyword arguments:
+        mac_src -- Byte string, length 6, containing the sender's MAC address.
+        msg_str -- Decoded message string, see _decode_string(...).
+        '''
         # Inspect message contents.
         if len(msg_str) == 0:
             logger.error(self.port.lbl + ': Invalid chat message.')
@@ -440,7 +468,11 @@ class ChatClient(qtw.QMainWindow):
             self.batch_msgs.append(msg_txt)
 
     def frame_send_chat(self, msg):
-        '''Send the current chat message, if any.'''
+        '''
+        Send the current chat message, if any.
+        Keyword arguments:
+        msg -- The message string to be sent.
+        '''
         # Sanity-check length and add newline if missing.
         if len(msg) < 1:
             return
@@ -490,7 +522,11 @@ class ChatClient(qtw.QMainWindow):
             time.sleep(1.0)
 
     def _frame_send(self, msg):
-        '''Send the given Ethernet frame.'''
+        '''
+        Send the given Ethernet frame.
+        Keyword arguments:
+        msg -- Byte string containing a valid Ethernet frame.
+        '''
         # Send the given message.
         self.port.msg_send(msg)
         # Update the transmit-data count.
@@ -541,7 +577,7 @@ class ChatControl(qtw.QMainWindow):
         for lbl in self.list_uart.keys():
             self.cbo_config.addItem(lbl)
             self.cbo_client.addItem(lbl)
-        for lbl in self.list_eth:
+        for lbl in self.list_eth.keys():
             self.cbo_client.addItem(lbl)
         # Create GUI layout.
         layout0 = qtw.QFormLayout()
@@ -631,7 +667,11 @@ class ChatControl(qtw.QMainWindow):
             logger.error('Configuration error:\n' + traceback.format_exc())
 
     def msg_rcvd(self, text):
-        '''Status message received from switch FPGA.'''
+        '''
+        Status message received from switch FPGA.
+        Keyword arguments:
+        text -- UART status message to be displayed.
+        '''
         # Add new text to the intermediate buffer.
         with self.batch_lock:
             try:
@@ -663,7 +703,12 @@ class ChatControl(qtw.QMainWindow):
                 self.txt_msglist.moveCursor(qtg.QTextCursor.End)
 
     def open_control(self, port_name):
-        '''Open or re-open the control interface.'''
+        '''
+        Open or re-open the hardware control interface.
+        Selected port should be a member of self.list_uart.keys().
+        Keyword arguments:
+        port_name -- Name of the selected UART.
+        '''
         # Note: port_name may be OS-name or full description.
         if port_name in self.list_uart.keys():
             # Already have the long name (user-selected)
@@ -681,14 +726,20 @@ class ChatControl(qtw.QMainWindow):
         self.serial.open(os_name)
 
     def open_client(self, port_name):
-        '''Open a new chat client with specified interface.'''
+        '''
+        Open a new chat client with specified interface.
+        Selected port should be a member of self.list_uart.keys() or
+        self.list_eth.keys().
+        Keyword arguments:
+        port_name -- Name of the selected UART or Ethernet port.
+        '''
         # Open the appropriate port type.
         if port_name in self.list_uart.keys():
             obj = serial_utils.AsyncSLIPPort(
                 self.list_uart[port_name], logger)
-        elif port_name in self.list_eth:
+        elif port_name in self.list_eth.keys():
             obj = ethernet_utils.AsyncEthernetPort(
-                port_name, logger)
+                port_name, self.list_eth[port_name], logger)
         else:
             logger.warning('No such port name')
             return

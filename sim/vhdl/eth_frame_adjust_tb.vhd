@@ -26,7 +26,7 @@
 -- underlying data is checked against a FIFO-delayed copy of the input.
 --
 -- The test runs indefinitely, with reasonably complete coverage
--- (600 packets) after about 7.6 milliseconds.
+-- (600 packets) after about 7.8 milliseconds.
 --
 
 library ieee;
@@ -105,6 +105,7 @@ p_rate : process
 begin
     if (reset_p = '1') then
         wait until falling_edge(reset_p);
+        run(1.0, 0.0);  -- Valid-before-ready check
     end if;
     run(1.0, 1.0);  -- Continuity check
     run(1.0, 0.5);  -- Continuity check
@@ -249,6 +250,7 @@ u_check_fcs : entity work.eth_frame_check
 p_check_dat : process(clk_100)
     variable contig_cnt : integer := 0;
     variable contig_req : std_logic := '0';
+    variable nodata_cnt : integer := 0;
     variable ref_end    : std_logic := '0';
 begin
     if rising_edge(clk_100) then
@@ -264,9 +266,19 @@ begin
         elsif (contig_req = '1') then
             -- Output should now be contiguous.
             assert (out_valid = '1')
-                report "Contiguous output violation" severity warning;
+                report "Contiguous output violation" severity error;
         end if;
         contig_req := out_valid and not out_last;
+
+        -- Valid/ready deadlock check: Must eventually assert valid without
+        -- waiting for ready strobe, to avoid deadlock in certain edge cases.
+        if (reset_p = '1' or out_valid = '1') then
+            nodata_cnt := 0;
+        else
+            nodata_cnt := nodata_cnt + 1;
+        end if;
+        assert (nodata_cnt /= 100)
+            report "Valid-before-ready deadlock." severity error;
 
         -- Check first part of each frame (up to original FCS).
         if (out_write = '1' and ref_end = '0') then
@@ -292,6 +304,9 @@ begin
             frm_idx <= frm_idx + 1;
             if ((frm_idx mod 200) = 199) then
                 report "Received packet #" & integer'image(frm_idx+1);
+            end if;
+            if (frm_idx = 599) then
+                report "Test completed.";
             end if;
         end if;
     end if;

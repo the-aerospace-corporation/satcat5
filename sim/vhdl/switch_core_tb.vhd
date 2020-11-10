@@ -143,10 +143,10 @@ gen_ports : for n in PORT_COUNT-1 downto 0 generate
             else
                 temp := 0;
                 for p in pkt_start'range loop
-                    if (pkt_start(p) = '1') then
+                    if (pkt_start(p) = '1' and n /= p) then
                         if (pkt_dst(p) = MAC_LOCAL) then
                             temp := temp + 1;   -- Sent to our port
-                        elsif (pkt_dst(p) = MAC_BCAST and n /= p) then
+                        elsif (pkt_dst(p) = MAC_BCAST) then
                             temp := temp + 1;   -- Broadcast (except our own)
                         end if;
                     end if;

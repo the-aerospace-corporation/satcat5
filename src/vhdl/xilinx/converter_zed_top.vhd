@@ -83,7 +83,7 @@ u_ps : entity work.ps_wrapper
 reset_p <= not reset_n;
 
 -- GMII port, using the adjusted data
-u_gmii : entity work.port_gmii
+u_gmii : entity work.port_gmii_internal
     port map(
     -- GMII interface.
     gmii_txc   => ps_gmii_clk,
