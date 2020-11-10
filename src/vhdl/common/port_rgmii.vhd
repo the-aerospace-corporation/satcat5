@@ -45,6 +45,8 @@
 -- Note: If the "shutdown" signal is used, hold reset_p for at least
 --       1 msec after shutdown is released. (RXCLK_ALIGN mode only.)
 -- Note: 10/100 Mbps modes are not supported.
+-- Note: POWER_SAVE is not compatible with some PHYs.  We recommend
+--       disabling it until it can be tested in a particular design.
 --
 
 library ieee;
@@ -56,12 +58,12 @@ use     work.synchronization.all;
 
 entity port_rgmii is
     generic (
-    RXCLK_ALIGN : boolean := false; -- Enable precision clock-buffer deskew
-    RXCLK_LOCAL : boolean := false; -- Enable input clock buffer (local)
-    RXCLK_GLOBL : boolean := true;  -- Enable input clock buffer (global)
-    RXCLK_DELAY : real := 0.0;      -- Input clock delay, in nanoseconds (typ. 0.0 or 2.0)
-    RXDAT_DELAY : real := 0.0;      -- Input data/control delay, in nanoseconds
-    POWER_SAVE  : boolean := true); -- Enable power-saving on idle ports
+    RXCLK_ALIGN : boolean := false;     -- Enable precision clock-buffer deskew
+    RXCLK_LOCAL : boolean := false;     -- Enable input clock buffer (local)
+    RXCLK_GLOBL : boolean := true;      -- Enable input clock buffer (global)
+    RXCLK_DELAY : real := 0.0;          -- Input clock delay, in nanoseconds (typ. 0.0 or 2.0)
+    RXDAT_DELAY : real := 0.0;          -- Input data/control delay, in nanoseconds
+    POWER_SAVE  : boolean := false);    -- Enable power-saving on idle ports (see notes)
     port (
     -- External RGMII interface.
     rgmii_txc   : out std_logic;

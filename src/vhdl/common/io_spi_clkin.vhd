@@ -54,7 +54,7 @@ entity io_spi_clkin is
     generic (
     IDLE_BYTE   : byte_t := x"00";  -- Fixed pattern when idle
     OUT_REG     : boolean := true;  -- Enable register on SDO, SDT signals?
-    SPI_MODE    : integer := 3);    -- SPI clock phase & polarity
+    SPI_MODE    : natural := 3);    -- SPI clock phase & polarity
     port (
     -- External SPI interface.
     spi_csb     : in  std_logic;    -- Chip-select bar (from clock-source)

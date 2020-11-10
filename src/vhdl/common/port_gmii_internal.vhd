@@ -45,17 +45,17 @@ use     work.common_functions.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
-entity port_gmii is
+entity port_gmii_internal is
     port (
     -- GMII interface.
-    gmii_txc   : out std_logic;
-    gmii_txd   : out std_logic_vector(7 downto 0);
-    gmii_txen  : out std_logic;
-    gmii_txerr : out std_logic;
-    gmii_rxc   : in  std_logic;
-    gmii_rxd   : in  std_logic_vector(7 downto 0);
-    gmii_rxdv  : in  std_logic;
-    gmii_rxerr : in  std_logic;
+    gmii_txc    : out std_logic;
+    gmii_txd    : out std_logic_vector(7 downto 0);
+    gmii_txen   : out std_logic;
+    gmii_txerr  : out std_logic;
+    gmii_rxc    : in  std_logic;
+    gmii_rxd    : in  std_logic_vector(7 downto 0);
+    gmii_rxdv   : in  std_logic;
+    gmii_rxerr  : in  std_logic;
 
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s;
@@ -65,9 +65,9 @@ entity port_gmii is
     -- Reference clock and reset.
     clk_125     : in  std_logic;    -- Main reference clock
     reset_p     : in  std_logic);   -- Reset / port shutdown
-end port_gmii;
+end port_gmii_internal;
 
-architecture port_gmii of port_gmii is
+architecture port_gmii_internal of port_gmii_internal is
 
 signal txdata           : std_logic_vector(7 downto 0) := (others => '0');
 signal txmeta           : std_logic_vector(3 downto 0);
@@ -131,4 +131,4 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_data     => tx_data,
     tx_ctrl     => tx_ctrl);
 
-end port_gmii;
+end port_gmii_internal;

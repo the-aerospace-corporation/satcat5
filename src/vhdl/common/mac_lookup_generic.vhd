@@ -55,6 +55,9 @@ entity mac_lookup_generic is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- Scrub interface
     scrub_req       : in  std_logic;
     scrub_busy      : out std_logic;
@@ -103,6 +106,7 @@ gen_binary : if (IMPL_TYPE = "BINARY") generate
         scrub_req       => scrub_req,
         scrub_busy      => scrub_busy,
         scrub_remove    => scrub_remove,
+        cfg_prmask      => cfg_prmask,
         error_full      => error_full,
         error_table     => error_table,
         clk             => clk,
@@ -124,6 +128,7 @@ gen_brute : if (IMPL_TYPE = "BRUTE") generate
         out_pdst        => out_pdst,
         out_valid       => out_valid,
         out_ready       => out_ready,
+        cfg_prmask      => cfg_prmask,
         error_full      => error_full,
         error_table     => error_table,
         clk             => clk,
@@ -148,6 +153,7 @@ gen_lutram : if (IMPL_TYPE = "LUTRAM") generate
         out_pdst        => out_pdst,
         out_valid       => out_valid,
         out_ready       => out_ready,
+        cfg_prmask      => cfg_prmask,
         error_full      => error_full,
         error_table     => error_table,
         clk             => clk,
@@ -172,6 +178,7 @@ gen_parshift : if (IMPL_TYPE = "PARSHIFT") generate
         out_pdst        => out_pdst,
         out_valid       => out_valid,
         out_ready       => out_ready,
+        cfg_prmask      => cfg_prmask,
         error_full      => error_full,
         error_table     => error_table,
         clk             => clk,
@@ -200,6 +207,7 @@ gen_simple : if (IMPL_TYPE = "SIMPLE") generate
         scrub_req       => scrub_req,
         scrub_busy      => scrub_busy,
         scrub_remove    => scrub_remove,
+        cfg_prmask      => cfg_prmask,
         error_full      => error_full,
         clk             => clk,
         reset_p         => reset_p);
@@ -220,6 +228,7 @@ gen_stream : if (IMPL_TYPE = "STREAM") generate
         out_pdst        => out_pdst,
         out_valid       => out_valid,
         out_ready       => out_ready,
+        cfg_prmask      => cfg_prmask,
         clk             => clk,
         reset_p         => reset_p);
 

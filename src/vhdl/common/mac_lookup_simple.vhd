@@ -63,6 +63,9 @@ entity mac_lookup_simple is
     scrub_busy      : out std_logic;
     scrub_remove    : out std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- Error strobes
     error_full      : out std_logic;    -- No room for new address
 
@@ -275,7 +278,9 @@ begin
         elsif (search_state /= SEARCH_IDLE and search_state /= SEARCH_START) then
             -- During readout, look for specific matches (note two-cycle lag).
             if (mac_dst = search_rdval.mac) then
-                search_dst <= search_rdval.mask;
+                -- Send packet to port if broadcast, DST match, or promiscuous,
+                -- but NEVER send a packet back to its original source.
+                search_dst <= (cfg_prmask or search_rdval.mask) and not in_psrc;
             end if;
             if (mac_src = search_rdval.mac) then
                 found_src := '1';

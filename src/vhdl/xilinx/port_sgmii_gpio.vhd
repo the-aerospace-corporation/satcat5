@@ -24,13 +24,16 @@
 --   * A thin OSERDESE2 wrapper for an SGMII transmitter.
 --   * Generic SGMII encode/decode/state-machine logic.
 --
+-- This configuration is suitable for use with 7-series GPIO.
+-- For use with GTX and other SERDES, see "port_sgmii_gtx".
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.switch_types.all;
 
-entity port_sgmii_xilinx is
+entity port_sgmii_gpio is
     generic (
     TX_INVERT   : boolean := false;     -- Invert Tx polarity
     RX_INVERT   : boolean := false;     -- Invert Rx polarity
@@ -54,9 +57,9 @@ entity port_sgmii_xilinx is
     clk_200     : in  std_logic;
     clk_625_00  : in  std_logic;
     clk_625_90  : in  std_logic);
-end port_sgmii_xilinx;
+end port_sgmii_gpio;
 
-architecture xilinx of port_sgmii_xilinx is
+architecture xilinx of port_sgmii_gpio is
 
 signal tx_data      : std_logic_vector(9 downto 0);
 signal rx_raw_data  : std_logic_vector(39 downto 0);

@@ -45,17 +45,20 @@ use     work.eth_frame_common.all;
 entity eth_frame_adjust is
     generic (
     MIN_FRAME   : integer := 64;        -- Minimum output frame size
+    META_WIDTH  : natural := 0;         -- Width of optional metadata field
     APPEND_FCS  : boolean := true;      -- Append new FCS to output?
     STRIP_FCS   : boolean := true);     -- Remove FCS from input?
     port (
     -- Input data stream (with or without FCS, AXI flow control).
     in_data     : in  std_logic_vector(7 downto 0);
+    in_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
     in_last     : in  std_logic;
     in_valid    : in  std_logic;
     in_ready    : out std_logic;
 
     -- Output data stream (with zero-padding and FCS, AXI flow control).
     out_data    : out std_logic_vector(7 downto 0);
+    out_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
     out_last    : out std_logic;
     out_valid   : out std_logic;
     out_ready   : in  std_logic;
@@ -67,23 +70,27 @@ end eth_frame_adjust;
 
 architecture rtl of eth_frame_adjust is
 
+subtype meta_t is std_logic_vector(META_WIDTH-1 downto 0);
+
 -- FCS removal (optional)
 signal in_write     : std_logic := '0';
 signal frm_data     : byte_t := (others => '0');
+signal frm_meta     : meta_t := (others => '0');
 signal frm_last     : std_logic := '0';
 signal frm_valid    : std_logic := '0';
 signal frm_ready    : std_logic := '0';
 
 -- Zero-padding of runt frames
 signal pad_data     : byte_t := (others => '0');
+signal pad_meta     : meta_t := (others => '0');
 signal pad_last     : std_logic := '0';
 signal pad_valid    : std_logic := '0';
 signal pad_ready    : std_logic := '0';
-signal pad_write    : std_logic := '0';
 signal pad_ovr      : std_logic := '0';
 
 -- Frame-check recalculation
 signal fcs_data     : byte_t := (others => '0');
+signal fcs_meta     : meta_t := (others => '0');
 signal fcs_last     : std_logic := '0';
 signal fcs_valid    : std_logic := '0';
 signal fcs_ready    : std_logic := '0';
@@ -96,6 +103,7 @@ begin
 gen_nostrip : if not STRIP_FCS generate
     -- Input has already had FCS removed, no need to modify.
     frm_data    <= in_data;
+    frm_meta    <= in_meta;
     frm_last    <= in_valid and in_last;
     frm_valid   <= in_valid;
     in_ready    <= frm_ready;
@@ -110,16 +118,24 @@ gen_strip : if STRIP_FCS generate
     -- Remove last four bytes of each packet.
     p_out_strip : process(clk)
         constant DELAY_MAX : integer := 4;
-        type sreg_t is array(0 to DELAY_MAX) of byte_t;
-        variable sreg : sreg_t := (others => (others => '0'));
+        type sreg_data_t is array(0 to DELAY_MAX) of byte_t;
+        type sreg_meta_t is array(0 to DELAY_MAX) of meta_t;
+        variable sreg_data : sreg_data_t := (others => (others => '0'));
+        variable sreg_meta : sreg_meta_t := (others => (others => '0'));
         variable count : integer range 0 to DELAY_MAX := DELAY_MAX;
     begin
         if rising_edge(clk) then
             -- Four-byte delay using a shift register.
             if (in_write = '1') then
-                sreg := in_data & sreg(0 to DELAY_MAX-1);
+                sreg_data := in_data & sreg_data(0 to DELAY_MAX-1);
+                if (META_WIDTH > 0) then
+                    sreg_meta := in_meta & sreg_meta(0 to DELAY_MAX-1);
+                end if;
             end if;
-            frm_data <= sreg(DELAY_MAX);
+            frm_data <= sreg_data(DELAY_MAX);
+            if (META_WIDTH > 0) then
+                frm_meta <= sreg_meta(DELAY_MAX);
+            end if;
 
             -- Drive the output strobes.
             if (reset_p = '1') then
@@ -160,13 +176,23 @@ begin
         if (frm_valid = '1' and frm_ready = '1') then
             -- Pass along each input byte.
             pad_data  <= frm_data;
-            pad_valid <= '1';
-            -- Pass along "last" strobe only if packet >= 60 bytes.
+            pad_meta  <= frm_meta;
+        elsif (pad_ready = '1' and pad_ovr = '1') then
+            -- Zero-padding mode.
+            pad_data  <= (others => '0');
+        end if;
+
+        -- Update the VALID and LAST strobes.
+        if (reset_p = '1') then
+            pad_valid <= '0';
+            pad_last  <= '0';
+        elsif (frm_valid = '1' and frm_ready = '1') then
+            -- Regular data, pass "last" strobe only if packet >= 60 bytes.
             -- (Minimum regular frame size, not including FCS.)
+            pad_valid <= '1';
             pad_last  <= frm_last and bool2bit(bcount = BCOUNT_MAX);
         elsif (pad_ready = '1' and pad_ovr = '1') then
-            -- If we're in zero-padding mode, generate next pad byte.
-            pad_data  <= (others => '0');
+            -- Zero-padding up to minimum frame size.
             pad_valid <= '1';
             pad_last  <= bool2bit(bcount = BCOUNT_MAX);
         elsif (pad_ready = '1') then
@@ -212,34 +238,44 @@ end process;
 -- Optionally append a new FCS to the end of each packet.
 gen_noappend : if not APPEND_FCS generate
     fcs_data  <= pad_data;
+    fcs_meta  <= pad_meta;
     fcs_last  <= pad_last;
     fcs_valid <= pad_valid;
     pad_ready <= fcs_ready;
 end generate;
 
 gen_append : if APPEND_FCS generate
-    -- Recalculate and append the CRC.
-    pad_ready <= fcs_ready and not fcs_ovr; -- Upstream flow control
-    pad_write <= pad_valid and pad_ready;
+    -- Upstream flow control
+    pad_ready <= (not fcs_valid) or (fcs_ready and not fcs_ovr);
 
+    -- Recalculate and append the CRC.
     p_crc : process(clk)
         variable bcount : integer range 0 to 3 := 0;
     begin
         if rising_edge(clk) then
             -- Relay data until end, then append FCS.
-            if (pad_write = '1') then
+            if (pad_valid = '1' and pad_ready = '1') then
                 -- Relay normal data until end of frame.
                 fcs_data  <= pad_data;
-                fcs_last  <= '0';
-                fcs_valid <= '1';
+                fcs_meta  <= pad_meta;
                 fcs_ovr   <= pad_last;
             elsif (fcs_ovr = '1' and fcs_ready = '1') then
                 -- Append each FCS byte, flipping polarity and bit order.
                 -- (CRC is MSB-first, but Ethernet convention is LSB-first.)
                 fcs_data  <= not flip_byte(fcs_crc32(31 downto 24));
+                fcs_ovr   <= bool2bit(bcount < 3);
+            end if;
+
+            -- Update the VALID and LAST strobes.
+            if (reset_p = '1') then
+                -- Global reset.
+                fcs_valid <= '0';
+                fcs_last  <= '0';
+            elsif ((pad_valid = '1' and pad_ready = '1')
+                or (fcs_ovr = '1' and fcs_ready = '1')) then
+                -- Append each new data or FCS byte.
                 fcs_valid <= '1';
                 fcs_last  <= bool2bit(bcount = 3);
-                fcs_ovr   <= bool2bit(bcount < 3) or not fcs_ready;
             elsif (fcs_ready = '1') then
                 -- Mark previous byte as consumed.
                 fcs_valid <= '0';
@@ -251,7 +287,7 @@ gen_append : if APPEND_FCS generate
                 -- General reset.
                 fcs_crc32 <= CRC_INIT;
                 bcount    := 0;
-            elsif (pad_write = '1') then
+            elsif (pad_valid = '1' and pad_ready = '1') then
                 -- Normal data, update CRC.
                 fcs_crc32 <= crc_next(fcs_crc32, pad_data);
                 bcount    := 0;
@@ -270,6 +306,9 @@ end generate;
 
 -- Final output stage
 out_data  <= fcs_data;
+gen_withmeta : if (META_WIDTH > 0) generate
+    out_meta  <= fcs_meta;
+end generate;
 out_last  <= fcs_last;
 out_valid <= fcs_valid;
 fcs_ready <= out_ready;

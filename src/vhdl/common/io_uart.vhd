@@ -34,8 +34,8 @@ use     work.synchronization.all;
 
 entity io_uart_rx is
     generic (
-    CLKREF_HZ   : integer;          -- Reference clock rate (Hz)
-    BAUD_HZ     : integer;          -- Input and output rate (bps)
+    CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
+    BAUD_HZ     : positive;         -- Input and output rate (bps)
     DEBUG_WARN  : boolean := true); -- Enable stop-bit warnings?
     port (
     -- External UART interface.
@@ -54,8 +54,8 @@ architecture io_uart_rx of io_uart_rx is
 
 -- Calculate clocks per bit-period (round nearest), then
 -- back-calculate the baud rate that was actually achieved.
-constant CLOCKS_PER_BIT : integer := (CLKREF_HZ + BAUD_HZ/2) / BAUD_HZ;
-constant ACTUAL_BAUD_HZ : integer := (CLKREF_HZ + CLOCKS_PER_BIT/2) / CLOCKS_PER_BIT;
+constant CLOCKS_PER_BIT : positive := clocks_per_baud(CLKREF_HZ, BAUD_HZ, false);
+constant ACTUAL_BAUD_HZ : positive := clocks_per_baud(CLKREF_HZ, CLOCKS_PER_BIT, false);
 
 -- Synchronized input signal
 signal rx, rxd      : std_logic := '1';
@@ -64,7 +64,7 @@ signal rx, rxd      : std_logic := '1';
 signal r_data       : byte_t := (others => '0');
 signal r_write      : std_logic := '0';
 signal r_bit_count  : integer range 0 to 9 := 0;
-signal r_clk_count  : integer range 0 to CLOCKS_PER_BIT := 0;
+signal r_clk_count  : integer range 0 to CLOCKS_PER_BIT-1 := 0;
 
 begin
 
@@ -111,7 +111,7 @@ begin
             r_clk_count <= r_clk_count - 1;
         elsif (r_bit_count > 0) then
             r_bit_count <= r_bit_count - 1;
-            r_clk_count <= CLOCKS_PER_BIT;
+            r_clk_count <= CLOCKS_PER_BIT - 1;
         elsif (rxd = '1' and rx = '0') then
             r_bit_count <= 9; -- Start + 8 data + stop bit
             r_clk_count <= CLOCKS_PER_BIT / 2;
@@ -135,8 +135,8 @@ use     work.eth_frame_common.all;  -- For byte_t
 
 entity io_uart_tx is
     generic (
-    CLKREF_HZ   : integer;          -- Reference clock rate (Hz)
-    BAUD_HZ     : integer);         -- Input and output rate (bps)
+    CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
+    BAUD_HZ     : positive);        -- Input and output rate (bps)
     port (
     -- External UART interface.
     uart_txd    : out std_logic;    -- Output signal
@@ -155,13 +155,13 @@ architecture io_uart_tx of io_uart_tx is
 
 -- Calculate clocks per bit-period (round nearest), then
 -- back-calculate the baud rate that was actually achieved.
-constant CLOCKS_PER_BIT : integer := (CLKREF_HZ + BAUD_HZ/2) / BAUD_HZ;
-constant ACTUAL_BAUD_HZ : integer := (CLKREF_HZ + CLOCKS_PER_BIT/2) / CLOCKS_PER_BIT;
+constant CLOCKS_PER_BIT : positive := clocks_per_baud(CLKREF_HZ, BAUD_HZ, false);
+constant ACTUAL_BAUD_HZ : positive := clocks_per_baud(CLKREF_HZ, CLOCKS_PER_BIT, false);
 
 -- Transmitter state machine
 signal t_ready      : std_logic := '0';
 signal t_bit_count  : integer range 0 to 9 := 0;
-signal t_clk_count  : integer range 0 to CLOCKS_PER_BIT := 0;
+signal t_clk_count  : integer range 0 to CLOCKS_PER_BIT-1 := 0;
 signal t_sreg       : byte_t := (others => '1');
 signal uart_tx_i    : std_logic := '1';
 
@@ -197,11 +197,11 @@ begin
             -- Tx in progress, emit next bit (including stop bit).
             uart_tx_i   <= t_sreg(0);       -- LSB first.
             t_sreg      <= '1' & t_sreg(7 downto 1);
-            t_clk_count <= CLOCKS_PER_BIT;
+            t_clk_count <= CLOCKS_PER_BIT-1;
             t_bit_count <= t_bit_count - 1;
         elsif (tx_valid = '1') then
             -- Start a new byte.
-            t_clk_count <= CLOCKS_PER_BIT;
+            t_clk_count <= CLOCKS_PER_BIT-1;
             t_bit_count <= 9;       -- Start + 8 data + stop bit
             uart_tx_i   <= '0';     -- Send start bit
             t_sreg      <= tx_data; -- Latch output byte

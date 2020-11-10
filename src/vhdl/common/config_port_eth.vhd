@@ -53,7 +53,7 @@ entity config_port_eth is
     STAT_BYTES  : integer;          -- Bytes per status message
     STAT_ETYPE  : std_logic_vector(15 downto 0) := x"5C00";
     STAT_DEST   : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
-    STAT_SOURCE : std_logic_vector(47 downto 0) := x"536174436174");
+    STAT_SOURCE : std_logic_vector(47 downto 0) := x"5A5ADEADBEEF");
     port (
     -- Internal Ethernet port.
     rx_data     : out port_rx_m2s;
@@ -116,20 +116,20 @@ rx_data.reset_p <= reset_p;
 
 u_status : entity work.config_send_status
     generic map(
-    MSG_BYTES   => STAT_BYTES,
-    MSG_ETYPE   => STAT_ETYPE,
-    MAC_DEST    => STAT_DEST,
-    MAC_SOURCE  => STAT_SOURCE,
-    AUTO_DELAY  => CLKREF_HZ)   -- Send once per second
+    MSG_BYTES       => STAT_BYTES,
+    MSG_ETYPE       => STAT_ETYPE,
+    MAC_DEST        => STAT_DEST,
+    MAC_SOURCE      => STAT_SOURCE,
+    AUTO_DELAY_CLKS => CLKREF_HZ)   -- Send once per second
     port map(
-    status_val  => status_val,
-    status_wr   => '0',         -- Automatic Tx only
-    out_data    => rx_data.data,
-    out_last    => rx_data.last,
-    out_valid   => rx_data.write,
-    out_ready   => '1',         -- No flow control
-    clk         => ref_clk,
-    reset_p     => reset_p);
+    status_val      => status_val,
+    status_wr       => '0',         -- Automatic Tx only
+    out_data        => rx_data.data,
+    out_last        => rx_data.last,
+    out_valid       => rx_data.write,
+    out_ready       => '1',         -- No flow control
+    clk             => ref_clk,
+    reset_p         => reset_p);
 
 -- Filter incoming data by EtherType.
 tx_ctrl.clk     <= ref_clk;

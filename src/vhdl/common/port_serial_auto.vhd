@@ -66,12 +66,12 @@ use     work.synchronization.all;
 
 entity port_serial_auto is
     generic (
-    CLKREF_HZ   : integer;              -- Reference clock rate (Hz)
-    SPI_MODE    : integer := 3;         -- SPI clock phase & polarity
-    UART_BAUD   : integer := 921600;    -- UART baud rate
+    CLKREF_HZ   : positive;             -- Reference clock rate (Hz)
+    SPI_MODE    : natural := 3;         -- SPI clock phase & polarity
+    UART_BAUD   : positive := 921600;   -- UART baud rate
     PULLUP_EN   : boolean := true;      -- Enable FPGA pullups on ext_pads?
     FORCE_SHDN  : boolean := false;     -- In shutdown, drive ext_pads to zero?
-    START_TYPE  : integer := 0);        -- Port type on startup (0 = auto)
+    START_TYPE  : natural := 0);        -- Port type on startup (0 = auto)
     port (
     -- External 4-wire interface.
     ext_pads    : inout std_logic_vector(3 downto 0);

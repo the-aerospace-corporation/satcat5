@@ -58,13 +58,16 @@ entity switch_core is
     ports_tx_data   : out array_tx_m2s(PORT_COUNT-1 downto 0);
     ports_tx_ctrl   : in  array_tx_s2m(PORT_COUNT-1 downto 0);
 
+    -- Optional configuration flags for each port:
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0) := (others => '0');
+
     -- Error events are marked by toggling these bits.
     errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
     -- System interface.
     scrub_req_t     : in  std_logic;    -- Request MAC-lookup scrub
-    core_clk        : in  std_logic;    -- Core datapath clock.
-    core_reset_p    : in  std_logic);   -- Core sync. reset
+    core_clk        : in  std_logic;    -- Core datapath clock
+    core_reset_p    : in  std_logic);   -- Core async reset
 end switch_core;
 
 architecture switch_core of switch_core is
@@ -321,6 +324,7 @@ u_lookup : entity work.mac_lookup_generic
     scrub_req       => scrub_req,
     scrub_busy      => open,
     scrub_remove    => open,
+    cfg_prmask      => cfg_prmask,
     error_full      => macerr_ovr,
     error_table     => macerr_tbl,
     clk             => core_clk,

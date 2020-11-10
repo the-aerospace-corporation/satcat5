@@ -29,17 +29,23 @@ package COMMON_FUNCTIONS is
     -- Convert a standard logic vector to an unsigned integer
     function U2I(a: std_logic_vector) return natural;
     -- Convert a standard logic (bit) to an integer: '0'->0, '1'->1
-    function U2I(a: std_logic)        return natural;
-    -- Convert an integer to a L-bit standard logic vector of length
+    function U2I(a: std_logic) return natural;
+    -- Convert an integer to a L-bit standard logic vector
     function I2S(a: integer; l: integer) return std_logic_vector;
     -- Convert a boolean to a bit, false->'0', true->'1'
-    function bool2bit(a: boolean)     return std_logic;
+    function bool2bit(a: boolean) return std_logic;
 
     -- Resize a std_logic_vector using the rules for UNSIGNED
     function resize(a: std_logic_vector; B: integer) return std_logic_vector;
 
+    -- Saturate an unsigned input to N output bits.
+    function saturate(a: unsigned; nbits: natural) return unsigned;
+
+    -- Add the two inputs, with saturation on overflow.
+    function saturate_add(a, b: unsigned; nbits: natural) return unsigned;
+
     -- Perform an XOR reduction
-    function xor_reduce(a : std_logic_vector) return std_logic;
+    function xor_reduce(a: std_logic_vector) return std_logic;
     -- Return '1' if any of the bits in the input are '1'
     function or_reduce(a: std_logic_vector) return std_logic;
     -- Return '1' if all the bits in the input are '1'
@@ -50,13 +56,20 @@ package COMMON_FUNCTIONS is
     function log2_floor(a: integer) return integer;
 
     -- Return the maximum of the two inputs
-    function max(a,b : integer) return integer;
+    function max(a,b: integer) return integer;
     -- Return the minimum of the two inputs
-    function min(a,b : integer) return integer;
+    function min(a,b: integer) return integer;
 
     -- Map 'X', 'U' to '0'
     function to_01_vec(a: std_logic_vector) return std_logic_vector;
     function to_01_std(a: std_logic)        return std_logic;
+
+    -- Given clock rate and baud rate, calculate clocks per bit.
+    function clocks_per_baud(
+        clkref_hz   : positive;
+        baud_hz     : positive;
+        round_up    : boolean := true)
+        return positive;
 end package;
 
 package body COMMON_FUNCTIONS is
@@ -84,10 +97,28 @@ package body COMMON_FUNCTIONS is
         return std_logic_vector(resize(UNSIGNED(a), B));
     end;
 
-    function xor_reduce(a : std_logic_vector) return std_logic is
-        variable result : std_logic;
+    function saturate(a: unsigned; nbits: natural) return unsigned is
+        constant MAX_POS : unsigned(nbits-1 downto 0) := (others => '1');
     begin
-        result := '0';
+        if (a >= MAX_POS) then
+            return MAX_POS;
+        else
+            return resize(a, nbits);
+        end if;
+    end function;
+
+    function saturate_add(a, b: unsigned; nbits: natural) return unsigned is
+        -- Calculate sum with enough width to never overflow.
+        constant W   : natural := 1 + max(a'length, b'length);
+        variable sum : unsigned(W-1 downto 0) := resize(a, W) + resize(b, W);
+    begin
+        -- Return the saturated output:
+        return saturate(sum, nbits);
+    end;
+
+    function xor_reduce(a: std_logic_vector) return std_logic is
+        variable result : std_logic := '0';
+    begin
         for i in a'range loop
             result := result xor a(i);
         end loop;
@@ -95,17 +126,15 @@ package body COMMON_FUNCTIONS is
     end;
 
     function or_reduce(a: std_logic_vector) return std_logic is
-        variable z : std_logic;
+        variable z : std_logic := '0';
     begin
-        z := '0';
         for i in a'range loop z := z or a(i); end loop;
         return z;
     end;
 
     function and_reduce(a: std_logic_vector) return std_logic is
-        variable z : std_logic;
+        variable z : std_logic := '1';
     begin
-        z := '1';
         for i in a'range loop z := z and a(i); end loop;
         return z;
     end;
@@ -126,14 +155,14 @@ package body COMMON_FUNCTIONS is
         return l;
     end;
 
-    function max(a, b : integer) return integer is
+    function max(a, b: integer) return integer is
     begin
         if a > b then return a;
         else return b;
         end if;
     end;
 
-    function min(a, b : integer) return integer is
+    function min(a, b: integer) return integer is
     begin
         if a < b then return a;
         else return b;
@@ -143,9 +172,8 @@ package body COMMON_FUNCTIONS is
     -- This function is useful to avoid having X's in simulation when feedback
     -- loops are present.  Note that it synthesizes to no hardware.
     function to_01_vec(a: std_logic_vector) return std_logic_vector is
-        variable result : std_logic_vector(a'range);
+        variable result : std_logic_vector(a'range) := a;
     begin
-        result := a;
 -- translate_off
         for i in a'range loop
             if(a(i) = '1' or a(i) = 'H') then
@@ -159,9 +187,8 @@ package body COMMON_FUNCTIONS is
     end;
 
     function to_01_std(a: std_logic) return std_logic is
-        variable result : std_logic;
+        variable result : std_logic := a;
     begin
-        result := a;
 -- translate_off
         if(a = '1' or a = 'H') then
             result := '1';
@@ -171,4 +198,20 @@ package body COMMON_FUNCTIONS is
 -- translate_on
         return result;
     end;
+
+    function clocks_per_baud(
+        clkref_hz   : positive;
+        baud_hz     : positive;
+        round_up    : boolean := true)
+        return positive
+    is
+        constant div_rd_up   : natural := (clkref_hz + baud_hz - 1) / baud_hz;
+        constant div_rd_near : natural := (clkref_hz + baud_hz / 2) / baud_hz;
+    begin
+        if (round_up) then
+            return max(1, div_rd_up);
+        else
+            return max(1, div_rd_near);
+        end if;
+    end function;
 end package body;

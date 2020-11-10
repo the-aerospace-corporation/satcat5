@@ -1,0 +1,345 @@
+--------------------------------------------------------------------------
+-- Copyright 2019 The Aerospace Corporation
+--
+-- This file is part of SatCat5.
+--
+-- SatCat5 is free software: you can redistribute it and/or modify it under
+-- the terms of the GNU Lesser General Public License as published by the
+-- Free Software Foundation, either version 3 of the License, or (at your
+-- option) any later version.
+--
+-- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+-- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+-- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+-- License for more details.
+--
+-- You should have received a copy of the GNU Lesser General Public License
+-- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+--------------------------------------------------------------------------
+--
+-- Testbench for auxiliary packet injector
+--
+-- This is a unit test for the packet injector, verifying that error strobes
+-- are fired when inputs misbehave, and verifying that packets remain atomic
+-- under all other conditions.  Tests are repeated under a variety of flow
+-- control conditions for the primary input.
+--
+-- The complete test takes less than 10 milliseconds.
+--
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     ieee.math_real.all; -- for UNIFORM
+use     work.common_functions.all;
+use     work.eth_frame_common.all;
+
+entity packet_inject_tb is
+    generic (
+    AUX_COUNT       : integer := 2;
+    MAX_AUX_BYTES   : integer := 14);
+    -- No I/O ports
+end packet_inject_tb;
+
+architecture tb of packet_inject_tb is
+
+-- Convert byte to stream index (see discussion under p_input)
+function get_stream(x : byte_t) return integer is
+    variable tmp : std_logic := xor_reduce(x);
+begin
+    if (tmp = 'X' or tmp = 'U') then
+        return 0;   -- Handle metavalue edge case
+    else
+        return to_integer(unsigned(x(7 downto 4)));
+    end if;
+end function;
+
+-- System clock and reset.
+signal clk_100      : std_logic := '0';
+signal reset_p      : std_logic := '0';
+
+-- Primary input port (no flow control)
+signal pri_data     : byte_t := (others => '0');
+signal pri_last     : std_logic := '0';
+signal pri_write    : std_logic := '0';
+signal pri_write2   : std_logic := '0';
+signal pri_full     : std_logic;
+signal pri_error    : std_logic;
+
+-- Auxiliary input ports (valid/ready flow control)
+signal aux_data     : byte_array_t(AUX_COUNT downto 1) := (others => (others => '0'));
+signal aux_last     : std_logic_vector(AUX_COUNT downto 1) := (others => '0');
+signal aux_valid    : std_logic_vector(AUX_COUNT downto 1) := (others => '0');
+signal aux_ready    : std_logic_vector(AUX_COUNT downto 1);
+signal aux_error    : std_logic;
+
+-- Combined input vector
+signal in_data      : byte_array_t(AUX_COUNT downto 0) := (others => (others => '0'));
+signal in_last      : std_logic_vector(AUX_COUNT downto 0) := (others => '0');
+signal in_valid     : std_logic_vector(AUX_COUNT downto 0) := (others => '0');
+signal in_ready     : std_logic_vector(AUX_COUNT downto 0);
+
+-- Combined output port (no flow control)
+signal out_data     : byte_t;
+signal out_last     : std_logic;
+signal out_valid    : std_logic;
+signal out_ready    : std_logic := '0';
+signal in_errct     : integer := 0;
+signal aux_errct    : integer := 0;
+
+-- FIFOs for each data stream.
+signal fifo_in_data : byte_array_t(AUX_COUNT downto 0);
+signal fifo_in_last : std_logic_vector(AUX_COUNT downto 0);
+signal ref_data     : byte_array_t(AUX_COUNT downto 0);
+signal ref_last     : std_logic_vector(AUX_COUNT downto 0);
+signal fifo_wr      : std_logic_vector(AUX_COUNT downto 0);
+signal fifo_rd      : std_logic_vector(AUX_COUNT downto 0);
+
+-- High-level test control
+signal test_idx     : integer := 0;
+signal test_long    : std_logic := '0';
+signal rate_pri     : real := 0.0;  -- Average primary duty cycle (must be < 1.0)
+signal rate_aux     : real := 0.0;  -- On average, initiate packet every X clocks
+signal rate_out     : real := 0.0;  -- Average output duty cycle
+
+begin
+
+-- Clock generator
+clk_100 <= not clk_100 after 5 ns;  -- 1 / (2*5ns) = 100 MHz
+
+-- Generate each input stream.
+-- MSBs always indicate the stream index, LSBs are random data.
+p_input : process(clk_100)
+    variable seed1  : positive := 1234;
+    variable seed2  : positive := 5678;
+    variable rand   : real := 0.0;
+
+    -- Generate the next random byte for a given stream.
+    impure function rand_byte(strm_id : integer) return byte_t is
+        variable rand_i : integer range 0 to 15;
+        variable result : byte_t;
+    begin
+        uniform(seed1, seed2, rand);
+        rand_i := integer(floor(rand * 16.0));
+        result := i2s(strm_id, 4) & i2s(rand_i, 4);
+        return result;
+    end function;
+
+    -- Track remaining bytes in each auxiliary frame.
+    type rem_bytes_t is array(1 to AUX_COUNT) of integer;
+    variable rem_bytes : rem_bytes_t := (others => 0);
+begin
+    if rising_edge(clk_100) then
+        -- Generate each new primary data word.
+        uniform(seed1, seed2, rand);
+        if (reset_p = '0' and rand < rate_pri) then
+            pri_data  <= rand_byte(0);
+            pri_write <= '1';
+            uniform(seed1, seed2, rand);
+            pri_last  <= bool2bit(rand < 0.05);
+        else
+            pri_data  <= (others => '0');
+            pri_write <= '0';
+            pri_last  <= '0';
+        end if;
+
+        -- Generate data for each auxiliary stream.
+        for n in 1 to AUX_COUNT loop
+            -- Should we start a new packet this cycle?
+            uniform(seed1, seed2, rand);
+            if (reset_p = '1') then
+                rem_bytes(n) := 0;
+            elsif (rem_bytes(n) = 0 and rand < rate_aux) then
+                if (test_long = '1') then
+                    rem_bytes(n) := MAX_AUX_BYTES + 1;
+                else
+                    uniform(seed1, seed2, rand);
+                    rem_bytes(n) := 1 + integer(floor(rand * real(MAX_AUX_BYTES)));
+                end if;
+            end if;
+            -- State machine for the AXI-stream flow control.
+            if ((reset_p = '1') or (rem_bytes(n) = 0 and aux_ready(n) = '1')) then
+                -- Reset or last byte consumed.
+                aux_data(n)  <= (others => '0');
+                aux_last(n)  <= '0';
+                aux_valid(n) <= '0';
+            elsif ((rem_bytes(n) > 0) and (aux_valid(n) = '0' or aux_ready(n) = '1')) then
+                -- Generate next byte.
+                aux_data(n)  <= rand_byte(n);
+                aux_last(n)  <= bool2bit(rem_bytes(n) = 1);
+                aux_valid(n) <= '1';
+                rem_bytes(n) := rem_bytes(n) - 1;
+            end if;
+        end loop;
+
+        -- Output flow-control randomization.
+        uniform(seed1, seed2, rand);
+        out_ready <= bool2bit(rand < rate_out);
+    end if;
+end process;
+
+-- FIFO references for each data stream.
+gen_fifo : for n in 0 to AUX_COUNT generate
+    gen_pri : if n = 0 generate
+        fifo_in_data(n) <= pri_data;
+        fifo_in_last(n) <= pri_last;
+        fifo_wr(n)      <= pri_write2;
+    end generate;
+    gen_aux : if n > 0 generate
+        fifo_in_data(n) <= aux_data(n);
+        fifo_in_last(n) <= aux_last(n);
+        fifo_wr(n)      <= aux_valid(n) and aux_ready(n);
+    end generate;
+    fifo_rd(n) <= out_valid and out_ready and bool2bit(n = get_stream(out_data));
+
+    u_fifo_pri : entity work.smol_fifo
+        generic map(
+        IO_WIDTH    => 8,
+        DEPTH_LOG2  => 6)
+        port map(
+        in_data     => fifo_in_data(n),
+        in_last     => fifo_in_last(n),
+        in_write    => fifo_wr(n),
+        out_data    => ref_data(n),
+        out_last    => ref_last(n),
+        out_valid   => open,
+        out_read    => fifo_rd(n),
+        fifo_full   => open,
+        fifo_empty  => open,
+        fifo_hfull  => open,
+        fifo_hempty => open,
+        fifo_error  => open,
+        clk         => clk_100,
+        reset_p     => reset_p);
+end generate;
+
+-- Convert primary flow control.
+-- Note: If output is rate-constrained, override write strobe to avoid
+--       accidental overflow; FIFO isn't deep enough for averaging.
+pri_write2 <= (pri_write and not pri_full) when (rate_out < 1.0) else pri_write;
+u_conv : entity work.bram_fifo
+    generic map(
+    FIFO_WIDTH      => 8,
+    FIFO_DEPTH      => MAX_AUX_BYTES + 1)
+    port map(
+    in_data         => pri_data,
+    in_last         => pri_last,
+    in_write        => pri_write2,
+    fifo_empty      => open,
+    fifo_full       => pri_full,
+    fifo_error      => pri_error,
+    out_data        => in_data(0),
+    out_last        => in_last(0),
+    out_valid       => in_valid(0),
+    out_ready       => in_ready(0),
+    clk             => clk_100,
+    reset_p         => reset_p);
+
+aux_conv : for n in 1 to AUX_COUNT generate
+    in_data(n)   <= aux_data(n);
+    in_last(n)   <= aux_last(n);
+    in_valid(n)  <= aux_valid(n);
+    aux_ready(n) <= in_ready(n);
+end generate;
+
+-- Unit under test
+uut : entity work.packet_inject
+    generic map(
+    INPUT_COUNT     => AUX_COUNT+1,
+    APPEND_FCS      => false,
+    MIN_OUT_BYTES   => 0,
+    MAX_OUT_BYTES   => MAX_AUX_BYTES,
+    RULE_PRI_MAXLEN => false,
+    RULE_PRI_CONTIG => false,
+    RULE_AUX_MAXLEN => true,
+    RULE_AUX_CONTIG => true)
+    port map(
+    in_data         => in_data,
+    in_last         => in_last,
+    in_valid        => in_valid,
+    in_ready        => in_ready,
+    in_error        => aux_error,
+    out_data        => out_data,
+    out_last        => out_last,
+    out_valid       => out_valid,
+    out_ready       => out_ready,
+    clk             => clk_100,
+    reset_p         => reset_p);
+
+-- Check the output stream.
+p_output : process(clk_100)
+    variable strm : integer := 0;
+begin
+    if rising_edge(clk_100) then
+        -- Check data and last against FIFO reference.
+        if (reset_p = '0' and out_valid = '1' and out_ready = '1') then
+            strm := get_stream(out_data);
+            -- Always check for data match.
+            assert (out_data = ref_data(strm))
+                report "Output data mismatch." severity error;
+            -- Ignore "last" strobe if we're testing aux-too-long condition.
+            if (strm = 0 or test_long = '0') then
+                assert (out_last = ref_last(strm))
+                    report "End-of-packet mismatch." severity error;
+            end if;
+        end if;
+
+        -- Count each error strobe.
+        if (reset_p = '1') then
+            in_errct <= 0;
+        elsif (pri_error = '1') then
+            in_errct <= in_errct + 1;
+        end if;
+
+        if (reset_p = '1') then
+            aux_errct <= 0;
+        elsif (aux_error = '1') then
+            aux_errct <= aux_errct + 1;
+        end if;
+    end if;
+end process;
+
+-- High-level test control
+p_test : process
+    procedure run_test(rp, ro, ra : real; l : std_logic) is
+    begin
+        -- Set test conditions and issue reset.
+        report "Starting test #" & integer'image(test_idx+1);
+        test_idx    <= test_idx + 1;
+        test_long   <= l;
+        rate_pri    <= rp;
+        rate_out    <= ro;
+        rate_aux    <= ra;
+
+        -- Force reset, then allow test to run.
+        reset_p <= '1';
+        wait for 1 us;
+        reset_p <= '0';
+        wait for 999 us;
+
+        -- Confirm expected error counts.
+        assert (in_errct = 0)
+            report "Unexpected input overflow." severity error;
+        if (test_long = '1') then
+            assert (aux_errct > 0)
+                report "Missing aux-error." severity error;
+        else
+            assert (aux_errct = 0)
+                report "Unexected aux-error." severity error;
+        end if;
+    end procedure;
+begin
+    run_test(0.10, 1.00, 0.01, '0');
+    run_test(0.10, 1.00, 0.01, '1');
+    run_test(0.50, 1.00, 0.01, '0');
+    run_test(0.50, 1.00, 0.01, '1');
+    run_test(0.90, 1.00, 0.01, '0');
+    run_test(0.90, 1.00, 0.01, '1');
+    run_test(0.99, 1.00, 0.01, '0');
+    run_test(0.99, 1.00, 0.01, '1');
+    run_test(0.40, 0.50, 0.01, '1');
+    report "All tests completed!";
+    wait;
+end process;
+
+end tb;
