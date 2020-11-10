@@ -65,7 +65,7 @@ entity port_rmii is
     tx_ctrl     : out port_tx_s2m;
 
     -- Other control
-    lock_refclk : in  std_logic;        -- Separate lock for lock-detect
+    lock_refclk : in  std_logic;        -- Separate clock for lock-detect
     mode_fast   : in  std_logic;        -- 10 Mbps or 100 Mbps mode?
     reset_p     : in  std_logic);       -- Reset / shutdown
 end port_rmii;

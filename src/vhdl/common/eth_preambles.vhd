@@ -46,6 +46,9 @@ entity eth_preamble_rx is
     raw_dv      : in  std_logic;        -- Data valid
     raw_err     : in  std_logic;        -- Error flag
 
+    -- Additional error strobe
+    aux_err     : in  std_logic := '0';
+
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s);
 end eth_preamble_rx;
@@ -64,7 +67,7 @@ rx_data.reset_p <= not raw_lock;
 rx_data.data    <= reg_data;
 rx_data.write   <= raw_cken and reg_dv and out_en;
 rx_data.last    <= raw_cken and reg_dv and not raw_dv;
-rx_data.rxerr   <= raw_cken and reg_err;
+rx_data.rxerr   <= (raw_cken and reg_err) or aux_err;
 
 p_rx : process(raw_clk)
 begin
@@ -125,6 +128,14 @@ end eth_preamble_tx;
 
 architecture rtl of eth_preamble_tx is
 
+signal fifo_data    : std_logic_vector(7 downto 0);
+signal fifo_last    : std_logic;
+signal fifo_write   : std_logic;
+signal fifo_valid   : std_logic;
+signal fifo_read    : std_logic;
+signal fifo_full    : std_logic;
+signal fifo_reset   : std_logic;
+
 signal reg_data     : std_logic_vector(7 downto 0) := (others => '0');
 signal reg_dv       : std_logic := '0';
 signal reg_ready    : std_logic := '0';
@@ -133,16 +144,38 @@ begin
 
 -- Note: This design never asserts error strobe.
 
+-- Drive top-level outputs.
 out_data        <= reg_data;
 out_dv          <= reg_dv;
 out_err         <= reg_dv when DV_XOR_ERR else '0';
 
 tx_ctrl.clk     <= tx_clk;
-tx_ctrl.ready   <= tx_cken and reg_ready;
+tx_ctrl.ready   <= not fifo_full;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= not (tx_pwren and tx_pkten);
 
+-- Small FIFO ensures strict AMBA-stream compatibility.
+-- (To avoid deadlocks, must not withhold READY until VALID, but
+--  we can't start the preamble until we have data available...)
+fifo_write      <= tx_data.valid and not fifo_full;
+fifo_read       <= tx_cken and reg_ready;
+fifo_reset      <= not (tx_pwren and tx_pkten);
 
+u_fifo : entity work.smol_fifo
+    generic map(IO_WIDTH => 8)
+    port map(
+    in_data     => tx_data.data,
+    in_last     => tx_data.last,
+    in_write    => fifo_write,
+    out_data    => fifo_data,
+    out_last    => fifo_last,
+    out_valid   => fifo_valid,
+    out_read    => fifo_read,
+    fifo_full   => fifo_full,
+    clk         => tx_clk,
+    reset_p     => fifo_reset);
+
+-- Preamble-insertion state machine.
 p_tx : process(tx_clk)
     constant COUNT_MAX : integer := 20;
     variable count : integer range 0 to COUNT_MAX := 0;
@@ -157,7 +190,7 @@ begin
         elsif (tx_cken = '1') then
             -- Upstream flow control.
             if (count >= COUNT_MAX-1) then
-                reg_ready <= tx_pkten and not tx_data.last;
+                reg_ready <= tx_pkten and not fifo_last;
             else
                 reg_ready <= '0';
             end if;
@@ -168,7 +201,7 @@ begin
                 reg_data <= tx_idle & tx_idle;
                 reg_dv   <= '0';
                 count    := count + 1;
-            elsif (tx_data.valid = '0') then
+            elsif (fifo_valid = '0') then
                 -- Inter-frame metadata (1 Gbps full-duplex).
                 reg_data <= tx_idle & tx_idle;
                 reg_dv   <= '0';
@@ -184,9 +217,9 @@ begin
                 count    := count + 1;
             elsif (count = COUNT_MAX) then
                 -- Normal data transmission.
-                reg_data <= tx_data.data;
+                reg_data <= fifo_data;
                 reg_dv   <= '1';
-                if (tx_data.last = '1') then
+                if (fifo_last = '1') then
                     count := 0;
                 end if;
             end if;

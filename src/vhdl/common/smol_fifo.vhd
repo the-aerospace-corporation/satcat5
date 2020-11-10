@@ -37,18 +37,21 @@ use     ieee.numeric_std.all;
 
 entity smol_fifo is
     generic (
-    IO_WIDTH    : integer;              -- Word size
-    DEPTH_LOG2  : integer := 4;         -- FIFO depth = 2^N
+    IO_WIDTH    : natural ;             -- Word size
+    META_WIDTH  : natural := 0;         -- Metadata size (optional)
+    DEPTH_LOG2  : natural := 4;         -- FIFO depth = 2^N
     ERROR_UNDER : boolean := false;     -- Treat underflow as error?
     ERROR_OVER  : boolean := true;      -- Treat overflow as error?
     ERROR_PRINT : boolean := true);     -- Print message on error? (sim only)
     port (
     -- Input port
     in_data     : in  std_logic_vector(IO_WIDTH-1 downto 0);
+    in_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
     in_last     : in  std_logic := '0'; -- Last word in frame (OPTIONAL)
     in_write    : in  std_logic;        -- Write new data word (unless full)
     -- Output port
     out_data    : out std_logic_vector(IO_WIDTH-1 downto 0);
+    out_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
     out_last    : out std_logic;        -- Last word in frame (OPTIONAL)
     out_valid   : out std_logic;        -- Data available to be read
     out_read    : in  std_logic;        -- Consume current word (if any)
@@ -65,7 +68,7 @@ end smol_fifo;
 
 architecture smol_fifo of smol_fifo is
 
-subtype data_t is std_logic_vector(IO_WIDTH downto 0);
+subtype data_t is std_logic_vector(META_WIDTH+IO_WIDTH downto 0);
 type data_array is array(2**DEPTH_LOG2-1 downto 0) of data_t;
 
 subtype addr_t is unsigned(DEPTH_LOG2-1 downto 0);
@@ -82,7 +85,7 @@ signal error    : std_logic := '0';
 begin
 
 -- Main shift register does not require reset.
-in_word <= in_last & in_data;
+in_word <= in_last & in_meta & in_data;
 p_sreg : process(clk)
 begin
     if rising_edge(clk) then
@@ -144,7 +147,8 @@ out_word    <= sreg(to_integer(addr));
 -- Output and status signals are driven by combinational logic.
 -- MSB of address makes a good "half full" indicator.
 out_data    <= out_word(IO_WIDTH-1 downto 0);
-out_last    <= out_word(IO_WIDTH);
+out_meta    <= out_word(IO_WIDTH+META_WIDTH-1 downto IO_WIDTH);
+out_last    <= out_word(IO_WIDTH+META_WIDTH);
 out_valid   <= not empty;
 fifo_full   <= '1' when (addr = ADDR_MAX) else '0';
 fifo_empty  <= empty;

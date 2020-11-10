@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2020 The Aerospace Corporation
+
+This file is part of SatCat5.
+
+SatCat5 is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<spirit:abstractionDefinition xmlns:xilinx="http://www.xilinx.com" xmlns:spirit="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <spirit:vendor>aero.org</spirit:vendor>
+  <spirit:library>satcat5</spirit:library>
+  <spirit:name>TextLCD_rtl</spirit:name>
+  <spirit:version>1.0</spirit:version>
+  <spirit:busType spirit:vendor="aero.org" spirit:library="satcat5" spirit:name="TextLCD" spirit:version="1.0"/>
+  <spirit:ports>
+    <spirit:port>
+      <spirit:logicalName>lcd_db</spirit:logicalName>
+      <spirit:description>LCD Data</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>4</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>4</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>lcd_e</spirit:logicalName>
+      <spirit:description>LCD chip-enable</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>lcd_rw</spirit:logicalName>
+      <spirit:description>LCD Read / write-bar</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>lcd_rs</spirit:logicalName>
+      <spirit:description>LCD Data / command-bar</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+  </spirit:ports>
+  <spirit:vendorExtensions>
+    <xilinx:abstractionDefinitionInfo>
+      <xilinx:displayName>TextLCD</xilinx:displayName>
+    </xilinx:abstractionDefinitionInfo>
+  </spirit:vendorExtensions>
+</spirit:abstractionDefinition>

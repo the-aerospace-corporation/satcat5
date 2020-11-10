@@ -39,6 +39,7 @@ package eth_frame_common is
     -- Local type definitions for Frame Check Sequence (FCS):
     subtype byte_t is std_logic_vector(7 downto 0);
     subtype crc_word_t is std_logic_vector(31 downto 0);
+    type byte_array_t is array(natural range <>) of byte_t;
     constant CRC_INIT    : crc_word_t := (others => '1');
     constant CRC_RESIDUE : crc_word_t := x"C704DD7B";
 

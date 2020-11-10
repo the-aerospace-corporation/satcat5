@@ -49,15 +49,15 @@ use     work.eth_frame_common.all;
 
 entity config_send_status is
     generic (
-    MSG_BYTES   : integer;          -- Bytes per status message
-    MSG_ETYPE   : std_logic_vector(15 downto 0) := x"5C00";
-    MAC_DEST    : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
-    MAC_SOURCE  : std_logic_vector(47 downto 0) := x"536174436174";
-    AUTO_DELAY  : integer := 0;     -- Send every N clocks, or 0 to disable
-    MIN_FRAME   : integer := 0);    -- Pad to minimum frame size?
+    MSG_BYTES       : integer := 0;     -- Bytes per status message (0 = none)
+    MSG_ETYPE       : std_logic_vector(15 downto 0) := x"5C00";
+    MAC_DEST        : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
+    MAC_SOURCE      : std_logic_vector(47 downto 0) := x"5A5ADEADBEEF";
+    AUTO_DELAY_CLKS : integer := 0;     -- Send every N clocks, or 0 for on-demand
+    MIN_FRAME_BYTES : integer := 0);    -- Pad to minimum frame size?
     port (
     -- Status message, and optional write strobe (send immediately)
-    status_val  : in  std_logic_vector(8*MSG_BYTES-1 downto 0);
+    status_val  : in  std_logic_vector(8*MSG_BYTES-1 downto 0) := (others => '0');
     status_wr   : in  std_logic := '0';
 
     -- Send signal each time the status word is read.
@@ -81,7 +81,6 @@ constant FRAME_BYTES : integer := MSG_BYTES + 14;
 subtype frame_t is std_logic_vector(8*FRAME_BYTES-1 downto 0);
 
 signal msg_temp     : frame_t;
-
 signal msg_start    : std_logic := '0';
 signal msg_data     : byte_t := (others => '1');
 signal msg_last     : std_logic := '0';
@@ -89,13 +88,14 @@ signal msg_valid    : std_logic := '0';
 signal msg_ready    : std_logic;
 signal msg_done_p   : std_logic := '0';
 signal msg_done_t   : std_logic := '0';
+signal status_reg   : std_logic_vector(8*MSG_BYTES-1 downto 0) := (others => '0');
 
 begin
 
 -- Countdown to next automatic message, if applicable.
-gen_auto : if (AUTO_DELAY > 0) generate
+gen_auto : if (AUTO_DELAY_CLKS > 0) generate
     p_start : process(clk)
-        constant COUNT_RST : integer := AUTO_DELAY-1;
+        constant COUNT_RST : integer := AUTO_DELAY_CLKS-1;
         variable count : integer range 0 to COUNT_RST := COUNT_RST;
     begin
         if rising_edge(clk) then
@@ -113,13 +113,23 @@ gen_auto : if (AUTO_DELAY > 0) generate
     end process;
 end generate;
 
-gen_manual : if (AUTO_DELAY < 1) generate
+gen_manual : if (AUTO_DELAY_CLKS < 1) generate
     msg_start <= status_wr; -- No auto, manual only
 end generate;
 
+-- Latch status word at start of new message.
+p_status : process(clk)
+begin
+    if rising_edge(clk) then
+        if (msg_start = '1' and (msg_valid = '0' or msg_last = '1')) then
+            status_reg <= status_val;
+        end if;
+    end if;
+end process;
+
 -- Concatenate the full frame contents for readability.
 -- (Most of this should be optimized away...)
-msg_temp <= MAC_DEST & MAC_SOURCE & MSG_ETYPE & status_val;
+msg_temp <= MAC_DEST & MAC_SOURCE & MSG_ETYPE & status_reg;
 
 -- Message formatting state machine.
 p_msg : process(clk)
@@ -177,8 +187,8 @@ stat_read_t <= msg_done_t;
 -- Append zeros to minimum frame size, if applicable, then append FCS.
 u_fcs : entity work.eth_frame_adjust
     generic map(
-    MIN_FRAME   => MIN_FRAME,   -- Zero-pad, if applicable.
-    STRIP_FCS   => false)       -- Input stream has no FCS.
+    MIN_FRAME   => MIN_FRAME_BYTES, -- Zero-pad, if applicable.
+    STRIP_FCS   => false)           -- Input stream has no FCS.
     port map(
     in_data     => msg_data,
     in_last     => msg_last,

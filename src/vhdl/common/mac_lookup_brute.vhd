@@ -54,6 +54,9 @@ entity mac_lookup_brute is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- Error strobes
     error_full      : out std_logic;    -- No room for new address
     error_table     : out std_logic;    -- Table integrity check failed
@@ -202,10 +205,12 @@ begin
             out_pdst    <= (others => '0');
             out_valid   <= '0';
         elsif (match_rdy = '1') then
+            -- Send packet to port if broadcast, DST match, or promiscuous,
+            -- but NEVER send a packet back to its original source.
             if (mac_dst = BROADCAST_MAC or or_reduce(match_pdst) = '0') then
                 out_pdst <= not in_psrc;
             else
-                out_pdst <= match_pdst;
+                out_pdst <= (match_pdst or cfg_prmask) and not in_psrc;
             end if;
             out_valid <= '1';
         elsif (out_ready = '1') then

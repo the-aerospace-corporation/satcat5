@@ -56,6 +56,9 @@ entity mac_lookup_stream is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- System interface
     clk             : in  std_logic;
     reset_p         : in  std_logic);
@@ -111,9 +114,9 @@ gen_match : for n in 1 to PORT_COUNT-1 generate
         if rising_edge(clk) then
             -- Check each destination byte against the stored address.
             if (in_valid = '1' and in_last = '1') then
-                match_flag(n) <= '1';
+                match_flag(n) <= '1';   -- Get ready for next packet.
             elsif (in_wr_dst = '1' and in_data /= addr_sreg(in_bcount)) then
-                match_flag(n) <= '0';
+                match_flag(n) <= '0';   -- Any mismatch -> Clear flag.
             end if;
 
             -- Store source address for this port.
@@ -124,11 +127,10 @@ gen_match : for n in 1 to PORT_COUNT-1 generate
     end process;
 end generate;
 
--- Uplink port matches if none of the regular ports do, and the
--- source port was not the uplink (loopback is not allowed).
+-- Uplink port matches if none of the regular ports do.
 -- Combinational logic ensures it's ready in sync with others.
 match_found <= or_reduce(match_flag(PORT_COUNT-1 downto 1));
-match_flag(0) <= not (in_psrc(0) or match_found);
+match_flag(0) <= not match_found;
 
 -- Matching unit for the broadcast address, plus output logic.
 p_bcast : process(clk)
@@ -149,9 +151,12 @@ begin
         elsif (in_valid = '1' and in_bcount = 12) then
             -- Latch output one cycle after end of DST-MAC.
             if (match_bcast = '1') then
-                match_pdst <= not in_psrc;  -- Broadcast
+                -- Broadcast mode -> Everything except source.
+                match_pdst <= not in_psrc;
             else
-                match_pdst <= match_flag;   -- Single-port
+                -- Send packet to port if broadcast, DST match, or promiscuous,
+                -- but NEVER send a packet back to its original source.
+                match_pdst <= (cfg_prmask or match_flag) and not in_psrc;
             end if;
             match_valid <= '1';
         elsif (out_ready = '1') then

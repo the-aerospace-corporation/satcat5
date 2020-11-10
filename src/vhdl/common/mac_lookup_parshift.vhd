@@ -56,6 +56,9 @@ entity mac_lookup_parshift is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- Error strobes
     error_full      : out std_logic;    -- No room for new address
     error_table     : out std_logic;    -- Table integrity check failed
@@ -334,10 +337,12 @@ begin
             out_pdst    <= (others => '0');
             out_valid   <= '0';
         elsif (scan_done = '1') then
+            -- Send packet to port if broadcast, DST match, or promiscuous,
+            -- but NEVER send a packet back to its original source.
             if (dst_bcast = '1' or match_gotdst = '0') then
                 out_pdst <= not reg_psrc;
             else
-                out_pdst <= match_mskdst;
+                out_pdst <= (cfg_prmask or match_mskdst) and not reg_psrc;
             end if;
             out_valid <= '1';
         elsif (out_ready = '1') then

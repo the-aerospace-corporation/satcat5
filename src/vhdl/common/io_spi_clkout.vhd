@@ -33,9 +33,9 @@ use     work.synchronization.all;
 
 entity io_spi_clkout is
     generic (
-    CLKREF_HZ   : integer;          -- Main clock rate (Hz)
-    SPI_BAUD    : integer;          -- SPI baud rate (bps)
-    SPI_MODE    : integer);         -- SPI mode index (0-3)
+    CLKREF_HZ   : positive;         -- Main clock rate (Hz)
+    SPI_BAUD    : positive;         -- SPI baud rate (bps)
+    SPI_MODE    : natural);         -- SPI mode index (0-3)
     port (
     -- Command stream
     cmd_data    : in  byte_t;
@@ -123,7 +123,7 @@ p_spi : process(ref_clk)
     end function;
 
     -- Calculate delay per half-bit (round up)
-    constant DELAY_HALF : integer := (CLKREF_HZ + 2*SPI_BAUD-1) / (2*SPI_BAUD);
+    constant DELAY_HALF : positive := clocks_per_baud(CLKREF_HZ, 2*SPI_BAUD);
     -- Local state.
     variable out_sreg   : byte_t := (others => '0');
     variable bit_count  : integer range 0 to 17 := 0;

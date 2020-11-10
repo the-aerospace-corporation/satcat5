@@ -204,14 +204,14 @@ gen_strip : if STRIP_FCS generate
     -- Instantiate state machine to remove FCS from the end of each packet.
     p_out_strip : process(clk)
         constant DELAY_MAX : integer := 4;
-        type sreg_t is array(1 to DELAY_MAX) of byte_t;
+        type sreg_t is array(0 to DELAY_MAX) of byte_t;
         variable sreg : sreg_t := (others => (others => '0'));
         variable count : integer range 0 to DELAY_MAX := DELAY_MAX;
     begin
         if rising_edge(clk) then
             -- Four-byte delay using a shift register.
             if (reg_write = '1') then
-                sreg := reg_data & sreg(1 to DELAY_MAX-1);
+                sreg := reg_data & sreg(0 to DELAY_MAX-1);
             end if;
             trim_data <= sreg(DELAY_MAX);
 

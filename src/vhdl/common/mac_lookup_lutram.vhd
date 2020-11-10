@@ -73,6 +73,9 @@ entity mac_lookup_lutram is
     out_valid   : out std_logic;
     out_ready   : in  std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask  : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- Error strobes
     error_full  : out std_logic;    -- No room for new address
     error_table : out std_logic;    -- Table integrity check failed
@@ -353,13 +356,15 @@ p_result : process(clk)
 begin
     if rising_edge(clk) then
         -- Pipeline stage 1: Generate the destination port mask.
+        -- Send packet to port if broadcast, DST match, or promiscuous,
+        -- but NEVER send a packet back to its original source.
         if (tbl_rdy_dst = '1') then
             if (tbl_bcast = '1' or tbl_match = '0') then
                 -- Broadcast or no-match: Send to all EXCEPT source.
                 pdst_mask <= not make_mask(tbl_psrc);
             else
                 -- Normal case: Destination from table lookup.
-                pdst_mask <= make_mask(tbl_pidx);
+                pdst_mask <= (cfg_prmask or make_mask(tbl_pidx)) and not make_mask(tbl_psrc);
             end if;
         end if;
 

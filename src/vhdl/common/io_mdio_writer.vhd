@@ -42,8 +42,8 @@ use     work.eth_frame_common.all;
 
 entity io_mdio_writer is
     generic (
-    CLKREF_HZ   : integer;          -- Main clock rate (Hz)
-    MDIO_BAUD   : integer);         -- MDIO baud rate (bps)
+    CLKREF_HZ   : positive;         -- Main clock rate (Hz)
+    MDIO_BAUD   : positive);        -- MDIO baud rate (bps)
     port (
     -- Command stream
     cmd_data    : in  byte_t;
@@ -84,14 +84,13 @@ cmd_write <= mdio_ready and cmd_valid;
 p_mdio : process(ref_clk)
     -- Calculate delay per quarter-bit.
     -- (Specified rate is maximum, so round up.)
-    constant BAUD_4X    : integer := 4 * MDIO_BAUD;
-    constant DELAY_QTR  : integer := (CLKREF_HZ + BAUD_4X-1) / BAUD_4X;
+    constant DELAY_QTR  : natural := clocks_per_baud(CLKREF_HZ, 4*MDIO_BAUD);
     -- Local state.
     variable byte_final : std_logic := '0';
     variable out_sreg   : byte_t := (others => '1');
     variable bit_count  : integer range 0 to 7 := 0;
     variable qtr_count  : integer range 0 to 3 := 0;
-    variable clk_count  : integer range 0 to DELAY_QTR-1 := 0;
+    variable clk_count  : natural range 0 to DELAY_QTR-1 := 0;
 begin
     if rising_edge(ref_clk) then
         -- Output-enable state machine.

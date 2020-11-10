@@ -65,6 +65,9 @@ entity mac_lookup_binary is
     scrub_busy      : out std_logic;
     scrub_remove    : out std_logic;
 
+    -- Promiscuous-port flag.
+    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
+
     -- Error strobes
     error_full      : out std_logic;    -- No room for new address
     error_table     : out std_logic;    -- Table integrity check failed
@@ -338,8 +341,8 @@ begin
                 src_idx_hi  := row_count - 1;
             end if;
         elsif (search_state = SEARCH_START) then
-            -- Reset output mask to broadcast mode (all but source).
-            search_pdst <= not mac_psrc;
+            -- Reset output mask to broadcast mode.
+            search_pdst <= (others => '1');
             -- Special case if table is empty: insert immediately.
             write_en         <= bool2bit(row_count = 0 and mac_src /= BROADCAST_ADDR);
             write_addr       <= 0;
@@ -518,7 +521,9 @@ begin
         end if;
 
         if (mac_ready = '1') then
-            out_pdst_i <= search_pdst;
+            -- Send packet to port if broadcast, DST match, or promiscuous,
+            -- but NEVER send a packet back to its original source.
+            out_pdst_i <= (cfg_prmask or search_pdst) and not mac_psrc;
         end if;
     end if;
 end process;

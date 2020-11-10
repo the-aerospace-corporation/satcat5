@@ -49,10 +49,21 @@ package SWITCH_TYPES is
         reset_p : std_logic;
     end record;
 
-    -- Define arrays for each type:
+    -- Define arrays for each port type:
     type array_rx_m2s is array(natural range<>) of port_rx_m2s;
     type array_tx_m2s is array(natural range<>) of port_tx_m2s;
     type array_tx_s2m is array(natural range<>) of port_tx_s2m;
+
+    -- Generic 8-bit data stream with AXI flow-control:
+    type axi_stream8 is record
+        data    : std_logic_vector(7 downto 0);
+        last    : std_logic;
+        valid   : std_logic;
+        ready   : std_logic;
+    end record;
+    
+    constant AXI_STREAM8_IDLE : axi_stream8 := (
+        data => (others => '0'), last => '0', valid => '0', ready => '0');
 
     -- Error reporting: Width of the errvec_t signal from switch_core.
     constant SWITCH_ERR_WIDTH : integer := 8;
