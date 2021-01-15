@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -131,6 +131,7 @@ signal uart2_write  : std_logic;
 
 -- Mode detection state machine.
 signal det_mode     : mode_t := START_TYPE;
+signal est_rate     : port_rate_t := (others => '0');
 signal lock_any     : std_logic := '0';
 signal lock_spi     : std_logic := '0';
 signal lock_uart1   : std_logic := '0';
@@ -150,6 +151,7 @@ begin
 
 -- Forward clock and reset signals.
 rx_data.clk     <= refclk;
+rx_data.rate    <= est_rate;
 rx_data.reset_p <= codec_reset;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= codec_reset;
@@ -304,17 +306,21 @@ begin
             codec_reset <= '0';
         end if;
 
-        -- Drive the SLIP decoder stream.
+        -- Drive the SLIP decoder stream and choose estimated rate.
         if (det_mode = MODE_SPI) then
+            est_rate  <= get_rate_word(10);
             dec_data  <= spi_rx_data;
             dec_write <= spi_rx_write;
         elsif (det_mode = MODE_UART1) then
+            est_rate  <= get_rate_word(1);
             dec_data  <= uart1_data;
             dec_write <= uart1_write;
         elsif (det_mode = MODE_UART2) then
+            est_rate  <= get_rate_word(1);
             dec_data  <= uart2_data;
             dec_write <= uart2_write;
         else
+            est_rate  <= (others => '0');
             dec_data  <= SLIP_FEND;
             dec_write <= lock_any;
         end if;

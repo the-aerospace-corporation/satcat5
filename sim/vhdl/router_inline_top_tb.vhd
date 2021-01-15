@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -198,7 +198,7 @@ uut : entity work.router_inline_top
     router_time_msec    => (others => '0'));
 
 -- Reference FIFO and cross-check for the ingress stream.
-u_fifo_ig : entity work.bram_fifo
+u_fifo_ig : entity work.fifo_bram
     generic map(
     FIFO_WIDTH  => 8,
     FIFO_DEPTH  => 4096,
@@ -233,7 +233,7 @@ begin
 end process;
 
 -- Reference FIFO and cross-check for the egress stream.
-u_fifo_eg : entity work.bram_fifo
+u_fifo_eg : entity work.fifo_bram
     generic map(
     FIFO_WIDTH  => 8,
     FIFO_DEPTH  => 4096,

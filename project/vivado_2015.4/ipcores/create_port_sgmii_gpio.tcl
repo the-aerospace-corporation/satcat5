@@ -37,8 +37,8 @@ ipcore_add_file $src_dir/common     eth_enc8b10b.vhd
 ipcore_add_file $src_dir/common     eth_enc8b10b_table.vhd
 ipcore_add_file $src_dir/common     eth_frame_common.vhd
 ipcore_add_file $src_dir/common     eth_preambles.vhd
+ipcore_add_file $src_dir/common     fifo_smol.vhd
 ipcore_add_file $src_dir/common     port_sgmii_common.vhd
-ipcore_add_file $src_dir/common     smol_fifo.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
 ipcore_add_file $src_dir/xilinx     port_sgmii_gpio.vhd
 ipcore_add_file $src_dir/xilinx     sgmii_data_slip.vhd
@@ -70,9 +70,12 @@ set_property physical_name sgmii_txn    [ipx::add_port_map TXN  $intf]
 
 # Set parameters
 ipcore_add_param TX_INVERT bool false
+ipcore_add_param TX_IOSTD string "LVDS_25"
 ipcore_add_param RX_INVERT bool false
+ipcore_add_param RX_IOSTD string "LVDS_25"
 ipcore_add_param RX_BIAS_EN bool false
 ipcore_add_param RX_TERM_EN bool true
+ipcore_add_param SHAKE_WAIT bool true
 
 # Package the IP-core.
 ipcore_finished

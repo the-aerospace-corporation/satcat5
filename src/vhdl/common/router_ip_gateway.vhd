@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -434,7 +434,7 @@ end process;
 cmd_rd <= dat_rd and dat_last;
 dat_rd <= cmd_valid and dat_valid and fwd_hempty;
 
-u_fifo_cmd : entity work.smol_fifo
+u_fifo_cmd : entity work.fifo_smol
     generic map(
     IO_WIDTH    => ACT_WIDTH,
     DEPTH_LOG2  => 3)   -- 2^3 = 8 words
@@ -447,7 +447,7 @@ u_fifo_cmd : entity work.smol_fifo
     clk         => clk,
     reset_p     => reset_p);
 
-u_fifo_dat : entity work.smol_fifo
+u_fifo_dat : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,   -- 8-bit datapath
     DEPTH_LOG2  => 7)   -- 2^7 = 128 bytes
@@ -566,7 +566,7 @@ begin
 end process;
 
 -- Output FIFO for downstream flow-control.
-u_fifo_out : entity work.smol_fifo
+u_fifo_out : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 4)

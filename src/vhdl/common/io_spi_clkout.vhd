@@ -19,9 +19,17 @@
 --
 -- A simple byte-by-byte SPI controller (clock output).
 --
--- The state machine generates SCK, CSB, and MOSI, at a fixed baud rate.
--- All SPI modes are supported.  The "last" strobe is used to assert and
--- release the chip-select signal.  Reads are supported but optional.
+-- This block is an SPI controller that drives clock and data signals
+-- for a remote SPI peripheral.  It can optionally accept input data
+-- from that peripheral.
+--
+-- For more information on naming conventions, refer to:
+-- https://www.oshwa.org/a-resolution-to-redefine-spi-signal-names/
+--
+-- The state machine generates SCK, CSB, and COSI, at a fixed baud rate.
+-- All SPI clock-phase and clock-polarity modes are supported.  Chip-select
+-- is automatically asserted (i.e., driven low) before each data byte, then
+-- released after transfer of a byte with the "last" flag asserted.
 --
 
 library ieee;
@@ -49,9 +57,9 @@ entity io_spi_clkout is
 
     -- SPI interface with output clock
     spi_csb     : out std_logic;        -- Chip select
-    spi_sck     : out std_logic;        -- Clock
-    spi_sdo     : out std_logic;        -- MOSI
-    spi_sdi     : in  std_logic := '0'; -- MISO (Optional)
+    spi_sck     : out std_logic;        -- Serial clock out (SCK)
+    spi_sdo     : out std_logic;        -- Serial data out (COPI)
+    spi_sdi     : in  std_logic := '0'; -- Serial data in (CIPO, if present)
 
     -- System interface
     ref_clk     : in  std_logic;        -- Reference clock

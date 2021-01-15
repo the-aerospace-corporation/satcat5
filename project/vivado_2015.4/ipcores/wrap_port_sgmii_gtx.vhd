@@ -43,6 +43,7 @@ entity wrap_port_sgmii_gtx is
     sw_rx_last  : out std_logic;
     sw_rx_write : out std_logic;
     sw_rx_error : out std_logic;
+    sw_rx_rate  : out std_logic_vector(15 downto 0);
     sw_rx_reset : out std_logic;
     sw_tx_clk   : out std_logic;
     sw_tx_data  : in  std_logic_vector(7 downto 0);
@@ -73,6 +74,7 @@ sw_rx_data      <= rx_data.data;
 sw_rx_last      <= rx_data.last;
 sw_rx_write     <= rx_data.write;
 sw_rx_error     <= rx_data.rxerr;
+sw_rx_rate      <= rx_data.rate;
 sw_rx_reset     <= rx_data.reset_p;
 sw_tx_clk       <= tx_ctrl.clk;
 sw_tx_ready     <= tx_ctrl.ready;

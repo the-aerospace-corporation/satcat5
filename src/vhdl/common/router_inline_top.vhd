@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -116,6 +116,7 @@ signal inbuf_data       : byte_t;
 signal inbuf_write      : std_logic;
 signal inbuf_commit     : std_logic;
 signal inbuf_revert     : std_logic;
+signal inbuf_error      : std_logic;
 
 -- Ingress datapath
 signal ig_inbuf         : axi_stream8;
@@ -163,6 +164,7 @@ lcl_rx_data.data    <= ig_out.data;
 lcl_rx_data.last    <= ig_out.last;
 lcl_rx_data.write   <= ig_out.valid;
 lcl_rx_data.rxerr   <= error_combined;
+lcl_rx_data.rate    <= net_rx_data.rate;
 lcl_rx_data.reset_p <= reset_p;
 ig_out.ready        <= '1';
 
@@ -213,7 +215,7 @@ u_port_error : sync_pulse2pulse
 
 u_inbuf_crc : sync_pulse2pulse
     port map(
-    in_strobe   => inbuf_revert,
+    in_strobe   => inbuf_error,
     in_clk      => inraw_clk,
     out_strobe  => drop_ig_crc,
     out_clk     => clk_main,
@@ -272,12 +274,13 @@ u_crc : entity work.eth_frame_check
     out_write       => inbuf_write,
     out_commit      => inbuf_commit,
     out_revert      => inbuf_revert,
+    out_error       => inbuf_error,
     clk             => inraw_clk,
     reset_p         => net_rx_data.reset_p);
 
 -- Packet buffer is required for CRC check, and allows clock transition.
 -- It only needs to handle a single max-size packet (~1500 bytes)
-u_inbuf : entity work.packet_fifo
+u_inbuf : entity work.fifo_packet
     generic map(
     INPUT_BYTES     => 1,
     OUTPUT_BYTES    => 1,

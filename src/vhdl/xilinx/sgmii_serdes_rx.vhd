@@ -42,11 +42,12 @@ use     work.common_functions.all;
 
 entity sgmii_serdes_rx is
     generic (
-    IN_FIFO_LOC : string := "";     -- Location of IN_FIFO (or use RAMB32X1D)
-    POL_INVERT  : boolean := false; -- Invert input polarity
-    BIAS_ENABLE : boolean := false; -- Enable split-termination biasing.
-    DIFF_TERM   : boolean := true;  -- Enable internal termination?
-    REFCLK_MHZ  : integer := 200);  -- IDELAYCTRL reference freq. (MHz)
+    IN_FIFO_LOC : string := "";         -- Location of IN_FIFO (or use RAMB32X1D)
+    IOSTANDARD  : string := "LVDS_25";  -- IOSTANDARD for RxD_*
+    POL_INVERT  : boolean := false;     -- Invert input polarity
+    BIAS_ENABLE : boolean := false;     -- Enable split-termination biasing.
+    DIFF_TERM   : boolean := true;      -- Enable internal termination?
+    REFCLK_MHZ  : integer := 200);      -- IDELAYCTRL reference freq. (MHz)
     port (
     -- Top-level LVDS input pair.
     RxD_p_pin   : in  std_logic;
@@ -66,17 +67,8 @@ end sgmii_serdes_rx;
 
 architecture rtl of sgmii_serdes_rx is
 
--- If we are using external biasing, use a standard LVDS_25 receiver.
--- Otherwise, use DIFF_SSTL18_II with split-termination enabled.
-function get_iotype return string is
-begin
-    if BIAS_ENABLE then
-        return "DIFF_SSTL18_II";    -- LVDS-compatible (VCCO = 1.8V)
-    else
-        return "LVDS_25";           -- Regular LVDS (VCCO = 2.5V)
-    end if;
-end function;
-
+-- Enable split termination?
+-- (Note this method is incompatible with LVDS_25; try DIFF_SSTL18_II etc.)
 function get_term return string is
 begin
     if BIAS_ENABLE then
@@ -122,7 +114,7 @@ u_rxbuf : IBUFDS_DIFF_OUT
     generic map (
     IBUF_LOW_PWR => FALSE,
     DIFF_TERM    => DIFF_TERM,
-    IOSTANDARD   => get_iotype)
+    IOSTANDARD   => IOSTANDARD)
     port map (
     I => RxD_p_pin, IB => RxD_n_pin,
     O => RxD_p_buf, OB => RxD_n_buf);

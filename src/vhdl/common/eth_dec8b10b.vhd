@@ -82,6 +82,10 @@ signal lookup_ctrl  : std_logic := '0';
 signal lookup_5b    : std_logic_vector(4 downto 0) := (others => '0');
 signal lookup_3b    : std_logic_vector(2 downto 0) := (others => '0');
 signal lookup_err   : std_logic := '0';
+signal lookup_sof   : std_logic := '0';
+
+-- Filter out isolated lookup errors.
+signal filter_err   : std_logic := '0';
 
 -- Packet encapsulation and configuration metadata.
 signal pkt_active   : std_logic := '0';
@@ -98,7 +102,8 @@ begin
 align_sreg_d <= align_sreg_q & in_data; -- MSB first
 
 p_align : process(io_clk)
-    constant WINDOW_THRESH  : integer := 7;     -- Minimum matches to lock
+    constant WINDOW_THRESH  : positive := 7;    -- Minimum matches to lock
+    constant WINDOW_PENALTY : positive := 3;    -- Weight for misaligned commas
     variable comma_temp     : std_logic_vector(6 downto 0) := (others => '0');
     variable comma_detect   : std_logic_vector(9 downto 0) := (others => '0');
     variable comma_error    : std_logic_vector(9 downto 0) := (others => '0');
@@ -113,19 +118,25 @@ begin
         align_cken <= in_cken;
 
         -- Update alignment-check state machine.
-        if (in_lock = '0' or lookup_err = '1') then
-            -- Reset due to upstream or downstream errors.
+        if (in_lock = '0' or filter_err = '1') then
+            -- Reset due to upstream errors or major downstream errors.
             align_lock  <= '0';
             align_bit   <= 0;
             align_count := 0;
         elsif (or_reduce(comma_error) = '1') then
-            -- Misaligned comma, unlock and try the next hypothesis.
-            align_lock  <= '0';
-            align_count := 0;
-            if (align_bit = 9) then
-                align_bit <= 0;
+            -- Misaligned comma, unlock if score reaches zero.
+            if (align_count > WINDOW_PENALTY) then
+                -- Decrement score but stay locked.
+                align_count := align_count - WINDOW_PENALTY;
             else
-                align_bit <= align_bit + 1;
+                -- Unlock, then move to next phase hypothesis.
+                align_lock  <= '0';
+                align_count := 0;
+                if (align_bit = 9) then
+                    align_bit <= 0;
+                else
+                    align_bit <= align_bit + 1;
+                end if;
             end if;
         elsif (or_reduce(comma_detect) = '1') then
             -- Lock on N consecutive aligned commas.
@@ -263,8 +274,12 @@ begin
     end if;
 end process;
 
+-- Detect start-of-frame token.
+lookup_sof <= lookup_ctrl and bool2bit(lookup_3b = "111" and lookup_5b = "11011");
+
 -- Packet encapsulation and configuration metadata.
 p_meta : process(io_clk)
+    variable cfg_sof : std_logic := '0';
     variable cfg_tok : std_logic := '0';
     variable cfg_ctr : integer range 0 to 2 := 0;
 begin
@@ -276,7 +291,7 @@ begin
         elsif (lookup_cken = '1' and lookup_ctrl = '1') then
             -- Start of packet = K.27.7 (See Table 36-3).  Treat any
             -- other control token (end, error, etc.) as end of frame.
-            pkt_active <= bool2bit(lookup_3b = "111" and lookup_5b = "11011");
+            pkt_active <= lookup_sof;
         end if;
 
         -- Receive link-configuration word (C1 or C2, see Table 36-3)
@@ -311,11 +326,35 @@ begin
     end if;
 end process;
 
+-- Filter out occasional lookup errors using a running danger score:
+--  * Every good frame decrements danger level by one.
+--  * Every lookup error increments danger level by N.
+--  * Raise alarm if the danger level ever exceeds threshold.
+p_filter : process(io_clk)
+    constant PENALTY : positive := 30;
+    variable danger  : unsigned(7 downto 0) := (others => '0');
+begin
+    if rising_edge(io_clk) then
+        -- Keep a running tally of the warning level:
+        --  * Every good frame decrements by 1
+        --  * Every error increments by N
+        -- If the warning level exceeds a threshold, declare error.
+        filter_err <= bool2bit(danger > 200);
+        if (align_lock = '0') then
+            danger := (others => '0');
+        elsif (lookup_cken = '1' and lookup_err = '1') then
+            danger := danger + PENALTY;
+        elsif (lookup_cken = '1' and lookup_sof = '1' and danger > 0) then
+            danger := danger - 1;
+        end if;
+    end if;
+end process;
+
 -- Drive all outputs:
 out_lock    <= align_lock;
 out_cken    <= lookup_cken;
 out_dv      <= pkt_active and not lookup_ctrl;
-out_err     <= lookup_err;
+out_err     <= filter_err;
 out_data    <= lookup_3b & lookup_5b;
 cfg_rcvd    <= cfg_rcvd_i;
 cfg_word    <= cfg_word_i;

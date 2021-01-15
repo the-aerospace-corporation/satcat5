@@ -34,8 +34,8 @@ source $ip_root/ipcore_shared.tcl
 ipcore_add_file $src_dir/common     common_functions.vhd
 ipcore_add_file $src_dir/common     eth_frame_common.vhd
 ipcore_add_file $src_dir/common     eth_preambles.vhd
+ipcore_add_file $src_dir/common     fifo_smol.vhd
 ipcore_add_file $src_dir/common     port_rmii.vhd
-ipcore_add_file $src_dir/common     smol_fifo.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
 ipcore_add_file $src_dir/xilinx     io_7series.vhd
 ipcore_add_file $src_dir/xilinx     synchronization.vhd

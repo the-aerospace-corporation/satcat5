@@ -35,8 +35,8 @@ use     work.common_functions.all;
 
 entity sgmii_serdes_tx is
     generic (
-    POL_INVERT  : boolean := false;     -- Invert input polarity
-    RX_BIAS_EN  : boolean := false);    -- Enable split-termination biasing
+    IOSTANDARD  : string := "LVDS_25";  -- I/O standard for TxD_*
+    POL_INVERT  : boolean := false);    -- Invert input polarity
     port (
     -- Top-level LVDS output pair.
     TxD_p_pin   : out std_logic;
@@ -53,16 +53,6 @@ end sgmii_serdes_tx;
 
 architecture rtl of sgmii_serdes_tx is
 
--- Mimic the I/O type of the receiver.
-function get_iotype return string is
-begin
-    if RX_BIAS_EN then
-        return "DIFF_SSTL18_II";    -- LVDS-compatible (VCCO = 1.8V)
-    else
-        return "LVDS_25";           -- Regular LVDS (VCCO = 2.5V)
-    end if;
-end function;
-
 subtype slv10 is std_logic_vector(9 downto 0);
 constant PAR_MASK       : slv10 := (others => bool2bit(POL_INVERT));
 signal par_inv          : slv10;
@@ -73,7 +63,7 @@ begin
 
 -- LVDS output driver:
 u_out: OBUFTDS
-    generic map (IOSTANDARD => get_iotype, SLEW => "FAST")
+    generic map (IOSTANDARD => IOSTANDARD, SLEW => "FAST")
     port map (I => ser_dq, T => ser_tq, O => TxD_p_pin, OB => TxD_n_pin);
 
 -- Leader serializer

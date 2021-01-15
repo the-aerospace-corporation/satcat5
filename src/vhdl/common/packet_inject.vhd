@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -26,12 +26,20 @@
 --
 -- All ports use AXI-style valid/ready flow control.  The lowest-numbered
 -- input port gets the highest priority, followed by port #1, #2, and so on.
--- All inputs except the primary should provide contiguous data (i.e., once
--- asserted, VALID cannot be deasserted until end-of-frame), but this error
--- check can be disabled if desired.
+-- That input is locked-in until the end-of-frame, at which point a new port
+-- is selected.
+--
+-- An optional PAUSE flag can be used to withhold input selection for as
+-- long as the flag is asserted. If a frame is currently in-progress, this
+-- will halt output at the next packet boundary.
+--
+-- By default, all inputs are required to provide contiguous data (i.e., once
+-- asserted, VALID cannot be deasserted until end-of-frame), but this rule-
+-- check can be disabled if desired. This includes separate options for the
+-- "primary" input (Index 0) and "auxiliary" inputs (Index 1+).
 --
 -- If the primary input stream CANNOT use flow control, use a FIFO such as
--- "bram_fifo".  The FIFO depth must be large enough to accommodate the worst-
+-- "fifo_bram".  The FIFO depth must be large enough to accommodate the worst-
 -- case time spent servicing another output.  If out_ready is held constant-
 -- high, then the minimum FIFO size is equal to MAX_OUT_BYTES+1.
 --
@@ -45,7 +53,7 @@
 --
 -- Example usage:
 --  * Primary data port has no flow control.  Data is always written to a
---    bram_fifo large enough for one max-length packet (typically 2 kiB).
+--    fifo_bram large enough for one max-length packet (typically 2 kiB).
 --  * Secondary port(s) each have AXI valid/ready flow control, with the
 --    added caveat that packet data must be contiguous once started.
 --  * When idle, or at the end of each output packet, or if an auxiliary
@@ -89,6 +97,7 @@ entity packet_inject is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
     out_aux         : out std_logic;
+    out_pause       : in  std_logic := '0';
 
     -- System clock and reset.
     clk             : in  std_logic;
@@ -121,7 +130,7 @@ begin
 -- Upstream flow-control.
 gen_flow : for n in in_ready'range generate
     sel_mask(n) <= bool2bit(sel_state = n + 1)
-                or bool2bit(n = 0 and sel_state = STATE_IDLE);
+                or bool2bit(n = 0 and sel_state = STATE_IDLE and out_pause = '0');
     in_ready(n) <= sel_mask(n) and mux_clken;
 end generate;
 
@@ -144,7 +153,7 @@ begin
             -- Revert to idle state in most cases.
             sel_state <= STATE_IDLE;
             -- If we're already idle, pick the highest priority active input.
-            if (sel_state = STATE_IDLE) then
+            if (sel_state = STATE_IDLE and out_pause = '0') then
                 for n in INPUT_COUNT-1 downto 0 loop
                     if (in_valid(n) = '1') then
                         sel_state <= n+1;
@@ -171,7 +180,7 @@ begin
             mux_data  <= in_data(0);
             mux_aux   <= '0';
             mux_last  <= in_last(0);
-            mux_valid <= in_valid(0);
+            mux_valid <= in_valid(0) and not out_pause;
         else
             -- Choose the active input.
             mux_data  <= in_data(sel_state-1);

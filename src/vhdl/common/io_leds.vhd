@@ -24,7 +24,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
-package LED_TYPES is
+package IO_LEDS is
     -- A variable-brightness LED, using pulse-width modulation (PWM).
     -- Note: By default, LEDs are assumed to be active-low (e.g. Nallatech)
     component pwm_led is
@@ -63,7 +63,7 @@ package LED_TYPES is
             Clk   : in  std_logic;
             pulse : in  std_logic);
     end component;
-end LED_TYPES;
+end IO_LEDS;
 
 
 
@@ -116,7 +116,7 @@ end;
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.led_types.pwm_led;
+use work.io_leds.pwm_led;
 
 entity breathe_led is
     generic (
@@ -187,7 +187,7 @@ end;
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.led_types.pwm_led;
+use work.io_leds.pwm_led;
 
 entity sustain_exp_led is
     generic (

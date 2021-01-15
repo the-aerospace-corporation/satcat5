@@ -168,7 +168,7 @@ frm_ready <= (not pad_valid) or (pad_ready and not pad_ovr);
 p_pad : process(clk)
     -- Counter max value is equal to the worst-case pad length.
     -- i.e., min size = N bytes + current byte + 4-byte FCS.
-    constant BCOUNT_MAX : integer := max(MIN_FRAME-5, 0);
+    constant BCOUNT_MAX : integer := int_max(MIN_FRAME-5, 0);
     variable bcount : integer range 0 to BCOUNT_MAX := 0;
 begin
     if rising_edge(clk) then

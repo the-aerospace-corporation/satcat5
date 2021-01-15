@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -63,7 +63,7 @@ signal uut_write    : std_logic;
 signal out_rate     : real := 0.0;
 signal out_data     : byte_t;
 signal out_last     : std_logic;
-signal out_error    : std_logic;
+signal out_revert   : std_logic;
 signal out_write    : std_logic;
 
 begin
@@ -130,7 +130,7 @@ u_fcs : entity work.eth_frame_check
     out_data    => out_data,
     out_write   => out_write,
     out_commit  => out_last,
-    out_revert  => out_error,
+    out_revert  => out_revert,
     clk         => clk_100,
     reset_p     => reset_p);
 
@@ -152,16 +152,18 @@ p_chk : process(clk_100)
     variable byte_idx : integer := 0;
 begin
     if rising_edge(clk_100) then
-        -- Watch for FCS mismatch:
-        assert (out_error = '0') report "FCS mismatch" severity error;
+        -- Watch for FCS mismatch and other errors:
+        assert (out_revert = '0')
+            report "Unexpected packet error." severity error;
 
         -- Confirm data against reference sequence.
         if (reset_p = '1') then
             byte_idx := 0;
         elsif (out_write = '1') then
-            assert (out_data = ref_data) report "Data mismatch" severity error;
+            assert (out_data = ref_data)
+                report "Data mismatch" severity error;
             byte_idx := byte_idx + 1;
-            if (out_last = '1' or out_error = '1') then
+            if (out_last = '1' or out_revert = '1') then
                 -- Check length before starting new frame.
                 assert (byte_idx = FRAME_BYTES)
                     report "Length mismatch" severity error;

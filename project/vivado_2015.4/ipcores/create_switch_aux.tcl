@@ -42,11 +42,11 @@ if {[info exists satcat5_enable_sem] && $satcat5_enable_sem} {
 # Add all required source files:
 #               Path                Filename
 ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     error_reporting.vhd
 ipcore_add_file $src_dir/common     eth_frame_common.vhd
+ipcore_add_file $src_dir/common     fifo_smol.vhd
+ipcore_add_file $src_dir/common     io_error_reporting.vhd
+ipcore_add_file $src_dir/common     io_leds.vhd
 ipcore_add_file $src_dir/common     io_uart.vhd
-ipcore_add_file $src_dir/common     led_types.vhd
-ipcore_add_file $src_dir/common     smol_fifo.vhd
 ipcore_add_file $src_dir/common     switch_aux.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
 ipcore_add_file $src_dir/xilinx     lcd_control.vhd

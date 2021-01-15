@@ -34,23 +34,24 @@ set constr_impl "constraints/converter_zed_impl.xdc"
 # List HDL source files, grouped by type.
 set files_main [list \
  "[file normalize "../../src/vhdl/common/common_functions.vhd"]"\
- "[file normalize "../../src/vhdl/common/error_reporting.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_adjust.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_check.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_common.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_preambles.vhd"]"\
+ "[file normalize "../../src/vhdl/common/fifo_packet.vhd"]"\
+ "[file normalize "../../src/vhdl/common/fifo_smol.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_error_reporting.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_leds.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_spi_clkin.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_spi_clkout.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_uart.vhd"]"\
- "[file normalize "../../src/vhdl/common/led_types.vhd"]"\
  "[file normalize "../../src/vhdl/common/packet_delay.vhd"]"\
- "[file normalize "../../src/vhdl/common/packet_fifo.vhd"]"\
+ "[file normalize "../../src/vhdl/common/fifo_packet.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_adapter.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_passthrough.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_auto.vhd"]"\
  "[file normalize "../../src/vhdl/common/slip_decoder.vhd"]"\
  "[file normalize "../../src/vhdl/common/slip_encoder.vhd"]"\
- "[file normalize "../../src/vhdl/common/smol_fifo.vhd"]"\
  "[file normalize "../../src/vhdl/common/switch_types.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_gmii_internal.vhd"]"\
  "[file normalize "../../src/vhdl/common/switch_dual.vhd"]"\

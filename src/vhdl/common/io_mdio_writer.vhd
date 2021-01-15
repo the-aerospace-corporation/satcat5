@@ -28,7 +28,7 @@
 --
 -- Note: This block uses packet-at-a-time flow control.  The "valid"
 -- strobe for the first byte should not be raised until the entire frame
--- has been received.  This is the default for packet_fifo, but UART-based
+-- has been received.  This is the default for fifo_packet, but UART-based
 -- interfaces will need to buffer the frame contents.
 --
 -- Currently this block is write-only, it doesn't support MDIO reads.

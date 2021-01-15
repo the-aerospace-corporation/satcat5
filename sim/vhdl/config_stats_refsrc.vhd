@@ -101,12 +101,12 @@ ptx_ctrl.ready   <= tx_ready;
 ptx_ctrl.txerr   <= '0';
 ptx_ctrl.reset_p <= reset_p;
 
-ref_bcbyte       <= work.common_functions.min(bcbyte, COUNTER_MAX);
-ref_bcfrm        <= work.common_functions.min(bcfrm,  COUNTER_MAX);
-ref_rxbyte       <= work.common_functions.min(rxbyte, COUNTER_MAX);
-ref_rxfrm        <= work.common_functions.min(rxfrm,  COUNTER_MAX);
-ref_txbyte       <= work.common_functions.min(txbyte, COUNTER_MAX);
-ref_txfrm        <= work.common_functions.min(txfrm,  COUNTER_MAX);
+ref_bcbyte       <= int_min(bcbyte, COUNTER_MAX);
+ref_bcfrm        <= int_min(bcfrm,  COUNTER_MAX);
+ref_rxbyte       <= int_min(rxbyte, COUNTER_MAX);
+ref_rxfrm        <= int_min(rxfrm,  COUNTER_MAX);
+ref_txbyte       <= int_min(txbyte, COUNTER_MAX);
+ref_txfrm        <= int_min(txfrm,  COUNTER_MAX);
 burst_done       <= rx_done and tx_done;
 
 -- Tx and Rx data streams.

@@ -401,7 +401,7 @@ end process;
 -- Optionally instantiate a small FIFO for output flow control.
 -- This may be required 
 gen_fifo : if OUT_FIFO_SZ > 0 generate
-    u_fifo : entity work.smol_fifo
+    u_fifo : entity work.fifo_smol
         generic map(
         DEPTH_LOG2  => OUT_FIFO_SZ,
         IO_WIDTH    => PORT_COUNT)

@@ -36,6 +36,9 @@ ipcore_add_file $src_dir/common     config_stats_axi.vhd
 ipcore_add_file $src_dir/common     config_stats_uart.vhd
 ipcore_add_file $src_dir/common     eth_frame_common.vhd
 ipcore_add_file $src_dir/common     eth_frame_check.vhd
+ipcore_add_file $src_dir/common     eth_pause_ctrl.vhd
+ipcore_add_file $src_dir/common     fifo_packet.vhd
+ipcore_add_file $src_dir/common     fifo_smol.vhd
 ipcore_add_file $src_dir/common     mac_lookup_binary.vhd
 ipcore_add_file $src_dir/common     mac_lookup_brute.vhd
 ipcore_add_file $src_dir/common     mac_lookup_generic.vhd
@@ -44,10 +47,8 @@ ipcore_add_file $src_dir/common     mac_lookup_parshift.vhd
 ipcore_add_file $src_dir/common     mac_lookup_simple.vhd
 ipcore_add_file $src_dir/common     mac_lookup_stream.vhd
 ipcore_add_file $src_dir/common     packet_delay.vhd
-ipcore_add_file $src_dir/common     packet_fifo.vhd
+ipcore_add_file $src_dir/common     packet_round_robin.vhd
 ipcore_add_file $src_dir/common     port_statistics.vhd
-ipcore_add_file $src_dir/common     round_robin.vhd
-ipcore_add_file $src_dir/common     smol_fifo.vhd
 ipcore_add_file $src_dir/common     switch_core.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
 ipcore_add_file $src_dir/xilinx     lutram_7series.vhd
@@ -71,8 +72,9 @@ ipcore_add_param AXI_ADDR_WIDTH long 32
 ipcore_add_param STATS_UART_EN bool false
 ipcore_add_param STATS_UART_BAUD long 921600
 ipcore_add_param CORE_CLK_HZ long 200000000
+ipcore_add_param SUPPORT_PAUSE bool true
 ipcore_add_param ALLOW_JUMBO bool false
-ipcore_add_param ALLOW_RUNT bool true
+ipcore_add_param ALLOW_RUNT bool false
 ipcore_add_param IBUF_KBYTES long 2
 ipcore_add_param OBUF_KBYTES long 6
 ipcore_add_param MAC_TABLE_SIZE long 64

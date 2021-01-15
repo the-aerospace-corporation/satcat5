@@ -105,6 +105,20 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
       </spirit:wire>
     </spirit:port>
     <spirit:port>
+      <spirit:logicalName>rx_rate</spirit:logicalName>
+      <spirit:description>Estimated line rate</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:width>16</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>16</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
       <spirit:logicalName>rx_reset</spirit:logicalName>
       <spirit:description>Ingress reset</spirit:description>
       <spirit:wire>

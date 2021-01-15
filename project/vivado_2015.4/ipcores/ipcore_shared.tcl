@@ -172,6 +172,7 @@ proc ipcore_add_ethport { label pname type } {
     set_property physical_name ${pname}_rx_last     [ipx::add_port_map "rx_last"    $intf]
     set_property physical_name ${pname}_rx_write    [ipx::add_port_map "rx_write"   $intf]
     set_property physical_name ${pname}_rx_error    [ipx::add_port_map "rx_error"   $intf]
+    set_property physical_name ${pname}_rx_rate     [ipx::add_port_map "rx_rate"    $intf]
     set_property physical_name ${pname}_rx_reset    [ipx::add_port_map "rx_reset"   $intf]
     set_property physical_name ${pname}_tx_clk      [ipx::add_port_map "tx_clk"     $intf]
     set_property physical_name ${pname}_tx_data     [ipx::add_port_map "tx_data"    $intf]

@@ -86,7 +86,7 @@ The full-size example design (four gigabit ports and four low-speed ports) could
 
 We've tested the scripts with Vivado 2015.4, but it should work as-is with most other versions.
 
-If you're running Linux, just run "build_all.sh" in the root folder.
+If you're running Linux, just run "make arty_35t" in the root folder.
 
 If not, launch Vivado and run the following commands:
 

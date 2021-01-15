@@ -32,7 +32,7 @@ However, we think the same technology might be useful to other embedded systems,
 
 # Getting Started
 
-If you'd like to build the Arty example design, you'll need the [Vivado Design Suite](https://www.xilinx.com/products/design-tools/vivado.html). We've tested with version 2015.4, 2016.3, and 2019.1, but it should work as-is with most other versions as well. Once it's installed, simply run the "build_all.sh" script in the root folder. (Or follow the equivalent steps under Windows.)
+If you'd like to build the Arty example design, you'll need the [Vivado Design Suite](https://www.xilinx.com/products/design-tools/vivado.html). We've tested with version 2015.4, 2016.3, and 2019.1, but it should work as-is with most other versions as well. Once it's installed, simply run "make arty_35t" in the root folder. (Or follow the equivalent steps under Windows.)
 
 If you'd like to build your own design, create a new top-level VHDL file and add the following:
 

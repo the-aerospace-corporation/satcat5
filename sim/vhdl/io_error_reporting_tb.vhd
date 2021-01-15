@@ -37,11 +37,11 @@ use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 use     work.synchronization.all;
 
-entity error_reporting_tb is
+entity io_error_reporting_tb is
     -- Unit testbench top level, no I/O ports
-end error_reporting_tb;
+end io_error_reporting_tb;
 
-architecture tb of error_reporting_tb is
+architecture tb of io_error_reporting_tb is
 
 constant CLK_HZ     : integer := 100000000; -- Main clock rate (Hz)
 constant OUT_BAUD   : integer := 921600;    -- UART baud rate (bps)
@@ -79,7 +79,7 @@ clk_100 <= not clk_100 after 5 ns;
 reset_p <= '0' after 1 us;
 
 -- Unit under test.
-uut: entity work.error_reporting
+uut: entity work.io_error_reporting
     generic map(
     CLK_HZ      => CLK_HZ,
     OUT_BAUD    => OUT_BAUD,

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -36,6 +36,7 @@ use     work.switch_types.all;
 
 entity eth_preamble_rx is
     generic (
+    RATE_MBPS   : positive;             -- Line rate, in Mbps
     DV_XOR_ERR  : boolean := false);    -- RGMII mode (DV xor ERR)
     port (
     -- Received data stream
@@ -68,6 +69,7 @@ rx_data.data    <= reg_data;
 rx_data.write   <= raw_cken and reg_dv and out_en;
 rx_data.last    <= raw_cken and reg_dv and not raw_dv;
 rx_data.rxerr   <= (raw_cken and reg_err) or aux_err;
+rx_data.rate    <= get_rate_word(RATE_MBPS);
 
 p_rx : process(raw_clk)
 begin
@@ -118,6 +120,7 @@ entity eth_preamble_tx is
     tx_clk      : in  std_logic;        -- Stream clock
     tx_pwren    : in  std_logic;        -- Enable / shutdown-bar
     tx_pkten    : in  std_logic := '1'; -- Allow data packets
+    tx_frmst    : in  std_logic := '1'; -- Start-of-frame accepted?
     tx_cken     : in  std_logic := '1'; -- Clock-enable strobe
     tx_idle     : in  std_logic_vector(3 downto 0) := (others => '0');
 
@@ -152,16 +155,16 @@ out_err         <= reg_dv when DV_XOR_ERR else '0';
 tx_ctrl.clk     <= tx_clk;
 tx_ctrl.ready   <= not fifo_full;
 tx_ctrl.txerr   <= '0';
-tx_ctrl.reset_p <= not (tx_pwren and tx_pkten);
+tx_ctrl.reset_p <= not tx_pwren;
 
 -- Small FIFO ensures strict AMBA-stream compatibility.
 -- (To avoid deadlocks, must not withhold READY until VALID, but
 --  we can't start the preamble until we have data available...)
 fifo_write      <= tx_data.valid and not fifo_full;
 fifo_read       <= tx_cken and reg_ready;
-fifo_reset      <= not (tx_pwren and tx_pkten);
+fifo_reset      <= not tx_pwren;
 
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(IO_WIDTH => 8)
     port map(
     in_data     => tx_data.data,
@@ -198,15 +201,31 @@ begin
             -- Insertion state machine.
             if (count < 12) then
                 -- Pre-frame idle of at least 12 bytes.
+                -- (During any idle time, send inter-frame metadata.)
                 reg_data <= tx_idle & tx_idle;
                 reg_dv   <= '0';
                 count    := count + 1;
-            elsif (fifo_valid = '0') then
-                -- Inter-frame metadata (1 Gbps full-duplex).
-                reg_data <= tx_idle & tx_idle;
-                reg_dv   <= '0';
+            elsif (count = 12) then
+                -- Are we able to start a new frame?
+                if (tx_pkten = '1' and fifo_valid = '1') then
+                    -- Start of new frame preamble.
+                    reg_data <= x"55";
+                    reg_dv   <= '1';
+                    count    := count + 1;
+                else
+                    -- Keep sending idle tokens for now.
+                    reg_data <= tx_idle & tx_idle;
+                    reg_dv   <= '0';
+                end if;
+            elsif (count = 13) then
+                -- Hold frame preamble until accepted.
+                reg_data <= x"55";
+                reg_dv   <= '1';
+                if (tx_frmst = '1') then
+                    count := count + 1;
+                end if;
             elsif (count < COUNT_MAX-1) then
-                -- Start of frame preamble (7 bytes).
+                -- Continue frame preamble (7 bytes total).
                 reg_data <= x"55";
                 reg_dv   <= '1';
                 count    := count + 1;

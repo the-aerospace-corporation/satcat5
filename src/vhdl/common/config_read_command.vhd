@@ -42,7 +42,7 @@
 -- Note: If MDIO is enabled, then this block requires packet-at-a-time flow
 -- control.  i.e., The "valid" strobe for the first byte should not be raised
 -- until the entire frame has been received.  This is directly compatible with
--- packet_fifo, but UART-based interfaces will need to buffer frame contents.
+-- fifo_packet, but UART-based interfaces will need to buffer frame contents.
 --
 -- Currently this block is write-only, it doesn't support SPI/MDIO reads
 -- or any other status indicators.  These features may be added in a

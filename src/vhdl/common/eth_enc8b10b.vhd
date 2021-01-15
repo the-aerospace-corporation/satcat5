@@ -38,6 +38,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.common_functions.all;
 use     work.eth_enc8b10b_table.all;
 
 entity eth_enc8b10b is
@@ -47,6 +48,7 @@ entity eth_enc8b10b is
     in_dv       : in  std_logic;        -- GMII data-valid
     in_err      : in  std_logic;        -- GMII error strobe
     in_cken     : in  std_logic := '1'; -- Clock enable (optional)
+    in_frmst    : out std_logic;        -- Ready to start new frame?
 
     -- Link configuration mode.
     cfg_xmit    : in  std_logic := '0'; -- Transmit config?
@@ -94,6 +96,9 @@ signal enc_rdp      : std_logic := '0'; -- Running disparity for this token?
 signal enc_cken     : std_logic := '0';
 
 begin
+
+-- Ready to start a new frame?
+in_frmst <= bool2bit(strm_state = STATE_IDLE) and strm_even;
 
 -- Modify byte stream by inserting idle or config sequences.
 -- See also: Table 36-3, Sections 36.2.4.10 through .17

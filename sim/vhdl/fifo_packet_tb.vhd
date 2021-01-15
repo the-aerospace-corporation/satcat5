@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -41,7 +41,7 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 
-entity packet_fifo_tb_single is
+entity fifo_packet_tb_single is
     generic (
     OUTER_BYTES     : natural;          -- Width of input/output ports
     INNER_BYTES     : natural;          -- Width of inter-FIFO port
@@ -52,9 +52,9 @@ entity packet_fifo_tb_single is
     MIN_PKT_BYTES   : natural := 64;    -- Minimum packet size (bytes)
     MAX_PKT_BYTES   : natural := 250);  -- Maximum packet size (bytes)
     -- No I/O ports
-end packet_fifo_tb_single;
+end fifo_packet_tb_single;
 
-architecture single of packet_fifo_tb_single is
+architecture single of fifo_packet_tb_single is
 
 constant MIN_PKT_WORDS : integer := MIN_PKT_BYTES / OUTER_BYTES;
 constant MAX_PKT_WORDS : integer := MAX_PKT_BYTES / OUTER_BYTES;
@@ -99,6 +99,7 @@ signal out_meta     : meta_t := (others => '0');
 signal out_last     : std_logic;
 signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
+signal out_pause    : std_logic := '0';
 
 -- Overall test control
 constant revert_rate : real := 0.1;
@@ -123,20 +124,25 @@ p_flow_outer : process(outer_clk)
     variable seed2  : positive := 5678;
     variable rand   : real := 0.0;
     variable delay  : integer := RESET_DELAY;
+    variable pause  : integer := 0;
 begin
     if rising_edge(outer_clk) then
         if (reset_p = '1') then
             -- Short delay to account for reset logic inside first FIFO.
             delay       := RESET_DELAY;
+            pause       := 0;
             in_ready    <= '0';
             out_ready   <= '0';
             in_drop_en  <= '0';
         elsif (delay > 0) then
+            -- Countdown during startup delay.
             delay       := delay - 1;
+            pause       := 0;
             in_ready    <= '0';
             out_ready   <= '0';
             in_drop_en  <= '0';
         else
+            -- Normal flow-control randomization.
             uniform(seed1, seed2, rand);
             in_ready <= bool2bit(rand < in_rate);
             uniform(seed1, seed2, rand);
@@ -145,7 +151,16 @@ begin
                 uniform(seed1, seed2, rand);
                 in_drop_en <= bool2bit(rand < revert_rate);
             end if;
+            -- At rare intervals, assert "pause" for 100-200 clocks.
+            uniform(seed1, seed2, rand);
+            if (pause > 0) then
+                pause := pause - 1;
+            elsif (rand < 0.001) then
+                uniform(seed1, seed2, rand);
+                pause := 100 + integer(floor(rand * 100.0));
+            end if;
         end if;
+        out_pause <= bool2bit(pause > 0);
     end if;
 end process;
 
@@ -237,7 +252,7 @@ begin
 end process;
 
 -- First unit under test.
-uut1 : entity work.packet_fifo
+uut1 : entity work.fifo_packet
     generic map(
     INPUT_BYTES     => OUTER_BYTES,
     OUTPUT_BYTES    => INNER_BYTES,
@@ -264,7 +279,7 @@ uut1 : entity work.packet_fifo
     reset_p         => reset_p);
 
 -- Second unit under test.
-uut2 : entity work.packet_fifo
+uut2 : entity work.fifo_packet
     generic map(
     INPUT_BYTES     => INNER_BYTES,
     OUTPUT_BYTES    => OUTER_BYTES,
@@ -288,6 +303,7 @@ uut2 : entity work.packet_fifo
     out_last        => out_last,
     out_valid       => out_valid,
     out_ready       => out_ready,
+    out_pause       => out_pause,
     reset_p         => reset_p);
 
 -- Output checking.
@@ -297,6 +313,7 @@ p_check : process(outer_clk)
     variable ref_len, count : integer := 0;
     variable ref_meta       : meta_t := (others => '0');
     variable got_packet     : std_logic := '0';
+    variable pause_count    : integer := 0;
 begin
     if rising_edge(outer_clk) then
         -- Check each output word as it's received...
@@ -326,6 +343,10 @@ begin
                     ref_meta(n) := bool2bit(rand < 0.5);
                 end loop;
                 got_packet := '1';
+                -- Warning if we should be in pause mode.
+                -- (Give a little leeway due to final FIFO.)
+                assert (pause_count < 16)
+                    report "Pause violation: " & integer'image(pause_count) severity error;
             elsif (count <= ref_len) then
                 -- Check each expected output word.
                 assert (out_data = out_ref)
@@ -355,6 +376,13 @@ begin
             else
                 count := count + 1;
             end if;
+        end if;
+
+        -- Count consecutive cycles that pause has been asserted.
+        if (reset_p = '1' or out_pause = '0') then
+            pause_count := 0;
+        elsif (out_valid = '1' and out_ready = '1') then
+            pause_count := pause_count + 1;
         end if;
 
         -- Count total received words
@@ -436,16 +464,16 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
-entity packet_fifo_tb is
+entity fifo_packet_tb is
     -- Unit testbench top level, no I/O ports
-end packet_fifo_tb;
+end fifo_packet_tb;
 
-architecture tb of packet_fifo_tb is
+architecture tb of fifo_packet_tb is
 
 begin
 
 -- Instantiate each test configuration.
-u1 : entity work.packet_fifo_tb_single
+u1 : entity work.fifo_packet_tb_single
     generic map(
     OUTER_BYTES     => 1,
     INNER_BYTES     => 1,
@@ -454,7 +482,7 @@ u1 : entity work.packet_fifo_tb_single
     INNER_CLOCK_MHZ => 50,
     BUFFER_KBYTES   => 2);
 
-u2 : entity work.packet_fifo_tb_single
+u2 : entity work.fifo_packet_tb_single
     generic map(
     OUTER_BYTES     => 1,
     INNER_BYTES     => 4,
@@ -462,7 +490,7 @@ u2 : entity work.packet_fifo_tb_single
     INNER_CLOCK_MHZ => 125,
     BUFFER_KBYTES   => 2);
 
-u3 : entity work.packet_fifo_tb_single
+u3 : entity work.fifo_packet_tb_single
     generic map(
     OUTER_BYTES     => 2,
     INNER_BYTES     => 1,
@@ -470,7 +498,7 @@ u3 : entity work.packet_fifo_tb_single
     INNER_CLOCK_MHZ => 50,
     BUFFER_KBYTES   => 2);
 
-u4 : entity work.packet_fifo_tb_single
+u4 : entity work.fifo_packet_tb_single
     generic map(
     OUTER_BYTES     => 4,
     INNER_BYTES     => 2,

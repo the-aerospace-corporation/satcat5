@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -238,7 +238,7 @@ gen_direct : if (RETRY_KBYTES <= 0) generate
     icmp_drop   <= '0';
 
     -- Assert "drop" strobe at the end of any unmatched packet.
-    -- (This is normally driven by the feedback packet_fifo.)
+    -- (This is normally driven by the feedback fifo_packet.)
     p_drop : process(clk)
     begin
         if rising_edge(clk) then
@@ -326,7 +326,7 @@ dfifo_read  <= fwd_hempty and dfifo_valid and cfifo_valid and (mfifo_valid or mf
 cfifo_read  <= dfifo_read and dfifo_last;
 mfifo_read  <= dfifo_read and (not mfifo_skip) and (bool2bit(fwd_bct < 5) or dfifo_last);
 
-u_dfifo : entity work.smol_fifo
+u_dfifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,           -- Word size = 1 byte
     DEPTH_LOG2  => 6)           -- Depth = 2^6 = 64 bytes
@@ -341,7 +341,7 @@ u_dfifo : entity work.smol_fifo
     clk         => clk,
     reset_p     => reset_p);
 
-u_cfifo : entity work.smol_fifo
+u_cfifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => CMD_WIDTH,   -- Word size = 1 command word
     DEPTH_LOG2  => 3)           -- Depth = 2^3 = 8 commands
@@ -354,7 +354,7 @@ u_cfifo : entity work.smol_fifo
     clk         => clk,
     reset_p     => reset_p);
 
-u_mfifo : entity work.smol_fifo
+u_mfifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,           -- Word size = 1 byte
     META_WIDTH  => 2,           -- Retain "first" and "match" flags
@@ -418,7 +418,7 @@ begin
 end process;
 
 -- Output FIFO for downstream flow-control.
-u_ofifo : entity work.smol_fifo
+u_ofifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 4)
@@ -487,7 +487,7 @@ gen_feedback : if (RETRY_KBYTES > 0) generate
     fb_valid        <= tcount_ok and rfifo_valid;
     rfifo_ready     <= tcount_ok and fb_ready;
 
-    u_fifo : entity work.packet_fifo
+    u_fifo : entity work.fifo_packet
         generic map(
         INPUT_BYTES     => 1,
         OUTPUT_BYTES    => 1,

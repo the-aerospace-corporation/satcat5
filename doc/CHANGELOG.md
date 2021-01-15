@@ -23,6 +23,17 @@ This log will be updated for each new release, but may not reflect the latest de
 * New switch management features including traffic counters and per-port promiscuous-mode.
 * Xilinx platform: Added block-diagram IP-core wrappers for many functional blocks.
 
+## 1.2.2
+
+* Fixed AXI4-Lite compliance issues the "port_axi_mailbox" block.
+
+## v1.3.0
+
+* Add support for 802.3D pause-frames.
+* Improved error-handling and error-recovery on SGMII ports.
+* Improved performance of Python/ScaPy interfaces by using L2Socket objects.
+* Update eth_frame_check to block frames where the source MAC is the broadcast address.
+
 # Copyright Notice
 
 Copyright 2019, 2020 The Aerospace Corporation

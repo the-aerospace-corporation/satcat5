@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -255,6 +255,8 @@ end process;
 
 -- Preamble insertion and removal.
 u_amble_rx : entity work.eth_preamble_rx
+    generic map(
+    RATE_MBPS   => 100)
     port map(
     raw_clk     => rxclk,
     raw_lock    => txrx_lock,

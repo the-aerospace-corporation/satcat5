@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -165,6 +165,7 @@ begin
 -- Drive simple port outputs.
 rx_data.clk     <= axi_clk;
 rx_data.rxerr   <= '0';
+rx_data.rate    <= get_rate_word(1);
 rx_data.reset_p <= port_reset_p;
 
 tx_ctrl.clk     <= axi_clk;

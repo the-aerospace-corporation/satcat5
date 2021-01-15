@@ -55,7 +55,7 @@ end packet_delay;
 
 architecture packet_delay of packet_delay is
 
-constant ADDR_MAX : integer := max(0, DELAY_COUNT-2);
+constant ADDR_MAX : integer := int_max(0, DELAY_COUNT-2);
 subtype addr_t is integer range 0 to ADDR_MAX;
 subtype word_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
 subtype bcount_t is integer range 0 to INPUT_BYTES-1;

@@ -156,7 +156,7 @@ gen_ports : for n in PORT_COUNT-1 downto 0 generate
         end if;
     end process;
 
-    u_src : entity work.eth_traffic_gen
+    u_src : entity work.eth_traffic_sim
         generic map(
         INIT_SEED1  => (n+1)*12345,
         INIT_SEED2  => (n+1)*54321,

@@ -51,7 +51,7 @@ ipcore_add_file [file dirname $core_xci] [file tail $core_xci]
 ipcore_add_file $src_dir/common     common_functions.vhd
 ipcore_add_file $src_dir/common     eth_frame_common.vhd
 ipcore_add_file $src_dir/common     eth_preambles.vhd
-ipcore_add_file $src_dir/common     smol_fifo.vhd
+ipcore_add_file $src_dir/common     fifo_smol.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
 ipcore_add_file $src_dir/xilinx     port_sgmii_gtx.vhd
 ipcore_add_file $src_dir/xilinx     synchronization.vhd

@@ -31,13 +31,15 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 
-entity bram_fifo is
+entity fifo_bram is
     generic (
     -- Maximum auxiliary packet size (bytes).
     FIFO_WIDTH  : integer;
     FIFO_DEPTH  : integer;
     -- Enable strict overflow error checks.
-    FIFO_STRICT : boolean := false);
+    FIFO_STRICT : boolean := false;
+    -- Enable simulation warnings on overflow.
+    OVR_WARNING : boolean := true);
     port (
     -- Primary input port (no flow control)
     in_data     : in  std_logic_vector(FIFO_WIDTH-1 downto 0);
@@ -58,9 +60,9 @@ entity bram_fifo is
     -- System clock and reset.
     clk         : in  std_logic;
     reset_p     : in  std_logic);
-end bram_fifo;
+end fifo_bram;
 
-architecture bram_fifo of bram_fifo is
+architecture fifo_bram of fifo_bram is
 
 -- Define FIFO size parameters.
 constant FIFO_AWIDTH    : integer := log2_ceil(FIFO_DEPTH);
@@ -145,6 +147,9 @@ begin
 
         -- Check for overflow condition.
         if (in_write = '1' and fifo_rd_next = '0' and fifo_full_i = '1') then
+            if (OVR_WARNING) then
+                report "FIFO overflow" severity warning;
+            end if;
             fifo_error_i <= '1';
         else
             fifo_error_i <= '0';
@@ -152,4 +157,4 @@ begin
     end if;
 end process;
 
-end bram_fifo;
+end fifo_bram;

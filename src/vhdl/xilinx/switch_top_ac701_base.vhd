@@ -209,6 +209,7 @@ end generate;
 -- (Total throughput 200 Mbps vs. max traffic 180 Mbps.)
 u_core : entity work.switch_core
     generic map(
+    CORE_CLK_HZ     => 25_000_000,
     ALLOW_RUNT      => true,
     PORT_COUNT      => PORTS_TOTAL,
     DATAPATH_BYTES  => 1,

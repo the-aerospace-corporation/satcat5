@@ -27,7 +27,7 @@
 -- counters.  (The write address and write value are ignored.)
 --
 -- Once refreshed, each register reports total observed traffic since
--- the previous refresh.  There are four registers for each port:
+-- the previous refresh.  There are six registers for each port:
 --   * Broadcast bytes received (from device to switch)
 --   * Broadcast frames received
 --   * Total bytes received (from device to switch)
@@ -142,7 +142,7 @@ fifo_write  <= axi_arvalid and not fifo_full;
 fifo_read   <= fifo_valid and (axi_rready or not read_valid);
 fifo_reset  <= not axi_aresetn;
 
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => ADDR_WIDTH,
     DEPTH_LOG2  => 4)

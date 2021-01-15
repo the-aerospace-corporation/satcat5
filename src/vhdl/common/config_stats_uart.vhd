@@ -153,7 +153,7 @@ u_uart_rx : entity work.io_uart_rx
     reset_p     => reset_p);
 
 -- Command FIFO.
-u_cmd_fifo : entity work.smol_fifo
+u_cmd_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,   -- FIFO width = 8 bits
     DEPTH_LOG2  => 4)   -- FIFO depth = 2^N

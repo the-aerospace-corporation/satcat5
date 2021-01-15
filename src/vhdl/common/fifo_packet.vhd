@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -34,6 +34,10 @@
 -- latched concurrently with the in_last_commit strobe.  At the output,
 -- it is valid for the entire duration of the packet.
 --
+-- The block also supports an asynchronous "pause" flag.  While asserted,
+-- the output will continue a frame-in-progress but will delay starting
+-- subsequent frames until the pause flag is lowered.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -41,7 +45,7 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.synchronization.all;
 
-entity packet_fifo is
+entity fifo_packet is
     generic (
     INPUT_BYTES     : natural;          -- Width of input port
     OUTPUT_BYTES    : natural;          -- Width of output port
@@ -60,7 +64,7 @@ entity packet_fifo is
     in_last_commit  : in  std_logic;
     in_last_revert  : in  std_logic;
     in_write        : in  std_logic;
-    in_overflow     : out std_logic;    -- Warning strobe (invalid commit)
+    in_overflow     : out std_logic;        -- Warning strobe (invalid commit)
 
     -- Output port uses AXI-style flow control.
     out_clk         : in  std_logic;
@@ -70,19 +74,20 @@ entity packet_fifo is
     out_last        : out std_logic;
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
-    out_overflow    : out std_logic;    -- Same warning, in out_clk domain
+    out_overflow    : out std_logic;        -- Same warning, in out_clk domain
+    out_pause       : in  std_logic := '0'; -- Optional: Don't start next packet
 
     -- Global asynchronous reset.
     reset_p         : in  std_logic);
-end packet_fifo;
+end fifo_packet;
 
-architecture packet_fifo of packet_fifo is
+architecture fifo_packet of fifo_packet is
 
 -- Define FIFO size parameters.
 constant FREE_MARGIN    : natural := 0; -- Almost-full margin of N words.
 constant INPUT_WIDTH    : natural := 8 * INPUT_BYTES;
 constant OUTPUT_WIDTH   : natural := 8 * OUTPUT_BYTES;
-constant FIFO_BYTES     : natural := max(INPUT_BYTES, OUTPUT_BYTES);
+constant FIFO_BYTES     : natural := int_max(INPUT_BYTES, OUTPUT_BYTES);
 constant FIFO_WIDTH     : natural := 8 * FIFO_BYTES;
 constant FIFO_DEPTH     : natural := (1024*BUFFER_KBYTES) / FIFO_BYTES;
 constant INPUT_RATIO    : natural := FIFO_BYTES / INPUT_BYTES;
@@ -155,6 +160,7 @@ signal xwr_full         : std_logic;            -- Flag in input clock
 signal xrd_nwords       : nwords_t := 0;        -- Free N words from input
 signal xrd_toggle       : std_logic := '0';     -- Toggle in output clock
 signal xrd_strobe       : std_logic;            -- Strobe in input clock
+signal xrd_pause        : std_logic;            -- Flag in output clock
 
 -- A small FIFO for the length of each stored packet.
 signal pkt_fifo_iraw    : pfifo_t;
@@ -391,13 +397,18 @@ u_hs_full : sync_buffer
     in_flag     => pkt_fifo_full,
     out_flag    => xwr_full,
     out_clk     => in_clk);
+u_hs_pause : sync_buffer
+    port map(
+    in_flag     => out_pause,
+    out_flag    => xrd_pause,
+    out_clk     => out_clk);
 
 -- A small FIFO for the length and metadata of each stored packet.
 pkt_fifo_iraw   <= std_logic_vector(xwr_nbytes) & xwr_meta;
 pkt_fifo_len    <= unsigned(pkt_fifo_oraw(PFIFO_WIDTH-1 downto META_WIDTH));
 pkt_fifo_meta   <= pkt_fifo_oraw(META_WIDTH-1 downto 0);
 
-u_pkt_fifo : entity work.smol_fifo
+u_pkt_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => META_WIDTH + NBYTES_WIDTH,
     DEPTH_LOG2  => log2_ceil(MAX_PACKETS)) -- Depth = 2^N
@@ -462,8 +473,9 @@ begin
 
         -- Read packet FIFO once data is available and current packet is
         -- done or about to finish.  One-cycle lag OK, avoid double-reads.
+        -- Note: Pause flag delays start of next packet, no effect mid-packet.
         if (pkt_fifo_valid = '1' and read_bcount <= OUTPUT_BYTES) then
-            pkt_fifo_rd <= not (pkt_fifo_rd or fifo_hfull);
+            pkt_fifo_rd <= not (pkt_fifo_rd or fifo_hfull or xrd_pause);
         else
             pkt_fifo_rd <= '0';
         end if;
@@ -509,7 +521,7 @@ end process;
 -- (Otherwise, we would have a few cycles of latency.)
 fifo_bvec   <= i2s(fifo_bcount, BCOUNT_WIDTH);
 
-u_out_fifo : entity work.smol_fifo
+u_out_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => OUTPUT_WIDTH,
     META_WIDTH  => BCOUNT_WIDTH,
@@ -533,4 +545,4 @@ out_pkt_meta    <= out_meta_i;
 out_last        <= out_last_i;
 out_valid       <= out_valid_i;
 
-end packet_fifo;
+end fifo_packet;

@@ -172,7 +172,7 @@ cmd_ready <= not (cmd_busy or wr_byte or wr_nybb);
 -- Higher-level LCD initialization and refresh.
 p_ctrl : process(strm_clk)
     constant INIT_WAIT : integer := 31; -- Need >15 ms delay before first write
-    constant MAX_WAIT  : integer := max(INIT_WAIT, MSG_WAIT);
+    constant MAX_WAIT  : integer := int_max(INIT_WAIT, MSG_WAIT);
     type lcd_state_t is (IDLE, INIT, UPDATE_START, UPDATE_TRANSFER, UPDATE_FINISH);
     variable lcd_state  : lcd_state_t := INIT;
     variable counter    : integer range 0 to MAX_WAIT := INIT_WAIT;
@@ -312,7 +312,7 @@ end process;
 
 -- Small FIFO for incoming data.
 fifo_wr <= strm_wr and fifo_accept;
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,  -- Each word 8 bits
     DEPTH_LOG2  => 5)  -- Depth 2^5 = 32 bytes
