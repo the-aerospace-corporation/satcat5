@@ -36,9 +36,12 @@ use     work.switch_types.all;
 entity port_sgmii_gpio is
     generic (
     TX_INVERT   : boolean := false;     -- Invert Tx polarity
+    TX_IOSTD    : string := "LVDS_25";  -- Tx I/O standard
     RX_INVERT   : boolean := false;     -- Invert Rx polarity
+    RX_IOSTD    : string := "LVDS_25";  -- Rx I/O standard
     RX_BIAS_EN  : boolean := false;     -- Enable split-termination biasing
-    RX_TERM_EN  : boolean := true);     -- Enable internal termination
+    RX_TERM_EN  : boolean := true;      -- Enable differential termination
+    SHAKE_WAIT  : boolean := true);     -- Wait for MAC/PHY handshake?
     port (
     -- External SGMII interfaces (direct to FPGA pins)
     sgmii_rxp   : in  std_logic;
@@ -73,8 +76,8 @@ begin
 -- Transmit serializer.
 u_tx : entity work.sgmii_serdes_tx
     generic map(
-    POL_INVERT  => TX_INVERT,
-    RX_BIAS_EN  => RX_BIAS_EN)
+    IOSTANDARD  => TX_IOSTD,
+    POL_INVERT  => TX_INVERT)
     port map(
     TxD_p_pin   => sgmii_txp,
     TxD_n_pin   => sgmii_txn,
@@ -88,6 +91,7 @@ u_rx : entity work.sgmii_serdes_rx
     generic map(
     BIAS_ENABLE => RX_BIAS_EN,
     DIFF_TERM   => RX_TERM_EN,
+    IOSTANDARD  => RX_IOSTD,
     POL_INVERT  => RX_INVERT,
     REFCLK_MHZ  => 200)
     port map(
@@ -115,6 +119,8 @@ u_sync : entity work.sgmii_data_sync
 
 -- Instantiate platform-independent interface logic.
 u_if : entity work.port_sgmii_common
+    generic map(
+    SHAKE_WAIT  => SHAKE_WAIT)
     port map(
     tx_clk      => clk_125,
     tx_cken     => '1',

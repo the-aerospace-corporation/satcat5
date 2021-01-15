@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -25,6 +25,13 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
 package SWITCH_TYPES is
+    -- Rx ports must report their estimated line-rate.
+    -- (This is used for PAUSE-frames and other real-time calculations.)
+    subtype port_rate_t is std_logic_vector(15 downto 0);
+
+    -- Convert line rate (Mbps) to the rate word.
+    function get_rate_word(rate_mbps : positive) return port_rate_t;
+
     -- Each input port is unidirectional:
     type port_rx_m2s is record
         clk     : std_logic;
@@ -32,6 +39,7 @@ package SWITCH_TYPES is
         last    : std_logic;
         write   : std_logic;
         rxerr   : std_logic;
+        rate    : port_rate_t;
         reset_p : std_logic;
     end record;
 
@@ -68,3 +76,12 @@ package SWITCH_TYPES is
     -- Error reporting: Width of the errvec_t signal from switch_core.
     constant SWITCH_ERR_WIDTH : integer := 8;
 end package;
+
+package body SWITCH_TYPES is
+    -- Currently, the rate word is simply the rate in Mbps.
+    -- Always use this function if possible, because the format may change.
+    function get_rate_word(rate_mbps : positive) return port_rate_t is
+    begin
+        return std_logic_vector(to_unsigned(rate_mbps, 16));
+    end function;
+end package body;

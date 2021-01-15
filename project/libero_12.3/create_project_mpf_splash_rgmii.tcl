@@ -87,7 +87,6 @@ create_links \
          -hdl_source {../../src/vhdl/common/config_port_uart.vhd} \
          -hdl_source {../../src/vhdl/common/config_read_command.vhd} \
          -hdl_source {../../src/vhdl/common/config_send_status.vhd} \
-         -hdl_source {../../src/vhdl/common/error_reporting.vhd} \
          -hdl_source {../../src/vhdl/common/eth_dec8b10b.vhd} \
          -hdl_source {../../src/vhdl/common/eth_enc8b10b.vhd} \
          -hdl_source {../../src/vhdl/common/eth_enc8b10b_table.vhd} \
@@ -95,11 +94,14 @@ create_links \
          -hdl_source {../../src/vhdl/common/eth_frame_check.vhd} \
          -hdl_source {../../src/vhdl/common/eth_frame_common.vhd} \
          -hdl_source {../../src/vhdl/common/eth_preambles.vhd} \
+         -hdl_source {../../src/vhdl/common/fifo_packet.vhd} \
+         -hdl_source {../../src/vhdl/common/fifo_smol.vhd} \
+         -hdl_source {../../src/vhdl/common/io_error_reporting.vhd} \
+         -hdl_source {../../src/vhdl/common/io_leds.vhd} \
          -hdl_source {../../src/vhdl/common/io_mdio_writer.vhd} \
          -hdl_source {../../src/vhdl/common/io_spi_clkin.vhd} \
          -hdl_source {../../src/vhdl/common/io_spi_clkout.vhd} \
          -hdl_source {../../src/vhdl/common/io_uart.vhd} \
-         -hdl_source {../../src/vhdl/common/led_types.vhd} \
          -hdl_source {../../src/vhdl/common/mac_lookup_binary.vhd} \
          -hdl_source {../../src/vhdl/common/mac_lookup_brute.vhd} \
          -hdl_source {../../src/vhdl/common/mac_lookup_generic.vhd} \
@@ -108,7 +110,7 @@ create_links \
          -hdl_source {../../src/vhdl/common/mac_lookup_stream.vhd} \
          -hdl_source {../../src/vhdl/common/mac_lookup_lutram.vhd} \
          -hdl_source {../../src/vhdl/common/packet_delay.vhd} \
-         -hdl_source {../../src/vhdl/common/packet_fifo.vhd} \
+         -hdl_source {../../src/vhdl/common/packet_round_robin.vhd} \
          -hdl_source {../../src/vhdl/common/port_adapter.vhd} \
          -hdl_source {../../src/vhdl/common/port_axi_mailbox.vhd} \
          -hdl_source {../../src/vhdl/common/port_crosslink.vhd} \
@@ -122,11 +124,9 @@ create_links \
          -hdl_source {../../src/vhdl/common/port_serial_uart_4wire.vhd} \
          -hdl_source {../../src/vhdl/common/port_sgmii_common.vhd} \
          -hdl_source {../../src/vhdl/common/port_statistics.vhd} \
-         -hdl_source {../../src/vhdl/common/round_robin.vhd} \
          -hdl_source {../../src/vhdl/common/scrub_placeholder.vhd} \
          -hdl_source {../../src/vhdl/common/slip_decoder.vhd} \
          -hdl_source {../../src/vhdl/common/slip_encoder.vhd} \
-         -hdl_source {../../src/vhdl/common/smol_fifo.vhd} \
          -hdl_source {../../src/vhdl/common/switch_aux.vhd} \
          -hdl_source {../../src/vhdl/common/switch_core.vhd} \
          -hdl_source {../../src/vhdl/common/switch_dual.vhd} \

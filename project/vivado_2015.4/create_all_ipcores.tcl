@@ -41,4 +41,4 @@ source ipcores/create_router_inline.tcl
 source ipcores/create_switch_aux.tcl
 source ipcores/create_switch_core.tcl
 source ipcores/create_switch_dual.tcl
-source ipcores/create_satcat5_gmii_to_spi.tcl
+source ipcores/create_switch_gmii_to_spi.tcl

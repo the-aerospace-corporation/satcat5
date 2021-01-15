@@ -33,7 +33,7 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
-entity error_reporting is
+entity io_error_reporting is
     generic (
     CLK_HZ      : integer;          -- Main clock rate (Hz)
     OUT_BAUD    : integer;          -- UART baud rate (bps)
@@ -68,9 +68,9 @@ entity error_reporting is
     err_strobe  : in  std_logic_vector(ERR_COUNT-1 downto 0);
     err_clk     : in  std_logic;        -- Main clock
     reset_p     : in  std_logic);       -- Active high async reset
-end error_reporting;
+end io_error_reporting;
 
-architecture error_reporting of error_reporting is
+architecture io_error_reporting of io_error_reporting is
 
 -- Generics and arrays don't mix; use this function to index.
 constant TOTAL_MSGS : integer := ERR_COUNT + 2;
@@ -272,4 +272,4 @@ u_uart : entity work.io_uart_tx
 aux_data <= std_logic_vector(rom_byte);
 aux_wren <= uart_start;
 
-end error_reporting;
+end io_error_reporting;

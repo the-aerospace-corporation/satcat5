@@ -33,7 +33,7 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 
-entity bram_fifo_tb_helper is
+entity fifo_bram_tb_helper is
     generic (
     IO_WIDTH    : integer;          -- Word size
     DEPTH_LOG2  : integer);         -- FIFO depth = 2^N
@@ -44,9 +44,9 @@ entity bram_fifo_tb_helper is
     rate_in     : in  real;         -- Input rate (0-100%)
     rate_out    : in  real;         -- Output rate (0-100%)
     test_ok     : out std_logic);
-end bram_fifo_tb_helper;
+end fifo_bram_tb_helper;
 
-architecture helper of bram_fifo_tb_helper is
+architecture helper of fifo_bram_tb_helper is
 
 constant FIFO_DEPTH : integer := 2**DEPTH_LOG2;
 
@@ -148,11 +148,12 @@ begin
 end process;
 
 -- Unit under test.
-uut : entity work.bram_fifo
+uut : entity work.fifo_bram
     generic map(
     FIFO_WIDTH  => IO_WIDTH,
     FIFO_DEPTH  => FIFO_DEPTH,
-    FIFO_STRICT => true)
+    FIFO_STRICT => true,
+    OVR_WARNING => false)
     port map(
     in_data     => std_logic_vector(in_data),
     in_last     => in_last,
@@ -206,13 +207,13 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 
-entity bram_fifo_tb is
+entity fifo_bram_tb is
     -- Testbench --> No I/O ports
-end bram_fifo_tb;
+end fifo_bram_tb;
 
-architecture tb of bram_fifo_tb is
+architecture tb of fifo_bram_tb is
 
-component bram_fifo_tb_helper is
+component fifo_bram_tb_helper is
     generic (
     IO_WIDTH    : integer;          -- Word size
     DEPTH_LOG2  : integer);         -- FIFO depth = 2^N
@@ -271,7 +272,7 @@ begin
 end process;
 
 -- Instantiate test units in various configurations.
-test0 : bram_fifo_tb_helper
+test0 : fifo_bram_tb_helper
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 3)
@@ -283,7 +284,7 @@ test0 : bram_fifo_tb_helper
     rate_out    => rate_out,
     test_ok     => test_ok(0));
 
-test1 : bram_fifo_tb_helper
+test1 : fifo_bram_tb_helper
     generic map(
     IO_WIDTH    => 12,
     DEPTH_LOG2  => 4)
@@ -295,7 +296,7 @@ test1 : bram_fifo_tb_helper
     rate_out    => rate_out,
     test_ok     => test_ok(1));
 
-test2 : bram_fifo_tb_helper
+test2 : fifo_bram_tb_helper
     generic map(
     IO_WIDTH    => 11,
     DEPTH_LOG2  => 5)
@@ -307,7 +308,7 @@ test2 : bram_fifo_tb_helper
     rate_out    => rate_out,
     test_ok     => test_ok(2));
 
-test3 : bram_fifo_tb_helper
+test3 : fifo_bram_tb_helper
     generic map(
     IO_WIDTH    => 9,
     DEPTH_LOG2  => 6)

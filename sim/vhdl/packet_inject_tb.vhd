@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -24,7 +24,7 @@
 -- under all other conditions.  Tests are repeated under a variety of flow
 -- control conditions for the primary input.
 --
--- The complete test takes less than 10 milliseconds.
+-- The complete test takes 14.0 milliseconds.
 --
 
 library ieee;
@@ -63,8 +63,8 @@ signal pri_data     : byte_t := (others => '0');
 signal pri_last     : std_logic := '0';
 signal pri_write    : std_logic := '0';
 signal pri_write2   : std_logic := '0';
+signal pri_safe     : std_logic;
 signal pri_full     : std_logic;
-signal pri_error    : std_logic;
 
 -- Auxiliary input ports (valid/ready flow control)
 signal aux_data     : byte_array_t(AUX_COUNT downto 1) := (others => (others => '0'));
@@ -79,12 +79,12 @@ signal in_last      : std_logic_vector(AUX_COUNT downto 0) := (others => '0');
 signal in_valid     : std_logic_vector(AUX_COUNT downto 0) := (others => '0');
 signal in_ready     : std_logic_vector(AUX_COUNT downto 0);
 
--- Combined output port (no flow control)
+-- Combined output port
 signal out_data     : byte_t;
 signal out_last     : std_logic;
 signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
-signal in_errct     : integer := 0;
+signal out_pause    : std_logic := '0';
 signal aux_errct    : integer := 0;
 
 -- FIFOs for each data stream.
@@ -101,6 +101,7 @@ signal test_long    : std_logic := '0';
 signal rate_pri     : real := 0.0;  -- Average primary duty cycle (must be < 1.0)
 signal rate_aux     : real := 0.0;  -- On average, initiate packet every X clocks
 signal rate_out     : real := 0.0;  -- Average output duty cycle
+signal rate_pause   : real := 0.0;  -- Probability of 20-cycle pause
 
 begin
 
@@ -128,6 +129,9 @@ p_input : process(clk_100)
     -- Track remaining bytes in each auxiliary frame.
     type rem_bytes_t is array(1 to AUX_COUNT) of integer;
     variable rem_bytes : rem_bytes_t := (others => 0);
+
+    -- Pause should never last more than 20 cycles.
+    variable rem_pause : natural := 0;
 begin
     if rising_edge(clk_100) then
         -- Generate each new primary data word.
@@ -175,6 +179,14 @@ begin
         -- Output flow-control randomization.
         uniform(seed1, seed2, rand);
         out_ready <= bool2bit(rand < rate_out);
+
+        uniform(seed1, seed2, rand);
+        if (rem_pause = 0 and rand < rate_pause) then
+            rem_pause := 20;
+        elsif (rem_pause > 0) then
+            rem_pause := rem_pause - 1;
+        end if;
+        out_pause <= bool2bit(rem_pause > 0);
     end if;
 end process;
 
@@ -192,7 +204,7 @@ gen_fifo : for n in 0 to AUX_COUNT generate
     end generate;
     fifo_rd(n) <= out_valid and out_ready and bool2bit(n = get_stream(out_data));
 
-    u_fifo_pri : entity work.smol_fifo
+    u_fifo_pri : entity work.fifo_smol
         generic map(
         IO_WIDTH    => 8,
         DEPTH_LOG2  => 6)
@@ -216,8 +228,9 @@ end generate;
 -- Convert primary flow control.
 -- Note: If output is rate-constrained, override write strobe to avoid
 --       accidental overflow; FIFO isn't deep enough for averaging.
-pri_write2 <= (pri_write and not pri_full) when (rate_out < 1.0) else pri_write;
-u_conv : entity work.bram_fifo
+pri_safe   <= bool2bit(rate_out < 1.0 or rate_pause > 0.0);
+pri_write2 <= pri_write and not (pri_safe and pri_full);
+u_conv : entity work.fifo_bram
     generic map(
     FIFO_WIDTH      => 8,
     FIFO_DEPTH      => MAX_AUX_BYTES + 1)
@@ -227,7 +240,7 @@ u_conv : entity work.bram_fifo
     in_write        => pri_write2,
     fifo_empty      => open,
     fifo_full       => pri_full,
-    fifo_error      => pri_error,
+    fifo_error      => open,
     out_data        => in_data(0),
     out_last        => in_last(0),
     out_valid       => in_valid(0),
@@ -263,17 +276,26 @@ uut : entity work.packet_inject
     out_last        => out_last,
     out_valid       => out_valid,
     out_ready       => out_ready,
+    out_pause       => out_pause,
     clk             => clk_100,
     reset_p         => reset_p);
 
 -- Check the output stream.
 p_output : process(clk_100)
-    variable strm : integer := 0;
+    variable strm   : integer := 0;
+    variable bcount : integer := 0;
+    variable pcount : integer := 0;
 begin
     if rising_edge(clk_100) then
         -- Check data and last against FIFO reference.
         if (reset_p = '0' and out_valid = '1' and out_ready = '1') then
             strm := get_stream(out_data);
+            -- Check for pause violations at start of frame.
+            if (bcount = 0) then
+                assert (pcount < 2)
+                    report "Pause violation: " & integer'image(pcount)
+                    severity error;
+            end if;
             -- Always check for data match.
             assert (out_data = ref_data(strm))
                 report "Output data mismatch." severity error;
@@ -282,13 +304,19 @@ begin
                 assert (out_last = ref_last(strm))
                     report "End-of-packet mismatch." severity error;
             end if;
+            -- Count bytes received this frame.
+            if (out_last = '1') then
+                bcount := 0;
+            else
+                bcount := bcount + 1;
+            end if;
         end if;
 
-        -- Count each error strobe.
-        if (reset_p = '1') then
-            in_errct <= 0;
-        elsif (pri_error = '1') then
-            in_errct <= in_errct + 1;
+        -- Count consecutive pause cycles.
+        if (reset_p = '1' or out_pause = '0') then
+            pcount := 0;
+        elsif (out_valid = '0' or out_ready = '1') then
+            pcount := pcount + 1;
         end if;
 
         if (reset_p = '1') then
@@ -318,8 +346,6 @@ p_test : process
         wait for 999 us;
 
         -- Confirm expected error counts.
-        assert (in_errct = 0)
-            report "Unexpected input overflow." severity error;
         if (test_long = '1') then
             assert (aux_errct > 0)
                 report "Missing aux-error." severity error;
@@ -329,6 +355,7 @@ p_test : process
         end if;
     end procedure;
 begin
+    rate_pause <= 0.0;
     run_test(0.10, 1.00, 0.01, '0');
     run_test(0.10, 1.00, 0.01, '1');
     run_test(0.50, 1.00, 0.01, '0');
@@ -337,6 +364,12 @@ begin
     run_test(0.90, 1.00, 0.01, '1');
     run_test(0.99, 1.00, 0.01, '0');
     run_test(0.99, 1.00, 0.01, '1');
+    run_test(0.40, 0.50, 0.01, '1');
+    rate_pause <= 0.002;
+    run_test(0.10, 1.00, 0.01, '0');
+    run_test(0.50, 1.00, 0.01, '0');
+    run_test(0.90, 1.00, 0.01, '0');
+    run_test(0.99, 1.00, 0.01, '0');
     run_test(0.40, 0.50, 0.01, '1');
     report "All tests completed!";
     wait;

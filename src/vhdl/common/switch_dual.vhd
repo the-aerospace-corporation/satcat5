@@ -51,8 +51,8 @@ signal errvec_1 : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
 begin
 
--- compute combined errvec as xor to preserve all toggles
--- (will miss when both have the same error on the same clock)
+-- Compute combined errvec as XOR to preserve all toggles.
+-- (May miss both in extremely rare case of simultaneous errors.)
 errvec_t <= errvec_0 xor errvec_1;
 
 ----------------------------- PORT LOGIC ---------------------------
@@ -62,10 +62,10 @@ u_passthrough_0 : entity work.port_passthrough
     ALLOW_RUNT      => ALLOW_RUNT,
     OBUF_KBYTES     => OBUF_KBYTES)
     port map(
-    port_rx_data => ports_rx_data(0),
-    port_tx_data => ports_tx_data(1),
-    port_tx_ctrl => ports_tx_ctrl(1),
-    errvec_t     => errvec_0);
+    port_rx_data    => ports_rx_data(0),
+    port_tx_data    => ports_tx_data(1),
+    port_tx_ctrl    => ports_tx_ctrl(1),
+    errvec_t        => errvec_0);
 
 u_passthrough_1 : entity work.port_passthrough
     generic map(
@@ -73,9 +73,9 @@ u_passthrough_1 : entity work.port_passthrough
     ALLOW_RUNT      => ALLOW_RUNT,
     OBUF_KBYTES     => OBUF_KBYTES)
     port map(
-    port_rx_data => ports_rx_data(1),
-    port_tx_data => ports_tx_data(0),
-    port_tx_ctrl => ports_tx_ctrl(0),
-    errvec_t     => errvec_1);
+    port_rx_data    => ports_rx_data(1),
+    port_tx_data    => ports_tx_data(0),
+    port_tx_ctrl    => ports_tx_ctrl(0),
+    errvec_t        => errvec_1);
 
 end switch_dual;

@@ -31,9 +31,9 @@ use     work.switch_types.all;
 
 entity wrap_switch_dual is
     generic (
-    ALLOW_JUMBO     : boolean := false;         -- Allow jumbo frames? (Size up to 9038 bytes)
-    ALLOW_RUNT      : boolean := false;         -- Allow runt frames? (Size < 64 bytes)
-    OBUF_KBYTES     : integer := 2);            -- Output buffer size (kilobytes)
+    ALLOW_JUMBO     : boolean;      -- Allow jumbo frames? (Size up to 9038 bytes)
+    ALLOW_RUNT      : boolean;      -- Allow runt frames? (Size < 64 bytes)
+    OBUF_KBYTES     : integer);     -- Output buffer size (kilobytes)
     port (
     -- Network port A
     pa_rx_clk       : in  std_logic;
@@ -41,6 +41,7 @@ entity wrap_switch_dual is
     pa_rx_last      : in  std_logic;
     pa_rx_write     : in  std_logic;
     pa_rx_error     : in  std_logic;
+    pa_rx_rate      : in  std_logic_vector(15 downto 0);
     pa_rx_reset     : in  std_logic;
     pa_tx_clk       : in  std_logic;
     pa_tx_data      : out std_logic_vector(7 downto 0);
@@ -54,6 +55,7 @@ entity wrap_switch_dual is
     pb_rx_clk       : in  std_logic;
     pb_rx_data      : in  std_logic_vector(7 downto 0);
     pb_rx_last      : in  std_logic;
+    pa_rx_rate      : in  std_logic_vector(15 downto 0);
     pb_rx_write     : in  std_logic;
     pb_rx_error     : in  std_logic;
     pb_rx_reset     : in  std_logic;
@@ -83,6 +85,7 @@ rx_data(0).data     <= pa_rx_data;
 rx_data(0).last     <= pa_rx_last;
 rx_data(0).write    <= pa_rx_write;
 rx_data(0).rxerr    <= pa_rx_error;
+rx_data(0).rate     <= pa_rx_rate;
 rx_data(0).reset_p  <= pa_rx_reset;
 tx_ctrl(0).clk      <= pa_tx_clk;
 tx_ctrl(0).ready    <= pa_tx_ready;
@@ -97,6 +100,7 @@ rx_data(1).data     <= pb_rx_data;
 rx_data(1).last     <= pb_rx_last;
 rx_data(1).write    <= pb_rx_write;
 rx_data(1).rxerr    <= pb_rx_error;
+rx_data(1).rate     <= pb_rx_rate;
 rx_data(1).reset_p  <= pb_rx_reset;
 tx_ctrl(1).clk      <= pb_tx_clk;
 tx_ctrl(1).ready    <= pb_tx_ready;

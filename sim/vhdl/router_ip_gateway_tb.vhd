@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -153,7 +153,7 @@ uut : entity work.router_ip_gateway
 
 -- FIFOs for the two test streams.
 ref_out_ready <= uut_out_valid and uut_out_ready;
-u_fifo_out : entity work.bram_fifo
+u_fifo_out : entity work.fifo_bram
     generic map(
     FIFO_WIDTH  => 8,
     FIFO_DEPTH  => 4096,
@@ -170,7 +170,7 @@ u_fifo_out : entity work.bram_fifo
     reset_p     => reset_p);
 
 ref_icmp_ready <= uut_icmp_valid and uut_icmp_ready;
-u_fifo_icmp : entity work.bram_fifo
+u_fifo_icmp : entity work.fifo_bram
     generic map(
     FIFO_WIDTH  => 8,
     FIFO_DEPTH  => 1024,

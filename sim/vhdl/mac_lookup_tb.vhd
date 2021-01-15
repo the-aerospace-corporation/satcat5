@@ -504,7 +504,7 @@ end process;
 
 -- A small FIFO for reference data (including timing).
 -- Note: Includes first word fall-through.
-fifo_pdst : entity work.smol_fifo
+fifo_pdst : entity work.fifo_smol
     generic map(IO_WIDTH => PORT_COUNT)
     port map(
     in_data     => in_pdst,
@@ -515,7 +515,7 @@ fifo_pdst : entity work.smol_fifo
     reset_p     => reset_p,
     clk         => clk);
 
-fifo_time : entity work.smol_fifo
+fifo_time : entity work.fifo_smol
     generic map(IO_WIDTH => 16)
     port map(
     in_data     => std_logic_vector(in_time),

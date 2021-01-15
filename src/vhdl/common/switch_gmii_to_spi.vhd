@@ -17,8 +17,8 @@
 -- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 --------------------------------------------------------------------------
 --
--- Top-level design: internal FPGA satcat5 implementation meant to translate 
--- an GMII interface to EoS
+-- A two-port switch, configured to translate a GMII internal interface
+-- (typically found on Zynq 70xx-PS) to EoS/SPI.
 --
 
 library ieee;
@@ -29,17 +29,17 @@ use     unisim.vcomponents.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
-entity satcat5_gmii_to_spi is
+entity switch_gmii_to_spi is
     port (
-    -- GMII Interface    
+    -- GMII Interface
     gmii_col            : out std_logic;
     gmii_crs            : out std_logic;
-    
+
     gmii_txc            : out std_logic;
     gmii_txd            : out std_logic_vector(7 downto 0);
     gmii_txen           : out std_logic;
     gmii_txerr          : out std_logic;
-    
+
     gmii_rxc            : out std_logic;
     gmii_rxd            : in std_logic_vector(7 downto 0);
     gmii_rxdv           : in std_logic;
@@ -49,23 +49,24 @@ entity satcat5_gmii_to_spi is
     eos                 : inout std_logic_vector(3 downto 0);
 
     clk_125             : in std_logic;  -- 125MHz clock
-    
+
     reset_p             : in std_logic); -- Global external reset
-end satcat5_gmii_to_spi;
+end switch_gmii_to_spi;
 
-architecture gmii of satcat5_gmii_to_spi is
+architecture gmii of switch_gmii_to_spi is
 
-    signal rx_data      : array_rx_m2s(1 downto 0);
-    signal tx_data      : array_tx_m2s(1 downto 0);
-    signal tx_ctrl      : array_tx_s2m(1 downto 0);
-        
-    signal adj_rx_data  : port_rx_m2s;
-    signal adj_tx_data  : port_tx_m2s;
-    signal adj_tx_ctrl  : port_tx_s2m;
+signal rx_data      : array_rx_m2s(1 downto 0);
+signal tx_data      : array_tx_m2s(1 downto 0);
+signal tx_ctrl      : array_tx_s2m(1 downto 0);
 
-    signal switch_err_t : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+signal adj_rx_data  : port_rx_m2s;
+signal adj_tx_data  : port_tx_m2s;
+signal adj_tx_ctrl  : port_tx_s2m;
+
+signal switch_err_t : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
 begin
+
 gmii_col <= '0';
 gmii_crs <= '0';
 gmii_rxc <= clk_125;
@@ -82,7 +83,7 @@ u_gmii : entity work.port_gmii_internal
     gmii_rxd        => gmii_rxd,
     gmii_rxdv       => gmii_rxdv,
     gmii_rxerr      => gmii_rxerr,
-    
+
     rx_data         => adj_rx_data,
     tx_data         => adj_tx_data,
     tx_ctrl         => adj_tx_ctrl,
@@ -113,22 +114,18 @@ u_core : entity work.switch_dual
 
 u_pmod : entity work.port_serial_spi_clkout
     generic map(
-        CLKREF_HZ   => 125_000_000,
-        SPI_BAUD    => 4_000_000,
-        SPI_MODE    => 3
-    )
+    CLKREF_HZ       => 125_000_000,
+    SPI_BAUD        => 4_000_000,
+    SPI_MODE        => 3)
     port map (
-        spi_csb     => eos(0),
-        spi_sclk    => eos(3),
-        spi_sdi     => eos(2),
-        spi_sdo     => eos(1),
-
-        rx_data     => rx_data(1), 
-        tx_data     => tx_data(1),
-        tx_ctrl     => tx_ctrl(1),
-
-        refclk      => clk_125,
-        reset_p     => reset_p
-    );
+    spi_csb         => eos(0),
+    spi_sclk        => eos(3),
+    spi_sdi         => eos(2),
+    spi_sdo         => eos(1),
+    rx_data         => rx_data(1),
+    tx_data         => tx_data(1),
+    tx_ctrl         => tx_ctrl(1),
+    refclk          => clk_125,
+    reset_p         => reset_p);
 
 end gmii;

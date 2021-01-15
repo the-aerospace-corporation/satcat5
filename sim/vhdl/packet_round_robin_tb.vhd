@@ -35,11 +35,11 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 
-entity round_robin_tb is
+entity packet_round_robin_tb is
     -- Unit testbench top level, no I/O ports
-end round_robin_tb;
+end packet_round_robin_tb;
 
-architecture tb of round_robin_tb is
+architecture tb of packet_round_robin_tb is
 
 constant INPUT_COUNT : integer := 12;
 
@@ -131,7 +131,7 @@ gen_src : for n in in_valid'range generate
 end generate;
 
 -- Unit under test.
-uut : entity work.round_robin
+uut : entity work.packet_round_robin
     generic map(
     INPUT_COUNT     => INPUT_COUNT)
     port map(

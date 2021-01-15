@@ -42,7 +42,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 
-entity round_robin is
+entity packet_round_robin is
     generic (
     INPUT_COUNT : integer); -- Number of input ports
     port (
@@ -60,9 +60,9 @@ entity round_robin is
 
     -- System clock (no reset needed).
     clk         : in  std_logic);
-end round_robin;
+end packet_round_robin;
 
-architecture round_robin of round_robin is
+architecture packet_round_robin of packet_round_robin is
 
 -- Convenience types.
 subtype port_slv is std_logic_vector(INPUT_COUNT-1 downto 0);
@@ -147,4 +147,4 @@ begin
     end if;
 end process;
 
-end round_robin;
+end packet_round_robin;

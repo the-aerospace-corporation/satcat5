@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -286,7 +286,7 @@ end process;
 
 fifo_rd_en <= pkt_rdfifo and pkt_ready;
 
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => log2_ceil(ECHO_BYTES))

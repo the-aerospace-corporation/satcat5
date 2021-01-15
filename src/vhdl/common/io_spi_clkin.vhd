@@ -20,7 +20,7 @@
 -- Generic SPI interface with clock input
 --
 -- This module implements a generic four-wire SPI interface.  This variant
--- acts as an SPI follower, used when the remote device drives the clock.
+-- acts as an SPI peripheral, used when the remote device drives the clock.
 --
 -- To minimize required FPGA resources, the input clock is treated as a regular
 -- signal, oversampled by the global reference clock.  (Typically 50-125 MHz vs.
@@ -37,6 +37,7 @@
 --
 -- See also: https://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
 -- See also: https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol
+-- See also: https://www.oshwa.org/a-resolution-to-redefine-spi-signal-names/
 --
 -- NOTE: Reference clock must be at least 3.0 times faster than sclk
 --      because of the synchronization buffers, which delay sclk by two
@@ -57,10 +58,10 @@ entity io_spi_clkin is
     SPI_MODE    : natural := 3);    -- SPI clock phase & polarity
     port (
     -- External SPI interface.
-    spi_csb     : in  std_logic;    -- Chip-select bar (from clock-source)
-    spi_sclk    : in  std_logic;    -- Serial clock in (from clock-source)
-    spi_sdi     : in  std_logic;    -- Serial data in (from clock-source)
-    spi_sdo     : out std_logic;    -- Serial data out (to clock-source)
+    spi_csb     : in  std_logic;    -- Chip-select bar
+    spi_sclk    : in  std_logic;    -- Serial clock in (SCK)
+    spi_sdi     : in  std_logic;    -- Serial data in (COPI)
+    spi_sdo     : out std_logic;    -- Serial data out (CIPO)
     spi_sdt     : out std_logic;    -- Tristate signal for SDO (optional).
 
     -- Internal byte interface.

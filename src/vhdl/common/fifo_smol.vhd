@@ -35,7 +35,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
-entity smol_fifo is
+entity fifo_smol is
     generic (
     IO_WIDTH    : natural ;             -- Word size
     META_WIDTH  : natural := 0;         -- Metadata size (optional)
@@ -64,9 +64,9 @@ entity smol_fifo is
     -- Common
     clk         : in  std_logic;        -- Clock for both ports
     reset_p     : in  std_logic);       -- Active-high sync reset
-end smol_fifo;
+end fifo_smol;
 
-architecture smol_fifo of smol_fifo is
+architecture fifo_smol of fifo_smol is
 
 subtype data_t is std_logic_vector(META_WIDTH+IO_WIDTH downto 0);
 type data_array is array(2**DEPTH_LOG2-1 downto 0) of data_t;
@@ -127,12 +127,12 @@ begin
         -- Detect error conditions.
         if (ERROR_OVER and in_write = '1' and out_read = '0' and addr = ADDR_MAX) then
             if (ERROR_PRINT) then
-                report "smol_fifo overflow" severity warning;
+                report "fifo_smol overflow" severity warning;
             end if;
             error <= '1';
         elsif (ERROR_UNDER and out_read = '1' and empty = '1') then
             if (ERROR_PRINT) then
-                report "smol_fifo underflow" severity warning;
+                report "fifo_smol underflow" severity warning;
             end if;
             error <= '1';
         else
@@ -156,4 +156,4 @@ fifo_hfull  <= addr(addr'left);
 fifo_hempty <= not addr(addr'left);
 fifo_error  <= error;
 
-end smol_fifo;
+end fifo_smol;

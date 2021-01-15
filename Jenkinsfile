@@ -1,4 +1,4 @@
-// Copyright 2019 The Aerospace Corporation
+// Copyright 2020 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -16,49 +16,48 @@
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 
 pipeline {
-    agent { label 'Vivado2015.4' }
+    agent any
 
     options {
-        timeout(time: 3, unit: 'HOURS')
+        timeout(time: 180, unit: 'MINUTES')
+        disableConcurrentBuilds() // Prevent two concurrent runs
+        parallelsAlwaysFailFast() // Fail as soon as any parallel stage fails
+    }
+
+    environment {
+        VIVADO_VERSION = "2015.4"
     }
 
     stages {
-        stage ('Test') {
-            steps {
-                dir('.') {
-                     sh './build_all.sh'
+        stage('Build-All') {
+            parallel {
+                stage('Sims') {
+                    agent { label 'Vivado2015.4' }
+                    steps { dir('.') { sh 'make sims' } }
+                    post { success {
+                        // junit has issues with paths, so soft-link it first
+                        sh 'ln -s sim/vhdl/sim_results.xml $WORKSPACE'
+                        junit 'sim_results.xml'
+                        // Archive sim results
+                        archiveArtifacts artifacts: 'sim/vhdl/xsim_tmp/simulate_*.log'
+                    } }
                 }
-                dir('./sim/vhdl/') {
-                     sh './xsim_run.sh'
-                     sh 'python xsim_parse.py'
+                stage('Arty-35T') {
+                    agent { label 'Vivado2015.4' }
+                    steps { dir('.') { sh 'make arty_35t' } }
+                    post { success { archiveArtifacts artifacts: '**/*.rpt, **/switch_top_arty_a7_rmii.bit' } }
+                }
+                stage('AC701-SGMII') {
+                    agent { label 'Vivado2015.4' }
+                    steps { dir('.') { sh 'make proto_v1_sgmii' } }
+                    post { success { archiveArtifacts artifacts: '**/*.rpt, **/switch_top_ac701_sgmii.bit' } }
+                }
+                stage('AC701-Router') {
+                    agent { label 'Vivado2015.4' }
+                    steps { dir('.') { sh 'make router_ac701' } }
+                    post { success { archiveArtifacts artifacts: '**/*.rpt, **/router_ac701_wrapper.bit' } }
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            // junit has issues with paths, so soft-link it first
-            sh 'ln -s sim/vhdl/sim_results.xml $WORKSPACE'
-            junit 'sim_results.xml'
-
-            // TODO - bundle these into a zip?
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_arty_a7_35t/switch_arty_a7_35t.runs/impl_1/switch_top_arty_a7_rmii.bit'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_arty_a7_35t/switch_arty_a7_35t.runs/impl_1/*.rpt'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_arty_a7_100t/switch_arty_a7_100t.runs/impl_1/switch_top_arty_a7_rmii.bit'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_arty_a7_100t/switch_arty_a7_100t.runs/impl_1/*.rpt'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_base/switch_proto_v1_base.runs/impl_1/switch_top_ac701_base.bit'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_base/switch_proto_v1_base.runs/impl_1/*.rpt'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_rgmii/switch_proto_v1_rgmii.runs/impl_1/switch_top_ac701_rgmii.bit'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_rgmii/switch_proto_v1_rgmii.runs/impl_1/*.rpt'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1/switch_top_ac701_sgmii.bit'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1/*.rpt'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v2/switch_proto_v2.runs/impl_1/switch_top_proto_v2.bit'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/switch_proto_v2/switch_proto_v2.runs/impl_1/*.rpt'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/converter_zed/converter_zed.runs/impl_1/converter_zed_top.sysdef'
-            archiveArtifacts artifacts: 'project/vivado_2015.4/converter_zed/converter_zed.runs/impl_1/*.rpt'
-            // Archive sim results
-            archiveArtifacts artifacts: 'sim/vhdl/xsim_tmp/simulate_*.log'
         }
     }
 }

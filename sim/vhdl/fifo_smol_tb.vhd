@@ -33,7 +33,7 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 
-entity smol_fifo_tb_helper is
+entity fifo_smol_tb_helper is
     generic (
     IO_WIDTH    : integer;          -- Word size
     DEPTH_LOG2  : integer);         -- FIFO depth = 2^N
@@ -44,9 +44,9 @@ entity smol_fifo_tb_helper is
     rate_in     : in  real;         -- Input rate (0-100%)
     rate_out    : in  real;         -- Output rate (0-100%)
     test_ok     : out std_logic);
-end smol_fifo_tb_helper;
+end fifo_smol_tb_helper;
 
-architecture helper of smol_fifo_tb_helper is
+architecture helper of fifo_smol_tb_helper is
 
 -- Input stream generation and flow randomization.
 signal in_data      : unsigned(IO_WIDTH-1 downto 0) := (others => '0');
@@ -149,7 +149,7 @@ begin
 end process;
 
 -- Unit under test.
-uut : entity work.smol_fifo
+uut : entity work.fifo_smol
     generic map(
     IO_WIDTH    => IO_WIDTH,
     DEPTH_LOG2  => DEPTH_LOG2,
@@ -215,13 +215,13 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 
-entity smol_fifo_tb is
+entity fifo_smol_tb is
     -- Testbench --> No I/O ports
-end smol_fifo_tb;
+end fifo_smol_tb;
 
-architecture tb of smol_fifo_tb is
+architecture tb of fifo_smol_tb is
 
-component smol_fifo_tb_helper is
+component fifo_smol_tb_helper is
     generic (
     IO_WIDTH    : integer;          -- Word size
     DEPTH_LOG2  : integer);         -- FIFO depth = 2^N
@@ -280,7 +280,7 @@ begin
 end process;
 
 -- Instantiate test units in various configurations.
-test0 : smol_fifo_tb_helper
+test0 : fifo_smol_tb_helper
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 3)
@@ -292,7 +292,7 @@ test0 : smol_fifo_tb_helper
     rate_out    => rate_out,
     test_ok     => test_ok(0));
 
-test1 : smol_fifo_tb_helper
+test1 : fifo_smol_tb_helper
     generic map(
     IO_WIDTH    => 12,
     DEPTH_LOG2  => 4)
@@ -304,7 +304,7 @@ test1 : smol_fifo_tb_helper
     rate_out    => rate_out,
     test_ok     => test_ok(1));
 
-test2 : smol_fifo_tb_helper
+test2 : fifo_smol_tb_helper
     generic map(
     IO_WIDTH    => 11,
     DEPTH_LOG2  => 5)
@@ -316,7 +316,7 @@ test2 : smol_fifo_tb_helper
     rate_out    => rate_out,
     test_ok     => test_ok(2));
 
-test3 : smol_fifo_tb_helper
+test3 : fifo_smol_tb_helper
     generic map(
     IO_WIDTH    => 9,
     DEPTH_LOG2  => 6)

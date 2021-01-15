@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -35,12 +35,12 @@ entity port_passthrough is
     ALLOW_RUNT      : boolean;          -- Allow runt frames? (Size < 64 bytes)
     OBUF_KBYTES     : integer);         -- Output buffer size (kilobytes)
     port (
-    -- Input from each port.
-    port_rx_data   : in  port_rx_m2s;
+    -- Input from first port.
+    port_rx_data    : in  port_rx_m2s;
 
-    -- Output to each port.
-    port_tx_data   : out port_tx_m2s;
-    port_tx_ctrl   : in  port_tx_s2m;
+    -- Output to second port.
+    port_tx_data    : out port_tx_m2s;
+    port_tx_ctrl    : in  port_tx_s2m;
 
     -- Error events are marked by toggling these bits.
     errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0));
@@ -53,11 +53,11 @@ signal eth_chk_data     : std_logic_vector(7 downto 0);
 signal eth_chk_write    : std_logic;
 signal eth_chk_commit   : std_logic;
 signal eth_chk_revert   : std_logic;
+signal eth_chk_error    : std_logic;
 
 -- Input packet error signals
 signal pktin_rxerror    : std_logic;
 signal pktin_crcerror   : std_logic;
-
 
 -- Output packet error signals
 signal pktout_overflow  : std_logic;
@@ -77,10 +77,15 @@ signal errtog_sched     : std_logic := '0';
 begin
 
 ----------------------------- INPUT LOGIC ---------------------------
+
 -- Check each frame and drive the commit / revert strobes.
+-- Note: Normally, 802.3D-compliant switches should block frames sent to the
+--       reserved control address.  However, a simple passthrough *should*
+--       allow them through since we're not handling them ourselves.
 u_frmchk : entity work.eth_frame_check
     generic map(
     ALLOW_JUMBO => ALLOW_JUMBO,
+    ALLOW_MCTRL => true,
     ALLOW_RUNT  => ALLOW_RUNT)
     port map(
     in_data     => port_rx_data.data,
@@ -90,6 +95,7 @@ u_frmchk : entity work.eth_frame_check
     out_write   => eth_chk_write,
     out_commit  => eth_chk_commit,
     out_revert  => eth_chk_revert,
+    out_error   => eth_chk_error,
     clk         => port_rx_data.clk,
     reset_p     => port_rx_data.reset_p);
 
@@ -102,14 +108,14 @@ u_err : sync_toggle2pulse
     out_clk     => port_rx_data.clk);
 u_pkt : sync_pulse2pulse
     port map(
-    in_strobe   => eth_chk_revert,
+    in_strobe   => eth_chk_error,
     in_clk      => port_rx_data.clk,
     out_strobe  => pktin_crcerror,
     out_clk     => port_rx_data.clk);
 
 ----------------------------- OUTPUT LOGIC --------------------------
 -- Instantiate this port's output FIFO.
-u_fifo : entity work.packet_fifo
+u_fifo : entity work.fifo_packet
     generic map(
     INPUT_BYTES     => 1,
     OUTPUT_BYTES    => 1,

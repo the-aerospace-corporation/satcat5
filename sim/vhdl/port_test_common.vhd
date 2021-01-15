@@ -80,7 +80,7 @@ rxdata_reset <= rxdata.reset_p  after 0.1 ns;
 
 -- Streaming input data for each unit:
 -- Note: Source is designed for testing switch, must adapt port type.
-u_src : entity work.eth_traffic_gen
+u_src : entity work.eth_traffic_sim
     generic map(
     INIT_SEED1  => DSEED1,
     INIT_SEED2  => DSEED2)

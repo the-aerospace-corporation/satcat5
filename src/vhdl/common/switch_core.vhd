@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -39,6 +39,8 @@ use     work.synchronization.all;
 
 entity switch_core is
     generic (
+    CORE_CLK_HZ     : positive;         -- Rate of core_clk (Hz)
+    SUPPORT_PAUSE   : boolean := false; -- Support or ignore 802.3x "PAUSE" frames?
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;          -- Allow runt frames? (Size < 64 bytes)
     PORT_COUNT      : integer;          -- Total number of Ethernet ports
@@ -87,6 +89,7 @@ signal eth_chk_data     : byte_array;
 signal eth_chk_write    : bit_array;
 signal eth_chk_commit   : bit_array;
 signal eth_chk_revert   : bit_array;
+signal eth_chk_error    : bit_array;
 
 -- Input packet FIFO.
 signal pktin_data       : word_array;
@@ -126,6 +129,7 @@ signal pktout_commit    : bit_array;
 signal pktout_revert    : bit_array;
 signal pktout_overflow  : bit_array;
 signal pktout_txerror   : bit_array;
+signal pktout_pause     : bit_array;
 
 -- Error toggles for switch_aux.
 signal errtog_mac_late  : std_logic := '0';
@@ -213,6 +217,22 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
     -- This has no effect on synthesis results.
     eth_chk_clk(n) <= to_01_std(ports_rx_data(n).clk);
 
+    -- Optionally monitor incoming traffic for PAUSE requests.
+    gen_pause1 : if SUPPORT_PAUSE generate
+        u_pause : entity work.eth_pause_ctrl
+            generic map(
+            REFCLK_HZ   => CORE_CLK_HZ)
+            port map(
+            port_rx     => ports_rx_data(n),
+            pause_tx    => pktout_pause(n),
+            ref_clk     => core_clk,
+            reset_p     => core_reset_sync);
+    end generate;
+    
+    gen_pause0 : if not SUPPORT_PAUSE generate
+        pktout_pause(n) <= '0';
+    end generate;
+
     -- Check each frame and drive the commit / revert strobes.
     u_frmchk : entity work.eth_frame_check
         generic map(
@@ -226,11 +246,12 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         out_write   => eth_chk_write(n),
         out_commit  => eth_chk_commit(n),
         out_revert  => eth_chk_revert(n),
+        out_error   => eth_chk_error(n),
         clk         => eth_chk_clk(n),
         reset_p     => ports_rx_data(n).reset_p);
 
     -- Instantiate this port's input FIFO.
-    u_fifo : entity work.packet_fifo
+    u_fifo : entity work.fifo_packet
         generic map(
         INPUT_BYTES     => 1,
         OUTPUT_BYTES    => DATAPATH_BYTES,
@@ -260,7 +281,7 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         out_clk     => core_clk);
     u_pkt : sync_pulse2pulse
         port map(
-        in_strobe   => eth_chk_revert(n),
+        in_strobe   => eth_chk_error(n),
         in_clk      => eth_chk_clk(n),
         out_strobe  => pktin_crcerror(n),
         out_clk     => core_clk);
@@ -268,7 +289,7 @@ end generate;
 
 ----------------------------- SHARED PIPELINE -----------------------
 -- Round-robin scheduler chooses which input is active.
-u_robin : entity work.round_robin
+u_robin : entity work.packet_round_robin
     generic map(
     INPUT_COUNT     => PORT_COUNT)
     port map(
@@ -349,7 +370,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
     pktout_revert(n) <= pktout_write and pktout_last and not pktout_pdst(n);
 
     -- Instantiate this port's output FIFO.
-    u_fifo : entity work.packet_fifo
+    u_fifo : entity work.fifo_packet
         generic map(
         INPUT_BYTES     => DATAPATH_BYTES,
         OUTPUT_BYTES    => 1,
@@ -369,6 +390,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         out_last        => ports_tx_data(n).last,
         out_valid       => ports_tx_data(n).valid,
         out_ready       => ports_tx_ctrl(n).ready,
+        out_pause       => pktout_pause(n),
         out_overflow    => open,
         reset_p         => ports_tx_ctrl(n).reset_p);
 

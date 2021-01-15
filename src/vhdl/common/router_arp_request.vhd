@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -73,7 +73,7 @@ architecture router_arp_request of router_arp_request is
 -- Minimum is 14 header + 28 ARP = 42 bytes.
 function get_arplen return integer is
 begin
-    return max(42, MIN_FRAME_BYTES-4);
+    return int_max(42, MIN_FRAME_BYTES-4);
 end function;
 constant ARP_FRAME_BYTES : integer := get_arplen;
 

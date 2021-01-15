@@ -83,7 +83,7 @@ u_mmcm : MMCME2_ADV
     generic map (
     BANDWIDTH               => "LOW",       -- string
     CLKIN1_PERIOD           => 1000.0 / real(REFCLK_MHZ), -- real
-    CLKIN2_PERIOD           => 0.0,         -- real
+    CLKIN2_PERIOD           => 1000.0 / real(REFCLK_MHZ), -- real
     REF_JITTER1             => 0.010,       -- real
     REF_JITTER2             => 0.0,         -- real
     DIVCLK_DIVIDE           => 1,           -- integer

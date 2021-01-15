@@ -56,9 +56,9 @@ package COMMON_FUNCTIONS is
     function log2_floor(a: integer) return integer;
 
     -- Return the maximum of the two inputs
-    function max(a,b: integer) return integer;
+    function int_max(a,b: integer) return integer;
     -- Return the minimum of the two inputs
-    function min(a,b: integer) return integer;
+    function int_min(a,b: integer) return integer;
 
     -- Map 'X', 'U' to '0'
     function to_01_vec(a: std_logic_vector) return std_logic_vector;
@@ -109,7 +109,7 @@ package body COMMON_FUNCTIONS is
 
     function saturate_add(a, b: unsigned; nbits: natural) return unsigned is
         -- Calculate sum with enough width to never overflow.
-        constant W   : natural := 1 + max(a'length, b'length);
+        constant W   : natural := 1 + int_max(a'length, b'length);
         variable sum : unsigned(W-1 downto 0) := resize(a, W) + resize(b, W);
     begin
         -- Return the saturated output:
@@ -155,14 +155,14 @@ package body COMMON_FUNCTIONS is
         return l;
     end;
 
-    function max(a, b: integer) return integer is
+    function int_max(a, b: integer) return integer is
     begin
         if a > b then return a;
         else return b;
         end if;
     end;
 
-    function min(a, b: integer) return integer is
+    function int_min(a, b: integer) return integer is
     begin
         if a < b then return a;
         else return b;
@@ -209,9 +209,9 @@ package body COMMON_FUNCTIONS is
         constant div_rd_near : natural := (clkref_hz + baud_hz / 2) / baud_hz;
     begin
         if (round_up) then
-            return max(1, div_rd_up);
+            return int_max(1, div_rd_up);
         else
-            return max(1, div_rd_near);
+            return int_max(1, div_rd_near);
         end if;
     end function;
 end package body;

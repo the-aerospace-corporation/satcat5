@@ -123,7 +123,7 @@ end process;
 
 -- Raw stream generation for valid packets.
 -- Note: Always use EtherType field, not length.
-u_src : entity work.eth_traffic_gen
+u_src : entity work.eth_traffic_sim
     generic map(
     AUTO_START  => true)
     port map(
@@ -198,7 +198,7 @@ fifo_in <= in_last_ovr & in_data;
 fifo_wr <= in_valid_raw and in_valid_ovr and in_ready;
 fifo_rd <= out_write and (out_last or not ref_last);
 
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 9,
     DEPTH_LOG2  => 6)   -- FIFO depth = 2^N

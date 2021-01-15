@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -75,6 +75,7 @@ begin
 -- Drive clocks and control signals for each port.
 rxa_data.clk        <= ref_clk;
 rxa_data.rxerr      <= '0';
+rxa_data.rate       <= get_rate_word(1000 / RATE_DIV);
 rxa_data.reset_p    <= reset_sync;
 rxa_data.write      <= rxa_data_valid and xfer_ready;
 
@@ -84,6 +85,7 @@ txa_ctrl.reset_p    <= reset_sync;
 
 rxb_data.clk        <= ref_clk;
 rxb_data.rxerr      <= '0';
+rxb_data.rate       <= get_rate_word(1000 / RATE_DIV);
 rxb_data.reset_p    <= reset_sync;
 rxb_data.write      <= rxb_data_valid and xfer_ready;
 
@@ -100,7 +102,7 @@ u_rsync : sync_reset
 
 -- Rate limiter state machine.
 p_rate : process(ref_clk)
-    constant RATE_MAX : integer := max(0, RATE_DIV-1);
+    constant RATE_MAX : integer := int_max(0, RATE_DIV-1);
     variable count : integer range 0 to RATE_MAX := RATE_MAX;
 begin
     if rising_edge(ref_clk) then

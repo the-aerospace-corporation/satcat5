@@ -1,6 +1,6 @@
 #!/bin/bash -f
 # ------------------------------------------------------------------------
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2020 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -97,23 +97,28 @@ simulate_one()
 simulate_all()
 {
     # Run each unit test for the designated time:
-    simulate_one bram_fifo_tb 10ms
     simulate_one config_file2rom_tb 1us TEST_DATA_FOLDER $test_data_folder
     simulate_one config_mdio_rom_tb 30ms
     simulate_one config_port_eth_tb 4ms
+    simulate_one config_port_test_tb 4ms
     simulate_one config_port_uart_tb 16ms
     simulate_one config_send_status_tb 1ms
     simulate_one config_stats_tb 3ms
-    simulate_one error_reporting_tb 10ms
     simulate_one eth_all8b10b_tb 2ms
     simulate_one eth_frame_adjust_tb 8ms
-    simulate_one eth_frame_check_tb 2ms
+    simulate_one eth_frame_check_tb 10ms
+    simulate_one eth_pause_ctrl_tb 3ms
+    simulate_one fifo_bram_tb 10ms
+    simulate_one fifo_packet_tb 10ms
+    simulate_one fifo_smol_tb 10ms
+    simulate_one io_error_reporting_tb 10ms
+    simulate_one io_mdio_readwrite_tb 3ms
     simulate_one io_spi_tb 1ms
     simulate_one lcd_control_tb 250ms
     simulate_one mac_lookup_tb 4ms
     simulate_one packet_delay_tb 1ms
-    simulate_one packet_fifo_tb 10ms
-    simulate_one packet_inject_tb 10ms
+    simulate_one packet_inject_tb 15ms
+    simulate_one packet_round_robin_tb 20ms
     simulate_one port_axi_mailbox_tb 6ms
     simulate_one port_inline_status_tb 4ms
     simulate_one port_rgmii_tb 1ms
@@ -124,7 +129,6 @@ simulate_all()
     simulate_one port_serial_uart_4wire_tb 700ms
     simulate_one port_serial_uart_2wire_tb 470ms
     simulate_one port_statistics_tb 2ms
-    simulate_one round_robin_tb 20ms
     simulate_one router_arp_cache_tb 2ms
     simulate_one router_arp_proxy_tb 2ms
     simulate_one router_arp_request_tb 1ms
@@ -137,14 +141,14 @@ simulate_all()
     simulate_one sgmii_data_sync_tb 110ms
     simulate_one slip_decoder_tb 20us
     simulate_one slip_encoder_tb 4ms
-    simulate_one smol_fifo_tb 10ms
     simulate_one switch_core_tb 12ms
 }
 
-# Initial setup
+# Initial setup (default version = 2015.4)
+VIVADO_VERSION?=2015.4
 start_time=$(date +%T.%N)
 test_data_folder=$(realpath ../data)
-source /opt/Xilinx/Vivado/2015.4/settings64.sh
+source /opt/Xilinx/Vivado/${VIVADO_VERSION}/settings64.sh
 
 # Create project and compile VHDL source.
 # If successful, run all simulations.

@@ -32,21 +32,23 @@ When external connectors are used, we recommend compatibility with [Digilent's 6
 The Serial Peripheral Interface uses four wires for bidirectional communication. By convention, the "master" is the clock-source:
 
 * CSb: Chip-select bar, active-low, driven by endpoint (PMOD pin 1)
-* MOSI: Master out / slave in, driven by endpoint (PMOD pin 2)
-* MISO: Master in / slave out, driven by switch (PMOD pin 3)
+* COPI: Controller out / peripheral in, driven by endpoint (PMOD pin 2)
+* CIPO: Controller in / peripheral out, driven by switch (PMOD pin 3)
 * SCK: Serial clock, driven by endpoint (PMOD pin 4)
 
-The Ethernet switch is always the SPI clock sink; the microcontroller endpoint should generate the clock and drive CSb and MOSI.
+The Ethernet switch is always the SPI clock sink; the microcontroller endpoint should generate the clock and drive CSb and COPI.
 
 All clock-phasing modes are supported, but SPI Mode 3 is preferred.  Other modes typically require an FPGA rebuild. The maximum supported bit-rate depends on the internal reference clock; refer to io_spi_clkin for details.
 
 In SPI, transmitting and receiving data occurs simultaneously.  All exchanges are byte-aligned, and transmitted MSB-first per SPI convention.
 
-The MOSI and MISO signals are each treated as a contiguous, SLIP-encoded byte stream.  Chip-select is not used to indicate frame boundaries.
+The COPI and CIPO signals are each treated as a contiguous, SLIP-encoded byte stream.  Chip-select is not used to indicate frame boundaries.
 
-To transmit, the endpoint should lower CSb, and strobe SCK eight times to send each byte on MOSI.  Note, however, that the send/receive transactions are inseparable.  As such, the endpoint must also inspect the received bytes for SLIP-encoded frames.  If there is no data to send, the MISO stream will simply be a repeating SLIP inter-frame token (0xC0).  Note that packets from the switch may start at any point in the MISO stream; they are not constrained to CSb or MOSI frame boundaries.
+To transmit, the endpoint should lower CSb, and strobe SCK eight times to send each byte on COPI.  Note, however, that the send/receive transactions are inseparable.  As such, the endpoint must also inspect the received bytes for SLIP-encoded frames.  If there is no data to send, the CIPO stream will simply be a repeating SLIP inter-frame token (0xC0).  Note that packets from the switch may start at any point in the CIPO stream; they are not constrained to CSb or COPI frame boundaries.
 
-To receive, the endpoint should simply send repeating SLIP inter-frame tokens (0xC0) on MOSI until the received stream emits two consecutive inter-frame tokens, indicating idle.  This action should be performed periodically, since there is no explicit "data-ready" indicator.
+To receive, the endpoint should simply send repeating SLIP inter-frame tokens (0xC0) on COPI until the received stream emits two consecutive inter-frame tokens, indicating idle.  This action should be performed periodically, since there is no explicit "data-ready" indicator.
+
+For more information on this signal naming convention, refer to [this OSHWA resolution](https://www.oshwa.org/a-resolution-to-redefine-spi-signal-names/).
 
 ### UART (4-wire)
 

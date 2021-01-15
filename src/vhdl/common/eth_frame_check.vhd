@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -28,6 +28,11 @@
 --  * Frame length at least 64 bytes (unless runt frames are allowed).
 --  * If length is specified (EtherType <= 1530), verify exact match.
 --
+-- This block may additionally block frames that have an invalid source
+-- address (e.g., 00-00-00-00-00-00) or a reserved destination address
+-- (e.g., 01-80-C2-00-00-01).  Such frames assert the "revert" strobe
+-- but not the "error" strobe.  See also: 802.3 Annex 31D.
+--
 -- This block optionally strips the frame-check sequence from the end of
 -- each output frame; in this case it must be replaced before transmission.
 --
@@ -44,6 +49,7 @@ use     work.eth_frame_common.all;
 entity eth_frame_check is
     generic (
     ALLOW_JUMBO : boolean := false;     -- Allow frames longer than 1522 bytes?
+    ALLOW_MCTRL : boolean := false;     -- Allow frames to MAC-control address?
     ALLOW_RUNT  : boolean := false;     -- Allow frames below standard length?
     STRIP_FCS   : boolean := false;     -- Remove FCS from output?
     OUTPUT_REG  : boolean := true);     -- Extra register at output?
@@ -58,6 +64,7 @@ entity eth_frame_check is
     out_write   : out std_logic;
     out_commit  : out std_logic;
     out_revert  : out std_logic;
+    out_error   : out std_logic;
 
     -- System interface.
     clk         : in  std_logic;
@@ -105,18 +112,21 @@ signal reg_last         : std_logic := '0';
 signal reg_write        : std_logic := '0';
 signal reg_commit       : std_logic := '0';
 signal reg_revert       : std_logic := '0';
+signal reg_error        : std_logic := '0';
 
 -- Buffered output signals (optional, for better timing)
 signal buf_data         : byte_t := (others => '0');
 signal buf_write        : std_logic := '0';
 signal buf_commit       : std_logic := '0';
 signal buf_revert       : std_logic := '0';
+signal buf_error        : std_logic := '0';
 
 -- Modified output signals with no FCS (optional)
 signal trim_data        : byte_t := (others => '0');
 signal trim_write       : std_logic := '0';
 signal trim_commit      : std_logic := '0';
 signal trim_revert      : std_logic := '0';
+signal trim_error       : std_logic := '0';
 
 -- Frame-check state machine:
 signal byte_first       : std_logic := '1';
@@ -124,8 +134,11 @@ signal len_count        : ethertype_len := (others => '0');
 signal len_field_etype  : std_logic := '0';
 signal len_field_cmp    : ethertype_len := (others => '0');
 signal len_field_full   : ethertype_full := (others => '0');
+signal src_bcast        : std_logic := '0';
+signal dst_mctrl        : std_logic := '0';
 signal crc_sreg         : crc_word_t := CRC_INIT;
 signal frame_ok         : std_logic := '0';
+signal frame_keep       : std_logic := '0';
 
 begin
 
@@ -159,6 +172,28 @@ begin
                 len_field_full(7 downto 0) <= unsigned(in_data);
             end if;
 
+            -- Is the source-MAC the broadcast address? (Bytes 6-11)
+            if (byte_first = '1') then
+                src_bcast <= '1';
+            elsif (6 <= len_count and len_count < 12) then
+                src_bcast <= src_bcast and bool2bit(in_data = x"FF");
+            end if;
+
+            -- Is the destination-MAC the control address? (Bytes 0-5)
+            if (byte_first = '1') then
+                dst_mctrl <= bool2bit(in_data = x"01");
+            elsif (len_count = 1) then
+                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"80");
+            elsif (len_count = 2) then
+                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"C2");
+            elsif (len_count = 3) then
+                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"00");
+            elsif (len_count = 4) then
+                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"00");
+            elsif (len_count = 5) then
+                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"01");
+            end if;
+
             -- Update length counter.
             if (byte_first = '1') then
                 len_count <= to_unsigned(1, len_count'length);
@@ -179,12 +214,16 @@ end process;
 -- Check all frame validity requirements.
 frame_ok <= bool2bit(
     (crc_sreg = CRC_RESIDUE) and
+    (src_bcast = '0') and
     (len_count >= MIN_FRAME_BYTES_LOCAL) and
     (len_count <= MAX_FRAME_BYTES_LOCAL) and
     (len_field_etype = '1' or len_count = len_field_cmp));
 
-reg_commit <= reg_last and frame_ok;
-reg_revert <= reg_last and not frame_ok;
+frame_keep <= frame_ok and bool2bit(ALLOW_MCTRL or dst_mctrl = '0');
+
+reg_commit <= reg_last and frame_keep;
+reg_revert <= reg_last and not frame_keep;
+reg_error  <= reg_last and not frame_ok;
 
 -- Optionally instantiate additional output logic:
 gen_buffer : if OUTPUT_REG generate
@@ -196,6 +235,7 @@ gen_buffer : if OUTPUT_REG generate
             buf_write   <= reg_write;
             buf_commit  <= reg_commit;
             buf_revert  <= reg_revert;
+            buf_error   <= reg_error;
         end if;
     end process;
 end generate;
@@ -219,6 +259,7 @@ gen_strip : if STRIP_FCS generate
             trim_write  <= bool2bit(count = 0) and reg_write;
             trim_commit <= bool2bit(count = 0) and reg_commit;
             trim_revert <= bool2bit(count = 0) and reg_revert;
+            trim_error  <= bool2bit(count = 0) and reg_error;
 
             -- Counter suppresses the first four bytes in each frame.
             if (reset_p = '1' or reg_last = '1') then
@@ -243,5 +284,8 @@ out_commit <= trim_commit when STRIP_FCS
 out_revert <= trim_revert when STRIP_FCS
          else buf_revert when OUTPUT_REG
          else reg_revert;
+out_error  <= trim_error when STRIP_FCS
+         else buf_error when OUTPUT_REG
+         else reg_error;
 
 end rtl;

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2020 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -28,6 +28,9 @@ import threading
 import traceback
 from time import sleep
 import os
+
+# Use libpcap super sockets (non-native)
+sca.conf.use_pcap = True
 
 def mac2str(bytes):
     '''Convert MAC bytes to string (e.g., '8C:DC:D4:48:0D:8B')'''
@@ -64,7 +67,7 @@ class AsyncEthernetPort:
         iface -- ScaPy interface-ID string.  (See list_eth_interfaces.)
         logger -- Logger object for reporting status and errors.
         '''
-        self._iface = iface
+        self._iface = sca.conf.L2socket(iface, promisc=True)
         self.lbl = label
         self.mac = str2mac(sca.get_if_hwaddr(iface))
         self._callback = None
@@ -82,8 +85,12 @@ class AsyncEthernetPort:
     def close(self):
         '''Stop the ScaPy sniffer.'''
         if self._rx_run:
+            # Ask work thread to stop and close the socket.
+            # (This sometimes helps break out of ongoing recv() calls.)
             self._rx_run = False
-            self._rx_thread.join()
+            self._iface.close()
+            # Attempt to close down gracefully, but don't wait forever.
+            self._rx_thread.join(0.5)
 
     def is_uart(self):
         '''Is this interface a UART or a true Ethernet port?'''
@@ -92,17 +99,6 @@ class AsyncEthernetPort:
     def set_callback(self, callback):
         '''Set callback function for received frames.'''
         self._callback = callback
-
-    def msg_rcvd(self, packet):
-        '''
-        Parse and deliver complete packets.
-
-        Convert packet to raw bytes.
-        (Expect dst MAC, src MAC, Ethertype, payload = 6+6+2+n).
-        '''
-        eth_frm = sca.raw(packet)
-        if (len(eth_frm) > 14) and (self._callback is not None):
-            self._callback(eth_frm)
 
     def msg_send(self, eth_frm):
         '''
@@ -115,7 +111,7 @@ class AsyncEthernetPort:
             if len(eth_frm) < 60:
                 len_pad = 60 - len(eth_frm)
                 eth_frm += len_pad * b'\x00'
-            sca.sendp(sca.Ether(eth_frm), iface=self._iface)
+            self._iface.send(eth_frm)
         except:
             self._log.error(self.lbl + ':\n' + traceback.format_exc())
 
@@ -124,11 +120,11 @@ class AsyncEthernetPort:
         self._log.info(self.lbl + ': Rx loop start')
         while self._rx_run:
             try:
-                sca.sniff(
-                    iface=self._iface,  # Use specified interface
-                    store=False,        # Don't bother storing for later
-                    timeout=0.5,        # Stop every N seconds
-                    prn=self.msg_rcvd)  # Callback for each packet
+                pkt = self._iface.nonblock_recv()
+                if pkt is None:
+                    sleep(0.01) # Short sleep so we don't hog CPU
+                elif self._callback is not None:
+                    self._callback(sca.raw(pkt))
             except:
                 self._log.error(self.lbl + ':\n' + traceback.format_exc())
                 sleep(1.0)              # Brief delay before retry

@@ -27,7 +27,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.led_types.all;
+use     work.io_leds.all;
 use     work.switch_types.all;
 use     work.synchronization.all;
 
@@ -133,7 +133,7 @@ begin
 end process;
 
 -- Error reporting UART.
-u_uart : entity work.error_reporting
+u_uart : entity work.io_error_reporting
     generic map(
     CLK_HZ          => SCRUB_CLK_HZ,
     OUT_BAUD        => UART_BAUD,

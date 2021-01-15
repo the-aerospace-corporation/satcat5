@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -242,7 +242,9 @@ end process;
 
 -- Receive state machine, including preamble removal.
 u_amble_rx : entity work.eth_preamble_rx
-    generic map(DV_XOR_ERR  => true)
+    generic map(
+    RATE_MBPS   => 1000,
+    DV_XOR_ERR  => true)
     port map(
     raw_clk     => rxclk,
     raw_lock    => rxlock,

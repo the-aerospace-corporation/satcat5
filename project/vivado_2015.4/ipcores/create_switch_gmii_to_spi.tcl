@@ -21,10 +21,10 @@
 #
 # Create IP: Satcat5 GMII to SPI Core
 
-set ip_name "satcat5_gmii_to_spi"
+set ip_name "port_gmii_to_spi"
 set ip_vers "1.0"
 set ip_disp "SatCat5 GMII to SPI"
-set ip_desc "A two-port switch, typically used to translate a GMII internal interface (typically found on Zynq 70xx-PS) to SPI."
+set ip_desc "A two-port switch, configured to translate a GMII internal interface (typically found on Zynq 70xx-PS) to EoS/SPI."
 
 set ip_root [file normalize [file dirname [info script]]]
 
@@ -42,15 +42,15 @@ ipcore_add_file $src_dir/xilinx         io_7series.vhd
 ipcore_add_file $src_dir/xilinx         synchronization.vhd
 ipcore_add_file $src_dir/common         port_serial_spi_clkout.vhd
 ipcore_add_file $src_dir/common         io_spi_clkout.vhd
-ipcore_add_file $src_dir/common         smol_fifo.vhd
-ipcore_add_file $src_dir/common         packet_fifo.vhd
+ipcore_add_file $src_dir/common         fifo_smol.vhd
+ipcore_add_file $src_dir/common         fifo_packet.vhd
 ipcore_add_file $src_dir/common         port_gmii_internal.vhd
 ipcore_add_file $src_dir/common         port_passthrough.vhd
 ipcore_add_file $src_dir/common         port_adapter.vhd
 ipcore_add_file $src_dir/common         slip_encoder.vhd
 ipcore_add_file $src_dir/common         slip_decoder.vhd
 ipcore_add_file $src_dir/common         switch_dual.vhd
-ipcore_add_top  $src_dir/common         satcat5_gmii_to_spi
+ipcore_add_top  $src_dir/common         switch_gmii_to_spi
 
 # Connect the clock and reset ports
 ipcore_add_clock clk_125 ""

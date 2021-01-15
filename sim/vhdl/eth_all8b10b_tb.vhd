@@ -219,6 +219,8 @@ uut_dec : entity work.eth_dec8b10b
 
 -- Preamble removal.
 u_amble : entity work.eth_preamble_rx
+    generic map(
+    RATE_MBPS   => 1000)
     port map(
     raw_clk     => clk_125,
     raw_lock    => dec_lock,

@@ -218,13 +218,15 @@ def slipEncode(data):
 
 class AsyncSLIPPort:
     '''SLIP port wrapper. Same interface as ethernet_utils::AsyncEthernetPort.'''
-    def __init__(self, portname, logger, zeropad=False, verbose=False):
+    def __init__(self, portname, logger, baudrate=921600, eth_fcs=True, zeropad=False, verbose=False):
         '''
         Create a new "locally administered" MAC address.
         16 MSBs are 0xAE20 ("Aero"), then 32 random LSBs.
         Keyword arguments:
         portname -- UART port name (see AsyncSerialPort)
         logger -- Python logger object for error messages
+        baudrate -- Baud rate for the underlying UART (default 921,600)
+        eth_fcs -- If true, check and remove Ethernet FCS.  Otherwise, forward frames verbatim.
         zeropad -- Enable zero-padding of short frames to at least 64 bytes (default false)
         verbose -- Enable additional status messages in log (default false)
         '''
@@ -234,6 +236,7 @@ class AsyncSLIPPort:
         self.lbl = portname
         # All other initialization...
         self._callback = None
+        self._eth_fcs = eth_fcs
         self._logger = logger
         self._zeropad = zeropad
         self._verbose = verbose
@@ -241,7 +244,7 @@ class AsyncSLIPPort:
             logger=logger,
             callback=self.msg_rcvd, # Thin-wrapper for callback
             msg_delim=SLIP_END)     # SLIP delimiter
-        self._serial.open(portname, 921600)
+        self._serial.open(portname, baudrate)
 
     def close(self):
         '''Close this UART port.'''
@@ -265,17 +268,24 @@ class AsyncSLIPPort:
         if self._verbose:
             self._logger.info('%s: SLIP-Rx: %u/%u bytes'
                 % (self.lbl, len(eth_frm), len(slip_frm)))
-        if (len(eth_frm) > 18) and (self._callback is not None):
-            # Check the CRC against the expected value.
+        if self._callback is None:
+            # No callback; discard this frame.
+            return
+        elif not self._eth_fcs:
+            # FCS mode disabled, forward verbatim.
+            self._callback(eth_frm)
+        elif len(eth_frm) >= 18:
+            # Check the FCS against the expected value.
             eth_dat = eth_frm[:-4]
             rcv_crc = eth_frm[-4:]
             ref_crc = ethernet_crc(eth_dat)
-            # On mismatch, log a warning but forward packet anyway.
+            # On mismatch, log a warning.
             if (ref_crc != rcv_crc):
                 [rcv_int] = unpack('<L', rcv_crc)
                 [ref_int] = unpack('<L', ref_crc)
                 self._logger.warning('%s: CRC mismatch, got 0x%08u expected 0x%08u'
                     % (self.lbl, rcv_int, ref_int))
+            # Forward the packet regardless.
             self._callback(eth_dat)
 
     def msg_send(self, eth_usr):

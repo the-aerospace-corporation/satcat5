@@ -346,6 +346,7 @@ u_xlink : entity work.port_crosslink
 -- (Total throughput 4800 Mbps vs. max traffic 4080 Mbps.)
 u_core_fast : entity work.switch_core
     generic map(
+    CORE_CLK_HZ     => 200_000_000,
     ALLOW_RUNT      => false,
     PORT_COUNT      => FAST_PORTS + 1,
     DATAPATH_BYTES  => 3,
@@ -367,6 +368,7 @@ u_core_fast : entity work.switch_core
 -- (Total throughput 200 Mbps vs. max traffic 160 Mbps.)
 u_core_slow : entity work.switch_core
     generic map(
+    CORE_CLK_HZ     => 25_000_000,
     ALLOW_RUNT      => true,
     PORT_COUNT      => SLOW_PORTS + 1,
     DATAPATH_BYTES  => 1,

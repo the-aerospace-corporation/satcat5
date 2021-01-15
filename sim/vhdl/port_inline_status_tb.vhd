@@ -66,6 +66,7 @@ signal clk_102          : std_logic := '0';
 signal reset_p          : std_logic := '1';
 
 -- Unit under test
+signal lcl_tx_rate      : port_rate_t;
 signal lcl_rx_data      : port_rx_m2s;  -- Ingress data out
 signal lcl_tx_data      : port_tx_m2s;  -- Egress data in
 signal lcl_tx_ctrl      : port_tx_s2m;
@@ -102,7 +103,7 @@ clk_102 <= not clk_102 after 4.9 ns;
 reset_p <= '0' after 1 us;
 
 -- Baseline traffic generation.
-u_gen_eg : entity work.eth_traffic_gen
+u_gen_eg : entity work.eth_traffic_sim
     generic map(
     INIT_SEED1          => 17501785,
     INIT_SEED2          => 57082951)
@@ -117,13 +118,14 @@ u_gen_eg : entity work.eth_traffic_gen
     out_port.data       => lcl_tx_data.data,
     out_port.last       => lcl_tx_data.last,
     out_port.write      => lcl_tx_write,
+    out_port.rate       => lcl_tx_rate,
     out_port.rxerr      => net_tx_ctrl.txerr,
     out_port.reset_p    => net_tx_ctrl.reset_p,
     out_bcount          => open,
     out_valid           => lcl_tx_data.valid,
     out_ready           => lcl_tx_ctrl.ready);
 
-u_gen_ig : entity work.eth_traffic_gen
+u_gen_ig : entity work.eth_traffic_sim
     generic map(
     INIT_SEED1          => 85018771,
     INIT_SEED2          => 13287401)
@@ -138,6 +140,7 @@ u_gen_ig : entity work.eth_traffic_gen
     out_port.data       => net_rx_data.data,
     out_port.last       => net_rx_data.last,
     out_port.write      => net_rx_data.write,
+    out_port.rate       => net_rx_data.rate,
     out_port.rxerr      => net_rx_data.rxerr,
     out_port.reset_p    => net_rx_data.reset_p,
     out_bcount          => open,

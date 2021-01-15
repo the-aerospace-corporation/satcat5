@@ -136,7 +136,7 @@ u_slip : entity work.slip_decoder
 
 -- A small FIFO waits for the end of each packet, to enforce
 -- the all-or-nothing rule required by config_read_command.
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,  -- One byte at a time
     DEPTH_LOG2  => 5)  -- Up to 2^5 = 32 bytes

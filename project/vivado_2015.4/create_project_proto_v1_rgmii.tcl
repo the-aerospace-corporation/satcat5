@@ -36,16 +36,18 @@ set files_main [list \
  "[file normalize "../../src/vhdl/common/config_port_uart.vhd"]"\
  "[file normalize "../../src/vhdl/common/config_read_command.vhd"]"\
  "[file normalize "../../src/vhdl/common/config_send_status.vhd"]"\
- "[file normalize "../../src/vhdl/common/error_reporting.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_adjust.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_check.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_common.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_preambles.vhd"]"\
+ "[file normalize "../../src/vhdl/common/fifo_packet.vhd"]"\
+ "[file normalize "../../src/vhdl/common/fifo_smol.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_error_reporting.vhd"]"\
+ "[file normalize "../../src/vhdl/common/io_leds.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_mdio_writer.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_spi_clkin.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_spi_clkout.vhd"]"\
  "[file normalize "../../src/vhdl/common/io_uart.vhd"]"\
- "[file normalize "../../src/vhdl/common/led_types.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_binary.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_brute.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_generic.vhd"]"\
@@ -54,17 +56,15 @@ set files_main [list \
  "[file normalize "../../src/vhdl/common/mac_lookup_simple.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup_stream.vhd"]"\
  "[file normalize "../../src/vhdl/common/packet_delay.vhd"]"\
- "[file normalize "../../src/vhdl/common/packet_fifo.vhd"]"\
+ "[file normalize "../../src/vhdl/common/packet_round_robin.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_crosslink.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_rgmii.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_auto.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_spi_clkin.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_uart_2wire.vhd"]"\
  "[file normalize "../../src/vhdl/common/port_serial_uart_4wire.vhd"]"\
- "[file normalize "../../src/vhdl/common/round_robin.vhd"]"\
  "[file normalize "../../src/vhdl/common/slip_decoder.vhd"]"\
  "[file normalize "../../src/vhdl/common/slip_encoder.vhd"]"\
- "[file normalize "../../src/vhdl/common/smol_fifo.vhd"]"\
  "[file normalize "../../src/vhdl/common/switch_aux.vhd"]"\
  "[file normalize "../../src/vhdl/common/switch_core.vhd"]"\
  "[file normalize "../../src/vhdl/common/switch_types.vhd"]"\

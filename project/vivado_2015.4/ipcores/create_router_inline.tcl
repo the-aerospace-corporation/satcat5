@@ -31,12 +31,13 @@ source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
 #               Path                Filename
-ipcore_add_file $src_dir/common     bram_fifo.vhd
 ipcore_add_file $src_dir/common     common_functions.vhd
 ipcore_add_file $src_dir/common     eth_frame_adjust.vhd 
 ipcore_add_file $src_dir/common     eth_frame_check.vhd 
 ipcore_add_file $src_dir/common     eth_frame_common.vhd 
-ipcore_add_file $src_dir/common     packet_fifo.vhd
+ipcore_add_file $src_dir/common     fifo_bram.vhd
+ipcore_add_file $src_dir/common     fifo_packet.vhd
+ipcore_add_file $src_dir/common     fifo_smol.vhd
 ipcore_add_file $src_dir/common     packet_inject.vhd
 ipcore_add_file $src_dir/common     router_arp_cache.vhd
 ipcore_add_file $src_dir/common     router_arp_parse.vhd
@@ -51,7 +52,6 @@ ipcore_add_file $src_dir/common     router_icmp_send.vhd
 ipcore_add_file $src_dir/common     router_inline_top.vhd
 ipcore_add_file $src_dir/common     router_ip_gateway.vhd
 ipcore_add_file $src_dir/common     router_mac_replace.vhd
-ipcore_add_file $src_dir/common     smol_fifo.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
 ipcore_add_file $src_dir/xilinx     synchronization.vhd
 ipcore_add_top  $ip_root            wrap_router_inline

@@ -31,7 +31,7 @@ use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 use     work.switch_types.all;
 
-entity eth_traffic_gen is
+entity eth_traffic_sim is
     generic (
     CLK_DELAY   : time := 0 ns;             -- Delay clock signal
     INIT_SEED1  : positive := 1234;         -- PRNG seed (part 1)
@@ -50,9 +50,9 @@ entity eth_traffic_gen is
     out_bcount  : out natural;              -- Remaining bytes (0 = last)
     out_valid   : out std_logic;            -- Alternate flow control mode
     out_ready   : in  std_logic := '1');    -- Alternate flow-control mode
-end eth_traffic_gen;
+end eth_traffic_sim;
 
-architecture eth_traffic_gen of eth_traffic_gen is
+architecture eth_traffic_sim of eth_traffic_sim is
 
 -- Convenience types used throughout this file.
 subtype crc_word_t is std_logic_vector(31 downto 0);
@@ -99,6 +99,7 @@ begin
 -- Drive each output signal.
 out_port.clk        <= clk after CLK_DELAY;
 out_port.reset_p    <= reset_p;
+out_port.rate       <= get_rate_word(1000);
 out_port.rxerr      <= '0';
 out_port.data       <= out_data;
 out_port.write      <= out_valid_i and out_ready;
@@ -327,4 +328,4 @@ begin
     end if;
 end process;
 
-end eth_traffic_gen;
+end eth_traffic_sim;

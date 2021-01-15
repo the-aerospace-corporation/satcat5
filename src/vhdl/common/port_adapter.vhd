@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -55,6 +55,7 @@ begin
 -- Clocks and other strobes are forwarded directly.
 sw_rx_data.clk      <= mac_rx_data.clk;
 sw_rx_data.rxerr    <= mac_rx_data.rxerr;
+sw_rx_data.rate     <= mac_rx_data.rate;
 sw_rx_data.reset_p  <= mac_rx_data.reset_p;
 sw_tx_ctrl.clk      <= mac_tx_ctrl.clk;
 sw_tx_ctrl.txerr    <= mac_tx_ctrl.txerr;
@@ -86,7 +87,7 @@ u_adj : entity work.eth_frame_adjust
 flow_fifo_ready <= not flow_fifo_full;
 flow_fifo_write <= adjust_data.valid and flow_fifo_ready;
 
-u_flow_fifo : entity work.smol_fifo
+u_flow_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 4)

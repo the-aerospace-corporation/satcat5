@@ -31,7 +31,7 @@
 -- the commit/revert strobes are asserted correctly.
 --
 -- The test runs indefinitely, with reasonably complete coverage
--- (200 packets) after about two milliseconds.
+-- (1000 packets) after about 9.1 milliseconds.
 --
 
 library ieee;
@@ -57,6 +57,8 @@ signal reset_p      : std_logic := '1';
 -- Input stream generation.
 signal pkt_len      : integer := 256;
 signal pkt_etype    : boolean := false;
+signal pkt_dst      : unsigned(7 downto 0) := x"DD";
+signal pkt_src      : unsigned(7 downto 0) := x"CC";
 
 signal in_port      : port_rx_m2s;
 signal in_port_rem  : natural := 0;
@@ -98,7 +100,7 @@ begin
 end process;
 
 -- Raw stream generation for valid packets.
-u_src : entity work.eth_traffic_gen
+u_src : entity work.eth_traffic_sim
     generic map(
     AUTO_START  => true)
     port map(
@@ -106,8 +108,8 @@ u_src : entity work.eth_traffic_gen
     reset_p     => reset_p,
     pkt_len     => pkt_len,
     pkt_etype   => pkt_etype,
-    mac_dst     => x"DD",
-    mac_src     => x"CC",
+    mac_dst     => pkt_dst,
+    mac_src     => pkt_src,
     out_rate    => in_rate,
     out_port    => in_port,
     out_bcount  => in_port_rem);
@@ -165,9 +167,19 @@ begin
             mod_revert  <= in_port.last and not pkt_valid;
         end if;
 
-        -- Randomize packet length BEFORE start of each packet.
+        -- Randomize packet parameters BEFORE start of next packet.
         if (pkt_rem = 2 and in_port.write = '1') then
+            uniform(seed1, seed2, rand);
             pkt_len <= 2 + integer(floor(rand*real(MAX_FRAME_BYTES+10)));
+            uniform(seed1, seed2, rand);
+            pkt_dst <= to_unsigned(integer(floor(rand * 256.0)), 8);
+            uniform(seed1, seed2, rand);
+            if (rand < 0.05) then
+                pkt_src <= (others => '1'); -- Boost chance of src = 0xFF
+            else
+                uniform(seed1, seed2, rand);
+                pkt_src <= to_unsigned(integer(floor(rand * 256.0)), 8);
+            end if;
         end if;
 
         -- Update byte counters, and randomize all other parameters.
@@ -195,6 +207,7 @@ begin
                 -- Is this a valid packet?
                 pkt_valid := bool2bit((pkt_len >= MIN_FRAME_BYTES)
                                   and (pkt_len <= MAX_FRAME_BYTES)
+                                  and (pkt_src /= x"FF")
                                   and not (pkt_badfcs or pkt_badlen));
             end if;
         end if;
@@ -218,7 +231,7 @@ uut : entity work.eth_frame_check
     reset_p     => reset_p);
 
 -- Matched-delay FIFO.
-u_fifo : entity work.smol_fifo
+u_fifo : entity work.fifo_smol
     generic map(
     IO_WIDTH    => 8,
     META_WIDTH  => 2,
@@ -260,8 +273,8 @@ begin
         if (reset_p = '1') then
             ref_index <= 0;
         elsif (out_write = '1' and (ref_commit = '1' or ref_revert = '1')) then
-            if (ref_index = 200) then
-                report "Tested 200th packet." severity note;
+            if ((ref_index > 0) and (ref_index mod 500) = 0) then
+                report "Tested packet #" & integer'image(ref_index) severity note;
             end if;
             ref_index <= ref_index + 1;
         end if;

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -37,6 +37,8 @@ use     work.switch_types.all;
 use     work.synchronization.all;
 
 entity port_sgmii_common is
+    generic (
+    SHAKE_WAIT  : boolean := true); -- Wait for MAC/PHY handshake?
     port (
     -- Transmitter/Serializer interface.
     tx_clk      : in  std_logic;    -- 125 MHz typical
@@ -68,6 +70,7 @@ signal tx_cfg_ack   : std_logic;
 signal tx_cfg_reg   : std_logic_vector(15 downto 0);
 signal tx_pwren     : std_logic;
 signal tx_pkten     : std_logic;
+signal tx_frmst     : std_logic;
 
 -- Receive chain
 signal rx_dly_cken  : std_logic := '0';
@@ -103,9 +106,11 @@ hs_cfg_rcvd : sync_buffer
 -- Handshake defined by IEEE 802.3-2015, Section 37.2.1 (Config_Reg)
 -- Bit assignments set by Cisco ENG-46158, SGMII Specification 1.8, Table 1.
 tx_pwren    <= not reset_p;                 -- Idle except during reset
-tx_pkten    <= tx_cfg_ack and tx_cfg_rcvd;  -- Data once link established
 tx_cfg_xmit <= not tx_cfg_ack;              -- Transmit until acknowledged
 tx_cfg_reg  <= (14 => '1', 0 => '1', others => '0');    -- MAC to PHY
+
+-- Allow data transmission before MAC/PHY handshake is established?
+tx_pkten    <= (tx_cfg_rcvd and tx_cfg_ack) when SHAKE_WAIT else '1';
 
 -- Transmit: preamble insertion
 u_txamb : entity work.eth_preamble_tx
@@ -116,6 +121,7 @@ u_txamb : entity work.eth_preamble_tx
     tx_clk      => tx_clk,
     tx_pwren    => tx_pwren,
     tx_pkten    => tx_pkten,
+    tx_frmst    => tx_frmst,
     tx_cken     => tx_cken,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl);
@@ -127,6 +133,7 @@ u_txenc : entity work.eth_enc8b10b
     in_dv       => tx_amb_dv,
     in_err      => tx_amb_err,
     in_cken     => tx_cken,
+    in_frmst    => tx_frmst,
     cfg_xmit    => tx_cfg_xmit,
     cfg_word    => tx_cfg_reg,
     out_data    => tx_data,
@@ -161,6 +168,8 @@ u_rxdec : entity work.eth_dec8b10b
 
 -- Receive: Preamble detection and removal
 u_rxamb : entity work.eth_preamble_rx
+    generic map(
+    RATE_MBPS   => 1000)
     port map(
     raw_clk     => rx_clk,
     raw_lock    => rx_dec_lock,
