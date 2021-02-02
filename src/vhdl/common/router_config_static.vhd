@@ -59,6 +59,7 @@ signal reg_time_msec : unsigned(30 downto 0) := (others => '0');
 begin
 
 -- Drive top-level outputs:
+-- Note: Clock is always in arbitrary-refernece mode (MSB = '1').
 cfg_reset_p     <= ext_reset_p;
 cfg_ip_addr     <= R_IP_ADDR;
 cfg_sub_addr    <= R_SUB_ADDR;

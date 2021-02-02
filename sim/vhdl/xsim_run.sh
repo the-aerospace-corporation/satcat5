@@ -133,6 +133,7 @@ simulate_all()
     simulate_one router_arp_proxy_tb 2ms
     simulate_one router_arp_request_tb 1ms
     simulate_one router_arp_update_tb 1ms
+    simulate_one router_config_tb 1ms
     simulate_one router_ip_gateway_tb 22ms
     simulate_one router_mac_replace_tb 11ms
     simulate_one router_inline_top_tb 2ms

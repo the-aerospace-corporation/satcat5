@@ -70,6 +70,13 @@ package COMMON_FUNCTIONS is
         baud_hz     : positive;
         round_up    : boolean := true)
         return positive;
+
+    -- AXI address-conversion: Convert raw byte-address to a word-index.
+    function convert_address(
+        x : std_logic_vector;   -- AXI byte address
+        b : natural;            -- Base address (often zero)
+        w : positive)           -- Width of output
+        return unsigned;
 end package;
 
 package body COMMON_FUNCTIONS is
@@ -213,5 +220,21 @@ package body COMMON_FUNCTIONS is
         else
             return int_max(1, div_rd_near);
         end if;
+    end function;
+
+    function convert_address(
+        x : std_logic_vector;   -- AXI byte address
+        b : natural;            -- Base address (often zero)
+        w : positive)           -- Width of output
+        return unsigned
+    is
+        -- Subtract offset / base-address.
+        variable xb : unsigned(x'length-1 downto 0)
+            := unsigned(x) - to_unsigned(b, x'length);
+        -- Divide-by-four converts byte address to word-address.
+        -- Ignore MSBs; not all implementations force them to zero.
+        variable xu : unsigned(w-1 downto 0) := xb(w+1 downto 2);
+    begin
+        return xu;
     end function;
 end package body;

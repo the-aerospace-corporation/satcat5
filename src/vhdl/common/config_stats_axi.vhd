@@ -90,8 +90,14 @@ type stats_array_t is array(WORD_COUNT-1 downto 0) of stat_word;
 signal stats_req_t  : std_logic := '0';
 signal stats_array  : stats_array_t := (others => (others => '0'));
 
+-- Define minimum address size to span WORD_COUNT.
+constant SUB_ADDR_WIDTH : natural := log2_ceil(WORD_COUNT);
+subtype sub_addr_t is unsigned(SUB_ADDR_WIDTH-1 downto 0);
+
 -- FIFO for read commands.
-signal fifo_raddr   : std_logic_vector(ADDR_WIDTH-1 downto 0);
+signal araddr_trim  : sub_addr_t;
+signal fifo_rdraw   : std_logic_vector(SUB_ADDR_WIDTH-1 downto 0);
+signal fifo_raddr   : sub_addr_t;
 signal fifo_write   : std_logic;
 signal fifo_valid   : std_logic;
 signal fifo_read    : std_logic;
@@ -138,18 +144,20 @@ end process;
 
 -- AXI-Read from any address gets put into a FIFO.
 axi_arready <= not fifo_full;
+araddr_trim <= convert_address(axi_araddr, BASE_ADDR, SUB_ADDR_WIDTH);
+fifo_raddr  <= unsigned(fifo_rdraw);
 fifo_write  <= axi_arvalid and not fifo_full;
 fifo_read   <= fifo_valid and (axi_rready or not read_valid);
 fifo_reset  <= not axi_aresetn;
 
 u_fifo : entity work.fifo_smol
     generic map(
-    IO_WIDTH    => ADDR_WIDTH,
+    IO_WIDTH    => SUB_ADDR_WIDTH,
     DEPTH_LOG2  => 4)
     port map(
-    in_data     => axi_araddr,
+    in_data     => std_logic_vector(araddr_trim),
     in_write    => fifo_write,
-    out_data    => fifo_raddr,
+    out_data    => fifo_rdraw,
     out_valid   => fifo_valid,
     out_read    => fifo_read,
     fifo_full   => fifo_full,
@@ -162,7 +170,6 @@ axi_rvalid  <= read_valid;
 axi_rresp   <= "00";    -- Always respond with "OK"
 
 p_axi_rd : process(axi_clk, axi_aresetn)
-    variable idx_tmp : natural;
 begin
     if (axi_aresetn = '0') then
         read_data   <= (others => '0');
@@ -170,11 +177,10 @@ begin
     elsif rising_edge(axi_clk) then
         -- Read new data? (i.e., Buffer vacant or just consumed.)
         if (axi_rready = '1' or read_valid = '0') then
-            -- Convert byte-address to index (must be 32-bit word-aligned).
-            idx_tmp := to_integer((unsigned(fifo_raddr) - BASE_ADDR) / 4);
             -- Grab counter word from the specified address.
-            if (idx_tmp < WORD_COUNT) then
-                read_data <= std_logic_vector(resize(stats_array(idx_tmp), 32));
+            if (fifo_raddr < WORD_COUNT) then
+                read_data <= std_logic_vector(
+                    resize(stats_array(to_integer(fifo_raddr)), 32));
             else
                 read_data <= (others => '0');
             end if;

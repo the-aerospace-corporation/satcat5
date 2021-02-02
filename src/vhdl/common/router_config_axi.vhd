@@ -45,7 +45,7 @@
 --      Base + 28 = 16-bit reserved + MSBs of egress DMAC (47:32)
 --      Base + 32 = LSBs of ingress DMAC (31:00)
 --      Base + 36 = 16-bit reserved + MSBs of ingress DMAC (47:32)
---      All other addresses reserved up to base + 255.
+--      All other addresses reserved.
 --
 
 library ieee;
@@ -64,7 +64,7 @@ entity router_config_axi is
     R_SUB_MASK      : ip_addr_t := x"FFFFFF00";     -- Default = 255.255.255.0
     R_NOIP_DMAC_EG  : mac_addr_t := MAC_BROADCAST;
     R_NOIP_DMAC_IG  : mac_addr_t := MAC_BROADCAST;
-    ADDR_WIDTH      : natural := 32;                -- AXI-Lite address width
+    ADDR_WIDTH      : positive := 32;               -- AXI-Lite address width
     BASE_ADDR       : natural := 0);                -- Base address (see above)
     port (
     -- Quasi-static configuration parameters.
@@ -104,24 +104,17 @@ end router_config_axi;
 
 architecture router_config_axi of router_config_axi is
 
-subtype sub_addr_t is unsigned(5 downto 0);
-
-function convert_address(x : std_logic_vector) return sub_addr_t is
-    variable xi : integer := u2i(x) - BASE_ADDR;
-begin
-    if (xi < 256) then
-        return to_unsigned(xi / 4, 6);
-    else
-        return to_unsigned(63, 6);
-    end if;
-end function;
+constant SUB_ADDR_WIDTH : positive := 4;
+subtype sub_addr_t is unsigned(SUB_ADDR_WIDTH-1 downto 0);
 
 -- Clock-domain transition for the timestamp counter.
-signal reg_time_utc_n   : std_logic := '0';
+signal reg_time_utc_n   : std_logic := '1';             -- Default = Arb ref
 signal reg_time_msec    : unsigned(30 downto 0) := (others => '0');
 signal reg_time_cpu     : ip_addr_t := (others => '0');
 signal time_update_t    : std_logic := '0';             -- Toggle in axi_clk
 signal time_update_i    : std_logic;                    -- Strobe in rtr_clk
+signal time_incr_t      : std_logic := '0';             -- Toggle in rtr_clk
+signal time_incr_i      : std_logic;                    -- Strobe in axi_clk
 
 -- Clock-domain transition for the dropped-packet counter.
 signal reg_drop_ref     : bcount_t := (others => '0');
@@ -140,7 +133,8 @@ signal reg_noip_dmac_ig : mac_addr_t := R_NOIP_DMAC_IG;
 -- AXI-Lite write interface logic.
 signal wr_gotaddr       : std_logic := '0';
 signal wr_gotdata       : std_logic := '0';
-signal wr_gotboth       : std_logic;
+signal wr_preexec       : std_logic;
+signal wr_rpend         : std_logic := '0';
 signal wr_exec          : std_logic := '0';
 signal wr_addr          : sub_addr_t := (others => '0');
 signal wr_data          : ip_addr_t := (others => '0');
@@ -164,7 +158,7 @@ rtr_time_msec   <= reg_time_utc_n & reg_time_msec;
 -- AXI command responses are always "OK" ('00').
 axi_rresp   <= "00";
 axi_bresp   <= "00";
-axi_bvalid  <= '1';
+axi_bvalid  <= wr_rpend and axi_aresetn;
 
 -- Clock-domain transition for the timestamp counter.
 u_time_sync : sync_toggle2pulse
@@ -172,6 +166,12 @@ u_time_sync : sync_toggle2pulse
     in_toggle   => time_update_t,
     out_strobe  => time_update_i,
     out_clk     => rtr_clk);
+
+u_time_incr : sync_toggle2pulse
+    port map(
+    in_toggle   => time_incr_t,
+    out_strobe  => time_incr_i,
+    out_clk     => axi_clk);
 
 p_timer : process(rtr_clk) is
     constant ONE_MSEC : positive := clocks_per_baud(CLKREF_HZ, 1000);
@@ -183,6 +183,7 @@ begin
             reg_time_msec   <= unsigned(reg_time_cpu(30 downto 0));
             clk_ctr         := ONE_MSEC - 1;
         elsif (clk_ctr = 0) then
+            time_incr_t     <= not time_incr_t;
             reg_time_msec   <= reg_time_msec + 1;
             clk_ctr         := ONE_MSEC - 1;
         else
@@ -215,6 +216,8 @@ end process;
 
 -- Handle AXI write commands.
 p_cfg_reg : process(axi_clk) is
+    constant TIME_SYNC_COOLDOWN : integer := 15;
+    variable time_update_cd : integer range 0 to TIME_SYNC_COOLDOWN := 0;
 begin
     if rising_edge(axi_clk) then
         -- Quasi-static configuration registers.
@@ -235,8 +238,7 @@ begin
             reg_sub_addr <= wr_data;
         elsif (wr_addr = 3) then
             reg_sub_mask <= wr_data;
-        elsif (wr_addr = 4) then
-            reg_ip_addr <= wr_data;
+        -- Note: Registers 4 and 5 handled below
         elsif (wr_addr = 6 and NOIP_REG_EN) then
             reg_noip_dmac_eg(31 downto 0) <= wr_data;
         elsif (wr_addr = 7 and NOIP_REG_EN) then
@@ -248,13 +250,22 @@ begin
         end if;
 
         -- Clock-domain transition for the timestamp counter.
-        if (wr_exec = '1' and wr_addr = 5) then
+        -- On write: Signal main counter that it should latch new value,
+        --           and ignore routine updates for a few clock cycles.
+        -- Otherwise: Latch the updated value from the rtc_clk domain.
+        --            (Infrequent updates, already quasi-stable.
+        if (wr_exec = '1' and wr_addr = 4) then
             reg_time_cpu    <= wr_data;
             time_update_t   <= not time_update_t;
+            time_update_cd  := TIME_SYNC_COOLDOWN;
+        elsif (time_update_cd > 0) then
+            time_update_cd  := time_update_cd - 1;
+        elsif (time_incr_i = '1') then
+            reg_time_cpu    <= std_logic_vector(reg_time_utc_n & reg_time_msec);
         end if;
 
         -- Clock-domain transition for the dropped-packet counter.
-        if (wr_exec = '1' and wr_addr = 6) then
+        if (wr_exec = '1' and wr_addr = 5) then
             drop_update_t   <= not drop_update_t;
         end if;
     end if;
@@ -263,7 +274,8 @@ end process;
 -- AXI-Lite write interface logic.
 axi_awready <= not wr_gotaddr;
 axi_wready  <= not wr_gotdata;
-wr_gotboth  <= (wr_gotaddr or axi_awvalid)
+wr_preexec  <= (axi_bready or not wr_rpend)
+           and (wr_gotaddr or axi_awvalid)
            and (wr_gotdata or axi_wvalid);
 
 p_axi_wr : process(axi_clk)
@@ -271,7 +283,7 @@ begin
     if rising_edge(axi_clk) then
         if (axi_awvalid = '1' and wr_gotaddr = '0') then
             -- Latch new address when ready.
-            wr_addr <= convert_address(axi_awaddr);
+            wr_addr <= convert_address(axi_awaddr, BASE_ADDR, SUB_ADDR_WIDTH);
         end if;
 
         if (axi_wvalid = '1' and wr_gotdata = '0') then
@@ -282,9 +294,18 @@ begin
                 report "Register writes must be atomic." severity warning;
         end if;
 
+        -- Update the response-pending flag.
+        if (axi_aresetn = '0') then
+            wr_rpend <= '0';    -- Global reset
+        elsif (wr_preexec = '1') then
+            wr_rpend <= '1';    -- New data received
+        elsif (axi_bready = '1') then
+            wr_rpend <= '0';    -- Response accepted
+        end if;
+
         -- Update the pending / hold flags for address and data.
-        wr_exec <= wr_gotboth and not axi_aresetn;
-        if (axi_aresetn = '0' or wr_gotboth = '1') then
+        wr_exec <= wr_preexec and axi_aresetn;
+        if (axi_aresetn = '0' or wr_preexec = '1') then
             -- Clear pending flags on execution or reset.
             wr_gotaddr <= '0';
             wr_gotdata <= '0';
@@ -299,7 +320,7 @@ end process;
 -- AXI-Lite read interface logic.
 axi_arready <= axi_rready or not rd_pending;
 axi_rdata   <= rd_data;
-axi_rvalid  <= rd_pending;
+axi_rvalid  <= rd_pending and axi_aresetn;
 
 p_axi_rd : process(axi_clk)
     variable addr_temp : sub_addr_t := (others => '0');
@@ -307,7 +328,7 @@ begin
     if rising_edge(axi_clk) then
         -- Latch the read value as we accept the address.
         if (axi_arvalid = '1' and (axi_rready = '1' or rd_pending = '0')) then
-            addr_temp := convert_address(axi_araddr);
+            addr_temp := convert_address(axi_araddr, BASE_ADDR, SUB_ADDR_WIDTH);
             if (addr_temp = 0) then
                 rd_data <= (0 => reg_running, others => '0');
             elsif (addr_temp = 1) then
@@ -317,7 +338,7 @@ begin
             elsif (addr_temp = 3) then
                 rd_data <= reg_sub_mask;
             elsif (addr_temp = 4) then
-                rd_data <= std_logic_vector(reg_time_utc_n & reg_time_msec);
+                rd_data <= reg_time_cpu;
             elsif (addr_temp = 5) then
                 rd_data <= std_logic_vector(x"0000" & reg_drop_diff);
             elsif (addr_temp = 6 and NOIP_REG_EN) then
