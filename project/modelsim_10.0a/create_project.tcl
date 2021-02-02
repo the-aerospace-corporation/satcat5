@@ -188,11 +188,12 @@ project addfile ../../sim/vhdl/port_serial_uart_2wire_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_serial_uart_4wire_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_statistics_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_sim_tools.vhd VHDL test
-project addfile ../../sim/vhdl/router_mac_replace_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_cache_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_proxy_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_request_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_update_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router_config_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router_mac_replace_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_ip_gateway_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_inline_top_tb.vhd VHDL test
 project addfile ../../sim/vhdl/sgmii_data_slip_tb.vhd VHDL test

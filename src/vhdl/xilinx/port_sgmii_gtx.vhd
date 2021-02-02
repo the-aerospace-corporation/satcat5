@@ -137,6 +137,9 @@ u_amble_tx : entity work.eth_preamble_tx
 
 -- Remove preambles from the incoming data:
 u_amble_rx : entity work.eth_preamble_rx
+    generic map(
+    RATE_MBPS   => 1000
+    )
     port map(
     raw_clk     => gmii_rx_clk,
     raw_lock    => clk_locked,

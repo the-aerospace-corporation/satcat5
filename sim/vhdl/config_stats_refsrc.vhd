@@ -91,6 +91,7 @@ prx_data.clk     <= clk;
 prx_data.data    <= rx_data;
 prx_data.last    <= rx_last;
 prx_data.write   <= rx_write;
+prx_data.rate    <= get_rate_word(1000);
 prx_data.rxerr   <= '0';
 prx_data.reset_p <= reset_p;
 ptx_data.data    <= tx_data;

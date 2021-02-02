@@ -34,6 +34,10 @@ This log will be updated for each new release, but may not reflect the latest de
 * Improved performance of Python/ScaPy interfaces by using L2Socket objects.
 * Update eth_frame_check to block frames where the source MAC is the broadcast address.
 
+## v1.3.1
+
+* Hotfix for inoperable router_config_axi block.
+
 # Copyright Notice
 
 Copyright 2019, 2020 The Aerospace Corporation
