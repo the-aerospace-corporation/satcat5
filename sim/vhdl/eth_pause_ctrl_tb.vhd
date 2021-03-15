@@ -180,6 +180,7 @@ port_rx.last    <= in_last;
 port_rx.write   <= in_write;
 port_rx.rxerr   <= '0';
 port_rx.rate    <= get_rate_word(test_prate);
+port_rx.status  <= (others => '0');
 port_rx.reset_p <= reset_p;
 
 uut : entity work.eth_pause_ctrl

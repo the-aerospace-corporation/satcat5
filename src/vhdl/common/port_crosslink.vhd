@@ -76,6 +76,7 @@ begin
 rxa_data.clk        <= ref_clk;
 rxa_data.rxerr      <= '0';
 rxa_data.rate       <= get_rate_word(1000 / RATE_DIV);
+rxa_data.status     <= (0 => reset_sync, others => '0');
 rxa_data.reset_p    <= reset_sync;
 rxa_data.write      <= rxa_data_valid and xfer_ready;
 
@@ -86,6 +87,7 @@ txa_ctrl.reset_p    <= reset_sync;
 rxb_data.clk        <= ref_clk;
 rxb_data.rxerr      <= '0';
 rxb_data.rate       <= get_rate_word(1000 / RATE_DIV);
+rxb_data.status     <= (others => '0');
 rxb_data.reset_p    <= reset_sync;
 rxb_data.write      <= rxb_data_valid and xfer_ready;
 

@@ -66,6 +66,8 @@ signal tot_tx_byte  : counter_t := (others => '0');
 signal tot_tx_frm   : counter_t := (others => '0');
 signal ref_rx_byte  : counter_t := (others => '0');
 signal ref_tx_byte  : counter_t := (others => '0');
+signal uut_status   : port_status_t;
+signal ref_status   : port_status_t := (others => '0');
 
 -- Test control.
 signal test_index   : integer := 0;
@@ -88,6 +90,17 @@ p_src : process(clk_100)
     variable seed2  : positive := 7861970;
     variable rand   : real := 0.0;
 
+    -- Generate a random status word.
+    impure function rand_status return port_status_t is
+        variable tmp : port_status_t;
+    begin
+        for n in tmp'range loop
+            uniform(seed1, seed2, rand);
+            tmp(n) := bool2bit(rand < 0.5);
+        end loop;
+        return tmp;
+    end function;
+
     -- Generate frame lengths from 8 - 64 bytes.
     impure function rand_len return integer is
     begin
@@ -100,6 +113,11 @@ p_src : process(clk_100)
     variable rx_brem, rx_frem : integer := 0;
 begin
     if rising_edge(clk_100) then
+        -- Randomize status at the start of each test.
+        if (test_start = '1') then
+            ref_status  <= rand_status;
+        end if;
+
         -- Randomize length at the start of each new frame,
         -- and keep track of the total statistics.
         if (test_start = '1') then
@@ -159,6 +177,8 @@ end process;
 rx_data.clk     <= clk_100;
 rx_data.data    <= (others => '0');
 rx_data.rxerr   <= '0';
+rx_data.rate    <= get_rate_word(1000);
+rx_data.status  <= ref_status;
 rx_data.reset_p <= reset_p;
 
 tx_data.data    <= (others => '0');
@@ -176,6 +196,8 @@ uut : entity work.port_statistics
     rcvd_frames => uut_rx_frm,
     sent_bytes  => uut_tx_byte,
     sent_frames => uut_tx_frm,
+    status_clk  => clk_100,
+    status_word => uut_status,
     rx_data     => rx_data,
     tx_data     => tx_data,
     tx_ctrl     => tx_ctrl);
@@ -252,6 +274,8 @@ p_test : process
         assert (tot_tx_frm = test_frames)
             report "Tx frame mismatch: got " & u2str(tot_tx_frm)
                 & ", expected " & integer'image(test_frames) severity error;
+        assert (uut_status = ref_status)
+            report "Status-word mismatch." severity error;
     end procedure;
 begin
     -- Wait for reset.

@@ -228,6 +228,7 @@ u_amble : entity work.eth_preamble_rx
     raw_data    => dec_data,
     raw_dv      => dec_dv,
     raw_err     => dec_err,
+    status      => (others => '0'),
     rx_data     => out_port);
 
 -- Reference data checking and raw stream inspection.
@@ -243,8 +244,9 @@ p_check : process(clk_125)
         return count;
     end function;
 
-    variable wd, rd : integer := 0;
-    variable wtemp : std_logic_vector(5 downto 0) := (others => '0');
+    variable wd, rd     : integer := 0;
+    variable rxerr_d    : std_logic := '0';
+    variable wtemp      : std_logic_vector(5 downto 0) := (others => '0');
 begin
     if rising_edge(clk_125) then
         -- Inspect encoded token stream.
@@ -277,8 +279,13 @@ begin
             assert (out_port.last = ref_last)
                 report "Last mismatch" severity error;
         end if;
-        assert (test_txen = '0' or out_port.rxerr = '0')
-            report "Unexpected error strobe" severity error;
+
+        -- Watch for rising-edge of the error signal.
+        if (out_port.rxerr = '1' and rxerr_d = '0') then
+            assert (test_txen = '0')
+                report "Unexpected error strobe" severity error;
+        end if;
+        rxerr_d := out_port.rxerr;
     end if;
 end process;
 
@@ -298,7 +305,7 @@ p_test : process
         wait until rising_edge(clk_125);
 
         -- Wait for decoder unlock.
-        timeout     := integer(round(1000.0 / rate));
+        timeout     := integer(round(10000.0 / rate));
         while (dec_lock = '1' and timeout > 0) loop
             wait until rising_edge(clk_125);
             timeout := timeout - 1;
@@ -309,7 +316,7 @@ p_test : process
         wait until rising_edge(clk_125);
 
         -- Wait for decoder lock.
-        timeout     := integer(round(1000.0 / rate));
+        timeout     := integer(round(10000.0 / rate));
         while (cfg_rcvd = '0' and timeout > 0) loop
             wait until rising_edge(clk_125);
             timeout := timeout - 1;

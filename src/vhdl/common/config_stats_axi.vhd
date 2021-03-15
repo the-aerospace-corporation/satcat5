@@ -27,13 +27,17 @@
 -- counters.  (The write address and write value are ignored.)
 --
 -- Once refreshed, each register reports total observed traffic since
--- the previous refresh.  There are six registers for each port:
+-- the previous refresh.  There are eight registers for each port:
 --   * Broadcast bytes received (from device to switch)
 --   * Broadcast frames received
 --   * Total bytes received (from device to switch)
 --   * Total frames received
 --   * Total bytes sent (from switch to device)
 --   * Total frames sent
+--   * Reserved
+--   * Link-status reporting:
+--      Bits 31..08: Reserved
+--      Bits 07..00: Port status word
 -- The register map is a consecutive array of 32-bit words (uint32_t),
 -- starting from the specified base address (default zero).
 -- The first six registers are for port 0, the next six for port 1,
@@ -51,6 +55,7 @@ entity config_stats_axi is
     generic (
     PORT_COUNT  : integer;
     COUNT_WIDTH : natural := 32;        -- Internal counter width (16-32 bits)
+    SAFE_COUNT  : boolean := true;          -- Safe counters (no overflow)
     ADDR_WIDTH  : natural := 32;        -- AXI-Lite address width
     BASE_ADDR   : natural := 0);        -- Base address (see above)
     port (
@@ -84,7 +89,8 @@ end config_stats_axi;
 architecture config_stats_axi of config_stats_axi is
 
 -- Statistics module for each port.
-constant WORD_COUNT : natural := 6 * PORT_COUNT;
+constant WORD_MULT  : natural := 8;
+constant WORD_COUNT : natural := WORD_MULT * PORT_COUNT;
 subtype stat_word is unsigned(COUNT_WIDTH-1 downto 0);
 type stats_array_t is array(WORD_COUNT-1 downto 0) of stat_word;
 signal stats_req_t  : std_logic := '0';
@@ -93,6 +99,10 @@ signal stats_array  : stats_array_t := (others => (others => '0'));
 -- Define minimum address size to span WORD_COUNT.
 constant SUB_ADDR_WIDTH : natural := log2_ceil(WORD_COUNT);
 subtype sub_addr_t is unsigned(SUB_ADDR_WIDTH-1 downto 0);
+
+-- Write state machine.
+signal wr_awready   : std_logic;
+signal wr_pending   : std_logic := '0';
 
 -- FIFO for read commands.
 signal araddr_trim  : sub_addr_t;
@@ -112,32 +122,53 @@ begin
 
 -- Statistics module for each port.
 gen_stats : for n in 0 to PORT_COUNT-1 generate
-    u_stats : entity work.port_statistics
-        generic map(COUNT_WIDTH => COUNT_WIDTH)
-        port map(
-        stats_req_t => stats_req_t,
-        bcst_bytes  => stats_array(6*n+0),
-        bcst_frames => stats_array(6*n+1),
-        rcvd_bytes  => stats_array(6*n+2),
-        rcvd_frames => stats_array(6*n+3),
-        sent_bytes  => stats_array(6*n+4),
-        sent_frames => stats_array(6*n+5),
-        rx_data     => rx_data(n),
-        tx_data     => tx_data(n),
-        tx_ctrl     => tx_ctrl(n));
+    blk_stats : block
+        signal status : port_status_t;
+    begin
+        -- Words 0-5 come directly from the statistics block.
+        u_stats : entity work.port_statistics
+            generic map(
+            COUNT_WIDTH => COUNT_WIDTH,
+            SAFE_COUNT  => SAFE_COUNT)
+            port map(
+            stats_req_t => stats_req_t,
+            bcst_bytes  => stats_array(WORD_MULT*n+0),
+            bcst_frames => stats_array(WORD_MULT*n+1),
+            rcvd_bytes  => stats_array(WORD_MULT*n+2),
+            rcvd_frames => stats_array(WORD_MULT*n+3),
+            sent_bytes  => stats_array(WORD_MULT*n+4),
+            sent_frames => stats_array(WORD_MULT*n+5),
+            status_clk  => axi_clk,
+            status_word => status,
+            rx_data     => rx_data(n),
+            tx_data     => tx_data(n),
+            tx_ctrl     => tx_ctrl(n));
+
+        -- Word 6 is reserved, 7 is for status flags.
+        stats_array(WORD_MULT*n+6) <= (others => '0');
+        stats_array(WORD_MULT*n+7) <= resize(unsigned(status), COUNT_WIDTH);
+    end block;
 end generate;
 
 -- AXI-Write to any address toggles the "request" signal.
-axi_awready <= '1';     -- Always ready to accept address (request-toggle)
+-- (One write command at a time, wait for response to be accepted.)
+wr_awready  <= axi_bready or not wr_pending;
+axi_awready <= wr_awready;
 axi_wready  <= '1';     -- Always ready to accept data (ignored)
 axi_bresp   <= "00";    -- Always respond with "OK"
-axi_bvalid  <= '1';
+axi_bvalid  <= wr_pending;
 
-p_axi_wr : process(axi_clk)
+p_axi_wr : process(axi_clk, axi_aresetn)
 begin
-    if rising_edge(axi_clk) then
-        if (axi_awvalid = '1') then
+    if (axi_aresetn = '0') then
+        wr_pending  <= '0';
+        stats_req_t <= '0';
+    elsif rising_edge(axi_clk) then
+        if (axi_awvalid = '1' and wr_awready = '1') then
+            wr_pending  <= '1'; -- Command accepted
             stats_req_t <= not stats_req_t;
+        elsif (axi_bready = '1') then
+            wr_pending  <= '0'; -- Response consumed
         end if;
     end if;
 end process;

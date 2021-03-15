@@ -118,6 +118,19 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
         </spirit:onSlave>
       </spirit:wire>
     </spirit:port>
+      <spirit:logicalName>rx_status</spirit:logicalName>
+      <spirit:description>Diagnostic status flags</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:width>8</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>8</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
     <spirit:port>
       <spirit:logicalName>rx_reset</spirit:logicalName>
       <spirit:description>Ingress reset</spirit:description>

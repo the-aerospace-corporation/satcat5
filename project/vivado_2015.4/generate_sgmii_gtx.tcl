@@ -35,8 +35,10 @@ proc generate_sgmii_gtx {gt_loc {core_name sgmii_gtx0} {include_shared_logic 1}}
     # Create the new IP core and set all parameters.
     create_ip -name gig_ethernet_pcs_pma -vendor xilinx.com -library ip -module_name $core_name
     set ip_obj [get_ips $core_name]
+    # Must enable Auto_Negotiation setting or the configuration_vector used in port_sgmii_gtx.vhd
+    # does nothing.
     set_property -dict [list\
-        CONFIG.Auto_Negotiation     false\
+        CONFIG.Auto_Negotiation     true\
         CONFIG.RefClkRate           125\
         CONFIG.Management_Interface false\
         CONFIG.MaxDataRate          1G\

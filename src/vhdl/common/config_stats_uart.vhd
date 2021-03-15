@@ -34,7 +34,9 @@
 --   * Total frames received
 --   * Total bytes sent (from switch to device)
 --   * Total frames sent
--- Each field is a big-endian 32-bit unsigned integer (i.e., uint32_t).
+--   * Port status word (one byte)
+-- Each field is a big-endian 32-bit unsigned integer (i.e., uint32_t),
+-- except the status word, which is a single byte.
 --
 
 library ieee;
@@ -48,6 +50,7 @@ entity config_stats_uart is
     generic (
     PORT_COUNT  : integer;
     COUNT_WIDTH : natural := 32;            -- Internal counter width (16-32 bits)
+    SAFE_COUNT  : boolean := true;          -- Safe counters (no overflow)
     BAUD_HZ     : natural := 921_600;       -- UART baud rate (Hz)
     REFCLK_HZ   : natural := 100_000_000);  -- Reference clock freq. (Hz)
     port (
@@ -68,9 +71,10 @@ architecture config_stats_uart of config_stats_uart is
 -- Special index 255 indicates a query to all ports.
 constant CMD_ALL    : byte_t := (others => '1');
 
--- Each report is a total of 6 words = 24 bytes.
-constant BYTE_COUNT : natural := 4 * 6;
-constant WORD_TOTAL : natural := 6 * PORT_COUNT;
+-- Each report is a total of N words + status = 25 bytes.
+constant WORD_COUNT : positive := 6;
+constant BYTE_COUNT : positive := 4 * WORD_COUNT + 1;
+constant WORD_TOTAL : positive := WORD_COUNT * PORT_COUNT;
 
 -- Return Nth byte, counting from MSB.
 subtype stat_report is unsigned(8*BYTE_COUNT-1 downto 0);
@@ -86,6 +90,8 @@ end function;
 -- Statistics module for each port.
 subtype stat_word is unsigned(COUNT_WIDTH-1 downto 0);
 type stats_array_t is array(WORD_TOTAL-1 downto 0) of stat_word;
+type status_array_t is array(PORT_COUNT-1 downto 0) of port_status_t;
+signal flag_array   : status_array_t;
 signal stats_req_t  : std_logic_vector(PORT_COUNT-1 downto 0) := (others => '0');
 signal stats_array  : stats_array_t := (others => (others => '0'));
 signal stats_zpad   : stat_report;
@@ -99,11 +105,11 @@ signal cmd_data     : byte_t;
 signal cmd_valid    : std_logic;
 signal cmd_read     : std_logic;
 signal cmd_last     : std_logic;
-signal cmd_pindex    : integer range 0 to PORT_COUNT-1 := 0;
-signal cmd_bindex    : integer range 0 to BYTE_COUNT-1 := 0;
+signal cmd_pindex   : integer range 0 to PORT_COUNT-1 := 0;
+signal cmd_bindex   : integer range 0 to BYTE_COUNT-1 := 0;
 
 -- Transmit UART.
-signal uart_txdata : byte_t;
+signal uart_txdata  : byte_t;
 signal uart_txlast  : std_logic;
 signal uart_txvalid : std_logic := '0';
 signal uart_txready : std_logic;
@@ -114,15 +120,19 @@ begin
 gen_stats : for n in 0 to PORT_COUNT-1 generate
     -- Instantiate module for this port.
     u_stats : entity work.port_statistics
-        generic map(COUNT_WIDTH => COUNT_WIDTH)
+        generic map(
+        COUNT_WIDTH => COUNT_WIDTH,
+        SAFE_COUNT  => SAFE_COUNT)
         port map(
         stats_req_t => stats_req_t(n),
-        bcst_bytes  => stats_array(6*n+0),
-        bcst_frames => stats_array(6*n+1),
-        rcvd_bytes  => stats_array(6*n+2),
-        rcvd_frames => stats_array(6*n+3),
-        sent_bytes  => stats_array(6*n+4),
-        sent_frames => stats_array(6*n+5),
+        bcst_bytes  => stats_array(WORD_COUNT*n+0),
+        bcst_frames => stats_array(WORD_COUNT*n+1),
+        rcvd_bytes  => stats_array(WORD_COUNT*n+2),
+        rcvd_frames => stats_array(WORD_COUNT*n+3),
+        sent_bytes  => stats_array(WORD_COUNT*n+4),
+        sent_frames => stats_array(WORD_COUNT*n+5),
+        status_clk  => refclk,
+        status_word => flag_array(n),
         rx_data     => rx_data(n),
         tx_data     => tx_data(n),
         tx_ctrl     => tx_ctrl(n));
@@ -213,12 +223,13 @@ begin
 end process;
 
 -- Zero-pad counters to fixed 32-bit width, then concatentate.
-stats_zpad  <= resize(stats_array(6*cmd_pindex+0), 32)
-             & resize(stats_array(6*cmd_pindex+1), 32)
-             & resize(stats_array(6*cmd_pindex+2), 32)
-             & resize(stats_array(6*cmd_pindex+3), 32)
-             & resize(stats_array(6*cmd_pindex+4), 32)
-             & resize(stats_array(6*cmd_pindex+5), 32);
+stats_zpad  <= resize(stats_array(WORD_COUNT*cmd_pindex+0), 32)
+             & resize(stats_array(WORD_COUNT*cmd_pindex+1), 32)
+             & resize(stats_array(WORD_COUNT*cmd_pindex+2), 32)
+             & resize(stats_array(WORD_COUNT*cmd_pindex+3), 32)
+             & resize(stats_array(WORD_COUNT*cmd_pindex+4), 32)
+             & resize(stats_array(WORD_COUNT*cmd_pindex+5), 32)
+             & unsigned(flag_array(cmd_pindex));
 
 -- Combinational logic to select each output byte:
 uart_txdata <= get_stat_byte(stats_zpad, cmd_bindex);

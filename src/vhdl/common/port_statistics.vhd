@@ -41,6 +41,9 @@
 -- to send once per second statistics on switch traffic for each port.
 -- It is also used inside config_stats_axi and config_stats_uart.
 --
+-- By default, counters saturate at 2^COUNT_WIDTH-1.  This safety feature
+-- can be disabled to assist with timing closure if needed.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -51,7 +54,8 @@ use     work.synchronization.all;
 
 entity port_statistics is
     generic (
-    COUNT_WIDTH : integer := 32);       -- Width of each statistics counter
+    COUNT_WIDTH : integer := 32;        -- Width of each statistics counter
+    SAFE_COUNT  : boolean := true);     -- Safe counters (no overflow)
     port (
     -- Statistics interface (bytes received/sent, frames received/sent
     stats_req_t : in  std_logic;        -- Toggle to request next block
@@ -62,6 +66,10 @@ entity port_statistics is
     sent_bytes  : out unsigned(COUNT_WIDTH-1 downto 0);
     sent_frames : out unsigned(COUNT_WIDTH-1 downto 0);
 
+    -- Port status-reporting.
+    status_clk  : in  std_logic;
+    status_word : out port_status_t;
+
     -- Generic internal port interface (monitor only)
     rx_data     : in  port_rx_m2s;
     tx_data     : in  port_tx_m2s;
@@ -71,7 +79,32 @@ end port_statistics;
 architecture port_statistics of port_statistics is
 
 subtype counter_t is unsigned(COUNT_WIDTH-1 downto 0);
+constant COUNT_ZERO     : counter_t := to_unsigned(0, COUNT_WIDTH);
 constant COUNT_ONE      : counter_t := to_unsigned(1, COUNT_WIDTH);
+
+-- Increment counter with polling.
+function accumulator(
+    acc: counter_t;     -- Accumulator value
+    inc: counter_t;     -- Increment value
+    rst: std_logic;     -- Global reset
+    rd:  std_logic;     -- Read/consume counter
+    en:  std_logic)     -- Increment enable
+    return counter_t is
+begin
+    if (rst = '1') then
+        return COUNT_ZERO;                          -- Reset
+    elsif (rd = '1' and en = '0') then
+        return COUNT_ZERO;                          -- Consumed
+    elsif (rd = '1' and en = '1') then
+        return inc;                                 -- Consumed + add
+    elsif (en = '1' and SAFE_COUNT) then
+        return saturate_add(acc, inc, COUNT_WIDTH); -- Safe add
+    elsif (en = '1') then
+        return acc + inc;                           -- Unsafe add
+    else
+        return acc;                                 -- No change
+    end if;
+end function;
 
 -- Combinational logic for next-byte and last-byte strobes.
 signal rx_isff          : std_logic;
@@ -109,15 +142,9 @@ rcvd_frames <= lat_rcvd_frames;
 sent_bytes  <= lat_sent_bytes;
 sent_frames <= lat_sent_frames;
 
--- Combinational logic for next-byte and last-byte strobes.
--- (And clock reassignment, as a workaround for simulator bugs.)
+-- Clock reassignment, as a workaround for simulator bugs.
 rx_clk  <= rx_data.clk;
-rx_isff <= bool2bit(rx_data.data = x"FF");
-rx_byte <= rx_data.write;
-rx_last <= rx_data.write and rx_data.last;
 tx_clk  <= tx_ctrl.clk;
-tx_byte <= tx_data.valid and tx_ctrl.ready;
-tx_last <= tx_data.valid and tx_ctrl.ready and tx_data.last;
 
 -- Receive clock domain.
 p_stats_rx : process(rx_clk)
@@ -139,33 +166,14 @@ begin
         end if;
 
         -- Working counters are updated on each byte and each frame.
-        if (rx_data.reset_p = '1') then
-            wrk_rcvd_bytes  <= (others => '0');
-            wrk_rcvd_frames <= (others => '0');
-        elsif (stats_req_rx = '1' and rx_last = '1') then
-            wrk_rcvd_bytes  <= frm_bytes;
-            wrk_rcvd_frames <= COUNT_ONE;
-        elsif (stats_req_rx = '1') then
-            wrk_rcvd_bytes  <= (others => '0');
-            wrk_rcvd_frames <= (others => '0');
-        elsif (stats_req_rx = '0' and rx_last = '1') then
-            wrk_rcvd_bytes  <= saturate_add(wrk_rcvd_bytes, frm_bytes, COUNT_WIDTH);
-            wrk_rcvd_frames <= saturate_add(wrk_rcvd_frames, COUNT_ONE, COUNT_WIDTH);
-        end if;
-
-        if (rx_data.reset_p = '1') then
-            wrk_bcst_bytes  <= (others => '0');
-            wrk_bcst_frames <= (others => '0');
-        elsif (stats_req_rx = '1' and rx_last = '1' and is_bcast = '1') then
-            wrk_bcst_bytes  <= frm_bytes;
-            wrk_bcst_frames <= COUNT_ONE;
-        elsif (stats_req_rx = '1') then
-            wrk_bcst_bytes  <= (others => '0');
-            wrk_bcst_frames <= (others => '0');
-        elsif (stats_req_rx = '0' and rx_last = '1' and is_bcast = '1') then
-            wrk_bcst_bytes  <= saturate_add(wrk_bcst_bytes, frm_bytes, COUNT_WIDTH);
-            wrk_bcst_frames <= saturate_add(wrk_bcst_frames, COUNT_ONE, COUNT_WIDTH);
-        end if;
+        wrk_rcvd_bytes  <= accumulator(
+            wrk_rcvd_bytes, frm_bytes, rx_data.reset_p, stats_req_rx, rx_last);
+        wrk_rcvd_frames  <= accumulator(
+            wrk_rcvd_frames, COUNT_ONE, rx_data.reset_p, stats_req_rx, rx_last);
+        wrk_bcst_bytes  <= accumulator(
+            wrk_bcst_bytes, frm_bytes, rx_data.reset_p, stats_req_rx, rx_last and is_bcast);
+        wrk_bcst_frames  <= accumulator(
+            wrk_bcst_frames, COUNT_ONE, rx_data.reset_p, stats_req_rx, rx_last and is_bcast);
 
         -- Detect broadcast frames (Destination-MAC = FF-FF-FF-FF-FF-FF).
         if (rx_data.reset_p = '1' or rx_last = '1') then
@@ -180,6 +188,11 @@ begin
         elsif (rx_byte = '1') then
             frm_bytes := saturate_add(frm_bytes, COUNT_ONE, COUNT_WIDTH);
         end if;
+
+        -- Buffer write-strobes for improved routing/timing.
+        rx_isff <= bool2bit(rx_data.data = x"FF");
+        rx_byte <= rx_data.write;
+        rx_last <= rx_data.write and rx_data.last;
     end if;
 end process;
 
@@ -198,19 +211,10 @@ begin
         end if;
 
         -- Working counters are updated on each byte and each frame.
-        if (tx_ctrl.reset_p = '1') then
-            wrk_sent_bytes  <= (others => '0');
-            wrk_sent_frames <= (others => '0');
-        elsif (stats_req_tx = '1' and tx_last = '0') then
-            wrk_sent_bytes  <= (others => '0');
-            wrk_sent_frames <= (others => '0');
-        elsif (stats_req_tx = '1' and tx_last = '1') then
-            wrk_sent_bytes  <= frm_bytes;
-            wrk_sent_frames <= COUNT_ONE;
-        elsif (stats_req_tx = '0' and tx_last = '1') then
-            wrk_sent_bytes  <= wrk_sent_bytes + frm_bytes;
-            wrk_sent_frames <= wrk_sent_frames + 1;
-        end if;
+        wrk_sent_bytes  <= accumulator(
+            wrk_sent_bytes, frm_bytes, tx_ctrl.reset_p, stats_req_tx, tx_last);
+        wrk_sent_frames  <= accumulator(
+            wrk_sent_frames, COUNT_ONE, tx_ctrl.reset_p, stats_req_tx, tx_last);
 
         -- Count bytes within each frame, so the increment is atomic.
         if (tx_ctrl.reset_p = '1' or tx_last = '1') then
@@ -218,6 +222,10 @@ begin
         elsif (tx_byte = '1') then
             frm_bytes := frm_bytes + 1;
         end if;
+
+        -- Buffer write-strobes for improved routing/timing.
+        tx_byte <= tx_data.valid and tx_ctrl.ready;
+        tx_last <= tx_data.valid and tx_ctrl.ready and tx_data.last;
     end if;
 end process;
 
@@ -235,5 +243,14 @@ u_req_tx : sync_toggle2pulse
     out_strobe  => stats_req_tx,
     out_clk     => tx_clk,
     reset_p     => tx_ctrl.reset_p);
+
+-- Synchronize the status word.
+gen_status : for n in status_word'range generate
+    u_sync : sync_buffer
+        port map(
+        in_flag  => rx_data.status(n),
+        out_flag => status_word(n),
+        out_clk  => status_clk);
+end generate;
 
 end port_statistics;

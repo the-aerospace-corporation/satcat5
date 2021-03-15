@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -41,7 +41,7 @@ entity port_sgmii_gpio is
     RX_IOSTD    : string := "LVDS_25";  -- Rx I/O standard
     RX_BIAS_EN  : boolean := false;     -- Enable split-termination biasing
     RX_TERM_EN  : boolean := true;      -- Enable differential termination
-    SHAKE_WAIT  : boolean := true);     -- Wait for MAC/PHY handshake?
+    SHAKE_WAIT  : boolean := false);    -- Wait for MAC/PHY handshake?
     port (
     -- External SGMII interfaces (direct to FPGA pins)
     sgmii_rxp   : in  std_logic;

@@ -97,6 +97,7 @@ lcl_rx_data.last    <= ig_main_out.last;
 lcl_rx_data.write   <= ig_main_out.valid;
 lcl_rx_data.rxerr   <= net_rx_data.rxerr or ig_err_fifo or ig_err_inj;
 lcl_rx_data.rate    <= net_rx_data.rate;
+lcl_rx_data.status  <= net_rx_data.status;
 lcl_rx_data.reset_p <= ig_reset_p;
 ig_main_out.ready   <= '1';
 

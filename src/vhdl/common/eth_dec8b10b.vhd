@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -38,6 +38,10 @@
 --   http://standards.ieee.org/getieee802/802.3.html
 --   https://ieeexplore.ieee.org/xpl/mostRecentIssue.jsp?punumber=7428774
 --
+-- Error reporting can be operated in strict mode, in which every decode
+-- error fires the error strobe; or in filtered mode, in which the error
+-- strobe is reserved for loss-of-lock or repeated decode errors.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -45,6 +49,8 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 
 entity eth_dec8b10b is
+    generic (
+    ERR_STRICT  : boolean := false);    -- Report every decode error
     port (
     -- Input stream
     io_clk      : in  std_logic;        -- Data clock
@@ -71,6 +77,7 @@ signal align_sreg_d : std_logic_vector(18 downto 0) := (others => '0');
 signal align_sreg_q : std_logic_vector(8 downto 0) := (others => '0');
 signal align_data   : std_logic_vector(9 downto 0) := (others => '0');
 signal align_cken   : std_logic := '0';
+signal align_error  : std_logic := '0';
 signal align_lock   : std_logic := '0';
 signal align_bit    : integer range 0 to 9 := 0;
 
@@ -84,8 +91,8 @@ signal lookup_3b    : std_logic_vector(2 downto 0) := (others => '0');
 signal lookup_err   : std_logic := '0';
 signal lookup_sof   : std_logic := '0';
 
--- Filter out isolated lookup errors.
-signal filter_err   : std_logic := '0';
+-- Error reporting
+signal err_strobe   : std_logic := '0';
 
 -- Packet encapsulation and configuration metadata.
 signal pkt_active   : std_logic := '0';
@@ -102,8 +109,11 @@ begin
 align_sreg_d <= align_sreg_q & in_data; -- MSB first
 
 p_align : process(io_clk)
-    constant WINDOW_THRESH  : positive := 7;    -- Minimum matches to lock
-    constant WINDOW_PENALTY : positive := 3;    -- Weight for misaligned commas
+    -- Note: Increasing time-to-lock can result in autonegotiation failure of
+    --       some MAC-to-PHY SGMII links.  Selected threshold is compatible
+    --       with all tested PHYs but still tolerates transient glitches.
+    constant WINDOW_THRESH  : positive := 31;   -- Minimum matches to lock
+    constant WINDOW_PENALTY : positive := 2;    -- Weight for misaligned commas
     variable comma_temp     : std_logic_vector(6 downto 0) := (others => '0');
     variable comma_detect   : std_logic_vector(9 downto 0) := (others => '0');
     variable comma_error    : std_logic_vector(9 downto 0) := (others => '0');
@@ -118,8 +128,10 @@ begin
         align_cken <= in_cken;
 
         -- Update alignment-check state machine.
-        if (in_lock = '0' or filter_err = '1') then
+        align_error <= '0';
+        if (in_lock = '0') then
             -- Reset due to upstream errors or major downstream errors.
+            align_error <= align_lock;
             align_lock  <= '0';
             align_bit   <= 0;
             align_count := 0;
@@ -130,6 +142,8 @@ begin
                 align_count := align_count - WINDOW_PENALTY;
             else
                 -- Unlock, then move to next phase hypothesis.
+                -- (Error strobe if we were already locked.)
+                align_error <= align_lock;
                 align_lock  <= '0';
                 align_count := 0;
                 if (align_bit = 9) then
@@ -172,7 +186,7 @@ p_decode : process(io_clk)
 begin
     if rising_edge(io_clk) then
         -- Simple delay for clock-enable signal.
-        lookup_cken <= align_lock and align_cken;
+        lookup_cken <= align_cken;
 
         -- Explicit detection for all twelve control codes.
         if (align_6b = "001111" or align_6b = "110000"                  -- K28.x
@@ -326,26 +340,30 @@ begin
     end if;
 end process;
 
--- Filter out occasional lookup errors using a running danger score:
---  * Every good frame decrements danger level by one.
---  * Every lookup error increments danger level by N.
---  * Raise alarm if the danger level ever exceeds threshold.
+-- Error reporting for lost-lock and decode errors.
 p_filter : process(io_clk)
     constant PENALTY : positive := 30;
     variable danger  : unsigned(7 downto 0) := (others => '0');
 begin
     if rising_edge(io_clk) then
-        -- Keep a running tally of the warning level:
-        --  * Every good frame decrements by 1
-        --  * Every error increments by N
-        -- If the warning level exceeds a threshold, declare error.
-        filter_err <= bool2bit(danger > 200);
-        if (align_lock = '0') then
-            danger := (others => '0');
-        elsif (lookup_cken = '1' and lookup_err = '1') then
-            danger := danger + PENALTY;
+        -- Detect errors of various types:
+        if (align_error = '1') then
+            err_strobe <= '1';  -- Loss-of-lock is always reported
+        elsif (ERR_STRICT and lookup_err = '1') then
+            err_strobe <= '1';  -- Strict mode: Report every decode error
+        elsif (danger > 200) then
+            err_strobe <= '1';  -- Relaxed mode: Too many decode errors
+        elsif (lookup_cken = '1') then
+            err_strobe <= '0';  -- Sustain error strobe until next clock-enable.
+        end if;
+
+        -- For filtered mode, keep a running tally of the warning level:
+        if (ERR_STRICT or align_lock = '0') then
+            danger := (others => '0');  -- Disabled or reset
+        elsif (lookup_err = '1') then
+            danger := danger + PENALTY; -- Every decode error increments by N
         elsif (lookup_cken = '1' and lookup_sof = '1' and danger > 0) then
-            danger := danger - 1;
+            danger := danger - 1;       -- Every good frame decrements by 1
         end if;
     end if;
 end process;
@@ -354,7 +372,7 @@ end process;
 out_lock    <= align_lock;
 out_cken    <= lookup_cken;
 out_dv      <= pkt_active and not lookup_ctrl;
-out_err     <= filter_err;
+out_err     <= err_strobe;
 out_data    <= lookup_3b & lookup_5b;
 cfg_rcvd    <= cfg_rcvd_i;
 cfg_word    <= cfg_word_i;
