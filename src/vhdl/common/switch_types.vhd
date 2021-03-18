@@ -32,6 +32,11 @@ package SWITCH_TYPES is
     -- Convert line rate (Mbps) to the rate word.
     function get_rate_word(rate_mbps : positive) return port_rate_t;
 
+    -- Rx ports should also report diagnostic status flags.
+    -- Each bit is asynchronous with no specific meaning; blocks can use them
+    -- to report status to a CPU or other supervisor if desired.
+    subtype port_status_t is std_logic_vector(7 downto 0);
+
     -- Each input port is unidirectional:
     type port_rx_m2s is record
         clk     : std_logic;
@@ -40,6 +45,7 @@ package SWITCH_TYPES is
         write   : std_logic;
         rxerr   : std_logic;
         rate    : port_rate_t;
+        status  : port_status_t;
         reset_p : std_logic;
     end record;
 

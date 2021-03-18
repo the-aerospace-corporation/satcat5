@@ -51,6 +51,7 @@ rx_data.last    <= '0';
 rx_data.write   <= '0';
 rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1000);
+rx_data.status  <= (0 => reset_p, others => '0');
 rx_data.reset_p <= reset_p;
 
 tx_ctrl.clk     <= refclk;

@@ -38,9 +38,15 @@ This log will be updated for each new release, but may not reflect the latest de
 
 * Hotfix for inoperable router_config_axi block.
 
+## v1.4.0
+
+* Added diagnostic status flags to the internal Ethernet port definition.
+* Compatibility improvements for SGMII startup handshake.
+* Timing improvements for traffic statistic counters.
+
 # Copyright Notice
 
-Copyright 2019, 2020 The Aerospace Corporation
+Copyright 2019, 2020, 2021 The Aerospace Corporation
 
 This file is part of SatCat5.
 

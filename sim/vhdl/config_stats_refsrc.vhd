@@ -48,6 +48,7 @@ entity config_stats_refsrc is
     ref_txfrm   : out natural;
 
     -- High-level control.
+    rx_status   : in  port_status_t;
     rx_rate     : in  real;
     tx_rate     : in  real;
     burst_run   : in  std_logic;
@@ -92,6 +93,7 @@ prx_data.data    <= rx_data;
 prx_data.last    <= rx_last;
 prx_data.write   <= rx_write;
 prx_data.rate    <= get_rate_word(1000);
+prx_data.status  <= rx_status;
 prx_data.rxerr   <= '0';
 prx_data.reset_p <= reset_p;
 ptx_data.data    <= tx_data;

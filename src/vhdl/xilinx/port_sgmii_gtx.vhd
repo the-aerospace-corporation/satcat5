@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -106,12 +106,15 @@ signal clk_locked       : std_logic;
 signal config_vec       : std_logic_vector(4 downto 0);
 signal status_vec       : std_logic_vector(15 downto 0);
 signal status_linkok    : std_logic;
+signal status_sync      : std_logic;
 signal status_disperr   : std_logic;
 signal status_badsymb   : std_logic;
+signal status_phyok     : std_logic;
 signal aux_err_async    : std_logic;
 signal aux_err_sync     : std_logic;
 
 -- IP-core provides a quasi-GMII interface.
+signal gmii_user_clk2   : std_logic;
 signal gmii_tx_clk      : std_logic;
 signal gmii_tx_data     : byte_t;
 signal gmii_tx_en       : std_logic;
@@ -120,6 +123,7 @@ signal gmii_rx_clk      : std_logic;
 signal gmii_rx_data     : byte_t;
 signal gmii_rx_dv       : std_logic;
 signal gmii_rx_er       : std_logic;
+signal gmii_status      : port_status_t;
 
 begin
 
@@ -138,8 +142,7 @@ u_amble_tx : entity work.eth_preamble_tx
 -- Remove preambles from the incoming data:
 u_amble_rx : entity work.eth_preamble_rx
     generic map(
-    RATE_MBPS   => 1000
-    )
+    RATE_MBPS   => 1000)
     port map(
     raw_clk     => gmii_rx_clk,
     raw_lock    => clk_locked,
@@ -148,6 +151,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_dv      => gmii_rx_dv,
     raw_err     => gmii_rx_er,
     aux_err     => aux_err_sync,
+    status      => gmii_status,
     rx_data     => prx_data);
 
 -- Flush received data if we get an 8b/10b decode error.
@@ -164,19 +168,32 @@ txrx_pwren  <= not port_shdn;
 tx_pkten    <= clk_locked and status_linkok;
 
 config_vec <= (
-    4 => '0',       -- Disable auto-negotation
+    4 => '1',       -- Enable auto-negotation
     3 => '0',       -- Normal GMII operation
     2 => port_shdn, -- Power-down strobe
     1 => '0',       -- Disable loopback
     0 => '0');      -- Bidirectional mode
 
-status_linkok   <= status_vec(0);
-status_disperr  <= status_vec(5);
-status_badsymb  <= status_vec(6);
+status_linkok   <= status_vec(0);   -- SGMII link ready for use
+status_sync     <= status_vec(1);   -- 8b/10b initial sync
+status_disperr  <= status_vec(5);   -- 8b/10b disparity error
+status_badsymb  <= status_vec(6);   -- 8b/10b decode error
+status_phyok    <= status_vec(7);   -- Attached PHY status, if applicable
+
+gmii_status <= (
+    0 => port_shdn,
+    1 => clk_locked,
+    2 => status_sync,
+    3 => status_linkok,
+    4 => status_phyok,
+    others => '0');
 
 -- Instantiate the IP-core.
 -- TODO: Support for multiple instances, will need different core-names.
 -- TODO: Cross-connect shared logic and clocks if there's more than one lane.
+gmii_rx_clk <= gmii_user_clk2;  -- This is the only 125 MHz clock avail from core
+gmii_tx_clk <= gmii_user_clk2;  -- This is the only 125 MHz clock avail from core
+
 u_ipcore : sgmii_gtx0
     port map(
     gtrefclk_p              => gtref_125p,
@@ -189,9 +206,9 @@ u_ipcore : sgmii_gtx0
     rxn                     => sgmii_rxn,
     resetdone               => open,
     userclk_out             => open,            -- Tx 62.5 MHz
-    userclk2_out            => gmii_tx_clk,     -- Tx 125 MHz
+    userclk2_out            => gmii_user_clk2,  -- Tx 125 MHz
     rxuserclk_out           => open,            -- Rx 62.5 MHz
-    rxuserclk2_out          => gmii_rx_clk,     -- Rx 125 MHz
+    rxuserclk2_out          => open,            -- Rx 62.5 MHz
     pma_reset_out           => open,
     mmcm_locked_out         => clk_locked,
     independent_clock_bufg  => clkin_200,       -- Clock for control logic

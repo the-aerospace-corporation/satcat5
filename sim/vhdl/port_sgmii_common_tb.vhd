@@ -118,6 +118,8 @@ u_src_b2a : entity work.port_test_common
 
 -- Two units under test, connected back-to-back.
 uut_a : entity work.port_sgmii_common
+    generic map(
+    SHAKE_WAIT  => true)
     port map(
     tx_clk      => clk_125,
     tx_data     => sgmii_a2b,
@@ -131,6 +133,8 @@ uut_a : entity work.port_sgmii_common
     reset_p     => reset_p);
 
 uut_b : entity work.port_sgmii_common
+    generic map(
+    SHAKE_WAIT  => true)
     port map(
     tx_clk      => clk_125,
     tx_data     => sgmii_b2a,

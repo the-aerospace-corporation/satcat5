@@ -84,6 +84,7 @@ signal rxclk_det            : std_logic := '0'; -- Strobe in lock_refclk
 signal rxclk_halt           : std_logic := '1'; -- Flat in lock_refclk
 
 -- All other control signals
+signal status_word          : port_status_t;
 signal rxclk                : std_logic;
 signal txrx_halt            : std_logic := '1';
 signal txrx_lock, txrx_cken : std_logic := '0';
@@ -253,6 +254,14 @@ begin
     end if;
 end process;
 
+-- Upstream status reporting.
+status_word <= (
+    0 => reset_p,
+    1 => rxclk_halt,
+    2 => txrx_lock,
+    3 => mode_fast,
+    others => '0');
+
 -- Preamble insertion and removal.
 u_amble_rx : entity work.eth_preamble_rx
     generic map(
@@ -264,6 +273,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_data    => rx_byte,
     raw_dv      => rx_bvalid,
     raw_err     => rxerr,
+    status      => status_word,
     rx_data     => rx_data);
 
 u_amble_tx : entity work.eth_preamble_tx

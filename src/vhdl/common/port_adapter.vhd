@@ -56,6 +56,7 @@ begin
 sw_rx_data.clk      <= mac_rx_data.clk;
 sw_rx_data.rxerr    <= mac_rx_data.rxerr;
 sw_rx_data.rate     <= mac_rx_data.rate;
+sw_rx_data.status   <= mac_rx_data.status;
 sw_rx_data.reset_p  <= mac_rx_data.reset_p;
 sw_tx_ctrl.clk      <= mac_tx_ctrl.clk;
 sw_tx_ctrl.txerr    <= mac_tx_ctrl.txerr;

@@ -80,6 +80,8 @@ signal rxdv, rxerr      : std_logic;
 
 signal reset_sync       : std_logic;        -- Reset sync'd to clk_125
 
+signal status_word      : port_status_t;
+
 begin
 
 -- Synchronize the external reset signal.
@@ -103,6 +105,9 @@ rxdata <= gmii_rxd;
 rxdv <= gmii_rxdv;
 rxerr <= gmii_rxerr;
 
+-- Status-reporting
+status_word <= (0 => reset_sync, others => '0');
+
 -- Receive state machine, including preamble removal.
 u_amble_rx : entity work.eth_preamble_rx
     generic map(
@@ -114,6 +119,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_data    => rxdata,
     raw_dv      => rxdv,
     raw_err     => rxerr,
+    status      => status_word,
     rx_data     => rx_data);
 
 -- Transmit state machine, including insertion of preamble,

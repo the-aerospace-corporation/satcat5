@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -37,6 +37,7 @@
 
 library ieee;
 use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
@@ -82,13 +83,16 @@ signal dly_data     : byte_t := (others => '0');
 signal dly_write    : std_logic := '0';
 signal dly_last     : std_logic := '0';
 
+-- Sustain async error strobe for a few clock cycles.
+signal err_dlyct    : unsigned(2 downto 0) := (others => '0');
+
 begin
 
 -- Drive block-level outputs.
 out_data    <= dly_data;
 out_write   <= dly_write;
 out_last    <= dly_last;
-decode_err  <= dec_error;
+decode_err  <= bool2bit(err_dlyct > 0);
 
 p_decode : process(refclk)
 begin
@@ -135,6 +139,15 @@ begin
             else
                 dec_state <= DECODE_DATA;   -- Normal or escaped data
             end if;
+        end if;
+
+        -- Sustain async error strobe for a few clock cycles.
+        if (reset_p = '1') then
+            err_dlyct <= (others => '0');
+        elsif (dec_error = '1') then
+            err_dlyct <= (others => '1');
+        elsif (err_dlyct > 0) then
+            err_dlyct <= err_dlyct - 1;
         end if;
     end if;
 end process;

@@ -43,7 +43,12 @@ end config_stats_tb;
 
 architecture tb of config_stats_tb is
 
+-- Use a relatively fast UART to keep test length manageable.
 constant UART_BAUD  : integer := 10_000_000;
+
+-- Number of expected items from each format.
+constant TOTAL_AXI_WORDS    : positive := PORT_COUNT * 8;
+constant TOTAL_UART_BYTES   : positive := PORT_COUNT * 25;
 
 -- Clock and reset generation.
 signal clk_100      : std_logic := '0';
@@ -64,6 +69,7 @@ signal ref_rxbyte   : count_array := (others => 0);
 signal ref_rxfrm    : count_array := (others => 0);
 signal ref_txbyte   : count_array := (others => 0);
 signal ref_txfrm    : count_array := (others => 0);
+signal ref_status   : port_status_t;
 
 -- AXI-Lite interface
 signal axi_clk      : std_logic;
@@ -102,6 +108,9 @@ axi_clk <= clk_100 after 1 ns;
 reset_p <= '0' after 1 us;
 reset_n <= not reset_p;
 
+-- Status word is just the current test index.
+ref_status <= i2s(test_index, 8);
+
 -- Traffic generation and reference counters for each port.
 gen_ports : for n in 0 to PORT_COUNT-1 generate
     u_port : entity work.config_stats_refsrc
@@ -119,6 +128,7 @@ gen_ports : for n in 0 to PORT_COUNT-1 generate
         ref_rxfrm   => ref_rxfrm(n),
         ref_txbyte  => ref_txbyte(n),
         ref_txfrm   => ref_txfrm(n),
+        rx_status   => ref_status,
         rx_rate     => test_rate,
         tx_rate     => test_rate,
         burst_run   => test_run,
@@ -158,7 +168,7 @@ uut_axi : entity work.config_stats_axi
 
 -- AXI-query state machine.
 -- Starting at rising edge of test_read, write once and then read
--- 4*PORT_COUNT words.  As we do so, cross-check results against
+-- the entire result array.  As we do so, cross-check results against
 -- the reference counter values.
 axi_araddr <= i2s(4 * test_arcount, ADDR_WIDTH);
 
@@ -196,7 +206,7 @@ begin
         elsif (axi_arvalid = '1' and axi_arready = '1') then
             -- Read in progress; increment address as each command is accepted.
             -- Note: Read one word past end of array, to test handling.
-            if (test_arcount < 6*PORT_COUNT) then
+            if (test_arcount < TOTAL_AXI_WORDS) then
                 axi_arvalid  <= '1';    -- Read next word.
                 test_arcount <= test_arcount + 1;
             else
@@ -210,10 +220,10 @@ begin
             test_rcount <= 0;
         elsif (axi_rvalid = '0' or axi_rready = '0') then
             null;   -- No new data this cycle.
-        elsif (test_rcount < 6*PORT_COUNT) then
+        elsif (test_rcount < TOTAL_AXI_WORDS) then
             -- Compare read data to the appropriate reference counter:
-            prt := test_rcount / 6;
-            case (test_rcount mod 6) is
+            prt := test_rcount / 8;
+            case (test_rcount mod 8) is
                 when 0 =>   assert(u2i(axi_rdata) = ref_bcbyte(prt))
                                 report "RxBcast-Bytes mismatch" severity error;
                 when 1 =>   assert(u2i(axi_rdata) = ref_bcfrm(prt))
@@ -226,6 +236,10 @@ begin
                                 report "TxTot-Bytes mismatch" severity error;
                 when 5 =>   assert(u2i(axi_rdata) = ref_txfrm(prt))
                                 report "TxTot-Frames mismatch" severity error;
+                when 6 =>   assert(u2i(axi_rdata) = 0)
+                                report "Rsvd mismatch" severity error;
+                when 7 =>   assert(u2i(axi_rdata) = test_index)
+                                report "Status mismatch" severity error;
                 when others => null;
             end case;
             -- Increment read counter.
@@ -234,7 +248,7 @@ begin
             -- Reading past end of array?
             assert (u2i(axi_rdata) = 0)
                 report "Read past end of array should return zero." severity error;
-            assert (test_rcount <= 6*PORT_COUNT)
+            assert (test_rcount <= TOTAL_AXI_WORDS)
                 report "Unexpected read data." severity error;
             -- Increment read counter.
             test_rcount <= test_rcount + 1;
@@ -310,25 +324,24 @@ begin
             -- Byte received, add it to the shift register.
             uart_sreg := uart_sreg(23 downto 0) & uart_rxbyte;
             -- Compare each received word against reference.
-            if ((test_ucount mod 4) = 3) then
-                word_idx := (test_ucount - 3) / 4;
-                port_idx := word_idx / 6;
-                case (word_idx mod 6) is
-                    when 0 =>   assert(u2i(uart_sreg) = ref_bcbyte(port_idx))
-                                    report "RxBcast-Bytes mismatch" severity error;
-                    when 1 =>   assert(u2i(uart_sreg) = ref_bcfrm(port_idx))
-                                    report "RxBcast-Frames mismatch" severity error;
-                    when 2 =>   assert(u2i(uart_sreg) = ref_rxbyte(port_idx))
-                                    report "RxTot-Bytes mismatch" severity error;
-                    when 3 =>   assert(u2i(uart_sreg) = ref_rxfrm(port_idx))
-                                    report "RxTot-Frames mismatch" severity error;
-                    when 4 =>   assert(u2i(uart_sreg) = ref_txbyte(port_idx))
-                                    report "TxTot-Bytes mismatch" severity error;
-                    when 5 =>   assert(u2i(uart_sreg) = ref_txfrm(port_idx))
-                                    report "TxTot-Frames mismatch" severity error;
-                    when others => null;
-                end case;
-            end if;
+            port_idx := test_ucount / 25;
+            case test_ucount is
+                when  3 =>  assert(u2i(uart_sreg) = ref_bcbyte(port_idx))
+                                report "RxBcast-Bytes mismatch" severity error;
+                when  7 =>  assert(u2i(uart_sreg) = ref_bcfrm(port_idx))
+                                report "RxBcast-Frames mismatch" severity error;
+                when 11 =>   assert(u2i(uart_sreg) = ref_rxbyte(port_idx))
+                                report "RxTot-Bytes mismatch" severity error;
+                when 15 =>   assert(u2i(uart_sreg) = ref_rxfrm(port_idx))
+                                report "RxTot-Frames mismatch" severity error;
+                when 19 =>   assert(u2i(uart_sreg) = ref_txbyte(port_idx))
+                                report "TxTot-Bytes mismatch" severity error;
+                when 23 =>   assert(u2i(uart_sreg) = ref_txfrm(port_idx))
+                                report "TxTot-Frames mismatch" severity error;
+                when 24 =>   assert(u2i(uart_rxbyte) = test_index)
+                                report "Status mismatch" severity error;
+                when others => null;
+            end case;
             test_ucount <= test_ucount + 1;
         end if;
 
@@ -339,8 +352,8 @@ end process;
 
 -- High-level test control.
 test_wdone  <= and_reduce(txrx_done);
-test_rdone  <= bool2bit(test_rcount >= 6*PORT_COUNT + 1)
-           and bool2bit(test_ucount >= 24*PORT_COUNT);
+test_rdone  <= bool2bit(test_rcount >= TOTAL_AXI_WORDS + 1)
+           and bool2bit(test_ucount >= TOTAL_UART_BYTES);
 
 p_test : process
     procedure run_test(rate : real) is

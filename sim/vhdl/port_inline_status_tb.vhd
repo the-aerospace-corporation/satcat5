@@ -76,6 +76,7 @@ signal net_tx_ctrl      : port_tx_s2m;
 
 -- Frame-check sequence
 signal lcl_tx_write     : std_logic;
+signal lcl_tx_status    : port_status_t;
 signal net_tx_write     : std_logic;
 signal out_eg_data      : byte_t;
 signal out_eg_write     : std_logic;
@@ -119,6 +120,7 @@ u_gen_eg : entity work.eth_traffic_sim
     out_port.last       => lcl_tx_data.last,
     out_port.write      => lcl_tx_write,
     out_port.rate       => lcl_tx_rate,
+    out_port.status     => lcl_tx_status,
     out_port.rxerr      => net_tx_ctrl.txerr,
     out_port.reset_p    => net_tx_ctrl.reset_p,
     out_bcount          => open,
@@ -141,6 +143,7 @@ u_gen_ig : entity work.eth_traffic_sim
     out_port.last       => net_rx_data.last,
     out_port.write      => net_rx_data.write,
     out_port.rate       => net_rx_data.rate,
+    out_port.status     => net_rx_data.status,
     out_port.rxerr      => net_rx_data.rxerr,
     out_port.reset_p    => net_rx_data.reset_p,
     out_bcount          => open,

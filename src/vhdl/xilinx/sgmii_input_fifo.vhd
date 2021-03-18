@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -140,13 +140,14 @@ end prim_in_fifo;
 architecture prim_ram32 of sgmii_input_fifo is
 
 -- Each clock-crossing strobe represents N data words. (4/8/16)
-constant BLK_SIZE : integer := 8;
+constant BLK_SIZE : integer := 4;
 
-signal wr_addr  : unsigned(4 downto 0) := (others => '0');
-signal rd_addr  : unsigned(4 downto 0) := (others => '0');
-signal rd_en    : std_logic := '0';
-signal blk_tog  : std_logic := '0';     -- Toggle in in_clk
-signal blk_out  : std_logic;            -- Strobe in out_clk
+signal wr_addr      : unsigned(4 downto 0) := (others => '0');
+signal rd_addr      : unsigned(4 downto 0) := (others => '0');
+signal rd_en        : std_logic := '0';
+signal blk_tog      : std_logic := '0';     -- Toggle in in_clk
+signal blk_out      : std_logic;            -- Strobe in out_clk
+signal out_reset_p  : std_logic;
 
 begin
 
@@ -193,6 +194,15 @@ begin
     end if;
 end process;
 
+-- Clock-crossing for the synchronous reset signal.
+u_rst : sync_reset
+    generic map(
+    HOLD_MIN    => 3)
+    port map(
+    in_reset_p  => in_reset_p,
+    out_reset_p => out_reset_p,
+    out_clk     => out_clk);
+
 -- Clock-domain crossing: One strobe every N clocks.
 -- When we get a strobe, read up to the next block boundary.
 u_blk : sync_toggle2pulse
@@ -207,7 +217,7 @@ rd_en <= blk_out or bool2bit((rd_addr mod BLK_SIZE) /= 0);
 p_read : process(out_clk)
 begin
     if rising_edge(out_clk) then
-        if (in_reset_p = '1') then
+        if (out_reset_p = '1') then
             rd_addr <= (others => '0');
         elsif (rd_en = '1') then
             rd_addr <= rd_addr + 1;

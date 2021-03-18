@@ -45,6 +45,7 @@ use     work.synchronization.all;
 entity clkgen_sgmii_xilinx is
     generic (
     REFCLK_MHZ      : integer := 200;   -- Allowed: 25, 50, 100, 125, 200 MHz
+    MMCM_BANDWIDTH  : string := "LOW";  -- Allowed: "LOW" / "OPTIMIZED" / "HIGH"
     SPEED_MULT      : integer := 1);    -- 1x or 2x VCO freq. See notes.
     port (
     shdn_p          : in  std_logic;        -- Long-term shutdown
@@ -77,15 +78,16 @@ begin
 -- Instantiate the MMCM.  Notes:
 --   * VCO = 625 MHz * SPEED_MULT.
 --   * DIVCLK_DIVIDE = 1 for minimal jitter.  (Keep CLKFB high.)
---   * Select BANDWIDTH = LOW for optimal filtering of input jitter.
+--   * Select BANDWIDTH = LOW for optimal filtering of input jitter,
+--     or BANDWIDTH = HIGH for minimal output jitter from a clean input.
 --   * No phase alignment to input --> No BUFG required for CLKFB.
 u_mmcm : MMCME2_ADV
     generic map (
-    BANDWIDTH               => "LOW",       -- string
+    BANDWIDTH               => MMCM_BANDWIDTH,            -- string
     CLKIN1_PERIOD           => 1000.0 / real(REFCLK_MHZ), -- real
     CLKIN2_PERIOD           => 1000.0 / real(REFCLK_MHZ), -- real
     REF_JITTER1             => 0.010,       -- real
-    REF_JITTER2             => 0.0,         -- real
+    REF_JITTER2             => 0.010,       -- real
     DIVCLK_DIVIDE           => 1,           -- integer
     CLKFBOUT_MULT_F         => 625.0 * real(SPEED_MULT) / real(REFCLK_MHZ),
     CLKFBOUT_PHASE          => 0.0,         -- real

@@ -132,6 +132,7 @@ signal uart2_write  : std_logic;
 -- Mode detection state machine.
 signal det_mode     : mode_t := START_TYPE;
 signal est_rate     : port_rate_t := (others => '0');
+signal status_word  : port_status_t;
 signal lock_any     : std_logic := '0';
 signal lock_spi     : std_logic := '0';
 signal lock_uart1   : std_logic := '0';
@@ -152,10 +153,19 @@ begin
 -- Forward clock and reset signals.
 rx_data.clk     <= refclk;
 rx_data.rate    <= est_rate;
+rx_data.status  <= status_word;
 rx_data.reset_p <= codec_reset;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= codec_reset;
 tx_ctrl.txerr   <= '0';     -- No error states
+
+-- Upstream status reporting.
+status_word <= (
+    0 => reset_sync,
+    1 => lock_spi,
+    2 => lock_uart1,
+    3 => lock_uart2,
+    others => '0');
 
 -- Synchronize the external reset signal.
 u_rsync : sync_reset

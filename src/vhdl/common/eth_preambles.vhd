@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -32,6 +32,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.common_functions.all;
 use     work.switch_types.all;
 
 entity eth_preamble_rx is
@@ -47,8 +48,11 @@ entity eth_preamble_rx is
     raw_dv      : in  std_logic;        -- Data valid
     raw_err     : in  std_logic;        -- Error flag
 
-    -- Additional error strobe
+    -- Additional error strobe (optional)
     aux_err     : in  std_logic := '0';
+
+    -- Diagnostic status signals
+    status      : in  port_status_t;
 
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s);
@@ -60,6 +64,7 @@ signal out_en       : std_logic := '0';
 signal reg_data     : std_logic_vector(7 downto 0) := (others => '0');
 signal reg_dv       : std_logic := '0';
 signal reg_err      : std_logic := '0';
+signal err_dlyct    : unsigned(2 downto 0) := (others => '0');
 
 begin
 
@@ -68,8 +73,9 @@ rx_data.reset_p <= not raw_lock;
 rx_data.data    <= reg_data;
 rx_data.write   <= raw_cken and reg_dv and out_en;
 rx_data.last    <= raw_cken and reg_dv and not raw_dv;
-rx_data.rxerr   <= (raw_cken and reg_err) or aux_err;
+rx_data.rxerr   <= bool2bit(err_dlyct > 0);
 rx_data.rate    <= get_rate_word(RATE_MBPS);
+rx_data.status  <= status;
 
 p_rx : process(raw_clk)
 begin
@@ -94,6 +100,13 @@ begin
                 -- All others: Forward the error flag verbatim.
                 reg_err <= raw_err;
             end if;
+        end if;
+
+        -- Sustain async error strobe for a few clock-cycles.
+        if (aux_err = '1' or reg_err = '1') then
+            err_dlyct <= (others => '1');
+        elsif (err_dlyct > 0) then
+            err_dlyct <= err_dlyct - 1;
         end if;
     end if;
 end process;

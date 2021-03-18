@@ -38,7 +38,7 @@ use     work.synchronization.all;
 
 entity port_sgmii_common is
     generic (
-    SHAKE_WAIT  : boolean := true); -- Wait for MAC/PHY handshake?
+    SHAKE_WAIT  : boolean := false); -- Wait for MAC/PHY handshake?
     port (
     -- Transmitter/Serializer interface.
     tx_clk      : in  std_logic;    -- 125 MHz typical
@@ -81,8 +81,12 @@ signal rx_dec_lock  : std_logic;
 signal rx_dec_cken  : std_logic;
 signal rx_dec_dv    : std_logic;
 signal rx_dec_err   : std_logic;
+signal rx_cfg_ack   : std_logic;
 signal rx_cfg_rcvd  : std_logic;
 signal rx_cfg_reg   : std_logic_vector(15 downto 0);
+
+-- Status reporting
+signal status_word  : port_status_t;
 
 -- For debugging, apply KEEP constraint to certain signals.
 attribute KEEP : string;
@@ -91,6 +95,8 @@ attribute KEEP of rx_dly_cken, rx_dly_lock, rx_dly_data : signal is "true";
 begin
 
 -- Clock domain transitions for specific config-register bits.
+rx_cfg_ack <= rx_cfg_reg(14);
+
 hs_cfg_ack : sync_buffer
     port map(
     in_flag     => rx_cfg_rcvd,
@@ -98,7 +104,7 @@ hs_cfg_ack : sync_buffer
     out_clk     => tx_clk);
 hs_cfg_rcvd : sync_buffer
     port map(
-    in_flag     => rx_cfg_reg(14),
+    in_flag     => rx_cfg_ack,
     out_flag    => tx_cfg_ack,
     out_clk     => tx_clk);
 
@@ -177,6 +183,17 @@ u_rxamb : entity work.eth_preamble_rx
     raw_data    => rx_dec_data,
     raw_dv      => rx_dec_dv,
     raw_err     => rx_dec_err,
+    status      => status_word,
     rx_data     => prx_data);
+
+-- Upstream status reporting.
+status_word <= (
+    0 => reset_p,
+    1 => rx_dly_lock,
+    2 => rx_dec_lock,
+    3 => rx_cfg_rcvd,
+    4 => rx_cfg_ack,
+    5 => tx_pkten,
+    others => '0');
 
 end port_sgmii_common;

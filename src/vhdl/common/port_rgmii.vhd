@@ -101,6 +101,8 @@ signal rxdiv_s          : std_logic;        -- Strobe in clk_125 domain
 
 signal reset_sync       : std_logic;        -- Reset sync'd to clk_125
 
+signal status_word      : port_status_t;
+
 begin
 
 -- Synchronize the external reset signal.
@@ -240,6 +242,12 @@ begin
     end if;
 end process;
 
+-- Upstream status reporting.
+status_word <= (
+    0 => reset_sync,
+    1 => rxlock,
+    others => '0');
+
 -- Receive state machine, including preamble removal.
 u_amble_rx : entity work.eth_preamble_rx
     generic map(
@@ -251,6 +259,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_data    => rxdata,
     raw_dv      => rxdv,
     raw_err     => rxerr,
+    status      => status_word,
     rx_data     => rx_data);
 
 -- Transmit state machine, including insertion of preamble,
