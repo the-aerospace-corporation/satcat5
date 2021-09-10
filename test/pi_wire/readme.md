@@ -1,7 +1,7 @@
 <br />
 <p align="center">
   <a href="https://github.com/the-aerospace-corporation/satcat5">
-    <img src="images/satcat5.png" alt="Logo" width="80" height="80">
+    <img src="/doc/images/satcat5.png" alt="Logo" width="80" height="80">
   </a>
 
   <h3 align="center">PiWire</h3>
@@ -94,25 +94,18 @@ The instructions below assume a Raspberry Pi 3+ running stock Raspbian (2021 May
 
 
 
-<!--This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
---> 
-
 ### Raspberry Pi Configuration
 
 1. If the heatsinks are not preinstalled on the SoC, memory, and GPU, they should be applied so the Raspberry Pi does not thermal throttle. The heat sinks are included in the Canakit package. Peel off the underside of the heat sinks and apply as shown below.
 
 <p align="center">
-  <img src="images/heatsinks.png" alt="heatsinks" width="325" height="200">
+  <img src="/doc/images/heatsinks.png" alt="heatsinks" width="325" height="200">
 </p>
   
 2. Install the coin cell into the RTC module, with the positive terminal of the battery aligned with the positive marking on top of the PiRTC.
 
 <p align="center">
-  <img src="images/RTC.png" alt="RTC" width="325" height="200">
+  <img src="/doc/images/RTC.png" alt="RTC" width="325" height="200">
  </p>
 
 3. Download [Raspberry Pi Imager](https://www.raspberrypi.org/software/) and [Raspberry Pi OS](https://www.raspberrypi.org/software/operating-systems/). "Raspberry Pi OS with desktop and recommended software" is the reccomended OS. 
@@ -120,7 +113,7 @@ The instructions below assume a Raspberry Pi 3+ running stock Raspbian (2021 May
 4. Plug in the USB SD card reader into PC, with the 32 CB microSD card inserted. Open the Raspberry Pi Imager, and etch the OS onto the microSD card. Eject after installation is finished. 
 
 <p align="center">
-  <img src="images/imager.png" alt="imager" width="325" height="200">
+  <img src="/doc/images/imager.png" alt="imager" width="325" height="200">
 </p>
 
 5. Place the 32 GB microSD into it's slot on the bottom of the Pi. Proceed by hooking up the monitor into the microHDMI0 port and the keyboard/mouse into USB 2/3 ports. Once the power source is plugged into the USB C, the Pi should immediately boot. 
@@ -151,7 +144,7 @@ The instructions below assume a Raspberry Pi 3+ running stock Raspbian (2021 May
 1. Download code as zip file from [SatCat5 Repository](https://github.com/the-aerospace-corporation/satcat5). Extract all files once downloaded. 
 
 <p align="center">
-  <img src="images/github.png" alt="github" width="325" height="200">
+  <img src="/doc/images/github.png" alt="github" width="325" height="200">
 </p>
 
 2. The easiest way to run Pi-Wire is to build it using the Raspberry Pi itself. Open the Raspberry Pi terminal. From the /test/pi_wire folder, compile and run using the following commands:
@@ -162,7 +155,7 @@ pi@raspberrypi:~/Desktop/satcat5-main/test/pi_wire $ sudo ./pi_wire both
 
 ```
 <p align="center">
-  <img src="images/compileterminal.png" alt="compileterminal" width="400" height="200">
+  <img src="/doc/images/compileterminal.png" alt="compileterminal" width="400" height="200">
 </p>
 
 3. At this point, "both" can be replaced by "spi" or "uart" depending on protocol preference. ** Note, adjust path as needed depending on where the code is stored. Easiest way to confirm path is to copy it by right clicking on "test" folder in the Pi file finder. At this point, the program is running accordingly!
@@ -205,7 +198,7 @@ pi@raspberrypi:~ $ echo "asdfghjkl" > /dev/ttyAMA0
   * Note: At higher baud rates these packets resemble spikes. Decrease time scale to visualize more clearly
 
 <p align="center">
-  <img src="images/packetscope.jpeg" alt="packetscope" width="325" height="200">
+  <img src="/doc/images/packetscope.jpeg" alt="packetscope" width="325" height="200">
 </p>
 
 
@@ -219,7 +212,7 @@ This information is from [Raspberry Pi SPI Loopback Testing](https://importgeek.
 1. Short the MOSI (RPi Pin 19,GPIO Pin 10) and MISO (RPi pin 21, GPIO Pin 09) pins. 
 
 <p align="center">
-  <img src="images/short.jpeg" alt="short" width="325" height="200">
+  <img src="/doc/images/short.jpeg" alt="short" width="325" height="200">
 </p>
 
 3. Download code from [spidev-test](https://github.com/rm-hull/spidev-test). Confirm that spidev-test lists "spidev0.0" as the primary SPI device. 
@@ -241,14 +234,14 @@ pi@raspberrypi:~ $ gcc -o spidev_test spidev_test.c
 pi@raspberrypi:~ $ ./spidev_test -D /dev/spidev0.0
 ```
 <p align="center">
-  <img src="images/spitest1.png" alt="spitest1" width="325" height="200">
+  <img src="/doc/images/spitest1.png" alt="spitest1" width="325" height="200">
 </p>
 
 
 5. If the hex characters are are '00', SPI is not functioning. Refer to Troubleshooting if this is the case. 
 
 <p align="center">
-  <img src="images/spitest2.png" alt="spitest1" width="325" height="200">
+  <img src="/doc/images/spitest2.png" alt="spitest1" width="325" height="200">
 </p>
 
 ### Debug Verbose
@@ -257,7 +250,7 @@ To see the packets being sent/received as pi_wire is running, we can set the deb
 
 
 <p align="center">
-  <img src="images/debugverbose.png" alt="debugverbose" width="375" height="200">
+  <img src="/doc/images/debugverbose.png" alt="debugverbose" width="375" height="200">
 </p>
 
 ## Troubleshooting
