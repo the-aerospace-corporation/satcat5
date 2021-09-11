@@ -309,6 +309,7 @@ Test UART ports by referencing [Supplemental](#supplemental).
 
 ## Copyright Notice
 Copyright 2019 The Aerospace Corporation
+Copyright 2021 Giuliana Hofheins
 
 This file is part of SatCat5.
 
