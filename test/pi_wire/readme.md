@@ -85,7 +85,7 @@ The instructions below assume a Raspberry Pi 3+ running stock Raspbian (2021 May
 * [MicroSD Reader](https://www.amazon.com/Memory-Reader-Type-C-Adapter-Portable/dp/B07F6T9KHW/ref=asc_df_B07F6T9KHW/?tag=hyprod-20&linkCode=df0&hvadid=309818716690&hvpos=&hvnetw=g&hvrand=5037337349475534577&hvpone=&hvptwo=&hvqmt=&hvdev=c&hvdvcmdl=&hvlocint=&hvlocphy=9013518&hvtargid=pla-569151540883&psc=1)
 * [TP-Link 5-Port Gigabit Ethernet Switch](https://www.amazon.com/Ethernet-Splitter-Optimization-Unmanaged-TL-SG105/dp/B00A128S24)
 * [Adafruit Pi-RTC](https://www.digikey.com/en/products/detail/adafruit-industries-llc/3296/6238008)
-* [Coin Cell Battery}](https://www.adafruit.com/product/380)
+* [Coin Cell Battery](https://www.adafruit.com/product/380)
 * [Cat6 Ethernet Cables (x4)](https://www.amazon.com/AmazonBasics-RJ45-Cat-6-Ethernet-Patch-Cable-3-Feet-0-9-Meters/dp/B00N2VISLW)
 * Male to Female Jumper Wires (x5)
 * Optional
