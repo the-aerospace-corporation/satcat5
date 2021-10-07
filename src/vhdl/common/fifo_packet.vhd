@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -25,55 +25,64 @@
 -- Input is written without flow control; any data which would overflow
 -- the buffer instead causes the complete packet to be reverted.  Output
 -- uses AXI-style flow control and may be in a different clock domain.
+--
 -- Input and output word-sizes must be multiples of eight bits; if they
--- are different, the larger must be a multiple of the smaller.  Per
--- Ethernet convention, word-size conversion is always handled MSW-first.
+-- are different, please ensure the LCM is reasonable.  (If possible, the
+-- the larger size should be a multiple of the smaller.)  Per Ethernet
+-- convention, word-size conversion is always handled MSW-first.
+--
+-- For multi-byte configurations, the NLAST input indicates the location
+-- of the final valid byte.  Refer to "fifo_smol_resize" for details.
+-- One notable exception: Since a separate "last" strobe is required,
+-- the NLAST input is ignored unless that strobe is asserted.
 --
 -- Optionally, the block can be configured to maintain a single word of
 -- metadata associated with each packet.  At the input, this word is
 -- latched concurrently with the in_last_commit strobe.  At the output,
 -- it is valid for the entire duration of the packet.
 --
--- The block also supports an asynchronous "pause" flag.  While asserted,
--- the output will continue a frame-in-progress but will delay starting
--- subsequent frames until the pause flag is lowered.
+-- The block also supports an optional "pause" flag, sync'd to out_clk.
+-- While asserted, the output will continue a frame-in-progress but will
+-- delay starting subsequent frames until the pause flag is lowered.
 --
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.synchronization.all;
+use     work.common_primitives.all;
 
 entity fifo_packet is
     generic (
-    INPUT_BYTES     : natural;          -- Width of input port
-    OUTPUT_BYTES    : natural;          -- Width of output port
-    BUFFER_KBYTES   : natural;          -- Buffer size (kilobytes)
-    META_WIDTH      : natural := 0;     -- Packet metadata width (optional)
-    FLUSH_TIMEOUT   : natural := 0;     -- Stale data timeout (optional)
-    MAX_PACKETS     : natural := 64;    -- Maximum queued packets
-    MAX_PKT_BYTES   : natural := 1536); -- Maximum packet size (bytes)
+    INPUT_BYTES     : positive;             -- Width of input port
+    OUTPUT_BYTES    : positive;             -- Width of output port
+    BUFFER_KBYTES   : positive;             -- Buffer size (kilobytes)
+    META_WIDTH      : natural := 0;         -- Packet metadata width (optional)
+    FLUSH_TIMEOUT   : natural := 0;         -- Stale data timeout (optional)
+    MAX_PACKETS     : positive := 64;       -- Maximum queued packets
+    MAX_PKT_BYTES   : positive := 1536;     -- Maximum packet size (bytes)
+    TEST_MODE       : boolean := false);    -- Enable verification features
     port (
     -- Input port does not use flow control.
-    -- Note: Input/output byte-count (bcount) is actually N-1.
     in_clk          : in  std_logic;
     in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
-    in_bcount       : in  integer range 0 to INPUT_BYTES-1 := INPUT_BYTES-1;
+    in_nlast        : in  integer range 0 to INPUT_BYTES := INPUT_BYTES;
     in_pkt_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
     in_last_commit  : in  std_logic;
     in_last_revert  : in  std_logic;
     in_write        : in  std_logic;
+    in_reset        : out std_logic;        -- Syncronized copy of reset_p
     in_overflow     : out std_logic;        -- Warning strobe (invalid commit)
 
     -- Output port uses AXI-style flow control.
     out_clk         : in  std_logic;
     out_data        : out std_logic_vector(8*OUTPUT_BYTES-1 downto 0);
-    out_bcount      : out integer range 0 to OUTPUT_BYTES-1;
+    out_nlast       : out integer range 0 to OUTPUT_BYTES;
     out_pkt_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
     out_last        : out std_logic;
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
+    out_reset       : out std_logic;        -- Synchronized copy of reset_p
     out_overflow    : out std_logic;        -- Same warning, in out_clk domain
     out_pause       : in  std_logic := '0'; -- Optional: Don't start next packet
 
@@ -84,37 +93,26 @@ end fifo_packet;
 architecture fifo_packet of fifo_packet is
 
 -- Define FIFO size parameters.
-constant FREE_MARGIN    : natural := 0; -- Almost-full margin of N words.
 constant INPUT_WIDTH    : natural := 8 * INPUT_BYTES;
-constant OUTPUT_WIDTH   : natural := 8 * OUTPUT_BYTES;
-constant FIFO_BYTES     : natural := int_max(INPUT_BYTES, OUTPUT_BYTES);
-constant FIFO_WIDTH     : natural := 8 * FIFO_BYTES;
+constant META_WIDTH_ADJ : natural := int_max(META_WIDTH, 1);
+constant FIFO_BYTES     : natural := int_lcm(INPUT_BYTES, OUTPUT_BYTES);
+constant FIFO_CWIDTH    : natural := log2_ceil(FIFO_BYTES + 1);
+constant FIFO_DWIDTH    : natural := 8 * FIFO_BYTES;
+constant FIFO_TOTAL     : natural := FIFO_CWIDTH + FIFO_DWIDTH;
 constant FIFO_DEPTH     : natural := (1024*BUFFER_KBYTES) / FIFO_BYTES;
-constant INPUT_RATIO    : natural := FIFO_BYTES / INPUT_BYTES;
-constant OUTPUT_RATIO   : natural := FIFO_BYTES / OUTPUT_BYTES;
-constant NBYTES_WIDTH   : natural := log2_ceil(MAX_PKT_BYTES+INPUT_BYTES);
-constant BCOUNT_WIDTH   : natural := log2_ceil(OUTPUT_BYTES);
-constant PFIFO_WIDTH    : natural := NBYTES_WIDTH + META_WIDTH;
-constant MAX_PKT_WORDS  : natural := (MAX_PKT_BYTES + FIFO_BYTES - 1) / FIFO_BYTES;
-subtype addr_t is natural range 0 to FIFO_DEPTH-1;
-subtype nwords_t is natural range 0 to FIFO_DEPTH;
-subtype nbytes_t is unsigned(NBYTES_WIDTH-1 downto 0);
-subtype pfifo_t is std_logic_vector(PFIFO_WIDTH-1 downto 0);
-subtype meta_t is std_logic_vector(META_WIDTH-1 downto 0);
-subtype word_t is std_logic_vector(FIFO_WIDTH-1 downto 0);
+constant INPUT_WMAX     : natural := FIFO_BYTES / INPUT_BYTES - 1;
+constant ADDR_WIDTH     : natural := log2_ceil(FIFO_DEPTH);
+constant NFREE_FIXED    : natural := 32;
+constant MAX_PKT_WORDS  : positive := (MAX_PKT_BYTES + FIFO_BYTES - 1) / FIFO_BYTES;
+subtype addr_i is natural range 0 to FIFO_DEPTH-1;
+subtype addr_u is unsigned(ADDR_WIDTH-1 downto 0);
+subtype words_i is natural range 0 to FIFO_DEPTH;
+subtype meta_t is std_logic_vector(META_WIDTH_ADJ-1 downto 0);
+subtype nlast_t is std_logic_vector(FIFO_CWIDTH-1 downto 0);
+subtype nlast_i is natural range 0 to FIFO_BYTES;
+subtype fifo_t is std_logic_vector(FIFO_TOTAL-1 downto 0);
 
--- Define various utility functions:
-function get_bcount(x : std_logic_vector) return integer is
-begin
-    -- Extract the byte-count field from the final FIFO word.
-    if (BCOUNT_WIDTH > 0) then
-        return u2i(to_01_vec(x));
-    else
-        return OUTPUT_BYTES-1;
-    end if;
-end function;
-
-function addr_incr(x : addr_t) return addr_t is
+function addr_incr(x : addr_i) return addr_i is
 begin
     -- Address increment with wraparound.
     if (x = FIFO_DEPTH-1) then
@@ -124,68 +122,58 @@ begin
     end if;
 end function;
 
--- Input state machine, including word-size conversion.
-constant IN_FREE_MAX : nwords_t := FIFO_DEPTH - FREE_MARGIN;
-signal in_free_words    : nwords_t := IN_FREE_MAX;
-signal in_new_words     : nwords_t := 1;
-signal in_new_bytes     : nbytes_t := (others => '0');
-signal in_wcount        : integer range 0 to INPUT_RATIO-1 := 0;
-signal overflow_flag    : std_logic := '0'; -- Persistent flag
-signal overflow_str     : std_logic := '0'; -- Strobe in input clock
-signal overflow_tog     : std_logic := '0'; -- Toggle in input clock
-signal commit_en        : std_logic := '0';
-signal revert_en        : std_logic := '0';
-signal revert_addr      : addr_t := 0;
-signal wdog_reset       : std_logic := '0'; -- Flag in input clock
+-- Reset signals
+signal reset_a      : std_logic;        -- Global reset (asynchronous)
+signal reset_i      : std_logic;        -- Global reset (input clock)
+signal reset_o      : std_logic;        -- Global reset (output clock)
+signal wdog_reset   : std_logic := '0'; -- Flag in output clock
+
+-- State synchronized to main input.
+signal free_words   : words_i := FIFO_DEPTH;
+signal new_words    : words_i := 1;
+signal in_wcount    : integer range 0 to INPUT_WMAX := 0;
+
+-- Write pipeline going to main FIFO.
+signal wr_words     : words_i := 0;                 -- Allocate N words from FIFO
+signal wr_meta      : meta_t := (others => '0');    -- Latched metadata
+signal wr_ovrflow   : std_logic := '0';             -- Flag in input clock
+signal wr_commit    : std_logic := '0';             -- Strobe in input clock
+signal wr_revert    : std_logic := '0';             -- Strobe in input clock
+signal wr_write     : std_logic := '0';             -- Strobe in input clock
+signal wr_data      : fifo_t := (others => '0');    -- Data to be written
+signal wr_addr      : addr_i := 0;                  -- Current write address
+signal wr_ready     : std_logic;
+signal wr_safe      : std_logic;
+signal revert_addr  : addr_i := 0;                  -- Start of current packet
+
+-- Back-channel for freeing data as it is read.
+-- (Strobe event is triggered every NFREE_FIXED words.)
+signal free_block_t : std_logic := '0';
+signal free_block_i : std_logic := '0';
 
 -- Dual-port block RAM.
-type dp_ram_t is array(0 to FIFO_DEPTH-1) of word_t;
-shared variable dp_ram  : dp_ram_t := (others => (others => '0'));
-signal write_addr       : addr_t := 0;
-signal write_data       : word_t := (others => '0');
-signal write_en         : std_logic := '0';
-signal read_addr        : addr_t := 0;
-signal read_data        : word_t := (others => '0');
-
--- Clock-domain transition.
-signal reset_a          : std_logic;            -- Global reset (asynchronous)
-signal reset_i          : std_logic;            -- Global reset (input clock)
-signal reset_o          : std_logic;            -- Global reset (output clock)
-signal xwr_nwords       : nwords_t := 0;        -- Transfer N words to output
-signal xwr_nbytes       : nbytes_t := (others => '0');  -- Transfer N bytes to output
-signal xwr_meta         : meta_t := (others => '0');    -- Latched metadata
-signal xwr_toggle       : std_logic := '0';     -- Toggle in input clock
-signal xwr_strobe       : std_logic;            -- Strobe in output clock
-signal xwr_full         : std_logic;            -- Flag in input clock
-signal xrd_nwords       : nwords_t := 0;        -- Free N words from input
-signal xrd_toggle       : std_logic := '0';     -- Toggle in output clock
-signal xrd_strobe       : std_logic;            -- Strobe in input clock
-signal xrd_pause        : std_logic;            -- Flag in output clock
-
--- A small FIFO for the length of each stored packet.
-signal pkt_fifo_iraw    : pfifo_t;
-signal pkt_fifo_oraw    : pfifo_t;
-signal pkt_fifo_meta    : meta_t;
-signal pkt_fifo_len     : nbytes_t;
-signal pkt_fifo_rd      : std_logic := '0';
-signal pkt_fifo_valid   : std_logic;
-signal pkt_fifo_full    : std_logic;
+signal wr_addr_u    : addr_u;
+signal rd_addr_u    : addr_u;
+signal rd_addr      : addr_i := 0;
+signal rd_data      : fifo_t;
+signal rd_nlast_u   : nlast_t;
+signal rd_nlast_i   : nlast_i;
 
 -- Output state machine, including word-size conversion.
-signal read_wcount      : integer range 0 to OUTPUT_RATIO-1 := 0;
-signal read_wcount_d    : integer range 0 to OUTPUT_RATIO-1 := 0;
-signal read_bcount      : nbytes_t := (others => '0');
-signal read_meta        : meta_t := (others => '0');
-signal fifo_data        : std_logic_vector(OUTPUT_WIDTH-1 downto 0) := (others => '0');
-signal fifo_bcount      : integer range 0 to OUTPUT_BYTES-1 := OUTPUT_BYTES-1;
-signal fifo_bvec        : std_logic_vector(BCOUNT_WIDTH-1 downto 0);
-signal fifo_last        : std_logic := '0';
-signal fifo_wr          : std_logic := '0';
-signal fifo_hfull       : std_logic;
-signal out_bvec         : std_logic_vector(BCOUNT_WIDTH-1 downto 0);
-signal out_meta_i       : meta_t := (others => '0');
-signal out_valid_i      : std_logic;
-signal out_last_i       : std_logic;
+signal pkt_meta     : meta_t := (others => '0');
+signal pkt_valid    : std_logic;
+signal rd_avail     : std_logic;
+signal rd_start     : std_logic;
+signal rd_final     : std_logic;
+signal rd_busy      : std_logic := '0';
+signal rd_continue  : std_logic;
+signal rd_enable    : std_logic;
+signal rd_ready     : std_logic;
+signal fifo_wr      : std_logic := '0';
+signal fifo_hempty  : std_logic;
+signal out_valid_i  : std_logic;
+signal out_last_i   : std_logic;
+signal out_pkt_rd   : std_logic;
 
 begin
 
@@ -202,17 +190,28 @@ u_reset_out : sync_reset
     out_reset_p => reset_o,
     out_clk     => out_clk);
 
+-- Top-level status strobes:
+in_reset    <= reset_i;
+in_overflow <= wr_ovrflow;
+
+u_overflow : sync_pulse2pulse
+    port map(
+    in_strobe   => wr_ovrflow,
+    in_clk      => in_clk,
+    out_strobe  => out_overflow,
+    out_clk     => out_clk);
+
 -- Optional watchdog timer for undeliverable packets.
 -- (Otherwise FIFO can fill up with stale data from other ports.)
 gen_wdog : if (FLUSH_TIMEOUT > 0) generate
-    p_wdog : process(in_clk)
+    p_wdog : process(out_clk)
         variable wdog_count : natural range 0 to FLUSH_TIMEOUT := FLUSH_TIMEOUT;
     begin
-        if rising_edge(in_clk) then
+        if rising_edge(out_clk) then
             -- Watchdog triggers when countdown reaches zero.
             wdog_reset <= bool2bit(wdog_count = 0);
             -- Reset whenever a packet is read or the buffer is empty.
-            if (reset_i = '1' or xrd_strobe = '1' or in_free_words = IN_FREE_MAX) then
+            if (reset_i = '1' or out_pkt_rd = '1' or out_valid_i = '0') then
                 wdog_count := FLUSH_TIMEOUT;    -- Reset to max value.
             elsif (wdog_count > 0) then
                 wdog_count := wdog_count - 1;   -- Countdown to zero.
@@ -223,15 +222,25 @@ end generate;
 
 -- Auxiliary input counters, including word-size conversion.
 p_free : process(in_clk)
-    variable xfer_free : nwords_t := 0;
+    variable wr_nlast : integer range 0 to FIFO_BYTES := 0;
 begin
     if rising_edge(in_clk) then
+        -- Byte counter is stored alongside each FIFO word:
+        --  * 0 = Packet continues in next word.
+        --  * Any other value indicates final word with N bytes.
+        if (in_last_commit = '0' and in_last_revert = '0') then
+            wr_nlast := 0;
+        elsif (in_write = '1') then
+            wr_nlast := in_wcount * INPUT_BYTES + in_nlast;
+        end if;
+        wr_data(wr_data'left downto FIFO_DWIDTH) <= i2s(wr_nlast, FIFO_CWIDTH);
+
         -- Update each part of the data register, MSW-first.
         -- (Note: End of input may not be word-aligned.)
-        for n in 0 to INPUT_RATIO-1 loop
-            if (in_write = '1' and in_wcount = n) then
-                write_data(FIFO_WIDTH-n*INPUT_WIDTH-1
-                    downto FIFO_WIDTH-(n+1)*INPUT_WIDTH) <= in_data;
+        for n in 0 to INPUT_WMAX loop
+            if (in_write = '1' and in_wcount = INPUT_WMAX - n) then
+                wr_data((n+1)*INPUT_WIDTH-1 downto
+                        (n+0)*INPUT_WIDTH) <= in_data;
             end if;
         end loop;
 
@@ -241,308 +250,243 @@ begin
         elsif (in_write = '1') then
             if (in_last_commit = '1' or
                 in_last_revert = '1' or
-                in_wcount = INPUT_RATIO-1) then
+                in_wcount = INPUT_WMAX) then
                 in_wcount <= 0;
             else
                 in_wcount <= in_wcount + 1;
             end if;
         end if;
 
-        -- Count bytes in current frame.
-        -- Note: Reported size lags by one input word.
-        -- TODO: Add a "first" flag? Otherwise ports coming out of
-        --       reset may truncate first part of frame.
+        -- Latch metadata at end of each valid frame.
+        if (META_WIDTH > 0 and in_write = '1' and in_last_commit = '1') then
+            wr_meta <= in_pkt_meta;
+        end if;
+
+        -- Count words in current frame (sync'd to in_write)
         if (reset_i = '1') then
-            in_new_words <= 1;
-            in_new_bytes <= (others => '0');
+            new_words <= 1;
         elsif (in_write = '1') then
             if (in_last_commit = '1' or in_last_revert = '1') then
-                -- Reset for start of next packet.  (One-word lag.)
-                in_new_words <= 1;
-                in_new_bytes <= (others => '0');
-            elsif (in_wcount = INPUT_RATIO-1) then
-                -- Continue accumulating (complete word).
-                in_new_words <= in_new_words + 1;
-                in_new_bytes <= in_new_bytes + INPUT_BYTES;
-            else
-                -- Continue accumulating (partial word).
-                in_new_bytes <= in_new_bytes + INPUT_BYTES;
+                new_words <= 1;
+            elsif (in_wcount = INPUT_WMAX and new_words < FIFO_DEPTH) then
+                new_words <= new_words + 1;
             end if;
         end if;
 
         -- Increment or revert address after a one-cycle delay.
-        if (revert_en = '1') then
-            write_addr <= revert_addr;
-        elsif (write_en = '1') then
-            write_addr <= addr_incr(write_addr);
+        if (wr_revert = '1') then
+            wr_addr <= revert_addr;
+        elsif (wr_write = '1') then
+            wr_addr <= addr_incr(wr_addr);
         end if;
 
         -- Update the revert-pointer after each commit.
         if (reset_i = '1') then
             revert_addr <= 0;
-        elsif (commit_en = '1') then
-            revert_addr <= addr_incr(write_addr);
+        elsif (wr_commit = '1') then
+            revert_addr <= addr_incr(wr_addr);
         end if;
 
         -- Update the free-words counter just after each packet is committed,
-        -- or after the output reports a packet has been released.
+        -- and for each batch of words from the freed-memory event.
         if (reset_i = '1') then
-            in_free_words <= IN_FREE_MAX;
-        elsif (commit_en = '1') then
-            in_free_words <= in_free_words + xfer_free - xwr_nwords;
+            free_words <= FIFO_DEPTH;
+        elsif (free_block_i = '1') then
+            free_words <= free_words + NFREE_FIXED - wr_words;
         else
-            in_free_words <= in_free_words + xfer_free;
-        end if;
-
-        if (xrd_strobe = '1') then
-            xfer_free := xrd_nwords;
-        else
-            xfer_free := 0;
+            free_words <= free_words - wr_words;
         end if;
     end if;
 end process;
 
--- Main input packet state machine.
-in_overflow <= overflow_str;
-
-u_overflow : sync_toggle2pulse
-    port map(
-    in_toggle   => overflow_tog,
-    out_strobe  => out_overflow,
-    out_clk     => out_clk);
-
+-- Decide whether it is safe to write each input word, and when to revert.
 p_input : process(in_clk)
+    variable ovr_sticky : std_logic := '0';
 begin
     if rising_edge(in_clk) then
-        overflow_str <= '0';
-        write_en    <= '0';
-        commit_en   <= '0';
-        revert_en   <= '0';
+        -- Set defaults for various strobes.
+        wr_write    <= '0';
+        wr_commit   <= '0';
+        wr_revert   <= '0';
+        wr_ovrflow  <= '0';
+        wr_words    <= 0;
 
+        -- Sanity-check on unexpected packet-FIFO overflow.
+        if (wr_commit = '1') then
+            assert (wr_ready = '1')
+                report "Internal flow-control violation." severity error;
+        end if;
+
+        -- Drive the write, commit, and revert strobes.
         if (reset_i = '1') then
             -- Global reset, clear all counters.
-            revert_en       <= '1';
-            xwr_nwords      <= 0;
-            xwr_nbytes      <= (others => '0');
-            xwr_meta        <= (others => '0');
-            xwr_toggle      <= '0';
-            overflow_flag   <= '0';
+            wr_revert   <= '1';
+            ovr_sticky  := '0';
         elsif (in_write = '1') then
             -- Sanity-check on inputs.
-            assert (in_last_commit = '1' or in_last_revert = '1' or in_bcount = INPUT_BYTES-1)
-                report "Invalid mid-frame byte count." severity error;
             assert (in_last_commit = '0' or in_last_revert = '0')
                 report "Cannot simultaneously commit and revert packet." severity error;
-            -- Should we write the next word?
-            if (overflow_flag = '0') then
-                write_en <= in_last_commit or bool2bit(in_wcount = INPUT_RATIO-1);
-            end if;
-            -- Update each counter as appropriate...
-            if (in_last_commit = '1' and overflow_flag = '0' and xwr_full = '0') then
+
+            -- Drive the write/commit/revert/overflow strobes.
+            -- Note: Updates to "free_words" are one cycle late; count anything we're
+            --       currently in the process of allocating during safety checks here.
+            if (ovr_sticky = '1' or new_words > MAX_PKT_WORDS or
+                new_words + wr_words > free_words) then
+                -- Packet-length overflow. Stop writing, revert at end-of-frame.
+                wr_revert   <= in_last_commit or in_last_revert;
+                wr_ovrflow  <= in_last_commit;
+            elsif (in_last_commit = '1' and wr_safe = '1') then
                 -- Commit success! Notify output state machine.
-                commit_en       <= '1';
-                xwr_nwords      <= in_new_words;
-                xwr_nbytes      <= in_new_bytes + in_bcount + 1;
-                xwr_meta        <= in_pkt_meta;
-                xwr_toggle      <= not xwr_toggle;
-                overflow_flag   <= '0';
+                wr_write    <= '1';
+                wr_commit   <= '1';
+                wr_words    <= new_words;
             elsif (in_last_commit = '1' or in_last_revert = '1') then
-                -- Revert or commit failure (overflow).
-                if (in_last_commit = '1') then
-                    overflow_str <= '1';
-                    overflow_tog <= not overflow_tog;
-                end if;
-                revert_en       <= '1';
-                overflow_flag   <= '0';
-            elsif (in_new_words >= in_free_words or in_new_words >= MAX_PKT_WORDS) then
-                -- Set overflow flag, persists to end of frame.
-                overflow_flag   <= '1';
+                -- Metadata overflow or upstream revert.
+                wr_revert   <= '1';
+                wr_ovrflow  <= in_last_commit;
+            else
+                -- Mid-packet, write each completed word.
+                wr_write    <= bool2bit(in_wcount = INPUT_WMAX);
+            end if;
+
+            -- Overflow flag sticks until end-of-frame.
+            -- (This prevents glitches when additional space is freed mid-frame.)
+            if (in_last_commit = '1' or in_last_revert = '1') then
+                ovr_sticky := '0';
+            elsif (new_words + wr_words > free_words) then
+                ovr_sticky := '1';
             end if;
         end if;
     end if;
 end process;
 
--- Inferred dual-port block RAM.
-p_ram_in : process(in_clk)
-begin
-    if rising_edge(in_clk) then
-        if (write_en = '1') then
-            dp_ram(write_addr) := write_data;
-        end if;
-    end if;
-end process;
+-- Platform-specific dual-port block RAM for main datapath.
+wr_addr_u   <= to_unsigned(wr_addr, ADDR_WIDTH);
+rd_addr_u   <= to_unsigned(rd_addr, ADDR_WIDTH);
+rd_nlast_u  <= to_01_vec(rd_data(rd_data'left downto FIFO_DWIDTH));
+rd_nlast_i  <= u2i(rd_nlast_u);
 
-p_ram_out : process(out_clk)
-begin
-    if rising_edge(out_clk) then
-        read_data <= dp_ram(read_addr);
-    end if;
-end process;
-
--- Clock-domain transition.
-u_hs_xwr : sync_toggle2pulse
+u_ram : dpram
+    generic map(
+    AWIDTH  => ADDR_WIDTH,
+    DWIDTH  => FIFO_TOTAL,
+    SIMTEST => TEST_MODE)
     port map(
-    in_toggle   => xwr_toggle,
-    out_strobe  => xwr_strobe,
+    wr_clk  => in_clk,
+    wr_addr => wr_addr_u,
+    wr_en   => wr_write,
+    wr_val  => wr_data,
+    rd_clk  => out_clk,
+    rd_addr => rd_addr_u,
+    rd_en   => rd_enable,
+    rd_val  => rd_data);
+
+-- Cross-clock transitions for control and metadata.
+-- (Use adjusted width to workaround pathological META_WIDTH = 0 case.)
+u_pkt_fifo : entity work.fifo_smol_async
+    generic map(
+    IO_WIDTH    => META_WIDTH_ADJ,
+    DEPTH_LOG2  => log2_ceil(MAX_PACKETS))
+    port map(
+    in_clk      => in_clk,
+    in_data     => wr_meta,
+    in_valid    => wr_commit,
+    in_ready    => wr_ready,
+    in_early    => wr_safe,
     out_clk     => out_clk,
-    reset_p     => reset_o);
-u_hs_xrd : sync_toggle2pulse
+    out_data    => pkt_meta,
+    out_valid   => pkt_valid,
+    out_ready   => rd_start,
+    reset_p     => reset_p);
+
+u_free : sync_toggle2pulse
     port map(
-    in_toggle   => xrd_toggle,
-    out_strobe  => xrd_strobe,
-    out_clk     => in_clk,
-    reset_p     => reset_i);
-u_hs_full : sync_buffer
-    port map(
-    in_flag     => pkt_fifo_full,
-    out_flag    => xwr_full,
+    in_toggle   => free_block_t,
+    out_strobe  => free_block_i,
     out_clk     => in_clk);
-u_hs_pause : sync_buffer
-    port map(
-    in_flag     => out_pause,
-    out_flag    => xrd_pause,
-    out_clk     => out_clk);
 
--- A small FIFO for the length and metadata of each stored packet.
-pkt_fifo_iraw   <= std_logic_vector(xwr_nbytes) & xwr_meta;
-pkt_fifo_len    <= unsigned(pkt_fifo_oraw(PFIFO_WIDTH-1 downto META_WIDTH));
-pkt_fifo_meta   <= pkt_fifo_oraw(META_WIDTH-1 downto 0);
+-- Read controller: Wait for pkt_valid from the cross-clock FIFO, then keep
+-- reading from DPRAM until end-of-frame marker (i.e., nonzero metadata).
+rd_avail    <= pkt_valid and fifo_hempty and not out_pause; -- New packet available?
+rd_final    <= fifo_wr and or_reduce(rd_nlast_u);           -- End-of-frame marker?
+rd_start    <= rd_avail and (rd_final or not rd_busy);      -- Start next frame?
+rd_continue <= rd_busy and not rd_final;                    -- Continue current frame?
+rd_ready    <= fifo_hempty and not reset_o;                 -- Ready to accept data?
+rd_enable   <= (rd_start or rd_continue) and rd_ready;      -- Read from DPRAM?
 
-u_pkt_fifo : entity work.fifo_smol
-    generic map(
-    IO_WIDTH    => META_WIDTH + NBYTES_WIDTH,
-    DEPTH_LOG2  => log2_ceil(MAX_PACKETS)) -- Depth = 2^N
-    port map(
-    in_data     => pkt_fifo_iraw,
-    in_write    => xwr_strobe,
-    out_data    => pkt_fifo_oraw,
-    out_valid   => pkt_fifo_valid,
-    out_read    => pkt_fifo_rd,
-    fifo_full   => pkt_fifo_full,
-    reset_p     => reset_o,
-    clk         => out_clk);
-
--- Output state machine, including word-size conversion.
-p_output : process(out_clk)
-    variable read_wlen      : nwords_t := 1;
-    variable early_wr       : std_logic := '0';
-    variable early_last     : std_logic := '0';
-    variable early_bcount   : integer range 0 to OUTPUT_BYTES-1 := 0;
+p_rd_ctrl : process(out_clk)
+    variable free_count : integer range 0 to NFREE_FIXED-1 := NFREE_FIXED-1;
 begin
     if rising_edge(out_clk) then
-        -- MUX for word-size conversion (MSW-first), plus matched
-        -- delay for last-strobe, byte-count, and write strobe.
-        fifo_data   <= read_data(FIFO_WIDTH-OUTPUT_WIDTH*read_wcount_d-1
-                          downto FIFO_WIDTH-OUTPUT_WIDTH*(read_wcount_d+1));
-        fifo_last   <= early_last;
-        fifo_bcount <= early_bcount;
-        fifo_wr     <= early_wr;
-
-        -- Drive the byte-count indicator and last-word strobe.
-        -- Note: This is sync'd to read_addr, which is one cycle early.
-        early_wr := bool2bit(read_bcount /= 0) and not fifo_hfull;
-        if (read_bcount > OUTPUT_BYTES) then
-            early_last   := '0';     -- Normal word
-            early_bcount := OUTPUT_BYTES-1;
-        elsif (read_bcount > 0) then
-            early_last   := '1';     -- Final word
-            early_bcount := to_integer(read_bcount-1);
-        else
-            early_last   := '0';     -- Idle
-            early_bcount := 0;
-        end if;
-        read_wcount_d <= read_wcount;
-
-        -- Update the per-packet byte counter and metadata.
+        -- Hold the "busy" flag for the duration of each frame.
         if (reset_o = '1') then
-            -- Global reset.
-            read_bcount <= (others => '0');
-            read_meta   <= (others => '0');
-        elsif (pkt_fifo_rd = '1') then
-            -- Start of new packet.
-            read_bcount <= pkt_fifo_len;
-            read_meta   <= pkt_fifo_meta;
-        elsif (fifo_hfull = '0') then
-            -- Countdown to zero as we read each word.
-            if (read_bcount > OUTPUT_BYTES) then
-                read_bcount <= read_bcount - OUTPUT_BYTES;
-            else
-                read_bcount <= (others => '0');
-            end if;
+            rd_busy <= '0'; -- FIFO reset
+        elsif (rd_start = '1') then
+            rd_busy <= '1'; -- Start of new frame
+        elsif (rd_final = '1') then
+            rd_busy <= '0'; -- End of frame, no more in queue
         end if;
 
-        -- Read packet FIFO once data is available and current packet is
-        -- done or about to finish.  One-cycle lag OK, avoid double-reads.
-        -- Note: Pause flag delays start of next packet, no effect mid-packet.
-        if (pkt_fifo_valid = '1' and read_bcount <= OUTPUT_BYTES) then
-            pkt_fifo_rd <= not (pkt_fifo_rd or fifo_hfull or xrd_pause);
-        else
-            pkt_fifo_rd <= '0';
-        end if;
+        -- Every time we read, write the result to FIFO on next cycle.
+        fifo_wr <= rd_enable;
 
-        -- Increment read address and other counters.
+        -- Increment address each time we read from DPRAM.
         if (reset_o = '1') then
-            -- Global reset.
-            read_addr   <= 0;
-            read_wcount <= 0;
-            read_wlen   := 0;
-            xrd_nwords  <= 0;
-            xrd_toggle  <= '0';
-        elsif (read_bcount = 0 or fifo_hfull = '1') then
-            -- Idle / waiting for output FIFO.
-            null;
-        elsif (read_bcount <= OUTPUT_BYTES) then
-            -- Last word in packet, signal source and get ready for next.
-            read_addr   <= addr_incr(read_addr);    -- Move to start of next packet
-            xrd_nwords  <= read_wlen + 1;           -- Free memory, including current word
-            xrd_toggle  <= not xrd_toggle;
-            read_wcount <= 0;
-            read_wlen   := 0;
-        else
-            -- Transfer next word in packet.
-            if (read_wcount /= OUTPUT_RATIO-1) then
-                read_wcount <= read_wcount + 1;
-            else
-                read_wcount <= 0;
-                read_addr   <= addr_incr(read_addr);
-                read_wlen   := read_wlen + 1;
-            end if;
+            rd_addr <= 0;
+        elsif (rd_enable = '1') then
+            rd_addr <= addr_incr(rd_addr);
         end if;
 
-        -- Secondary buffer for metadata word is latched at packet boundary.
-        if ((out_valid_i = '0') or
-            (out_valid_i = '1' and out_ready = '1' and out_last_i = '1')) then
-            out_meta_i <= read_meta;
+        -- Every N words, let the input controller reuse the freed memory.
+        -- (Using fixed-size blocks greatly simplifies clock-crossing logic.)
+        if (reset_o = '1') then
+            free_count   := NFREE_FIXED - 1;    -- FIFO reset
+        elsif (fifo_wr = '1' and free_count > 0) then
+            free_count   := free_count - 1;     -- Keep counting...
+        elsif (fifo_wr = '1') then
+            free_count   := NFREE_FIXED - 1;    -- Rollover event
+            free_block_t <= not free_block_t;
         end if;
     end if;
 end process;
 
--- Another small FIFO handles output flow control.
--- (Otherwise, we would have a few cycles of latency.)
-fifo_bvec   <= i2s(fifo_bcount, BCOUNT_WIDTH);
-
-u_out_fifo : entity work.fifo_smol
+-- Output flow-control and word-size conversion.
+u_out_fifo : entity work.fifo_smol_resize
     generic map(
-    IO_WIDTH    => OUTPUT_WIDTH,
-    META_WIDTH  => BCOUNT_WIDTH,
-    DEPTH_LOG2  => 4)   -- FIFO depth = 2^N
+    IN_BYTES    => FIFO_BYTES,
+    OUT_BYTES   => OUTPUT_BYTES)
     port map(
-    in_data     => fifo_data,
-    in_meta     => fifo_bvec,
-    in_last     => fifo_last,
+    in_data     => rd_data(FIFO_DWIDTH-1 downto 0),
+    in_nlast    => rd_nlast_i,
     in_write    => fifo_wr,
     out_data    => out_data,
-    out_meta    => out_bvec,
+    out_nlast   => out_nlast,
     out_last    => out_last_i,
     out_valid   => out_valid_i,
     out_read    => out_ready,
-    fifo_hfull  => fifo_hfull,
-    reset_p     => reset_o,
-    clk         => out_clk);
+    fifo_hempty => fifo_hempty,
+    clk         => out_clk,
+    reset_p     => reset_o);
 
-out_bcount      <= get_bcount(out_bvec);
-out_pkt_meta    <= out_meta_i;
+-- Separate FIFO for packet metadata, if enabled.
+gen_out_meta : if META_WIDTH > 0 generate
+    u_out_meta : entity work.fifo_smol_sync
+        generic map(
+        IO_WIDTH    => META_WIDTH)
+        port map(
+        in_data     => pkt_meta,
+        in_write    => rd_start,
+        out_data    => out_pkt_meta,
+        out_valid   => open,
+        out_read    => out_pkt_rd,
+        clk         => out_clk,
+        reset_p     => reset_o);
+end generate;
+
+-- Drive final outputs.
 out_last        <= out_last_i;
 out_valid       <= out_valid_i;
+out_pkt_rd      <= out_valid_i and out_ready and out_last_i;
+out_reset       <= reset_o;
 
 end fifo_packet;

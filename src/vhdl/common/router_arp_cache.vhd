@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -54,7 +54,7 @@ use     work.eth_frame_common.all;
 
 entity router_arp_cache is
     generic (
-    TABLE_SIZE      : integer := 32);
+    TABLE_SIZE      : positive := 32);
     port (
     -- Query: Submit an IP address for search.
     query_first     : in  std_logic;    -- First-byte strobe
@@ -86,25 +86,32 @@ end router_arp_cache;
 
 architecture router_arp_cache of router_arp_cache is
 
--- Round address size up to next power of two.
--- (16 bytes per table entry --> +4 to address width.)
-constant TABLE_IDX_WIDTH : integer := log2_ceil(TABLE_SIZE) + 4;
+-- Each metadata table entry is allocated 10 consecutive bytes.
+-- Zero-padding this to 16 bytes per entry simplifies address calculations.
+constant TABLE_META_REQ     : integer := 10;    -- Requested minimum size
+constant TABLE_META_SHIFT   : integer := log2_ceil(TABLE_META_REQ);
+constant TABLE_META_BYTES   : integer := 2**TABLE_META_SHIFT;
+constant META_OFFSET_IP     : integer := 0;     -- Bytes 0-3 = IP address
+constant META_OFFSET_MAC    : integer := 4;     -- Bytes 4-9 = MAC address
 
+-- Calculate the size of address word required for metadata table.
+constant TABLE_IDX_WIDTH : integer := log2_ceil(TABLE_SIZE) + TABLE_META_SHIFT;
+
+-- IP-address CAM is a series of four 8-bit tables = 1024 words total.
+constant CAM_TABLE_SIZE : integer := 4 * 256;
+
+-- Define convenience types:
 subtype cam_ridx is integer range 0 to 3;
 subtype cam_addr is unsigned(9 downto 0);
 subtype cam_word is std_logic_vector(TABLE_SIZE-1 downto 0);
 subtype table_addr is unsigned(TABLE_IDX_WIDTH-1 downto 0);
 
--- Priority encoder: Convert one-hot mask to index.
-function one_hot_decode(x : cam_word) return table_addr is
-    variable tmp : table_addr := (others => '0');
+-- Wrapper for the standard one-hot-decode function, converts
+-- one-hot table-index to the address of the first metadata byte.
+function one_hot_decode2(x : cam_word) return table_addr is
+    variable tmp : table_addr := one_hot_decode(x, TABLE_IDX_WIDTH);
 begin
-    for n in x'range loop
-        if (x(n) = '1') then
-            tmp := tmp or to_unsigned(16*n, TABLE_IDX_WIDTH);
-        end if;
-    end loop;
-    return tmp;
+    return shift_left(tmp, TABLE_META_SHIFT);
 end function;
 
 -- Create CAM-lookup address from value of the Nth IPv4 address byte.
@@ -175,7 +182,7 @@ update_ready    <= bool2bit(0 < write_state and write_state < 11);
 query_ridx  <= query_state when (query_state < 4) else 0;
 
 p_cam_ram : process(clk)
-    type cam_array is array(0 to 1023) of cam_word;
+    type cam_array is array(0 to CAM_TABLE_SIZE-1) of cam_word;
     variable dp_ram : cam_array := (others => (others => '0'));
 begin
     if rising_edge(clk) then
@@ -192,15 +199,10 @@ begin
 end process;
 
 -- Inferred dual-port RAM for the address table.
--- Each table entry is allocated 16 consecutive bytes:
---  * 4-byte IPv4 address (0-3)
---  * 6-byte MAC address (4-9)
---  * 6-byte Reserved (10-15)
--- (The padding simplifies table-address calculation and leaves room for
---  LRU and timeout metadata, if we decide to add those features later.)
 -- Note: Read-before-write is used to simplify the eviction process.
 p_tbl_ram : process(clk)
-    type tbl_array is array(0 to 16*TABLE_SIZE-1) of byte_t;
+    constant TABLE_BYTES : integer := TABLE_SIZE * TABLE_META_BYTES;
+    type tbl_array is array(0 to TABLE_BYTES-1) of byte_t;
     variable dp_ram : tbl_array := (others => (others => '0'));
 begin
     if rising_edge(clk) then
@@ -255,10 +257,11 @@ begin
         end if;
 
         -- Calculate the table index as soon as the CAM mask is ready.
+        -- (i.e., Ready to start reading from start of MAC address.)
         if (query_state = 5) then
             -- Get ready to read first byte of MAC address...
             query_tfound <= or_reduce(query_mask);
-            query_taddr  <= one_hot_decode(query_mask) + 4;
+            query_taddr  <= one_hot_decode2(query_mask) + META_OFFSET_MAC;
         elsif (query_state > 5) then
             -- Increment address after each byte.
             query_taddr  <= query_taddr + 1;
@@ -320,7 +323,7 @@ begin
             null;
         elsif (write_state = 0) then
             -- Wait until we've erased the entire CAM table.
-            if (camwr_addr = 1023) then
+            if (camwr_addr = CAM_TABLE_SIZE-1) then
                 write_state <= 1;
             end if;
         elsif (write_state = 1) then
@@ -410,11 +413,12 @@ begin
         -- Update the table address and match/no-match flags.
         if (write_state = 7) then
             -- Calculate the table index as soon as the CAM mask is ready.
+            -- (i.e., Get ready to start writing from start of entry.)
             if (or_reduce(write_mask) = '1') then
                 -- Match found, update the corresponding address.
                 write_tfound <= '1';
                 write_tevict <= '0';
-                write_taddr  <= one_hot_decode(write_mask);
+                write_taddr  <= one_hot_decode2(write_mask);
             else
                 -- No match, create a new entry or evict/overwrite.
                 write_tfound <= '0';

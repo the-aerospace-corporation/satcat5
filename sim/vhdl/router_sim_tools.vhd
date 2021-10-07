@@ -36,7 +36,7 @@ package router_sim_tools is
     shared variable rs_seed2 : positive := 761078;
 
     -- Random integer from [0..N)
-    impure function rand_int(imax : integer) return integer;
+    impure function rand_int(imax : positive) return natural;
 
     -- Random bit, with optional weighting
     impure function rand_bit(prob1 : real := 0.5) return std_logic;
@@ -230,7 +230,7 @@ end package;
 ---------------------------------------------------------------------
 
 package body router_sim_tools is
-    impure function rand_int(imax : integer) return integer is
+    impure function rand_int(imax : positive) return natural is
         variable rand : real;
     begin
         uniform(rs_seed1, rs_seed2, rand);
@@ -482,9 +482,9 @@ package body router_sim_tools is
             x"000108000604" & op & sha & spa & tha & tpa;
     begin
         if (op = ARP_REQUEST and fcs) then
-            return make_eth_fcs(MAC_BROADCAST, sha, ETYPE_ARP, pkt);
+            return make_eth_fcs(MAC_ADDR_BROADCAST, sha, ETYPE_ARP, pkt);
         elsif (op = ARP_REQUEST and not fcs) then
-            return make_eth_pkt(MAC_BROADCAST, sha, ETYPE_ARP, pkt);
+            return make_eth_pkt(MAC_ADDR_BROADCAST, sha, ETYPE_ARP, pkt);
         elsif (op = ARP_REPLY and fcs) then
             return make_eth_fcs(tha, sha, ETYPE_ARP, pkt);
         elsif (op = ARP_REPLY and not fcs) then
@@ -666,7 +666,7 @@ begin
         -- How much padding should we add?
         bcount := rand_int(8);
         -- Send a valid ARP request:
-        send_vec(MAC_BROADCAST, '0');
+        send_vec(MAC_ADDR_BROADCAST, '0');
         send_vec(cmd_sha, '0');
         send_vec(ARP_QUERY_HDR, '0');
         send_vec(cmd_sha, '0');
@@ -677,7 +677,7 @@ begin
         -- How much padding should we add?
         bcount := rand_int(8);
         -- Send a valid ARP reply:
-        send_vec(MAC_BROADCAST, '0');
+        send_vec(MAC_ADDR_BROADCAST, '0');
         send_vec(cmd_sha, '0');
         send_vec(ARP_REPLY_HDR, '0');
         send_vec(cmd_sha, '0');

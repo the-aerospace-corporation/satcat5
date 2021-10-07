@@ -52,8 +52,8 @@ signal reset_p  : std_logic := '1';
 
 -- Tx and Rx data streams.
 signal rx_data      : port_rx_m2s;
-signal tx_data      : port_tx_m2s;
-signal tx_ctrl      : port_tx_s2m;
+signal tx_data      : port_tx_s2m;
+signal tx_ctrl      : port_tx_m2s;
 
 -- Test and reference counters.
 signal uut_rx_byte  : counter_t := (others => '0');
@@ -66,7 +66,7 @@ signal tot_tx_byte  : counter_t := (others => '0');
 signal tot_tx_frm   : counter_t := (others => '0');
 signal ref_rx_byte  : counter_t := (others => '0');
 signal ref_tx_byte  : counter_t := (others => '0');
-signal uut_status   : port_status_t;
+signal uut_status   : std_logic_vector(31 downto 0);
 signal ref_status   : port_status_t := (others => '0');
 
 -- Test control.
@@ -198,6 +198,7 @@ uut : entity work.port_statistics
     sent_frames => uut_tx_frm,
     status_clk  => clk_100,
     status_word => uut_status,
+    err_port    => PORT_ERROR_NONE, -- Not tested
     rx_data     => rx_data,
     tx_data     => tx_data,
     tx_ctrl     => tx_ctrl);
@@ -274,7 +275,9 @@ p_test : process
         assert (tot_tx_frm = test_frames)
             report "Tx frame mismatch: got " & u2str(tot_tx_frm)
                 & ", expected " & integer'image(test_frames) severity error;
-        assert (uut_status = ref_status)
+        assert (uut_status(31 downto 16) = i2s(1000, 16))
+            report "Status-rate mismatch." severity error;
+        assert (uut_status(7 downto 0) = ref_status)
             report "Status-word mismatch." severity error;
     end procedure;
 begin

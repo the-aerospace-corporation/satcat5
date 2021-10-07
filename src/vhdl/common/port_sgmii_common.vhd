@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -27,14 +27,19 @@
 -- Generally, this block is instantiated inside a platform-specific
 -- module that instantiates and controls the external interfaces.
 --
--- Note: 10/100 Mbps modes are not supported.
+-- Note: 10/100/1000 Mbps modes are all supported.  SGMII handles
+--       these modes through byte-repetition, which is detected
+--       and removed by the "eth_preamble_rx" block.  The same
+--       setting is then mirrored to any outgoing packets.
 --
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.common_functions.all;
+use     work.common_primitives.sync_buffer;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_sgmii_common is
     generic (
@@ -53,8 +58,8 @@ entity port_sgmii_common is
 
     -- Generic internal port interface.
     prx_data    : out port_rx_m2s;  -- Ingress data
-    ptx_data    : in  port_tx_m2s;  -- Egress data
-    ptx_ctrl    : out port_tx_s2m;  -- Egress control
+    ptx_data    : in  port_tx_s2m;  -- Egress data
+    ptx_ctrl    : out port_tx_m2s;  -- Egress control
     reset_p     : in  std_logic);   -- Reset / shutdown
 end port_sgmii_common;
 
@@ -84,6 +89,15 @@ signal rx_dec_err   : std_logic;
 signal rx_cfg_ack   : std_logic;
 signal rx_cfg_rcvd  : std_logic;
 signal rx_cfg_reg   : std_logic_vector(15 downto 0);
+signal rx_rep_rate  : byte_u;
+signal rx_rep_valid : std_logic;
+
+-- Rate detection
+signal rate_10      : std_logic := '0';
+signal rate_100     : std_logic := '0';
+signal rate_1000    : std_logic := '0';
+signal rate_error   : std_logic := '0';
+signal rate_word    : port_rate_t := get_rate_word(1000);
 
 -- Status reporting
 signal status_word  : port_status_t;
@@ -130,7 +144,8 @@ u_txamb : entity work.eth_preamble_tx
     tx_frmst    => tx_frmst,
     tx_cken     => tx_cken,
     tx_data     => ptx_data,
-    tx_ctrl     => ptx_ctrl);
+    tx_ctrl     => ptx_ctrl,
+    rep_rate    => rx_rep_rate);
 
 -- Transmit: 8b/10b encoder
 u_txenc : entity work.eth_enc8b10b
@@ -175,7 +190,7 @@ u_rxdec : entity work.eth_dec8b10b
 -- Receive: Preamble detection and removal
 u_rxamb : entity work.eth_preamble_rx
     generic map(
-    RATE_MBPS   => 1000)
+    REP_ENABLE  => true)
     port map(
     raw_clk     => rx_clk,
     raw_lock    => rx_dec_lock,
@@ -183,8 +198,41 @@ u_rxamb : entity work.eth_preamble_rx
     raw_data    => rx_dec_data,
     raw_dv      => rx_dec_dv,
     raw_err     => rx_dec_err,
+    rep_rate    => rx_rep_rate,
+    rep_valid   => rx_rep_valid,
+    rate_word   => rate_word,
+    aux_err     => rate_error,
     status      => status_word,
     rx_data     => prx_data);
+
+-- Rate detection
+p_rate : process(rx_clk)
+begin
+    if rising_edge(rx_clk) then
+        -- Set defaults, override as needed.
+        rate_10     <= '0';
+        rate_100    <= '0';
+        rate_1000   <= '0';
+        rate_error  <= '0';
+
+        -- Note: Each Tx/Rx byte repeated N+1 times.
+        if (rx_rep_valid = '0') then
+            rate_word   <= RATE_WORD_NULL;
+        elsif (rx_rep_rate = 0) then
+            rate_word   <= get_rate_word(1000);
+            rate_1000   <= '1'; -- 1x repeat = 1000 Mbps
+        elsif (rx_rep_rate = 9) then
+            rate_word   <= get_rate_word(100);
+            rate_100    <= '1'; -- 10x repeat = 100 Mbps
+        elsif (rx_rep_rate = 99) then
+            rate_word   <= get_rate_word(10);
+            rate_10     <= '1'; -- 100x repeat = 10 Mbps
+        else
+            rate_word   <= get_rate_word(10);
+            rate_error  <= '1'; -- Unexpected rate
+        end if;
+    end if;
+end process;
 
 -- Upstream status reporting.
 status_word <= (
@@ -193,7 +241,8 @@ status_word <= (
     2 => rx_dec_lock,
     3 => rx_cfg_rcvd,
     4 => rx_cfg_ack,
-    5 => tx_pkten,
-    others => '0');
+    5 => rate_1000,
+    6 => rate_100,
+    7 => rate_10);
 
 end port_sgmii_common;

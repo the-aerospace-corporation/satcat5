@@ -52,8 +52,9 @@ library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_toggle2pulse;
+use     work.eth_frame_common.all;
 use     work.router_common.all;
-use     work.synchronization.all;
 
 entity router_config_axi is
     generic (
@@ -62,8 +63,8 @@ entity router_config_axi is
     R_IP_ADDR       : ip_addr_t := x"C0A80101";     -- Default = 192.168.1.1
     R_SUB_ADDR      : ip_addr_t := x"C0A80100";     -- Default = 192.168.0.0
     R_SUB_MASK      : ip_addr_t := x"FFFFFF00";     -- Default = 255.255.255.0
-    R_NOIP_DMAC_EG  : mac_addr_t := MAC_BROADCAST;
-    R_NOIP_DMAC_IG  : mac_addr_t := MAC_BROADCAST;
+    R_NOIP_DMAC_EG  : mac_addr_t := MAC_ADDR_BROADCAST;
+    R_NOIP_DMAC_IG  : mac_addr_t := MAC_ADDR_BROADCAST;
     ADDR_WIDTH      : positive := 32;               -- AXI-Lite address width
     BASE_ADDR       : natural := 0);                -- Base address (see above)
     port (

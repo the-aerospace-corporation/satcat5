@@ -31,9 +31,9 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_toggle2pulse;
 use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity eth_pause_ctrl is
     generic (

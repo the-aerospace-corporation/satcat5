@@ -25,7 +25,7 @@
 -- commands using a word-at-a-time interface.  It is more complex than
 -- io_mdio_writer, but also more capable.
 --
--- All commands use a 10-bit control word.  From the MSB:
+-- All commands use a 12-bit control word.  From the MSB:
 --  * 2-bits operator ("01" = write, "10" = read)
 --  * 5-bits PHY address
 --  * 5-bits REG address
@@ -38,7 +38,7 @@ library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
-use     work.synchronization.all;
+use     work.common_primitives.all;
 
 entity io_mdio_readwrite is
     generic (
@@ -90,7 +90,7 @@ rd_data     <= rd_sreg;
 rd_rdy      <= rd_final;
 mdio_clk    <= phy_clk_o;
 
-u_iobuf : entity work.bidir_io
+u_iobuf : bidir_io
     generic map(EN_PULLUP => true)
     port map(
     io_pin  => mdio_data,

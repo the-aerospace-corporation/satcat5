@@ -202,7 +202,7 @@ p_test : process
         elsif (timeout = 0) then
             report "Missing ARP request." severity error;
         else
-            assert((arp_dst = MAC_BROADCAST)
+            assert((arp_dst = MAC_ADDR_BROADCAST)
                and (arp_src = ROUTER_MAC)
                and (arp_hdr = ARP_QUERY_HDR)
                and (arp_sha = ROUTER_MAC)

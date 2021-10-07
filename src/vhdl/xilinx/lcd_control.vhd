@@ -312,7 +312,7 @@ end process;
 
 -- Small FIFO for incoming data.
 fifo_wr <= strm_wr and fifo_accept;
-u_fifo : entity work.fifo_smol
+u_fifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,  -- Each word 8 bits
     DEPTH_LOG2  => 5)  -- Depth 2^5 = 32 bytes

@@ -95,19 +95,19 @@ out_last    <= dly_last;
 decode_err  <= bool2bit(err_dlyct > 0);
 
 p_decode : process(refclk)
+    constant DONT_CARE : byte_t := (others => '-');
 begin
     if rising_edge(refclk) then
         -- Set defaults for momentary strobes.
         dly_write   <= '0';
-        dly_last    <= '0';
         dec_error   <= '0';
 
         -- Emit decoded values on a one-byte delay, so LAST is aligned.
         if (in_write = '1') then
-            dly_data <= dec_value;  -- No reset required
+            dly_data <= dec_value;      -- No reset required
+            dly_last <= bool2bit(in_data = SLIP_FEND);
             if (reset_p = '0' and dec_state = DECODE_DATA) then
-                dly_write <= '1'; -- Data is valid
-                dly_last  <= bool2bit(in_data = SLIP_FEND);
+                dly_write <= '1';       -- Data is valid
             end if;
         end if;
 
@@ -120,7 +120,7 @@ begin
             elsif (in_data = SLIP_ESC_ESC) then
                 dec_value <= SLIP_ESC;  -- Escaped ESC
             else
-                dec_value <= (others => '0');
+                dec_value <= DONT_CARE;
                 dec_error <= '1';       -- Invalid escape
             end if;
         end if;

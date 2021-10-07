@@ -26,21 +26,22 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_pulse2pulse;
+use     work.common_primitives.sync_toggle2pulse;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_passthrough is
     generic (
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;          -- Allow runt frames? (Size < 64 bytes)
-    OBUF_KBYTES     : integer);         -- Output buffer size (kilobytes)
+    OBUF_KBYTES     : positive);        -- Output buffer size (kilobytes)
     port (
     -- Input from first port.
     port_rx_data    : in  port_rx_m2s;
 
     -- Output to second port.
-    port_tx_data    : out port_tx_m2s;
-    port_tx_ctrl    : in  port_tx_s2m;
+    port_tx_data    : out port_tx_s2m;
+    port_tx_ctrl    : in  port_tx_m2s;
 
     -- Error events are marked by toggling these bits.
     errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0));
@@ -129,7 +130,6 @@ u_fifo : entity work.fifo_packet
     in_overflow     => open,
     out_clk         => port_tx_ctrl.clk,
     out_data        => port_tx_data.data,
-    out_bcount      => open,
     out_last        => port_tx_data.last,
     out_valid       => port_tx_data.valid,
     out_ready       => port_tx_ctrl.ready,

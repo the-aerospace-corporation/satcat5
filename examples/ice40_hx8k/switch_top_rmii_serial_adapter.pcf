@@ -1,0 +1,70 @@
+##########################################################################
+## Copyright 2019,2021 The Aerospace Corporation
+##
+## This file is part of SatCat5.
+##
+## SatCat5 is free software: you can redistribute it and/or modify it under
+## the terms of the GNU Lesser General Public License as published by the
+## Free Software Foundation, either version 3 of the License, or (at your
+## option) any later version.
+##
+## SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+## ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+## FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+## License for more details.
+##
+## You should have received a copy of the GNU Lesser General Public License
+## along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+##########################################################################
+# ##############################################################################
+
+# iCEcube PCF
+
+# Version:            2012.09SP1.22498
+
+# File Generated:     Sep 14 2013 17:36:59
+
+# Family & Device:    iCE40HX8K
+
+# Package:            CT256
+
+# ##############################################################################
+
+set_io clk_12 J3
+set_io ext_reset_n P16
+
+set_io stat_led_g B5
+set_io stat_led_err B4
+set_io stat_led_lock A2
+
+set_io host_tx P15
+# set_io host_rx
+
+set_io uart_txd   C16
+set_io uart_rxd   D16
+set_io uart_rts_n E16
+set_io uart_cts_n D15
+
+# set_io mdio_clk  J14
+# set_io mdio_data K14
+
+set_io rmii_txd[0]  F16
+set_io rmii_txd[1]  J15
+set_io rmii_txen    G16
+set_io rmii_rxd[0]  K16
+set_io rmii_rxd[1]  M15
+# rxen is CRS of PHY
+set_io rmii_rxen    L16
+# ensure GB input
+set_io rmii_refclk  H16
+
+
+# LED reference
+# set_io LED1 B5
+# set_io LED2 B4
+# set_io LED3 A2
+# set_io LED4 A1
+# set_io LED5 C5
+# set_io LED6 C4
+# set_io LED7 B3
+# set_io LED8 C3

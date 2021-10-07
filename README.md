@@ -2,17 +2,32 @@
 
 ![SatCat5 Logo](doc/images/satcat5.svg)
 
-SatCat5 is FPGA software that implements a low-power, mixed-media Ethernet switch. It is functionally equivalent to commercially available, unmanaged Ethernet switches for home use, except that it also supports lower-speed connections to the same network using SPI or UART. These lower-rate data links, (commonly used in simple, low-cost, low-power microcontrollers) allow nearly any device to participate in the same local communication network, regardless of its capability level.
+SatCat5 is FPGA software that implements a low-power, mixed-media Ethernet switch.
+It also includes embedded software libraries to help microcontrollers interact with Ethernet networks.
 
-Like any Ethernet switch, this one has multiple ports; each port is a point-to-point link from the switch to a network device, which could be a PC, a microcontroller, or even another switch.  Power draw required for the switch itself is well under 1 watt.
+A SatCat5 switch is functionally equivalent to commercially available, unmanaged Ethernet switches for home use.
+However, it also supports lower-speed connections to the same network using I2C, SPI, or UART.
+These lower-rate data links, (commonly used in simple, low-cost, low-power microcontrollers)
+allow nearly any device to participate in the same local communication network, regardless of its capability level.
+
+Like any Ethernet switch, this one has multiple ports; each port is a point-to-point link from
+the switch to a network device, which could be a PC, a microcontroller, or even another switch.
+Power draw required for the switch itself is well under 1 watt.
 
 # Switch Capabilities
 
 ![Example network with microcontrollers and other nodes](doc/images/example_network.svg)
 
-A major goal of the SatCat5 project is to support a variety of endpoints, from simple microcontrollers to a full-fledged PC, all connected to the same Ethernet network.
+A major goal of the SatCat5 project is to support a variety of endpoints, from simple
+microcontrollers to a full-fledged PC, all connected to the same Ethernet network.
 
-A complete listing of supported interfaces is [available here](doc/INTERFACES.md). The list includes the usual 10/100/1000 Mbps "Media Independent Interfaces" (RMII, RGMII, SGMII) as well as media and physical-layer options that aren't usually used with Ethernet (SPI, UART).  The latter options are typically lower speed (1-10 Mbps), but use physical layer protocols that are more amenable to use with simple microcontrollers.  All interfaces transmit and receive standard Ethernet Frames.
+A complete listing of supported interfaces is [available here](doc/INTERFACES.md).
+The list includes the usual 10/100/1000 Mbps "Media Independent Interfaces"
+(RMII, RGMII, SGMII) as well as media and physical-layer options that aren't
+usually used with Ethernet (I2C, SPI, UART).
+The latter options are typically lower speed (1-10 Mbps), but use physical layer
+protocols that are more amenable to use with simple microcontrollers.
+All interfaces transmit and receive standard Ethernet Frames.
 
 Detailed version history is available in the [changelog](doc/CHANGELOG.md).
 
@@ -20,19 +35,38 @@ More information is available in the [Frequently Asked Questions](doc/FAQ.md).
 
 # What Is Provided
 
-This project is effectively a set of building blocks, ready to be used to build your own custom Ethernet switch. The switch can be optimized to your needs, tailored to your preferred platform, port count, interface types, etc.
+This project is effectively a set of building blocks, ready to be used to build and connect to your own custom Ethernet switch.
+The switch can be optimized to your needs, tailored to your preferred platform, port count, interface types, etc.
 
-However, we do include several reference designs that showcase many of the available features. The easiest way to get started is with the [Digilent Arty A7](https://store.digilentinc.com/arty-a7-artix-7-fpga-development-board-for-makers-and-hobbyists/), a low-cost FPGA development board. We've included a reference design that specifically targets this board. PMOD connector pinouts are chosen to be directly compatible with off-the-shelf USB-UART adapters.
+In addition, SatCat5 includes [software libraries](src/cpp/README.md) for:
 
-Other reference designs include the [prototype](doc/images/prototype.jpg) that we built to develop, test, and demonstrate the SatCat5 switch. It is intended to run on many off-the-shelf FPGA development boards, using an FMC port to attached to a [custom PCB](test/proto_pcb). The custom PCB includes Ethernet transceivers, PMOD connectors, and other I/O.
+* Sending and receiving Ethernet frames.
+* Sending and receiving ARP, ICMP, IP, and UDP messages.
+* Configuring a managed SatCat5 Ethernet switch.
+* Configuring various SatCat5 I/O peripherals (e.g., I2C, MDIO, SPI, or UART).
 
-The main expected users of this project are cubesat and smallsat developers.  By encouraging everyone to use this technology, we create a mutually-compatible ecosystem that will make it easier to develop new small-satellite payloads, and simultaneously make it easier to integrate those payloads into vehicles.
+In addition to these building blocks, we include several reference designs that showcase many of the available features.
+The easiest way to get started is with the [Digilent Arty A7](https://store.digilentinc.com/arty-a7-artix-7-fpga-development-board-for-makers-and-hobbyists/), a low-cost FPGA development board.
+We've included a reference design that specifically targets this board.
+PMOD connector pinouts are chosen to be directly compatible with off-the-shelf USB-UART adapters.
 
-However, we think the same technology might be useful to other embedded systems, including Internet-of-Things systems that want to integrate microcontrollers onto a full-featured LAN.
+Other reference designs include the [prototype](doc/images/prototype.jpg) that we built to develop, test, and demonstrate the SatCat5 switch.
+It is intended to run on many off-the-shelf FPGA development boards, using an FMC port to attached to a [custom PCB](test/proto_pcb).
+The custom PCB includes Ethernet transceivers, PMOD connectors, and other I/O.
+
+The main expected users of this project are cubesat and smallsat developers.
+By encouraging everyone to use this technology, we create a mutually-compatible ecosystem that will make it easier
+to develop new small-satellite payloads, and simultaneously make it easier to integrate those payloads into vehicles.
+For more information on SatCat5 and cubesats, refer to [our SmallSat 2020 publication](https://digitalcommons.usu.edu/smallsat/2020/all2020/174/).
+
+However, we think the same technology might be useful to other embedded systems,
+including Internet-of-Things systems that want to integrate microcontrollers onto a full-featured LAN.
 
 # Getting Started
 
-If you'd like to build the Arty example design, you'll need the [Vivado Design Suite](https://www.xilinx.com/products/design-tools/vivado.html). We've tested with version 2015.4, 2016.3, and 2019.1, but it should work as-is with most other versions as well. Once it's installed, simply run "make arty_35t" in the root folder. (Or follow the equivalent steps under Windows.)
+If you'd like to build the Arty example design, you'll need the [Vivado Design Suite](https://www.xilinx.com/products/design-tools/vivado.html).
+We've tested with version 2015.4, 2016.3, and 2019.1, but it should work as-is with most other versions as well.
+Once it's installed, simply run "make arty_35t" in the root folder. (Or follow the equivalent steps under Windows.)
 
 If you'd like to build your own design, create a new top-level VHDL file and add the following:
 
@@ -48,16 +82,20 @@ More information is available in the [Frequently Asked Questions](doc/FAQ.md).
 # Folder Structure
 
 * doc: Documentation and associated images.
-* project: Project files for building the design or running simulations
-  * icecube2_2017.8: Project files for building example designs in Lattice iCEcube2. (Tested with version 2017.8.)
-  * libero_12.3: Project files for building example designs in Microsemi Libero. (Tested with version 12.3.)
-  * modelsim_10.0a: Project files for running VHDL simulations in ModelSim. (Tested with version 10.0a.)
-  * vivado_2015.4: Project files for building or simulating the design on Xilinx FPGAs. (Tested with Vivado version 2015.4.)
-* sim: Simulation and verification of the VHDL design.
+* example: [Example designs](examples/README.md) for specific hardware platforms
+* project: Scripts and project files for specific vendor tools.
+  * libero: Building Microsemi designs in Libero. (Tested with version 12.3.)
+  * modelsim: Running VHDL simulations in ModelSim. (Tested with version 10.0a.)
+  * vivado: Packagine IP-cores, building, or simulating Xilinx designs in Vivado. (Tested with Vivado version 2019.1.)
+  * yosis: Building Lattice designs using Yosis.
+* sim: Simulation and verification of the design.
+  * cpp: Unit tests for the embedded software libraries.
   * matlab: MATLAB/Octave scripts used to generate certain lookup tables.
   * test: Test data for various unit-test simulations.
   * vhdl: VHDL unit tests for individual functional blocks.
 * src: Source code for the core SatCat5 design
+  * cpp: Embedded software libraries for connecting to and configuring an Ethernet network.
+  * python: Python libraries for connecting to raw-Ethernet and Ethernet-over-UART ports.
   * vhdl/common: VHDL implementation of most functional blocks.  (Common / all platforms)
   * vhdl/lattice: Platform-specific VHDL for the Lattice iCE40.
   * vhdl/microsemi: Platform-specific VHDL for the Microsemi Polarfire.
@@ -79,7 +117,7 @@ In accordance with SatCat5's LGPL license agreement, we grant a royalty-free lic
 
 # Copyright Notice
 
-Copyright 2019, 2020 The Aerospace Corporation
+Copyright 2019, 2020, 2021 The Aerospace Corporation
 
 This file is part of SatCat5.
 

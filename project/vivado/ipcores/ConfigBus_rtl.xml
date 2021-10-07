@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2021 The Aerospace Corporation
+
+This file is part of SatCat5.
+
+SatCat5 is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<spirit:abstractionDefinition xmlns:xilinx="http://www.xilinx.com" xmlns:spirit="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <spirit:vendor>aero.org</spirit:vendor>
+  <spirit:library>satcat5</spirit:library>
+  <spirit:name>ConfigBus_rtl</spirit:name>
+  <spirit:version>1.0</spirit:version>
+  <spirit:busType spirit:vendor="aero.org" spirit:library="satcat5" spirit:name="ConfigBus" spirit:version="1.0"/>
+  <spirit:ports>
+    <spirit:port>
+      <spirit:logicalName>clk</spirit:logicalName>
+      <spirit:description>ConfigBus clock</spirit:description>
+      <spirit:wire>
+        <spirit:qualifier>
+          <spirit:isClock>true</spirit:isClock>
+        </spirit:qualifier>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>sysaddr</spirit:logicalName>
+      <spirit:description>System address</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>12</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>optional</spirit:presence>
+          <spirit:width>12</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>devaddr</spirit:logicalName>
+      <spirit:description>Peripheral address</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>8</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>8</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>regaddr</spirit:logicalName>
+      <spirit:description>Register address</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>10</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>10</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>wdata</spirit:logicalName>
+      <spirit:description>Write data</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>32</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>32</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>wstrb</spirit:logicalName>
+      <spirit:description>Per-byte write enable</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>4</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>4</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>wrcmd</spirit:logicalName>
+      <spirit:description>Write command strobe</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>rdcmd</spirit:logicalName>
+      <spirit:description>Read command strobe</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>reset_p</spirit:logicalName>
+      <spirit:description>Interface reset</spirit:description>
+      <spirit:wire>
+        <spirit:qualifier>
+          <spirit:isReset>true</spirit:isReset>
+        </spirit:qualifier>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>rdata</spirit:logicalName>
+      <spirit:description>Read data</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>32</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>32</spirit:width>
+          <spirit:direction>out</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>rdack</spirit:logicalName>
+      <spirit:description>Read acknowledge</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>out</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>rderr</spirit:logicalName>
+      <spirit:description>Read error</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>out</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>irq</spirit:logicalName>
+      <spirit:description>Interrupt request</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>1</spirit:width>
+          <spirit:direction>out</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+  </spirit:ports>
+  <spirit:vendorExtensions>
+    <xilinx:abstractionDefinitionInfo>
+      <xilinx:displayName>ConfigBus</xilinx:displayName>
+    </xilinx:abstractionDefinitionInfo>
+  </spirit:vendorExtensions>
+</spirit:abstractionDefinition>

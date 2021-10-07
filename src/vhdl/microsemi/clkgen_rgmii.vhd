@@ -30,7 +30,6 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.std_logic_unsigned.all;
 use     work.common_functions.all;
-use     work.synchronization.all;
 
 entity clkgen_rgmii_microsemi is
     port (
@@ -50,7 +49,7 @@ signal s_clkbuf_125_00      : std_logic;
 signal s_clkbuf_125_90      : std_logic;
 signal s_clkbuf_200         : std_logic;
 signal ccc_locked           : std_logic;
-signal shdn_n				: std_logic;
+signal shdn_n               : std_logic;
 signal rstout               : std_logic := '1';
 
 component CLKINT
@@ -68,25 +67,25 @@ port (
     OUT2_FABCLK_0     : out std_logic;
     PLL_LOCK_0        : out std_logic);
 end component;
-    
+
 
 begin
 
 shdn_n <= not(shdn_p);
 
-u_ccc : PF_CCC_C1 
-	port map(
-	-- Inputs --
-	PLL_POWERDOWN_N_0 	=> shdn_n,
-	REF_CLK_0 			=> clkin_50,
-   
-	-- Outputs --
-	OUT0_FABCLK_0 		=> clkout_200,
-	OUT1_FABCLK_0 		=> clkout_125_00,
-	OUT2_FABCLK_0 		=> clkout_125_90,
-	PLL_LOCK_0 			=> ccc_locked
+u_ccc : PF_CCC_C1
+    port map(
+    -- Inputs --
+    PLL_POWERDOWN_N_0   => shdn_n,
+    REF_CLK_0           => clkin_50,
+
+    -- Outputs --
+    OUT0_FABCLK_0       => clkout_200,
+    OUT1_FABCLK_0       => clkout_125_00,
+    OUT2_FABCLK_0       => clkout_125_90,
+    PLL_LOCK_0          => ccc_locked
 );
-	
+
 -- Hold reset for a few cycles after CCC is locked.
 rstout_p <= rstout;
 

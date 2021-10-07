@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,10 +31,28 @@
 -- On reset, or after an idle period of a few seconds, it reverts to
 -- the auto-detecting mode.  Once any of the interfaces receives a
 -- SLIP idle character (0xC0), that mode is selected and locked-in.
--- The mode can also be set by external command, if desired.
+--
+-- By default, UART baud-rate and SPI mode are fixed at build-time.
+-- If enabled, an optional ConfigBus interface can be used to set a
+-- different configuration at runtime and optionally report status
+-- information.  (Connecting the read-reply interface is recommended,
+-- but not required for routine operation.)
+--
+-- If enabled, the ConfigBus interface uses three registers:
+--  REGADDR = 0: Port status (read-only)
+--      Bits 31-08: Reserved
+--      Bits 07-00: Read the 8-bit status word (i.e., rx_data.status)
+--  REGADDR = 1: Reference clock rate (read-only)
+--      Bits 31-00: Report reference clock rate, in Hz. (i.e., CLFREF_HZ)
+--  REGADDR = 2: UART baud-rate control (read-write)
+--      Bits 31-16: Reserved (zeros)
+--      Bits 15-00: Clock divider ratio = round(CLKREF_HZ / baud_hz)
+--  REGADDR = 3: SPI mode and glitch-filter control (read-write)
+--      Bits 31-08: Reserved (zeros)
+--      Bits 09-08: SPI mode (0 / 1 / 2 / 3)
+--      Bits 07-00: Glitch filter setting (see "io_spi_peripheral")
 --
 -- I/O is assigned as follows in each mode:
---
 --     Idx  Name         Pin 0       Pin 1       Pin 2       Pin 3
 --     N/A  Shutdown     Pullup*     Pullup*     Pullup*     Pullup*
 --     (0)  Auto         Pullup      Pullup      Pullup      Pullup
@@ -59,31 +77,36 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
 use     work.common_functions.all;
-use     work.eth_frame_common.all;  -- For byte_t
+use     work.common_primitives.all;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_serial_auto is
     generic (
+    -- Default SPI and UART parameters
     CLKREF_HZ   : positive;             -- Reference clock rate (Hz)
+    SPI_GDLY    : natural := 1;         -- SPI glitch-detection threshold
     SPI_MODE    : natural := 3;         -- SPI clock phase & polarity
-    UART_BAUD   : positive := 921600;   -- UART baud rate
+    UART_BAUD   : positive := 921600;   -- Default UART baud rate
+    -- Other I/O parameters
     PULLUP_EN   : boolean := true;      -- Enable FPGA pullups on ext_pads?
     FORCE_SHDN  : boolean := false;     -- In shutdown, drive ext_pads to zero?
-    START_TYPE  : natural := 0);        -- Port type on startup (0 = auto)
+    -- ConfigBus device address (optional)
+    DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
     -- External 4-wire interface.
     ext_pads    : inout std_logic_vector(3 downto 0);
 
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s;  -- Data from end user to switch core
-    tx_data     : in  port_tx_m2s;  -- Data from switch core to end user
-    tx_ctrl     : out port_tx_s2m;  -- Flow control for tx_data
+    tx_data     : in  port_tx_s2m;  -- Data from switch core to end user
+    tx_ctrl     : out port_tx_m2s;  -- Flow control for tx_data
 
-    -- Manual configuration interface (optional)
-    cfg_mode    : in  integer range 0 to 3 := 0;
-    cfg_write   : in  std_logic := '0';
+    -- Optional ConfigBus interface
+    cfg_cmd     : in  cfgbus_cmd := CFGBUS_CMD_NULL;
+    cfg_ack     : out cfgbus_ack;
 
     -- Clock and reset
     refclk      : in  std_logic;    -- Reference clock
@@ -92,12 +115,29 @@ end port_serial_auto;
 
 architecture port_serial_auto of port_serial_auto is
 
--- Define mode configuration codes.
-subtype mode_t is integer range 0 to 3;
-constant MODE_AUTO  : mode_t := 0;
-constant MODE_SPI   : mode_t := 1;
-constant MODE_UART1 : mode_t := 2;
-constant MODE_UART2 : mode_t := 3;
+-- Define internal mode-detection states.
+type mode_t is (
+    MODE_AUTO,
+    MODE_SPI,
+    MODE_UART1,
+    MODE_UART2);
+
+-- Default clock-divider ratios and other settings:
+constant UART_RATE_DEFAULT  : cfgbus_word :=
+    i2s(clocks_per_baud_uart(CLKREF_HZ, UART_BAUD), CFGBUS_WORD_SIZE);
+constant SPI_MODE_DEFAULT   : byte_t := i2s(SPI_MODE, 8);
+constant SPI_GDLY_DEFAULT   : byte_t := i2s(SPI_GDLY, 8);
+constant SPI_CFG_DEFAULT    : cfgbus_word :=
+    resize(SPI_MODE_DEFAULT & SPI_GDLY_DEFAULT, CFGBUS_WORD_SIZE);
+
+-- ConfigBus interface.
+signal cfg_acks     : cfgbus_ack_array(0 to 3);
+signal cfg_u_word   : cfgbus_word := UART_RATE_DEFAULT;
+signal cfg_u_rate   : unsigned(15 downto 0);
+signal cfg_s_word   : cfgbus_word := SPI_CFG_DEFAULT;
+signal cfg_s_mode   : integer range 0 to 3;
+signal cfg_s_gdly   : byte_u;
+signal status_word  : cfgbus_word;
 
 -- Top-level bidirectional pins.
 signal ext_din      : std_logic_vector(3 downto 0);
@@ -114,6 +154,7 @@ signal uart0_txd    : std_logic;
 signal uart1_rxd    : std_logic;
 signal uart2_rxd    : std_logic;
 signal uart0_rtsb   : std_logic;
+signal uart0_ctsb   : std_logic;
 signal uart1_ctsb   : std_logic;
 signal uart2_ctsb   : std_logic;
 
@@ -130,9 +171,8 @@ signal uart2_data   : byte_t;
 signal uart2_write  : std_logic;
 
 -- Mode detection state machine.
-signal det_mode     : mode_t := START_TYPE;
+signal det_mode     : mode_t := MODE_AUTO;
 signal est_rate     : port_rate_t := (others => '0');
-signal status_word  : port_status_t;
 signal lock_any     : std_logic := '0';
 signal lock_spi     : std_logic := '0';
 signal lock_uart1   : std_logic := '0';
@@ -153,7 +193,7 @@ begin
 -- Forward clock and reset signals.
 rx_data.clk     <= refclk;
 rx_data.rate    <= est_rate;
-rx_data.status  <= status_word;
+rx_data.status  <= status_word(7 downto 0);
 rx_data.reset_p <= codec_reset;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= codec_reset;
@@ -165,6 +205,7 @@ status_word <= (
     1 => lock_spi,
     2 => lock_uart1,
     3 => lock_uart2,
+    4 => uart0_ctsb,
     others => '0');
 
 -- Synchronize the external reset signal.
@@ -174,9 +215,61 @@ u_rsync : sync_reset
     out_reset_p => reset_sync,
     out_clk     => refclk);
 
+-- Optional ConfigBus interface.
+-- If disabled, each setting reduces to the designated constant.
+cfg_ack     <= cfgbus_merge(cfg_acks);
+cfg_u_rate  <= unsigned(cfg_u_word(15 downto 0));   -- UART_RATE_DEFAULT
+cfg_s_mode  <= u2i(cfg_s_word(9 downto 8));         -- SPI_MODE
+cfg_s_gdly  <= unsigned(cfg_s_word(7 downto 0));    -- SPI_GDLY
+
+u_cfg_reg0 : cfgbus_readonly_sync
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 0)   -- Reg0 = Status reporting
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(0),
+    sync_clk    => refclk,
+    sync_val    => status_word);
+
+u_cfg_reg1 : cfgbus_readonly
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 1)   -- Reg1 = Reference clock rate
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(1),
+    reg_val     => i2s(CLKREF_HZ, CFGBUS_WORD_SIZE));
+
+u_cfg_reg2 : cfgbus_register_sync
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 2,   -- Reg2 = UART control
+    WR_ATOMIC   => true,
+    WR_MASK     => cfgbus_mask_lsb(16),
+    RSTVAL      => UART_RATE_DEFAULT)
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(2),
+    sync_clk    => refclk,
+    sync_val    => cfg_u_word);
+
+u_cfg_reg3 : cfgbus_register_sync
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 3,   -- Reg3 = SPI control
+    WR_ATOMIC   => true,
+    WR_MASK     => cfgbus_mask_lsb(10),
+    RSTVAL      => SPI_CFG_DEFAULT)
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(3),
+    sync_clk    => refclk,
+    sync_val    => cfg_s_word);
+
 -- Instantiate each top-level bidirectional pin.
 gen_pads : for n in ext_pads'range generate
-    u_bidir : entity work.bidir_io
+    u_bidir : bidir_io
         generic map (EN_PULLUP => PULLUP_EN)
         port map(
         io_pin  => ext_pads(n),
@@ -229,10 +322,9 @@ u_ctsb2 : sync_buffer
     out_clk  => refclk);
 
 -- Raw interfaces (one SPI, one Tx UART, two Rx UART)
-u_spi : entity work.io_spi_clkin
+u_spi : entity work.io_spi_peripheral
     generic map (
-    IDLE_BYTE   => SLIP_FEND,
-    SPI_MODE    => SPI_MODE)
+    IDLE_BYTE   => SLIP_FEND)
     port map (
     spi_csb     => spi_csb,
     spi_sclk    => spi_sclk,
@@ -244,41 +336,39 @@ u_spi : entity work.io_spi_clkin
     tx_ready    => spi_tx_ready,
     rx_data     => spi_rx_data,
     rx_write    => spi_rx_write,
+    cfg_mode    => cfg_s_mode,
+    cfg_gdly    => cfg_s_gdly,
     refclk      => refclk);
 
 u_uart0 : entity work.io_uart_tx
-    generic map (
-    CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => UART_BAUD)
     port map (
     uart_txd    => uart0_txd,
     tx_data     => enc_data,
     tx_valid    => uart0_valid,
     tx_ready    => uart0_ready,
+    rate_div    => cfg_u_rate,
     refclk      => refclk,
     reset_p     => reset_sync);
 
 u_uart1 : entity work.io_uart_rx
     generic map (
-    CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => UART_BAUD,
     DEBUG_WARN  => false)
     port map (
     uart_rxd    => uart1_rxd,
     rx_data     => uart1_data,
     rx_write    => uart1_write,
+    rate_div    => cfg_u_rate,
     refclk      => refclk,
     reset_p     => reset_sync);
 
 u_uart2 : entity work.io_uart_rx
     generic map (
-    CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => UART_BAUD,
     DEBUG_WARN  => false)
     port map (
     uart_rxd    => uart2_rxd,
     rx_data     => uart2_data,
     rx_write    => uart2_write,
+    rate_div    => cfg_u_rate,
     refclk      => refclk,
     reset_p     => reset_sync);
 
@@ -292,12 +382,9 @@ p_detect : process(refclk)
 begin
     if rising_edge(refclk) then
         -- Update the active mode.
-        if (cfg_write = '1') then
-            -- Direct command (overrides watchdog)
-            det_mode <= cfg_mode;
-        elsif (reset_sync = '1' or wdog_rst_p = '1') then
+        if (reset_sync = '1' or wdog_rst_p = '1') then
             -- Global or watchdog reset
-            det_mode <= START_TYPE;
+            det_mode <= MODE_AUTO;
         elsif (det_mode = MODE_AUTO) then
             -- Autodetect mode: Accept the first SLIP frame token.
             if (lock_spi = '1') then
@@ -341,11 +428,11 @@ end process;
 -- (Block any outgoing data until we determine port type,
 --  and respect flow-control flags for outgoing UART data.)
 spi_tx_valid <= enc_valid and bool2bit(det_mode = MODE_SPI);
-uart0_valid  <= (enc_valid and not uart1_ctsb) when (det_mode = MODE_UART1)
-           else (enc_valid and not uart2_ctsb) when (det_mode = MODE_UART2) else '0';
-enc_ready    <= (uart0_ready and not uart1_ctsb) when (det_mode = MODE_UART1)
-           else (uart0_ready and not uart2_ctsb) when (det_mode = MODE_UART2)
-           else spi_tx_ready when (det_mode = MODE_SPI) else '1';
+uart0_ctsb   <= uart1_ctsb when (det_mode = MODE_UART1)
+           else uart2_ctsb when (det_mode = MODE_UART2) else '1';
+uart0_valid  <= enc_valid and not uart0_ctsb;
+enc_ready    <= spi_tx_ready when (det_mode = MODE_SPI)
+           else (uart0_ready and not uart0_ctsb);
 
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)

@@ -29,7 +29,7 @@ use     ieee.numeric_std.all;
 
 entity scrub_generic is
     port (
-    clk_raw : in  std_logic;        -- SEM/ICAP clock (See notes above)
+    clk_raw : in  std_logic;        -- System clock
     err_out : out std_logic);       -- Strobe on scrub error
 end scrub_generic;
 

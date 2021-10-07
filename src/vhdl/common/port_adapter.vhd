@@ -34,20 +34,19 @@ entity port_adapter is
     port (
     -- Switch-facing interface.
     sw_rx_data  : out port_rx_m2s;
-    sw_tx_data  : in  port_tx_m2s;
-    sw_tx_ctrl  : out port_tx_s2m;
+    sw_tx_data  : in  port_tx_s2m;
+    sw_tx_ctrl  : out port_tx_m2s;
 
     -- MAC-facing interface.
     mac_rx_data : in  port_rx_m2s;
-    mac_tx_data : out port_tx_m2s;
-    mac_tx_ctrl : in  port_tx_s2m);
+    mac_tx_data : out port_tx_s2m;
+    mac_tx_ctrl : in  port_tx_m2s);
 end port_adapter;
 
 architecture port_adapter of port_adapter is
 
-signal adjust_data      : port_tx_m2s;
+signal adjust_data      : axi_stream8;
 signal flow_fifo_full   : std_logic;
-signal flow_fifo_ready  : std_logic;
 signal flow_fifo_write  : std_logic;
 
 begin
@@ -77,7 +76,7 @@ u_adj : entity work.eth_frame_adjust
     out_data    => adjust_data.data,
     out_last    => adjust_data.last,
     out_valid   => adjust_data.valid,
-    out_ready   => flow_fifo_ready,
+    out_ready   => adjust_data.ready,
     clk         => mac_tx_ctrl.clk,
     reset_p     => mac_tx_ctrl.reset_p);
 
@@ -85,10 +84,10 @@ u_adj : entity work.eth_frame_adjust
 -- asserting ready; eth_frame_adjust can't handle this condition.
 -- To avoid possibility of deadlock, add a small FIFO here.
 -- (No extra cost for making this FIFO up to 16 words.)
-flow_fifo_ready <= not flow_fifo_full;
-flow_fifo_write <= adjust_data.valid and flow_fifo_ready;
+adjust_data.ready   <= not flow_fifo_full;
+flow_fifo_write     <= adjust_data.valid and adjust_data.ready;
 
-u_flow_fifo : entity work.fifo_smol
+u_flow_fifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 4)

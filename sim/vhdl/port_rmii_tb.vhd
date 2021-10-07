@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -44,8 +44,8 @@ signal reset_p              : std_logic := '1';
 
 -- Source and sink streams.
 signal rxdata_a, rxdata_b   : port_rx_m2s;
-signal txdata_a, txdata_b   : port_tx_m2s;
-signal txctrl_a, txctrl_b   : port_tx_s2m;
+signal txdata_a, txdata_b   : port_tx_s2m;
+signal txctrl_a, txctrl_b   : port_tx_m2s;
 signal rxdone_a, rxdone_b   : std_logic;
 signal rxcount              : integer := 0;
 
@@ -54,7 +54,8 @@ signal a2b_clk              : std_logic;
 signal a2b_data, b2a_data   : std_logic_vector(1 downto 0);
 signal a2b_en,   b2a_en     : std_logic;
 signal a2b_er,   b2a_er     : std_logic;
-signal mode_fast            : std_logic := '0';
+signal mode_slow            : std_logic := '0';
+signal run_b2a              : std_logic := '0';
 
 begin
 
@@ -62,6 +63,8 @@ begin
 clk_50 <= not clk_50 after 10 ns;
 
 -- Streaming source and sink for each link:
+-- Note: Node A always starts transmission first, to set the rate used for
+--       both nodes for the remainder of the test. (i.e., B auto-detects.)
 u_src_a2b : entity work.port_test_common
     generic map(
     DSEED1  => 1234,
@@ -80,11 +83,13 @@ u_src_b2a : entity work.port_test_common
     port map(
     txdata  => txdata_b,
     txctrl  => txctrl_b,
+    txrun   => run_b2a,
     rxdata  => rxdata_a,
     rxdone  => rxdone_a,
     rxcount => rxcount);
 
 -- Two units under test, connected back-to-back.
+-- Note: Only Node A overrides transmit rate ("force_10m").
 uut_a : entity work.port_rmii
     generic map(MODE_CLKOUT => true)
     port map(
@@ -99,8 +104,8 @@ uut_a : entity work.port_rmii
     rx_data     => rxdata_a,
     tx_data     => txdata_a,
     tx_ctrl     => txctrl_a,
+    force_10m   => mode_slow,
     lock_refclk => clk_50,
-    mode_fast   => mode_fast,
     reset_p     => reset_p);
 
 uut_b : entity work.port_rmii
@@ -118,7 +123,6 @@ uut_b : entity work.port_rmii
     tx_data     => txdata_b,
     tx_ctrl     => txctrl_b,
     lock_refclk => clk_50,
-    mode_fast   => mode_fast,
     reset_p     => reset_p);
 
 -- Inspect raw waveforms to verify various constraints.
@@ -129,7 +133,7 @@ p_inspect : process(a2b_clk)
 begin
     if falling_edge(a2b_clk) then
         -- Check if this is 10 Mbps or 100 Mbps mode.
-        if (mode_fast = '1') then
+        if (mode_slow = '0') then
             clk_repeat := 1;
         else
             clk_repeat := 10;
@@ -164,23 +168,25 @@ begin
 end process;
 
 p_done : process
+    procedure run(mode : std_logic; count : positive) is
+    begin
+        -- Set test conditions and pause B2A transmission.
+        reset_p     <= '1';
+        mode_slow   <= mode;
+        run_b2a     <= '0';
+        rxcount     <= count;
+        wait for 1 us;
+        -- Wait for end of first A2B frame.
+        reset_p     <= '0';
+        wait until falling_edge(a2b_en);
+        -- Unlock B2A transmission and wait for test completion.
+        run_b2a     <= '1';
+        wait until (rxdone_a = '1' and rxdone_b = '1');
+    end procedure;
 begin
-    reset_p     <= '1';
-    mode_fast   <= '0';
-    rxcount     <= 30;
-    wait for 1 us;
-    reset_p     <= '0';
-    wait until (rxdone_a = '1' and rxdone_b = '1');
-    report "Finished 10 Mbps test.";
-
-    reset_p     <= '1';
-    mode_fast   <= '1';
-    rxcount     <= 100;
-    wait for 1 us;
-    reset_p     <= '0';
-    wait until (rxdone_a = '1' and rxdone_b = '1');
-    report "Finished 100 Mbps test.";
-
+    run('1', 30);   report "Finished 10 Mbps test.";
+    run('0', 100);  report "Finished 100 Mbps test.";
+    report "All tests completed!";
     wait;
 end process;
 

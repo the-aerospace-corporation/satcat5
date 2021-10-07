@@ -56,8 +56,8 @@ signal pkt_sent         : count_array := (others => 0);
 
 -- Unit under test.
 signal ports_rx_data    : array_rx_m2s(PORT_COUNT-1 downto 0);
-signal ports_tx_data    : array_tx_m2s(PORT_COUNT-1 downto 0);
-signal ports_tx_ctrl    : array_tx_s2m(PORT_COUNT-1 downto 0);
+signal ports_tx_data    : array_tx_s2m(PORT_COUNT-1 downto 0);
+signal ports_tx_ctrl    : array_tx_m2s(PORT_COUNT-1 downto 0);
 
 -- Overall test control.
 signal test_phase       : integer := 0;

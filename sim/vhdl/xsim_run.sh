@@ -1,6 +1,6 @@
 #!/bin/bash -f
 # ------------------------------------------------------------------------
-# Copyright 2019, 2020 The Aerospace Corporation
+# Copyright 2019, 2020, 2021 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -43,7 +43,9 @@ compile_all()
     # Find source files in each folder.
     # Use "grep -v" to ignore specific filenames.
     find_vhdl "../../src/vhdl/common" | add_to_prj
-    find_vhdl "../../src/vhdl/xilinx" | egrep -v "(converter_zed_top|port_sgmii_gtx|scrub_xilinx)" | add_to_prj
+    find_vhdl "../../src/vhdl/xilinx" | \
+        egrep -v "(converter_zed_top|port_sgmii_gtx|scrub_xilinx|ultrascale_)" | \
+        add_to_prj
     find_vhdl "../../sim/vhdl" | add_to_prj
 
     # Compile design files
@@ -97,34 +99,49 @@ simulate_one()
 simulate_all()
 {
     # Run each unit test for the designated time:
+    simulate_one cfgbus_common_tb 1ms
+    simulate_one cfgbus_host_axi_tb 2ms
+    simulate_one cfgbus_host_eth_tb 1ms
+    simulate_one cfgbus_host_uart_tb 10ms
+    simulate_one cfgbus_i2c_tb 2ms
+    simulate_one cfgbus_port_stats_tb 3ms
+    simulate_one cfgbus_spi_tb 1ms
+    simulate_one cfgbus_uart_tb 2ms
     simulate_one config_file2rom_tb 1us TEST_DATA_FOLDER $test_data_folder
     simulate_one config_mdio_rom_tb 30ms
-    simulate_one config_port_eth_tb 4ms
     simulate_one config_port_test_tb 4ms
-    simulate_one config_port_uart_tb 16ms
     simulate_one config_send_status_tb 1ms
-    simulate_one config_stats_tb 3ms
     simulate_one eth_all8b10b_tb 2ms
     simulate_one eth_frame_adjust_tb 8ms
     simulate_one eth_frame_check_tb 10ms
     simulate_one eth_pause_ctrl_tb 3ms
-    simulate_one fifo_bram_tb 10ms
+    simulate_one eth_preamble_tb 2ms
+    simulate_one fifo_large_sync_tb 10ms
     simulate_one fifo_packet_tb 10ms
-    simulate_one fifo_smol_tb 10ms
+    simulate_one fifo_priority_tb 7ms
+    simulate_one fifo_smol_async_tb 5ms
+    simulate_one fifo_smol_resize_tb 1ms
+    simulate_one fifo_smol_sync_tb 10ms
     simulate_one io_error_reporting_tb 10ms
+    simulate_one io_i2c_tb 1ms
     simulate_one io_mdio_readwrite_tb 3ms
     simulate_one io_spi_tb 1ms
     simulate_one lcd_control_tb 250ms
-    simulate_one mac_lookup_tb 4ms
+    simulate_one mac_counter_tb 1ms
+    simulate_one mac_igmp_simple_tb 4ms
+    simulate_one mac_lookup_tb 2ms
+    simulate_one mac_priority_tb 1ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_inject_tb 15ms
     simulate_one packet_round_robin_tb 20ms
-    simulate_one port_axi_mailbox_tb 6ms
     simulate_one port_inline_status_tb 4ms
-    simulate_one port_rgmii_tb 1ms
-    simulate_one port_rmii_tb 29ms
+    simulate_one port_mailbox_tb 2ms
+    simulate_one port_mailmap_tb 3ms
+    simulate_one port_rgmii_tb 11ms
+    simulate_one port_rmii_tb 30ms
     simulate_one port_sgmii_common_tb 1ms
     simulate_one port_serial_auto_tb 200ms
+    simulate_one port_serial_i2c_tb 400ms
     simulate_one port_serial_spi_tb 85ms
     simulate_one port_serial_uart_4wire_tb 700ms
     simulate_one port_serial_uart_2wire_tb 470ms
@@ -143,10 +160,16 @@ simulate_all()
     simulate_one slip_decoder_tb 20us
     simulate_one slip_encoder_tb 4ms
     simulate_one switch_core_tb 12ms
+    simulate_one tcam_cache_tb 2ms
+    simulate_one tcam_core_tb 1ms
+    simulate_one tcam_maxlen_tb 7ms
 }
 
+# Abort immediately on any non-zero return code.
+set -e
+
 # Initial setup (default version = 2015.4)
-VIVADO_VERSION?=2015.4
+VIVADO_VERSION=${VIVADO_VERSION-2015.4}
 start_time=$(date +%T.%N)
 test_data_folder=$(realpath ../data)
 source /opt/Xilinx/Vivado/${VIVADO_VERSION}/settings64.sh

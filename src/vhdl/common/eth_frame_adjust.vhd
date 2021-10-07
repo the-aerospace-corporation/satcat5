@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -44,7 +44,7 @@ use     work.eth_frame_common.all;
 
 entity eth_frame_adjust is
     generic (
-    MIN_FRAME   : integer := 64;        -- Minimum output frame size
+    MIN_FRAME   : natural := 64;        -- Minimum output frame size
     META_WIDTH  : natural := 0;         -- Width of optional metadata field
     APPEND_FCS  : boolean := true;      -- Append new FCS to output?
     STRIP_FCS   : boolean := true);     -- Remove FCS from input?
@@ -258,12 +258,19 @@ gen_append : if APPEND_FCS generate
                 -- Relay normal data until end of frame.
                 fcs_data  <= pad_data;
                 fcs_meta  <= pad_meta;
-                fcs_ovr   <= pad_last;
             elsif (fcs_ovr = '1' and fcs_ready = '1') then
                 -- Append each FCS byte, flipping polarity and bit order.
                 -- (CRC is MSB-first, but Ethernet convention is LSB-first.)
                 fcs_data  <= not flip_byte(fcs_crc32(31 downto 24));
-                fcs_ovr   <= bool2bit(bcount < 3);
+            end if;
+
+            -- Override flag is asserted while we write FCS.
+            if (reset_p = '1') then
+                fcs_ovr <= '0';
+            elsif (pad_valid = '1' and pad_ready = '1') then
+                fcs_ovr <= pad_last;
+            elsif (fcs_ovr = '1' and fcs_ready = '1') then
+                fcs_ovr <= bool2bit(bcount < 3);
             end if;
 
             -- Update the VALID and LAST strobes.

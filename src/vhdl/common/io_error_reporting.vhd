@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -35,11 +35,11 @@ use     work.eth_frame_common.all;
 
 entity io_error_reporting is
     generic (
-    CLK_HZ      : integer;          -- Main clock rate (Hz)
-    OUT_BAUD    : integer;          -- UART baud rate (bps)
-    OK_CLOCKS   : integer;          -- Report "OK" every N clock cycles
+    CLK_HZ      : positive;         -- Main clock rate (Hz)
+    OUT_BAUD    : positive;         -- UART baud rate (bps)
+    OK_CLOCKS   : positive;         -- Report "OK" every N clock cycles
     START_MSG   : string := "";     -- Startup message
-    ERR_COUNT   : integer;          -- Number of error messages (max 16)
+    ERR_COUNT   : positive;         -- Number of error messages (max 16)
     ERR_MSG00   : string := "";     -- String for each error type...
     ERR_MSG01   : string := "";
     ERR_MSG02   : string := "";
@@ -71,6 +71,10 @@ entity io_error_reporting is
 end io_error_reporting;
 
 architecture io_error_reporting of io_error_reporting is
+
+-- UART clock-divider is fixed at build-time.
+constant UART_CLKDIV : unsigned(15 downto 0) :=
+    to_unsigned(clocks_per_baud_uart(CLK_HZ, OUT_BAUD), 16);
 
 -- Generics and arrays don't mix; use this function to index.
 constant TOTAL_MSGS : integer := ERR_COUNT + 2;
@@ -257,14 +261,12 @@ end process;
 
 -- Transmit-only UART, one byte at a time.
 u_uart : entity work.io_uart_tx
-    generic map (
-    CLKREF_HZ   => CLK_HZ,
-    BAUD_HZ     => OUT_BAUD)
     port map (
     uart_txd    => err_uart,
     tx_data     => rom_byte,
     tx_valid    => uart_start,
     tx_ready    => uart_ready,
+    rate_div    => UART_CLKDIV,
     refclk      => err_clk,
     reset_p     => reset_p);
 

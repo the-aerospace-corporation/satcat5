@@ -34,6 +34,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
+use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.switch_types.all;
 
@@ -62,8 +63,8 @@ signal pkt_sent         : count_array := (others => 0);
 
 -- Unit under test.
 signal ports_rx_data    : array_rx_m2s(PORT_COUNT-1 downto 0);
-signal ports_tx_data    : array_tx_m2s(PORT_COUNT-1 downto 0);
-signal ports_tx_ctrl    : array_tx_s2m(PORT_COUNT-1 downto 0);
+signal ports_tx_data    : array_tx_s2m(PORT_COUNT-1 downto 0);
+signal ports_tx_ctrl    : array_tx_m2s(PORT_COUNT-1 downto 0);
 
 -- Overall test control.
 signal test_phase       : integer := 0;
@@ -181,6 +182,7 @@ end generate;
 -- Unit under test
 uut : entity work.switch_core
     generic map(
+    DEV_ADDR        => CFGBUS_ADDR_NONE,
     CORE_CLK_HZ     => 125_000_000,
     SUPPORT_PAUSE   => false,
     ALLOW_RUNT      => false,
@@ -188,15 +190,14 @@ uut : entity work.switch_core
     DATAPATH_BYTES  => 4,
     IBUF_KBYTES     => 2,
     OBUF_KBYTES     => 16,
-    MAC_LOOKUP_TYPE => "PARSHIFT",
-    MAC_TABLE_SIZE  => PORT_COUNT,
-    MAC_LOOKUP_DLY  => 15,
-    SCRUB_TIMEOUT   => 15)
+    MAC_TABLE_SIZE  => PORT_COUNT)
     port map(
     ports_rx_data   => ports_rx_data,
     ports_tx_data   => ports_tx_data,
     ports_tx_ctrl   => ports_tx_ctrl,
-    errvec_t        => open,
+    cfg_cmd         => CFGBUS_CMD_NULL,
+    cfg_ack         => open,    -- ConfigBus not tested
+    errvec_t        => open,    -- Not needed in simulation
     scrub_req_t     => scrub_req_t,
     core_clk        => clk_125,
     core_reset_p    => reset_p);

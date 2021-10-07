@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -20,54 +20,72 @@
 -- Core packet-switching pipeline
 --
 -- This module ties together the frame-check, packet-FIFO, round-robin
--- scheduler, and MAC lookup table to form the packet-switching pipeline:
+-- scheduler, and MAC core form the packet-switching pipeline:
 --
---      In0--FrmChk--FIFO--+--Scheduler--+--Delay (Data)---+--FIFO--Out0
---      In1--FrmChk--FIFO--+             +--Lookup (Ctrl)--+--FIFO--Out1
---      In2--FrmChk--FIFO--+                               +--FIFO--Out2
---      In3--FrmChk--FIFO--+                               +--FIFO--Out3
+--      In0--FrmChk--FIFO--+--Scheduler--+--MAC Core --+--FIFO--Out0
+--      In1--FrmChk--FIFO--+                           +--FIFO--Out1
+--      In2--FrmChk--FIFO--+                           +--FIFO--Out2
+--      In3--FrmChk--FIFO--+                           +--FIFO--Out3
 --
--- Multiple configurations are possible, selected by generic parameters.
+-- Many configurations are possible, selected by generic parameters.
+--
+-- Optional managed-switch features (e.g., packet priority, promiscuous
+-- ports, etc.) use ConfigBus.  Each switch_core should use a unique
+-- device-address.  The register-map is defined in mac_core.vhd.
+--
+-- All ports use the same input and output buffer sizes.  See FAQ for
+-- more information on how to choose these parameters.  Prioritization
+-- uses a second output FIFO on each port, typically much smaller than
+-- the primary output FIFO.  (High-priority mode should never be used
+-- for bulk traffic.)  The FIFO size (HBUF_KBYTES) is in addition to
+-- and independent of the primary output buffer size (OBUF_KBYTES).
+-- This feature is disabled if HBUF_KBYTES = 0.
 --
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
 use     work.common_functions.all;
+use     work.common_primitives.all;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity switch_core is
     generic (
+    DEV_ADDR        : integer := CFGBUS_ADDR_NONE;  -- ConfigBus device address
     CORE_CLK_HZ     : positive;         -- Rate of core_clk (Hz)
-    SUPPORT_PAUSE   : boolean := false; -- Support or ignore 802.3x "PAUSE" frames?
+    SUPPORT_PAUSE   : boolean := true;  -- Support or ignore 802.3x "PAUSE" frames?
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;          -- Allow runt frames? (Size < 64 bytes)
-    PORT_COUNT      : integer;          -- Total number of Ethernet ports
-    DATAPATH_BYTES  : integer;          -- Width of shared pipeline
-    IBUF_KBYTES     : integer := 2;     -- Input buffer size (kilobytes)
-    OBUF_KBYTES     : integer;          -- Output buffer size (kilobytes)
-    OBUF_PACKETS    : integer := 64;    -- Output buffer max packets
-    MAC_LOOKUP_TYPE : string;           -- MAC lookup (BINARY, BRUTE, SIMPLE, ...)
-    MAC_TABLE_SIZE  : integer;          -- Max stored MAC addresses
-    MAC_LOOKUP_DLY  : integer := 0;     -- Matched delay for MAC lookup? (optional)
-    SCRUB_TIMEOUT   : integer := 15);   -- Timeout for stale MAC entries
+    PORT_COUNT      : positive;         -- Total number of Ethernet ports
+    DATAPATH_BYTES  : positive;         -- Width of shared pipeline
+    IBUF_KBYTES     : positive := 2;    -- Input buffer size (kilobytes)
+    HBUF_KBYTES     : natural := 0;     -- High-priority output buffer (kilobytes)
+    OBUF_KBYTES     : positive;         -- Normal-priority output buffer (kilobytes)
+    IBUF_PACKETS    : positive := 64;   -- Input buffer max packets
+    OBUF_PACKETS    : positive := 64;   -- Output buffer max packets
+    MAC_TABLE_SIZE  : positive := 64;   -- Max stored MAC addresses
+    PRI_TABLE_SIZE  : positive := 16);  -- Max high-priority EtherTypes
     port (
     -- Input from each port.
     ports_rx_data   : in  array_rx_m2s(PORT_COUNT-1 downto 0);
 
     -- Output to each port.
-    ports_tx_data   : out array_tx_m2s(PORT_COUNT-1 downto 0);
-    ports_tx_ctrl   : in  array_tx_s2m(PORT_COUNT-1 downto 0);
-
-    -- Optional configuration flags for each port:
-    cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0) := (others => '0');
+    ports_tx_data   : out array_tx_s2m(PORT_COUNT-1 downto 0);
+    ports_tx_ctrl   : in  array_tx_m2s(PORT_COUNT-1 downto 0);
 
     -- Error events are marked by toggling these bits.
-    errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
+    err_ports       : out array_port_error(PORT_COUNT-1 downto 0);
+    err_switch      : out switch_error_t;
+    errvec_t        : out switch_errvec_t;  -- Legacy compatibility
+
+    -- Configuration interface
+    cfg_cmd         : in  cfgbus_cmd := CFGBUS_CMD_NULL;
+    cfg_ack         : out cfgbus_ack;   -- Optional ConfigBus interface
+    scrub_req_t     : in  std_logic;    -- Request MAC-lookup scrub
 
     -- System interface.
-    scrub_req_t     : in  std_logic;    -- Request MAC-lookup scrub
     core_clk        : in  std_logic;    -- Core datapath clock
     core_reset_p    : in  std_logic);   -- Core async reset
 end switch_core;
@@ -77,11 +95,41 @@ architecture switch_core of switch_core is
 -- Define various local types.
 subtype byte_t is std_logic_vector(7 downto 0);
 subtype word_t is std_logic_vector(8*DATAPATH_BYTES-1 downto 0);
-subtype bcount_t is integer range 0 to DATAPATH_BYTES-1;
+subtype nlast_t is integer range 0 to DATAPATH_BYTES;
 subtype bit_array is std_logic_vector(PORT_COUNT-1 downto 0);
 type byte_array is array(PORT_COUNT-1 downto 0) of byte_t;
 type word_array is array(PORT_COUNT-1 downto 0) of word_t;
-type bcount_array is array(PORT_COUNT-1 downto 0) of bcount_t;
+type nlast_array is array(PORT_COUNT-1 downto 0) of nlast_t;
+
+-- Minimum frame size for checking incoming frames.
+function get_min_frame return positive is
+begin
+    if ALLOW_RUNT then
+        return MIN_RUNT_BYTES;
+    else
+        return MIN_FRAME_BYTES;
+    end if;
+end function;
+
+-- Maximum frame size for checking incoming frames.
+function get_max_frame return positive is
+begin
+    if ALLOW_JUMBO then
+        return MAX_JUMBO_BYTES;
+    else
+        return MAX_FRAME_BYTES;
+    end if;
+end function;
+
+-- Maximum number of priority packet types.
+function get_pri_table_size return natural is
+begin
+    if (HBUF_KBYTES > 0) then
+        return PRI_TABLE_SIZE;
+    else
+        return 0;
+    end if;
+end function;
 
 -- Frame check.
 signal eth_chk_clk      : bit_array;
@@ -93,7 +141,7 @@ signal eth_chk_error    : bit_array;
 
 -- Input packet FIFO.
 signal pktin_data       : word_array;
-signal pktin_bcount     : bcount_array;
+signal pktin_nlast      : nlast_array;
 signal pktin_last       : bit_array;
 signal pktin_valid      : bit_array;
 signal pktin_ready      : bit_array;
@@ -104,100 +152,96 @@ signal pktin_crcerror   : bit_array;
 -- Round-robin scheduler.
 signal sched_error      : std_logic;
 signal sched_data       : word_t;
-signal sched_bcount     : bcount_t;
-signal sched_last       : std_logic;
-signal sched_valid      : std_logic;
-signal sched_ready      : std_logic;
+signal sched_nlast      : nlast_t;
 signal sched_write      : std_logic;
 signal sched_select     : integer range 0 to PORT_COUNT-1;
 
 -- MAC lookup and matched delay.
-signal macerr_ovr       : std_logic;
+signal macerr_dup       : std_logic;
+signal macerr_int       : std_logic;
 signal macerr_tbl       : std_logic;
 signal scrub_req        : std_logic;
 signal pktout_clk       : bit_array;
 signal pktout_data      : word_t;
-signal pktout_bcount    : bcount_t;
-signal pktout_last      : std_logic;
+signal pktout_nlast     : nlast_t;
 signal pktout_write     : std_logic;
+signal pktout_hipri     : std_logic;
 signal pktout_pdst      : bit_array;
-signal pktout_pvalid    : std_logic;
-signal pktout_pready    : std_logic;
 
 -- Output packet FIFO
-signal pktout_commit    : bit_array;
-signal pktout_revert    : bit_array;
 signal pktout_overflow  : bit_array;
 signal pktout_txerror   : bit_array;
 signal pktout_pause     : bit_array;
 
--- Error toggles for switch_aux.
-signal errtog_mac_late  : std_logic := '0';
-signal errtog_mac_ovr   : std_logic := '0';
-signal errtog_mac_tbl   : std_logic := '0';
-signal errtog_pkt_crc   : std_logic := '0';
-signal errtog_ovr_rx    : std_logic := '0';
-signal errtog_ovr_tx    : std_logic := '0';
-signal errtog_mii_tx    : std_logic := '0';
-signal errtog_mii_rx    : std_logic := '0';
+-- Error toggles for switch_aux and port_statistics.
+signal err_prt          : array_port_error(PORT_COUNT-1 downto 0) := (others => PORT_ERROR_NONE);
+signal err_sw           : switch_error_t := SWITCH_ERROR_NONE;
 
 -- Synchronized version of external reset.
 signal core_reset_sync  : std_logic;
 
 begin
 
--- Drive the final error vector:
-errvec_t <= errtog_pkt_crc      -- Bit 7
-          & errtog_mii_tx       -- Bit 6
-          & errtog_mii_rx       -- Bit 5
-          & errtog_mac_tbl      -- Bit 4
-          & errtog_mac_ovr      -- Bit 3
-          & errtog_mac_late     -- Bit 2
-          & errtog_ovr_tx       -- Bit 1
-          & errtog_ovr_rx;      -- Bit 0
+-- Drive the final error vectors:
+err_ports   <= err_prt;
+err_switch  <= err_sw;
+errvec_t    <= swerr2vector(err_sw);
 
--- Misc utility functions:
-p_util : process(core_clk)
+-- Error reporting and aggregation:
+p_err_sw : process(core_clk)
 begin
     if rising_edge(core_clk) then
-        -- Confirm end-of-packet timing constraint holds.
-        -- Note: If this error occurs, need a faster MAC lookup implementation.
-        if (pktout_write = '1' and pktout_last = '1' and pktout_pvalid = '0') then
-            report "MAC-lookup arrived late." severity error;
-            errtog_mac_late <= not errtog_mac_late;
-        end if;
-
         -- Convert strobe to toggle as needed.
-        if (macerr_ovr = '1') then
-            report "MAC-table overflow" severity warning;
-            errtog_mac_ovr <= not errtog_mac_ovr;
+        if (macerr_dup = '1') then
+            report "MAC-pipeline duplicate or port change" severity warning;
+            err_sw.mac_dup <= not err_sw.mac_dup;
+        end if;
+        if (macerr_int = '1') then
+            report "MAC-pipeline internal error" severity error;
+            err_sw.mac_int <= not err_sw.mac_int;
         end if;
         if (macerr_tbl = '1') then
-            report "MAC-table internal error" severity error;
-            errtog_mac_tbl <= not errtog_mac_tbl;
+            report "MAC-pipeline table error" severity error;
+            err_sw.mac_tbl <= not err_sw.mac_tbl;
         end if;
 
         -- Consolidate per-port error strobes and convert to toggle.
         if (or_reduce(pktin_crcerror) = '1') then
             report "Packet CRC mismatch" severity warning;
-            errtog_pkt_crc <= not errtog_pkt_crc;
+            err_sw.pkt_err <= not err_sw.pkt_err;
         end if;
         if (or_reduce(pktin_overflow) = '1') then
             report "Input buffer overflow" severity warning;
-            errtog_ovr_rx <= not errtog_ovr_rx;
+            err_sw.ovr_rx <= not err_sw.ovr_rx;
         end if;
         if (or_reduce(pktout_overflow) = '1') then
             report "Output buffer overflow" severity warning;
-            errtog_ovr_tx <= not errtog_ovr_tx;
+            err_sw.ovr_tx <= not err_sw.ovr_tx;
         end if;
         if (or_reduce(pktin_rxerror) = '1') then
             report "Input interface error" severity error;
-            errtog_mii_rx <= not errtog_mii_rx;
+            err_sw.mii_rx <= not err_sw.mii_rx;
         end if;
         if (or_reduce(pktout_txerror) = '1') then
             report "Output interface error" severity error;
-            errtog_mii_tx <= not errtog_mii_tx;
+            err_sw.mii_tx <= not err_sw.mii_tx;
         end if;
+
+        -- Per-port error reporting.
+        for n in PORT_COUNT-1 downto 0 loop
+            if (pktin_rxerror(n) = '1' or pktout_txerror(n) = '1') then
+                err_prt(n).mii_err <= not err_prt(n).mii_err;
+            end if;
+            if (pktin_overflow(n) = '1') then
+                err_prt(n).ovr_rx <= not err_prt(n).ovr_rx;
+            end if;
+            if (pktout_overflow(n) = '1') then
+                err_prt(n).ovr_tx <= not err_prt(n).ovr_tx;
+            end if;
+            if (pktin_crcerror(n) = '1') then
+                err_prt(n).pkt_err <= not err_prt(n).pkt_err;
+            end if;
+        end loop;
     end if;
 end process;
 
@@ -255,7 +299,9 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         generic map(
         INPUT_BYTES     => 1,
         OUTPUT_BYTES    => DATAPATH_BYTES,
-        BUFFER_KBYTES   => IBUF_KBYTES)
+        BUFFER_KBYTES   => IBUF_KBYTES,
+        MAX_PACKETS     => IBUF_PACKETS,
+        MAX_PKT_BYTES   => get_max_frame)
         port map(
         in_clk          => eth_chk_clk(n),
         in_data         => eth_chk_data(n),
@@ -265,7 +311,7 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         in_overflow     => open,
         out_clk         => core_clk,
         out_data        => pktin_data(n),
-        out_bcount      => pktin_bcount(n),
+        out_nlast       => pktin_nlast(n),
         out_last        => pktin_last(n),
         out_valid       => pktin_valid(n),
         out_ready       => pktin_ready(n),
@@ -298,60 +344,42 @@ u_robin : entity work.packet_round_robin
     in_ready        => pktin_ready,
     in_select       => sched_select,
     in_error        => sched_error,
-    out_last        => sched_last,
-    out_valid       => sched_valid,
-    out_ready       => sched_ready,
+    out_valid       => sched_write,
+    out_ready       => '1',
     clk             => core_clk);
 
 sched_data   <= pktin_data(sched_select);
-sched_bcount <= pktin_bcount(sched_select);
-sched_write  <= sched_valid and sched_ready;
+sched_nlast  <= pktin_nlast(sched_select);
 
--- Some implementations need a small delay buffer to ensure that
--- MAC-lookup always finishes before end of packet.
-u_delay : entity work.packet_delay
+-- Core MAC pipeline
+u_mac : entity work.mac_core
     generic map(
+    DEV_ADDR        => DEV_ADDR,
     INPUT_BYTES     => DATAPATH_BYTES,
-    DELAY_COUNT     => MAC_LOOKUP_DLY)
-    port map(
-    in_data         => sched_data,
-    in_bcount       => sched_bcount,
-    in_last         => sched_last,
-    in_write        => sched_write,
-    out_data        => pktout_data,
-    out_bcount      => pktout_bcount,
-    out_last        => pktout_last,
-    out_write       => pktout_write,
-    io_clk          => core_clk,
-    reset_p         => core_reset_sync);
-
--- MAC-address lookup (one of several implementation options).
-u_lookup : entity work.mac_lookup_generic
-    generic map(
-    IMPL_TYPE       => MAC_LOOKUP_TYPE,
-    INPUT_WIDTH     => 8*DATAPATH_BYTES,
     PORT_COUNT      => PORT_COUNT,
-    TABLE_SIZE      => MAC_TABLE_SIZE,
-    SCRUB_TIMEOUT   => SCRUB_TIMEOUT)
+    CORE_CLK_HZ     => CORE_CLK_HZ,
+    MIN_FRM_BYTES   => get_min_frame,
+    MAX_FRM_BYTES   => get_max_frame,
+    MAC_TABLE_SIZE  => MAC_TABLE_SIZE,
+    PRI_TABLE_SIZE  => get_pri_table_size)
     port map(
     in_psrc         => sched_select,
+    in_nlast        => sched_nlast,
     in_data         => sched_data,
-    in_last         => sched_last,
-    in_valid        => sched_valid,
-    in_ready        => sched_ready,
-    out_pdst        => pktout_pdst,
-    out_valid       => pktout_pvalid,
-    out_ready       => pktout_pready,
+    in_write        => sched_write,
+    out_data        => pktout_data,
+    out_nlast       => pktout_nlast,
+    out_write       => pktout_write,
+    out_priority    => pktout_hipri,
+    out_keep        => pktout_pdst,
+    cfg_cmd         => cfg_cmd,
+    cfg_ack         => cfg_ack,
     scrub_req       => scrub_req,
-    scrub_busy      => open,
-    scrub_remove    => open,
-    cfg_prmask      => cfg_prmask,
-    error_full      => macerr_ovr,
+    error_change    => macerr_dup,
+    error_other     => macerr_int,
     error_table     => macerr_tbl,
     clk             => core_clk,
     reset_p         => core_reset_sync);
-
-pktout_pready <= pktout_write and pktout_last;
 
 u_scrub_req : sync_toggle2pulse
     port map(
@@ -365,33 +393,28 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
     -- Clock workaround (refer to eth_chk_clk for details).
     pktout_clk(n) <= to_01_std(ports_tx_ctrl(n).clk);
 
-    -- Drive the commit / revert strobes for this channel.
-    pktout_commit(n) <= pktout_write and pktout_last and pktout_pdst(n);
-    pktout_revert(n) <= pktout_write and pktout_last and not pktout_pdst(n);
-
     -- Instantiate this port's output FIFO.
-    u_fifo : entity work.fifo_packet
+    u_fifo : entity work.fifo_priority
         generic map(
         INPUT_BYTES     => DATAPATH_BYTES,
-        OUTPUT_BYTES    => 1,
-        BUFFER_KBYTES   => OBUF_KBYTES,
-        MAX_PACKETS     => OBUF_PACKETS)
+        BUFF_HI_KBYTES  => HBUF_KBYTES,
+        BUFF_LO_KBYTES  => OBUF_KBYTES,
+        MAX_PACKETS     => OBUF_PACKETS,
+        MAX_PKT_BYTES   => get_max_frame)
         port map(
         in_clk          => core_clk,
         in_data         => pktout_data,
-        in_bcount       => pktout_bcount,
-        in_last_commit  => pktout_commit(n),
-        in_last_revert  => pktout_revert(n),
+        in_nlast        => pktout_nlast,
+        in_last_keep    => pktout_pdst(n),
+        in_last_hipri   => pktout_hipri,
         in_write        => pktout_write,
         in_overflow     => pktout_overflow(n),
         out_clk         => pktout_clk(n),
         out_data        => ports_tx_data(n).data,
-        out_bcount      => open,
         out_last        => ports_tx_data(n).last,
         out_valid       => ports_tx_data(n).valid,
         out_ready       => ports_tx_ctrl(n).ready,
-        out_pause       => pktout_pause(n),
-        out_overflow    => open,
+        async_pause     => pktout_pause(n),
         reset_p         => ports_tx_ctrl(n).reset_p);
 
     -- Detect error strobes from MII Tx.

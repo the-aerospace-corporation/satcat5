@@ -83,8 +83,8 @@ entity router_ip_gateway is
     -- ICMP buffer and ID parameters.
     ICMP_ECHO_BYTES     : natural := 64;
     ICMP_REPLY_TTL      : natural := 64;
-    ICMP_ID_INIT        : integer := 0;
-    ICMP_ID_INCR        : integer := 1;
+    ICMP_ID_INIT        : natural := 0;
+    ICMP_ID_INCR        : natural := 1;
     -- Enable diagnostic logging (sim only)
     DEBUG_VERBOSE       : boolean := false);
     port (
@@ -149,7 +149,7 @@ signal parse_dmac_bcast : std_logic := '0';
 signal parse_dmac_mcast : std_logic := '0';
 signal parse_dmac_self  : std_logic := '0';
 signal parse_proto      : byte_t := (others => '0');
-signal parse_ttl        : unsigned(7 downto 0) := (others => '0');
+signal parse_ttl        : byte_u := (others => '0');
 
 -- Synchronized queues for actions and frame data.
 signal cmd_data         : action_t;
@@ -215,9 +215,17 @@ begin
         -- Decide the fate of this packet.
         cmd := (others => 'X');         -- Don't care
         rdy := '0';                     -- Default = no-change
-        if (parse_bct = 11) then        -- Source MAC (6 bytes)
+        if (parse_bct = 5) then         -- Destination MAC (6 bytes)
+            if (mac_is_swcontrol(rx_data48) or
+                mac_is_l2multicast(rx_data48)) then
+                cmd := ACT_DROP;        -- Block (illegal destination)
+                rdy := rx_write;
+                print_if_verbose("DROP: Illegal destination MAC");
+            end if;
+        elsif (parse_bct = 11) then        -- Source MAC (6 bytes)
             if (mac_is_broadcast(rx_data48) or
-                mac_is_multicast(rx_data48)) then
+                mac_is_l2multicast(rx_data48) or
+                mac_is_l3multicast(rx_data48)) then
                 cmd := ACT_DROP;        -- Block (Illegal source)
                 rdy := rx_write;
                 print_if_verbose("DROP: Illegal source MAC");
@@ -387,9 +395,9 @@ begin
         -- Destination-MAC matching.
         if (parse_bct = 5 and rx_write = '1') then
             parse_dmac_bcast    <= bool2bit(mac_is_broadcast(rx_data48));
-            parse_dmac_mcast    <= bool2bit(mac_is_multicast(rx_data48));
+            parse_dmac_mcast    <= bool2bit(mac_is_l3multicast(rx_data48));
             parse_dmac_self     <= bool2bit(rx_data48 = ROUTER_MACADDR)
-                                or bool2bit(rx_data48 = MAC_BROADCAST);
+                                or bool2bit(rx_data48 = MAC_ADDR_BROADCAST);
         end if;
 
         -- Drive "rdy" strobe when we decide the packet's fate.
@@ -434,7 +442,7 @@ end process;
 cmd_rd <= dat_rd and dat_last;
 dat_rd <= cmd_valid and dat_valid and fwd_hempty;
 
-u_fifo_cmd : entity work.fifo_smol
+u_fifo_cmd : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => ACT_WIDTH,
     DEPTH_LOG2  => 3)   -- 2^3 = 8 words
@@ -447,7 +455,7 @@ u_fifo_cmd : entity work.fifo_smol
     clk         => clk,
     reset_p     => reset_p);
 
-u_fifo_dat : entity work.fifo_smol
+u_fifo_dat : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,   -- 8-bit datapath
     DEPTH_LOG2  => 7)   -- 2^7 = 128 bytes
@@ -498,7 +506,7 @@ begin
             if (IPV4_DMAC_REPLACE and fwd_bct < 6) then
                 -- If enabled, replace destination-MAC with the broadcast address.
                 -- (This is a fail-safe placeholder; remote router should replace this...)
-                fwd_data <= get_byte_s(MAC_BROADCAST, 5-fwd_bct);
+                fwd_data <= get_byte_s(MAC_ADDR_BROADCAST, 5-fwd_bct);
             elsif (IPV4_SMAC_REPLACE and 6 <= fwd_bct and fwd_bct < 12) then
                 -- If enabled, replace source-MAC with the router's address.
                 fwd_data <= get_byte_s(ROUTER_MACADDR, 11-fwd_bct);
@@ -566,7 +574,7 @@ begin
 end process;
 
 -- Output FIFO for downstream flow-control.
-u_fifo_out : entity work.fifo_smol
+u_fifo_out : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 4)

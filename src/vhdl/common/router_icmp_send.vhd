@@ -50,10 +50,10 @@ entity router_icmp_send is
     -- Default TTL for ICMP errors and responses
     ICMP_TTL    : natural := 64;
     -- Set initial state and per-packet increment for IP-header ID field.
-    IP_ID_INIT  : integer := 0;
-    IP_ID_INCR  : integer := 1;
+    IP_ID_INIT  : natural := 0;
+    IP_ID_INCR  : natural := 1;
     -- Max bytes from original to send in each reply?
-    ECHO_BYTES  : integer := 64);
+    ECHO_BYTES  : natural := 64);
     port (
     -- Input stream (from source)
     in_cmd      : in  action_t;
@@ -286,7 +286,7 @@ end process;
 
 fifo_rd_en <= pkt_rdfifo and pkt_ready;
 
-u_fifo : entity work.fifo_smol
+u_fifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => log2_ceil(ECHO_BYTES))
@@ -302,7 +302,7 @@ u_fifo : entity work.fifo_smol
 
 -- Calculate various output fields:
 p_header : process(clk)
-    constant VERSION_IHL : unsigned(7 downto 0) := x"45";
+    constant VERSION_IHL : byte_u := x"45";
 begin
     if rising_edge(clk) then
         -- IPv4 "Identification" field is just a simple packet counter.

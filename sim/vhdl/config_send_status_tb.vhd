@@ -42,9 +42,9 @@ architecture tb of config_send_status_tb is
 
 -- Test configuration:
 constant MSG_BYTES   : integer := 8;
-constant MSG_ETYPE   : std_logic_vector(15 downto 0) := x"5C00";
-constant MAC_DEST    : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
-constant MAC_SOURCE  : std_logic_vector(47 downto 0) := x"536174436174";
+constant MSG_ETYPE   : mac_type_t := x"5C00";
+constant MAC_DEST    : mac_addr_t := x"FFFFFFFFFFFF";
+constant MAC_SOURCE  : mac_addr_t := x"536174436174";
 
 -- Clock and reset generation
 signal clk_100      : std_logic := '0';

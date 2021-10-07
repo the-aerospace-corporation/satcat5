@@ -218,11 +218,10 @@ end process;
 
 -- FIFOs for the two test streams.
 ref_out_ready <= uut_out_valid and uut_out_ready;
-u_fifo_out : entity work.fifo_bram
+u_fifo_out : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH  => 8,
-    FIFO_DEPTH  => 2048,
-    FIFO_STRICT => true)
+    FIFO_DEPTH  => 2048)
     port map(
     in_data     => tst_out_data,
     in_last     => tst_out_last,
@@ -235,11 +234,10 @@ u_fifo_out : entity work.fifo_bram
     reset_p     => reset_p);
 
 ref_icmp_ready <= uut_icmp_valid and uut_icmp_ready;
-u_fifo_icmp : entity work.fifo_bram
+u_fifo_icmp : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH  => 8,
-    FIFO_DEPTH  => 1024,
-    FIFO_STRICT => true)
+    FIFO_DEPTH  => 1024)
     port map(
     in_data     => tst_icmp_data,
     in_last     => tst_icmp_last,

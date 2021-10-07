@@ -47,12 +47,12 @@ library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
-use     work.eth_frame_common.all;  -- For byte_t
+use     work.eth_frame_common.byte_t;
 
 entity config_mdio_rom is
     generic (
-    CLKREF_HZ   : integer;          -- Main clock rate (Hz)
-    MDIO_BAUD   : integer;          -- MDIO baud rate (bps)
+    CLKREF_HZ   : positive;         -- Main clock rate (Hz)
+    MDIO_BAUD   : positive;         -- MDIO baud rate (bps)
     ROM_VECTOR  : std_logic_vector; -- Concatenated command words
     MSW_FIRST   : boolean := true); -- Word order for ROM_VECTOR
     port (

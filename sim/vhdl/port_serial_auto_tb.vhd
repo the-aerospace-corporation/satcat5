@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -55,8 +55,8 @@ constant SPI_CPOL   : std_logic := bool2bit(SPI_MODE >= 2);
 signal uart_ctsb    : std_logic := '1';
 
 -- Streaming source and sink for each link:
-signal txdata_a, txdata_b   : port_tx_m2s;
-signal txctrl_a, txctrl_b   : port_tx_s2m;
+signal txdata_a, txdata_b   : port_tx_s2m;
+signal txctrl_a, txctrl_b   : port_tx_m2s;
 signal rxdata_a, rxdata_b   : port_rx_m2s;
 signal rxdone_a, rxdone_b   : std_logic;
 
@@ -108,7 +108,7 @@ uut_a : entity work.port_serial_auto
 -- Instantiate the appropriate counterpart.
 -- (And any other required support signals.)
 gen_spi : if (PORT_TYPE = "SPI") generate
-    uut_b : entity work.port_serial_spi_clkout
+    uut_b : entity work.port_serial_spi_controller
         generic map(
         CLKREF_HZ   => REFCLK_HZ,
         SPI_BAUD    => 10_000_000,
@@ -124,12 +124,6 @@ gen_spi : if (PORT_TYPE = "SPI") generate
         refclk      => refclk,
         reset_p     => reset_p);
 end generate;
-
---                      Pin 0       Pin 1       Pin 2       Pin 3
---     (0) Auto         Pullup      Pullup      Pullup      Pullup
---     (1) SPI          CSb (In)    MOSI (In)   MISO (Out)  SCK (In)
---     (2) UART (norm)  CTSb (In)   TxD (Out)   RxD (In)    RTSb (Out)
---     (3) UART (swap)  RTSb (Out)  RxD (In)    TxD (Out)   CTSb (In)
 
 gen_uart1 : if (PORT_TYPE = "UART1") generate
     uut_b : entity work.port_serial_uart_4wire

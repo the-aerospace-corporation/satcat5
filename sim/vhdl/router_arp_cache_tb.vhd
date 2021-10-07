@@ -219,7 +219,6 @@ end process;
 -- High-level test control
 p_test : process
     constant MAC_NO_MATCH   : mac_addr_t := (others => '0');
-    constant MAC_BROADCAST  : mac_addr_t := (others => '1');
 
     -- Issue reset, and optionally wait for update_ready flag.
     procedure restart(wait_ready : boolean := true) is
@@ -260,7 +259,7 @@ p_test : process
     end procedure;
 
     -- Search for IP address, confirm we get the expected MAC.
-    -- (Or specify MAC_NOT_FOUND if no match is expected.)
+    -- (Or specify MAC_NO_MATCH if no match is expected.)
     procedure query(
         constant ip     : ip_addr_t;
         constant ref    : mac_addr_t;
@@ -279,10 +278,10 @@ p_test : process
         -- Wait for reply, then check contents.
         wait until rising_edge(rcvd_reply_ok);
         -- Check the returned MAC address.
-        if (ref = MAC_NOT_FOUND) then
+        if (ref = MAC_NO_MATCH) then
             if (rcvd_reply_match = '1') then
                 report "Reply: Unexpected MAC match." severity error;
-            elsif (rcvd_reply_mac /= MAC_NOT_FOUND) then
+            elsif (rcvd_reply_mac /= MAC_ADDR_BROADCAST) then
                 report "Reply: Incorrect no-match MAC." severity error;
             end if;
         else
@@ -293,7 +292,7 @@ p_test : process
             end if;
         end if;
         -- Check the forwarded request, if any.
-        if (ref = MAC_NOT_FOUND) then
+        if (ref = MAC_NO_MATCH) then
             if (rcvd_request_ok = '0') then
                 report "Request: Missing ARP request." severity error;
             elsif (rcvd_request_ip /= ip) then
@@ -328,17 +327,17 @@ begin
 
         -- Test 1: Empty table should return no-match, even before init complete.
         restart(false);
-        query(IP_ADDR_0, MAC_NOT_FOUND);
-        query(IP_ADDR_1, MAC_NOT_FOUND);
+        query(IP_ADDR_0, MAC_NO_MATCH);
+        query(IP_ADDR_1, MAC_NO_MATCH);
         wait_update;
-        query(IP_ADDR_0, MAC_NOT_FOUND);
-        query(IP_ADDR_1, MAC_NOT_FOUND);
+        query(IP_ADDR_0, MAC_NO_MATCH);
+        query(IP_ADDR_1, MAC_NO_MATCH);
 
         -- Test 2: Table with a single entry.
         restart;
         update(IP_ADDR_0, MAC_ADDR_0);
         query(IP_ADDR_0, MAC_ADDR_0, true);
-        query(IP_ADDR_1, MAC_NOT_FOUND);
+        query(IP_ADDR_1, MAC_NO_MATCH);
 
         -- Test 3: Full table (4 entries).
         restart;
@@ -350,7 +349,7 @@ begin
         query(IP_ADDR_1, MAC_ADDR_1);
         query(IP_ADDR_2, MAC_ADDR_2);
         query(IP_ADDR_3, MAC_ADDR_3);
-        query(IP_ADDR_4, MAC_NOT_FOUND);
+        query(IP_ADDR_4, MAC_NO_MATCH);
 
         -- Test 4: Overflow handling (5 entries)
         restart;
@@ -359,27 +358,27 @@ begin
         update(IP_ADDR_2, MAC_ADDR_2);
         update(IP_ADDR_3, MAC_ADDR_3);
         update(IP_ADDR_4, MAC_ADDR_4);
-        query(IP_ADDR_0, MAC_NOT_FOUND, true);
+        query(IP_ADDR_0, MAC_NO_MATCH, true);
         query(IP_ADDR_1, MAC_ADDR_1);
         query(IP_ADDR_2, MAC_ADDR_2);
         query(IP_ADDR_3, MAC_ADDR_3);
         query(IP_ADDR_4, MAC_ADDR_4);
         query(IP_ADDR_2, MAC_ADDR_2);
         query(IP_ADDR_3, MAC_ADDR_3);
-        query(IP_ADDR_0, MAC_NOT_FOUND);
+        query(IP_ADDR_0, MAC_NO_MATCH);
         query(IP_ADDR_4, MAC_ADDR_4);
         query(IP_ADDR_1, MAC_ADDR_1);
         query(IP_ADDR_4, MAC_ADDR_4);
         query(IP_ADDR_3, MAC_ADDR_3);
         query(IP_ADDR_2, MAC_ADDR_2);
         query(IP_ADDR_1, MAC_ADDR_1);
-        query(IP_ADDR_0, MAC_NOT_FOUND);
+        query(IP_ADDR_0, MAC_NO_MATCH);
 
         -- Test 5: Interleaved update/query
         restart;
         update(IP_ADDR_0, MAC_ADDR_0);
         query(IP_ADDR_0, MAC_ADDR_0, true);
-        query(IP_ADDR_1, MAC_NOT_FOUND);
+        query(IP_ADDR_1, MAC_NO_MATCH);
         update(IP_ADDR_1, MAC_ADDR_1);
         query(IP_ADDR_0, MAC_ADDR_0);
         query(IP_ADDR_1, MAC_ADDR_1, true);

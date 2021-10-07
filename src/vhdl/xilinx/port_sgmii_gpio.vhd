@@ -51,8 +51,8 @@ entity port_sgmii_gpio is
 
     -- Generic internal port interfaces.
     prx_data    : out port_rx_m2s;
-    ptx_data    : in  port_tx_m2s;
-    ptx_ctrl    : out port_tx_s2m;
+    ptx_data    : in  port_tx_s2m;
+    ptx_ctrl    : out port_tx_m2s;
     port_shdn   : in  std_logic;
 
     -- Reference clocks and reset.

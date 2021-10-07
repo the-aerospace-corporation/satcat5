@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,12 +31,12 @@ package COMMON_FUNCTIONS is
     -- Convert a standard logic (bit) to an integer: '0'->0, '1'->1
     function U2I(a: std_logic) return natural;
     -- Convert an integer to a L-bit standard logic vector
-    function I2S(a: integer; l: integer) return std_logic_vector;
+    function I2S(a: natural; l: natural) return std_logic_vector;
     -- Convert a boolean to a bit, false->'0', true->'1'
     function bool2bit(a: boolean) return std_logic;
 
     -- Resize a std_logic_vector using the rules for UNSIGNED
-    function resize(a: std_logic_vector; B: integer) return std_logic_vector;
+    function resize(a: std_logic_vector; B: natural) return std_logic_vector;
 
     -- Saturate an unsigned input to N output bits.
     function saturate(a: unsigned; nbits: natural) return unsigned;
@@ -52,13 +52,24 @@ package COMMON_FUNCTIONS is
     function and_reduce(a: std_logic_vector) return std_logic;
 
     -- Log2(x), rounded up or down.
-    function log2_ceil(a: integer) return integer;
-    function log2_floor(a: integer) return integer;
+    function log2_ceil(a: natural) return integer;
+    function log2_floor(a: natural) return integer;
 
     -- Return the maximum of the two inputs
     function int_max(a,b: integer) return integer;
     -- Return the minimum of the two inputs
     function int_min(a,b: integer) return integer;
+    -- Return the least common multiple of two inputs
+    function int_lcm(a,b: positive) return positive;
+
+    -- Given a bit-mask with exactly one set bit, return its index.
+    function one_hot_decode(x: std_logic_vector; w: positive) return unsigned;
+
+    -- Given a bit-mask, return true if more than one bit is set.
+    function one_hot_error(x: std_logic_vector) return std_logic;
+
+    -- Given a bit-mask, return the lowest-indexed '1' bit (if any).
+    function priority_encoder(x: std_logic_vector) return natural;
 
     -- Map 'X', 'U' to '0'
     function to_01_vec(a: std_logic_vector) return std_logic_vector;
@@ -69,6 +80,12 @@ package COMMON_FUNCTIONS is
         clkref_hz   : positive;
         baud_hz     : positive;
         round_up    : boolean := true)
+        return positive;
+
+    -- Wrapper for "clocks_per_baud" that checks for 5% error tolerance.
+    function clocks_per_baud_uart(
+        clkref_hz   : positive;
+        baud_hz     : positive)
         return positive;
 
     -- AXI address-conversion: Convert raw byte-address to a word-index.
@@ -82,14 +99,14 @@ end package;
 package body COMMON_FUNCTIONS is
     function U2I(a: std_logic_vector) return natural is
     begin
-        return TO_INTEGER(UNSIGNED(a));
+        return TO_INTEGER(UNSIGNED(to_01_vec(a)));
     end;
     function U2I(a: std_logic)        return natural is
     begin
         if a = '0' then return 0; else return 1; end if;
     end;
 
-    function I2S(a: integer; l: integer) return std_logic_vector is
+    function I2S(a: natural; l: natural) return std_logic_vector is
     begin
         return std_logic_vector(TO_UNSIGNED(a,l));
     end;
@@ -99,7 +116,7 @@ package body COMMON_FUNCTIONS is
         if a then return '1'; else return '0'; end if;
     end;
 
-    function resize(a: std_logic_vector; B: integer) return std_logic_vector is
+    function resize(a: std_logic_vector; B: natural) return std_logic_vector is
     begin
         return std_logic_vector(resize(UNSIGNED(a), B));
     end;
@@ -146,13 +163,13 @@ package body COMMON_FUNCTIONS is
         return z;
     end;
 
-    function log2_ceil(a: integer) return integer is
+    function log2_ceil(a: natural) return integer is
     begin
         return log2_floor(2*a-1);
     end;
 
-    function log2_floor(a: integer) return integer is
-        variable b, l: integer;
+    function log2_floor(a: natural) return integer is
+        variable b, l: natural;
     begin
         assert a > 0 report "Outside of log2 range" severity failure;
         b := a; l := 0;
@@ -175,6 +192,61 @@ package body COMMON_FUNCTIONS is
         else return b;
         end if;
     end;
+
+    function int_lcm(a,b: positive) return positive is
+        -- Set a reasonable initial guess.
+        -- (Immediate solution if A is a multiple of B or vice-versa.)
+        variable accum_a : positive := a * int_max(1, b/a);
+        variable accum_b : positive := b * int_max(1, a/b);
+    begin
+        -- Keep incrementing the smaller accumulator until they match.
+        -- (This function is not intended to be synthesizable.)
+        while accum_a /= accum_b loop
+            if (accum_a < accum_b) then
+                accum_a := accum_a + a;
+            else
+                accum_b := accum_b + b;
+            end if;
+        end loop;
+        return accum_a;
+    end;
+
+    function one_hot_decode(x: std_logic_vector; w: positive) return unsigned is
+        variable tmp : unsigned(w-1 downto 0) := (others => '0');
+    begin
+        -- Sanity-check on requested width.
+        assert (2**w >= x'length);
+        -- OR-tree method uses fewer resources than a true priority encoder.
+        for n in x'range loop
+            if (x(n) = '1') then
+                tmp := tmp or to_unsigned(n, w);
+            end if;
+        end loop;
+        return tmp;
+    end function;
+
+    function one_hot_error(x: std_logic_vector) return std_logic is
+        variable tmp : std_logic := '0';
+    begin
+        for n in x'range loop
+            if (x(n) = '1' and tmp = '1') then
+                return '1';
+            end if;
+            tmp := tmp or x(n);
+        end loop;
+        return '0';
+    end function;
+
+    function priority_encoder(x: std_logic_vector) return natural is
+        constant NMAX : natural := x'length - 1;
+    begin
+        for n in 0 to NMAX-1 loop
+            if (x(n) = '1') then
+                return n;
+            end if;
+        end loop;
+        return NMAX;
+    end function;
 
     -- This function is useful to avoid having X's in simulation when feedback
     -- loops are present.  Note that it synthesizes to no hardware.
@@ -220,6 +292,23 @@ package body COMMON_FUNCTIONS is
         else
             return int_max(1, div_rd_near);
         end if;
+    end function;
+
+    function clocks_per_baud_uart(
+        clkref_hz   : positive;
+        baud_hz     : positive)
+        return positive
+    is
+        -- Calculate clocks per bit-period (round nearest), then
+        -- back-calculate the baud rate that was actually achieved.
+        constant CLKDIV : positive := clocks_per_baud(CLKREF_HZ, BAUD_HZ, false);
+        constant ACTUAL : positive := clocks_per_baud(CLKREF_HZ, CLKDIV, false);
+    begin
+        -- Confirm achieved rate is within spec.
+        assert ((100 * baud_hz < 105 * ACTUAL)
+            and (100 * baud_hz >  95 * ACTUAL))
+            report "Invalid UART rate (max error 5%)" severity error;
+        return CLKDIV;
     end function;
 
     function convert_address(

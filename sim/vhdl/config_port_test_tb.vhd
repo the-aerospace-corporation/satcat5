@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -46,6 +46,7 @@ architecture tb of config_port_test_tb is
 -- We lie about the clock rate to get a report every millisecond;
 -- just make sure to adjust UART "baud rate" proportionally.
 constant TEST_EVERY : positive := 100_000;
+constant UART_CKDIV : positive := 10;
 
 -- Clock and reset generation
 signal clk_100      : std_logic := '0';
@@ -60,10 +61,10 @@ signal b2a_ready    : std_logic := '0';
 -- Loopback connection for the two ports.
 signal rxa_data     : port_rx_m2s;
 signal rxb_data     : port_rx_m2s;
-signal txa_data     : port_tx_m2s;
-signal txb_data     : port_tx_m2s;
-signal txa_ctrl     : port_tx_s2m;
-signal txb_ctrl     : port_tx_s2m;
+signal txa_data     : port_tx_s2m;
+signal txb_data     : port_tx_s2m;
+signal txa_ctrl     : port_tx_m2s;
+signal txb_ctrl     : port_tx_m2s;
 signal uart_txd     : std_logic;
 
 -- Reference counters.
@@ -217,13 +218,11 @@ end process;
 
 -- Receive UART, optional decoder, and shift-register.
 u_uart : entity work.io_uart_rx
-    generic map(
-    BAUD_HZ     => TEST_EVERY / 10,
-    CLKREF_HZ   => TEST_EVERY)
     port map(
     uart_rxd    => uart_txd,
     rx_data     => raw_byte,
     rx_write    => raw_write,
+    rate_div    => to_unsigned(UART_CKDIV, 16),
     refclk      => clk_100,
     reset_p     => reset_p);
 

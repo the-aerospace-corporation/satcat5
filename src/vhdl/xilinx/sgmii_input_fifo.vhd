@@ -42,7 +42,8 @@ use     ieee.numeric_std.all;
 library unisim;
 use     unisim.vcomponents.all;
 use     work.common_functions.all;
-use     work.synchronization.all;
+use     work.common_primitives.sync_reset;
+use     work.common_primitives.sync_toggle2pulse;
 
 entity sgmii_input_fifo is
     generic (

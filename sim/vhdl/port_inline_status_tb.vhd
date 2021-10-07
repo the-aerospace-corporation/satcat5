@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -45,9 +45,9 @@ architecture tb of port_inline_status_tb is
 
 -- For simplicity, test message is static.
 constant MSG_BYTES      : integer := 8;
-constant MSG_ETYPE      : std_logic_vector(15 downto 0) := x"5C00";
-constant MAC_DEST       : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
-constant MAC_SOURCE     : std_logic_vector(47 downto 0) := x"5A5ADEADBEEF";
+constant MSG_ETYPE      : mac_type_t := x"5C00";
+constant MAC_DEST       : mac_addr_t := x"FFFFFFFFFFFF";
+constant MAC_SOURCE     : mac_addr_t := x"5A5ADEADBEEF";
 constant MSG_DATA       : std_logic_vector(8*MSG_BYTES-1 downto 0) := x"0123456789ABCDEF";
 
 -- Convert bool to integer (0/1)
@@ -68,11 +68,11 @@ signal reset_p          : std_logic := '1';
 -- Unit under test
 signal lcl_tx_rate      : port_rate_t;
 signal lcl_rx_data      : port_rx_m2s;  -- Ingress data out
-signal lcl_tx_data      : port_tx_m2s;  -- Egress data in
-signal lcl_tx_ctrl      : port_tx_s2m;
+signal lcl_tx_data      : port_tx_s2m;  -- Egress data in
+signal lcl_tx_ctrl      : port_tx_m2s;
 signal net_rx_data      : port_rx_m2s;  -- Ingress data in
-signal net_tx_data      : port_tx_m2s;  -- Egress data out
-signal net_tx_ctrl      : port_tx_s2m;
+signal net_tx_data      : port_tx_s2m;  -- Egress data out
+signal net_tx_ctrl      : port_tx_m2s;
 
 -- Frame-check sequence
 signal lcl_tx_write     : std_logic;
@@ -118,9 +118,9 @@ u_gen_eg : entity work.eth_traffic_sim
     out_port.clk        => net_tx_ctrl.clk,
     out_port.data       => lcl_tx_data.data,
     out_port.last       => lcl_tx_data.last,
-    out_port.write      => lcl_tx_write,
-    out_port.rate       => lcl_tx_rate,
-    out_port.status     => lcl_tx_status,
+    out_port.write      => lcl_tx_write,    -- Unused but cannot be "open"
+    out_port.rate       => lcl_tx_rate,     -- Unused but cannot be "open"
+    out_port.status     => lcl_tx_status,   -- Unused but cannot be "open"
     out_port.rxerr      => net_tx_ctrl.txerr,
     out_port.reset_p    => net_tx_ctrl.reset_p,
     out_bcount          => open,
@@ -138,14 +138,7 @@ u_gen_ig : entity work.eth_traffic_sim
     mac_dst             => x"BB",   -- Destination (repeat 6x)
     mac_src             => x"AA",   -- Source (repeat 6x)
     out_rate            => test_rate_in,
-    out_port.clk        => net_rx_data.clk,
-    out_port.data       => net_rx_data.data,
-    out_port.last       => net_rx_data.last,
-    out_port.write      => net_rx_data.write,
-    out_port.rate       => net_rx_data.rate,
-    out_port.status     => net_rx_data.status,
-    out_port.rxerr      => net_rx_data.rxerr,
-    out_port.reset_p    => net_rx_data.reset_p,
+    out_port            => net_rx_data,
     out_bcount          => open,
     out_valid           => open,
     out_ready           => open);

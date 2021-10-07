@@ -30,9 +30,9 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     ieee.math_real.all; -- For UNIFORM
+use     ieee.math_real.uniform;
 use     work.common_functions.all;
-use     work.eth_frame_common.all;  -- For BYTE_T
+use     work.eth_frame_common.byte_t;
 
 entity slip_decoder_tb is
     -- Testbench --> No I/O ports

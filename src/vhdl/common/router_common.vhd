@@ -46,15 +46,6 @@ package router_common is
     subtype ip_checksum_t is unsigned(15 downto 0);
     function ip_checksum(a, b : ip_checksum_t) return ip_checksum_t;
 
-    -- Ethernet MAC address is 48 bits long.
-    subtype mac_addr_t is std_logic_vector(47 downto 0);
-    constant MAC_BROADCAST : mac_addr_t := (others => '1');
-    constant MAC_NOT_FOUND : mac_addr_t := (others => '1');
-
-    -- Functions for checking special MAC addresses:
-    function mac_is_multicast(mac : mac_addr_t) return boolean;
-    function mac_is_broadcast(mac : mac_addr_t) return boolean;
-
     -- Use 16-bit counters for Ethernet frame lengths.
     subtype bcount_t is unsigned(15 downto 0);
     constant BCOUNT_MAX : bcount_t := (others => '1');
@@ -115,17 +106,6 @@ package body router_common is
         else
             return a + b;                   -- Normal addition
         end if;
-    end function;
-
-    function mac_is_multicast(mac : mac_addr_t) return boolean is
-    begin
-        return (mac(47 downto 24) = x"0180C2")  -- Multicast MAC (01:80:C2:*:*:*)
-            or (mac(47 downto 24) = x"01005E"); -- IPv4 Multicast (01:00:5E:*:*:*)
-    end function;
-
-    function mac_is_broadcast(mac : mac_addr_t) return boolean is
-    begin
-        return (mac = MAC_BROADCAST);       -- Broadcast MAC (FF:FF:FF:FF:FF:FF)
     end function;
 
     function get_byte_s(x:std_logic_vector; idx:integer) return byte_t is

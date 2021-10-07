@@ -28,6 +28,12 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
 package eth_frame_common is
+    -- Define SLV and UNSIGNED "byte" types.
+    subtype byte_t is std_logic_vector(7 downto 0);
+    subtype byte_u is unsigned(7 downto 0);
+    subtype nybb_t is std_logic_vector(3 downto 0);
+    subtype nybb_u is unsigned(3 downto 0);
+
     -- Size parameters including header, user data, and FCS.
     constant HEADER_CRC_BYTES   : integer := 18;    -- Header and CRC bytes ONLY.
     constant HEADER_TAG_BYTES   : integer := 4;     -- Additional bytes for 802.11Q
@@ -36,18 +42,82 @@ package eth_frame_common is
     constant MAX_FRAME_BYTES    : integer := 1522;  -- Maximum normal frame
     constant MAX_JUMBO_BYTES    : integer := 9022;  -- Maximum jumbo frame
 
+    -- Ethernet header: https://en.wikipedia.org/wiki/Ethernet_frame
+    --  Bytes  0- 5 = Destination MAC
+    --  Bytes  6-11 = Source MAC
+    --  Bytes 12-13 = EtherType
+    --  User data starts at byte 14.
+    --  Last four bytes are FCS (CRC32), if present.
+    constant ETH_HDR_DSTMAC     : integer := 0;
+    constant ETH_HDR_SRCMAC     : integer := 6;
+    constant ETH_HDR_ETYPE      : integer := 12;
+    constant ETH_HDR_DATA       : integer := 14;
+
+    -- Define byte-offsets for fields in a standard IP frame header.
+    -- (Assume IP header is preceded by the 14-byte Ethernet header.)
+    -- See also: https://en.wikipedia.org/wiki/IPv4#Header
+    constant IP_HDR_VERSION     : integer := ETH_HDR_DATA + 0;  -- Version + IP Header length
+    constant IP_HDR_DSCP_ECH    : integer := ETH_HDR_DATA + 1;  -- QoS and ECN flags
+    constant IP_HDR_TOTAL_LEN   : integer := ETH_HDR_DATA + 2;  -- Length (hdr + contents)
+    constant IP_HDR_IDCOUNT     : integer := ETH_HDR_DATA + 4;  -- Pkt ID (usually a counter)
+    constant IP_HDR_FRAGMENT    : integer := ETH_HDR_DATA + 6;  -- Fragment flags and offset
+    constant IP_HDR_TTL         : integer := ETH_HDR_DATA + 8;  -- Time-to-live counter
+    constant IP_HDR_PROTOCOL    : integer := ETH_HDR_DATA + 9;  -- Protocol (ICMP/UDP/TCP/etc)
+    constant IP_HDR_CHECKSUM    : integer := ETH_HDR_DATA + 10; -- Header checksum
+    constant IP_HDR_SRCADDR     : integer := ETH_HDR_DATA + 12; -- Source address
+    constant IP_HDR_DSTADDR     : integer := ETH_HDR_DATA + 16; -- Destination address
+    constant IP_HDR_OPTIONS     : integer := ETH_HDR_DATA + 20; -- Optional field(s)
+    constant IP_HDR_MAX         : integer := ETH_HDR_DATA + 60; -- Maximum IP-header
+    function IP_HDR_DATA(ihl : nybb_u) return integer;          -- Start of data field
+    -- Note: Data starts after the variable-length OPTIONS field, provide
+    --       IP-header length (IHL) field to determine the initial offset.
+
+    -- Byte or word counter for parsing Ethernet and IP headers.
+    constant MAC_BCOUNT_MAX : integer := IP_HDR_MAX + 1;
+    subtype mac_bcount_t is integer range 0 to MAC_BCOUNT_MAX;
+    function mac_wcount_max(bwidth : positive) return mac_bcount_t;
+
     -- Local type definitions for Frame Check Sequence (FCS):
-    subtype byte_t is std_logic_vector(7 downto 0);
     subtype crc_word_t is std_logic_vector(31 downto 0);
     type byte_array_t is array(natural range <>) of byte_t;
     constant CRC_INIT    : crc_word_t := (others => '1');
     constant CRC_RESIDUE : crc_word_t := x"C704DD7B";
 
+    -- Type definitions for common Ethernet header fields.:
+    constant MAC_ADDR_WIDTH : integer := 48;
+    constant MAC_TYPE_WIDTH : integer := 16;
+    subtype mac_addr_t is std_logic_vector(MAC_ADDR_WIDTH-1 downto 0);
+    subtype mac_type_t is std_logic_vector(MAC_TYPE_WIDTH-1 downto 0);
+    constant MAC_ADDR_BROADCAST : mac_addr_t := (others => '1');
+
+    -- Functions for checking special MAC addresses:
+    function mac_is_swcontrol(mac : mac_addr_t) return boolean;
+    function mac_is_l2multicast(mac : mac_addr_t) return boolean;
+    function mac_is_l3multicast(mac : mac_addr_t) return boolean;
+    function mac_is_broadcast(mac : mac_addr_t) return boolean;
+
+    -- Ethernet preamble definitions.
+    constant ETH_AMBLE_PRE  : byte_t := x"55";  -- 7-byte preamble
+    constant ETH_AMBLE_SOF  : byte_t := x"D5";  -- Start-of-frame marker
+
     -- SLIP token definitions.
-    constant SLIP_FEND      : byte_t := X"C0";
-    constant SLIP_ESC       : byte_t := X"DB";
-    constant SLIP_ESC_END   : byte_t := X"DC";
-    constant SLIP_ESC_ESC   : byte_t := X"DD";
+    constant SLIP_FEND      : byte_t := X"C0";  -- End-of-frame marker
+    constant SLIP_ESC       : byte_t := X"DB";  -- Escape marker
+    constant SLIP_ESC_END   : byte_t := X"DC";  -- Escaped FEND
+    constant SLIP_ESC_ESC   : byte_t := X"DD";  -- Escaped ESC
+
+    -- Utility functions for determining if a given byte is currently
+    -- present in an arbitrary-width data stream, then extracting it.
+    function strm_byte_present(
+        bwidth  : positive;         -- Bytes per clock
+        bidx    : natural;          -- Byte index of interest
+        wcount  : natural)          -- Rcvd word count (0 = start-of-frame)
+        return boolean;
+    function strm_byte_value(
+        bwidth  : positive;         -- Bytes per clock
+        bidx    : natural;          -- Byte index of interest
+        data    : std_logic_vector) -- Input vector (width = 8*bwidth)
+        return byte_t;
 
     -- Flip bit-order of the given byte.
     function flip_byte(data : byte_t) return byte_t;
@@ -63,6 +133,65 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
 package body eth_frame_common is
+
+function IP_HDR_DATA(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_VERSION + 4 * to_integer(ihl);
+end function;
+
+function mac_is_swcontrol(mac : mac_addr_t) return boolean is
+    constant lsb : byte_u := unsigned(mac(7 downto 0));
+begin
+    -- Reserved MAC addresses 01:80:C2:00:00:00 through :0F
+    -- (Used for PAUSE frames, Spanning Tree Protocol, etc.)
+    return (mac(47 downto 8) = x"0180C20000") and (lsb < 16);
+end function;
+
+function mac_is_l2multicast(mac : mac_addr_t) return boolean is
+begin
+    return (mac(47 downto 24) = x"0180C2")  -- Multicast MAC (01:80:C2:*:*:*)
+       and (not mac_is_swcontrol(mac));     -- ...except :00 through :0F
+end function;
+
+function mac_is_l3multicast(mac : mac_addr_t) return boolean is
+begin
+    return (mac(47 downto 24) = x"01005E"); -- IPv4 Multicast (01:00:5E:*:*:*)
+end function;
+
+function mac_is_broadcast(mac : mac_addr_t) return boolean is
+begin
+    return (mac = MAC_ADDR_BROADCAST);      -- Broadcast MAC (FF:FF:FF:FF:FF:FF)
+end function;
+
+function mac_wcount_max(bwidth : positive) return mac_bcount_t is
+begin
+    -- Return index of the word just after the last possible header byte.
+    return 1 + (IP_HDR_MAX / bwidth);
+end function;
+
+function strm_byte_present(
+    bwidth  : positive;
+    bidx    : natural;
+    wcount  : natural)
+    return boolean
+is
+    constant widx : natural := bidx / bwidth;   -- Round down
+begin
+    return (wcount = widx);
+end function;
+
+function strm_byte_value(
+    bwidth  : positive;
+    bidx    : natural;
+    data    : std_logic_vector)
+    return byte_t
+is
+    constant bleft : positive := data'left - 8 * (bidx mod bwidth);
+    variable result : byte_t := data(bleft downto bleft-7);
+begin
+    assert (data'length = 8 * bwidth);
+    return result;
+end function;
 
 function flip_byte(data : byte_t) return byte_t is
     variable drev : byte_t;

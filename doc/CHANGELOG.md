@@ -44,6 +44,18 @@ This log will be updated for each new release, but may not reflect the latest de
 * Compatibility improvements for SGMII startup handshake.
 * Timing improvements for traffic statistic counters.
 
+## v2.0.0
+
+* Added a large number of auxiliary ConfigBus peripherals, with cross-platform software drivers.
+* Added I2C peripherals and Ethernet-over-I2C ports.
+* Added the "MailMap" port, a higher-performance analogue to original MailBox port.
+* Created an embedded cross-platform C++ driver framework, including a IP and UDP network stack.
+* Replaced all prior MAC-lookup systems with a flexible high-performance TCAM.
+* Replaced various ad-hoc control and configuration functions with "ConfigBus".
+* Reworked switch-core to allow higher maximum throughput, max one full packet per clock.
+* Reworked switch-core to allow rudimentary IGMP snooping.
+* Reworked switch-core to allow traffic prioritization based on EtherType.
+
 # Copyright Notice
 
 Copyright 2019, 2020, 2021 The Aerospace Corporation

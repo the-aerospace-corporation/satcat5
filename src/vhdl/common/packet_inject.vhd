@@ -39,9 +39,9 @@
 -- "primary" input (Index 0) and "auxiliary" inputs (Index 1+).
 --
 -- If the primary input stream CANNOT use flow control, use a FIFO such as
--- "fifo_bram".  The FIFO depth must be large enough to accommodate the worst-
--- case time spent servicing another output.  If out_ready is held constant-
--- high, then the minimum FIFO size is equal to MAX_OUT_BYTES+1.
+-- "fifo_large_sync".  The FIFO depth must be large enough to accommodate the
+-- worst-case time spent servicing another output.  If out_ready is held
+-- constant-high, then the minimum FIFO size is equal to MAX_OUT_BYTES+3.
 --
 -- The "out_aux" flag indicates if the current output was taken from the
 -- primary input or one of the auxiliary input(s).
@@ -52,8 +52,8 @@
 -- strobes are provided to facilitate any further required action.
 --
 -- Example usage:
---  * Primary data port has no flow control.  Data is always written to a
---    fifo_bram large enough for one max-length packet (typically 2 kiB).
+--  * Primary data port with no flow control.  Data should be written to a
+--    FIFO large enough for one max-length packet (typically 2 kiB).
 --  * Secondary port(s) each have AXI valid/ready flow control, with the
 --    added caveat that packet data must be contiguous once started.
 --  * When idle, or at the end of each output packet, or if an auxiliary
@@ -72,11 +72,11 @@ use     work.eth_frame_common.all;
 entity packet_inject is
     generic (
     -- Number of input data ports.
-    INPUT_COUNT     : integer;
+    INPUT_COUNT     : positive;
     -- Options for each output frame.
     APPEND_FCS      : boolean;
-    MIN_OUT_BYTES   : integer := 0;
-    MAX_OUT_BYTES   : integer := 65535;
+    MIN_OUT_BYTES   : natural := 0;
+    MAX_OUT_BYTES   : positive := 65535;
     -- Enforce rules on primary and secondary inputs?
     RULE_PRI_MAXLEN : boolean := true;
     RULE_PRI_CONTIG : boolean := true;
@@ -144,6 +144,14 @@ sel_change <= mux_clken when (sel_state = STATE_IDLE)
          else (in_valid(sel_state-1) and in_last(sel_state-1));
 
 p_sel : process(clk)
+    function get_index(x : natural) return natural is
+    begin
+        if (x = STATE_IDLE) then
+            return 0;       -- Idle state defaults to primary input.
+        else
+            return x - 1;   -- Specific active index.
+        end if;
+    end function;
 begin
     if rising_edge(clk) then
         -- Update the selected input channel between packets.
@@ -172,25 +180,27 @@ begin
         end if;
 
         -- One-word buffer for the selected input.
-        if (mux_clken = '0') then
-            -- Hold current data while we wait.
-            null;
-        elsif (sel_state = STATE_IDLE) then
-            -- Default to the primary input.
-            mux_data  <= in_data(0);
-            mux_aux   <= '0';
-            mux_last  <= in_last(0);
-            mux_valid <= in_valid(0) and not out_pause;
+        if (reset_p = '1') then
+            mux_valid <= '0';   -- Global reset
+        elsif (mux_clken = '0') then
+            null;               -- Retain current data
+        elsif (sel_state = STATE_IDLE and out_pause = '1') then
+            mux_valid <= '0';   -- Pause before next frame
         else
-            -- Choose the active input.
-            mux_data  <= in_data(sel_state-1);
-            mux_aux   <= bool2bit(sel_state > 1);
-            mux_last  <= sel_change;
-            mux_valid <= in_valid(sel_state-1);
+            -- Normal case: Copy in_valid from the active input.
+            mux_valid <= in_valid(get_index(sel_state));
+        end if;
+
+        if (mux_clken = '1') then
+            -- Buffered copy of the active input.
+            mux_aux  <= bool2bit(sel_state > 1);
+            mux_data <= in_data(get_index(sel_state));
+            mux_last <= bool2bit(in_last(0) = '1' and sel_state = STATE_IDLE)
+                     or bool2bit(sel_change = '1' and sel_state > STATE_IDLE);
         end if;
 
         -- Check for various error conditions.
-        if (sel_state = STATE_IDLE) then
+        if (reset_p = '1' or sel_state = STATE_IDLE) then
             error_maxlen <= '0';
             error_contig <= '0';
         elsif (mux_clken = '1') then

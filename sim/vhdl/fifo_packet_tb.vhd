@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -49,16 +49,16 @@ entity fifo_packet_tb_single is
     INNER_CLOCK_MHZ : natural;          -- Rate of inter-FIFO ports
     BUFFER_KBYTES   : natural;          -- Buffer size (kilobytes)
     META_WIDTH      : natural := 0;     -- Metadata width (optional)
-    MIN_PKT_BYTES   : natural := 64;    -- Minimum packet size (bytes)
+    MIN_PKT_BYTES   : natural := 1;     -- Minimum packet size (bytes)
     MAX_PKT_BYTES   : natural := 250);  -- Maximum packet size (bytes)
     -- No I/O ports
 end fifo_packet_tb_single;
 
 architecture single of fifo_packet_tb_single is
 
-constant MIN_PKT_WORDS : integer := MIN_PKT_BYTES / OUTER_BYTES;
-constant MAX_PKT_WORDS : integer := MAX_PKT_BYTES / OUTER_BYTES;
-constant MAX_PACKETS   : integer := (1024 * BUFFER_KBYTES) / MIN_PKT_BYTES;
+constant MIN_PKT_WORDS : integer := (MIN_PKT_BYTES + OUTER_BYTES - 1) / OUTER_BYTES;
+constant MAX_PKT_WORDS : integer := (MAX_PKT_BYTES + OUTER_BYTES - 1) / OUTER_BYTES;
+constant MAX_PACKETS   : integer := 64;
 
 subtype meta_t is std_logic_vector(META_WIDTH-1 downto 0);
 
@@ -69,7 +69,8 @@ signal inner_clk    : std_logic := '0';
 signal outer_clk    : std_logic := '0';
 
 -- Input to the first FIFO.
-signal in_index     : integer := 0;
+signal in_index     : natural := 0; -- Packet index
+signal in_xfer      : natural := 0; -- Cumulative byte-index
 signal in_drop_en   : std_logic := '0';
 signal in_data      : std_logic_vector(8*OUTER_BYTES-1 downto 0) := (others => '0');
 signal in_meta      : meta_t := (others => '0');
@@ -81,8 +82,9 @@ signal in_write     : std_logic;
 signal in_overflow  : std_logic;
 
 -- Transfer from first FIFO to second FIFO.
+signal mid_xfer     : natural := 0; -- Cumulative byte-index
 signal mid_data     : std_logic_vector(8*INNER_BYTES-1 downto 0);
-signal mid_bcount   : integer range 0 to INNER_BYTES-1;
+signal mid_nlast    : integer range 0 to INNER_BYTES;
 signal mid_meta     : meta_t := (others => '0');
 signal mid_last     : std_logic;
 signal mid_valid    : std_logic;
@@ -91,7 +93,8 @@ signal mid_write    : std_logic;
 signal mid_overflow : std_logic;
 
 -- Output from second FIFO.
-signal out_index    : integer := 0;
+signal out_index    : natural := 0; -- Packet index
+signal out_xfer     : natural := 0; -- Cumulative byte-index
 signal out_total    : integer := 0;
 signal out_ref      : std_logic_vector(8*OUTER_BYTES-1 downto 0) := (others => '0');
 signal out_data     : std_logic_vector(8*OUTER_BYTES-1 downto 0);
@@ -100,6 +103,7 @@ signal out_last     : std_logic;
 signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
 signal out_pause    : std_logic := '0';
+signal out_overflow : std_logic;
 
 -- Overall test control
 constant revert_rate : real := 0.1;
@@ -185,6 +189,9 @@ p_input : process(outer_clk)
     variable len, count     : integer := 0;
     variable seed_temp      : integer := 0;
     variable meta           : meta_t := (others => '0');
+    variable in_revert      : natural := 0;
+    variable in_commit_d    : std_logic := '0';
+    variable in_revert_d    : std_logic := '0';
 begin
     if rising_edge(outer_clk) then
         -- Check for start of new packet.
@@ -240,6 +247,24 @@ begin
             in_last_rev <= in_drop_en;
         end if;
 
+        -- Update the cumulative byte-counter.
+        if (reset_p = '1') then
+            in_xfer <= 0;
+        elsif (in_overflow = '1' or in_revert_d = '1') then
+            in_xfer <= in_revert + u2i(in_write) * OUTER_BYTES;
+        else
+            in_xfer <= in_xfer + u2i(in_write) * OUTER_BYTES;
+        end if;
+
+        -- Update byte-index of the last accepted frame.
+        if (reset_p = '1') then
+            in_revert := 0;
+        elsif (in_overflow = '0' and in_commit_d = '1') then
+            in_revert := in_xfer;
+        end if;
+        in_commit_d := in_write and in_last_com;
+        in_revert_d := in_write and in_last_rev;
+
         -- Update the packet index.
         if (reset_p = '1') then
             in_index <= 0;
@@ -270,13 +295,38 @@ uut1 : entity work.fifo_packet
     in_overflow     => in_overflow,
     out_clk         => inner_clk,
     out_data        => mid_data,
-    out_bcount      => mid_bcount,
+    out_nlast       => mid_nlast,
     out_pkt_meta    => mid_meta,
     out_last        => mid_last,
     out_valid       => mid_valid,
     out_ready       => mid_ready,
     out_overflow    => open,
     reset_p         => reset_p);
+
+-- Count bytes in the middle segment.
+p_mid : process(inner_clk)
+    variable mid_commit_d : std_logic := '0';
+    variable mid_revert   : natural := 0;
+begin
+    if rising_edge(inner_clk) then
+        -- Update cumulative byte-counter.
+        if (reset_p = '1') then
+            mid_xfer <= 0;
+        elsif (mid_overflow = '1') then
+            mid_xfer <= mid_revert + u2i(mid_write) * INNER_BYTES;
+        else
+            mid_xfer <= mid_xfer + u2i(mid_write) * INNER_BYTES;
+        end if;
+
+        -- Update byte-index of the last accepted frame.
+        if (reset_p = '1') then
+            mid_revert := 0;
+        elsif (mid_overflow = '0' and mid_commit_d = '1') then
+            mid_revert := mid_xfer;
+        end if;
+        mid_commit_d := mid_write and mid_last;
+    end if;
+end process;
 
 -- Second unit under test.
 uut2 : entity work.fifo_packet
@@ -290,7 +340,7 @@ uut2 : entity work.fifo_packet
     port map(
     in_clk          => inner_clk,
     in_data         => mid_data,
-    in_bcount       => mid_bcount,
+    in_nlast        => mid_nlast,
     in_pkt_meta     => mid_meta,
     in_last_commit  => mid_last,
     in_last_revert  => '0',
@@ -298,12 +348,12 @@ uut2 : entity work.fifo_packet
     in_overflow     => mid_overflow,
     out_clk         => outer_clk,
     out_data        => out_data,
-    out_bcount      => open,
     out_pkt_meta    => out_meta,
     out_last        => out_last,
     out_valid       => out_valid,
     out_ready       => out_ready,
     out_pause       => out_pause,
+    out_overflow    => out_overflow,
     reset_p         => reset_p);
 
 -- Output checking.
@@ -345,24 +395,24 @@ begin
                 got_packet := '1';
                 -- Warning if we should be in pause mode.
                 -- (Give a little leeway due to final FIFO.)
-                assert (pause_count < 16)
+                assert (pause_count < 40)
                     report "Pause violation: " & integer'image(pause_count) severity error;
             elsif (count <= ref_len) then
                 -- Check each expected output word.
                 assert (out_data = out_ref)
-                    report "Output data mismatch" severity error;
+                    report "Output data mismatch @" & integer'image(out_xfer) severity error;
                 assert (out_meta = ref_meta)
-                    report "Output metadata mismatch" severity error;
+                    report "Output metadata mismatch @" & integer'image(out_xfer) severity error;
             else
-                report "Output exceeded expected length." severity error;
+                report "Output exceeded expected length @" & integer'image(out_xfer) severity error;
             end if;
             -- Confirm "last" flag arrives at expected time.
             if (count = ref_len) then
                 assert (out_last = '1')
-                    report "Missing out_last strobe." severity error;
+                    report "Missing out_last strobe @" & integer'image(out_xfer) severity error;
             else
                 assert (out_last = '0')
-                    report "Unexpected out_last strobe." severity error;
+                    report "Unexpected out_last strobe" & integer'image(out_xfer) severity error;
             end if;
             -- Generate the next expected data word.
             for n in out_ref'range loop
@@ -388,8 +438,10 @@ begin
         -- Count total received words
         if (reset_p = '1') then
             out_total <= 0;
+            out_xfer  <= 0;
         elsif (out_valid = '1' and out_ready = '1') then
             out_total <= out_total + 1;
+            out_xfer  <= out_xfer + OUTER_BYTES;
         end if;
 
         -- Check for unexpected overflow flags.
@@ -419,8 +471,8 @@ p_test : process
         out_rate <= ro;
 
         -- Check if we expect overflows at these rates.
-        in_ovr_ok  <= bool2bit(bps_in > 1.1 * bps_mid);
-        mid_ovr_ok <= bool2bit(bps_mid > 1.1 * bps_out);
+        in_ovr_ok  <= bool2bit(bps_in > 0.85 * bps_mid);
+        mid_ovr_ok <= bool2bit(bps_mid > 0.85 * bps_out);
 
         -- Clear FIFO contents.
         reset_p <= '1';

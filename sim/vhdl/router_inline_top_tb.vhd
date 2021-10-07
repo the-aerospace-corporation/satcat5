@@ -72,13 +72,13 @@ signal reset_p          : std_logic := '1';
 
 -- Local switch port.
 signal lcl_rx_data      : port_rx_m2s;  -- Ingress data out
-signal lcl_tx_data      : port_tx_m2s;  -- Egress data in
-signal lcl_tx_ctrl      : port_tx_s2m;
+signal lcl_tx_data      : port_tx_s2m;  -- Egress data in
+signal lcl_tx_ctrl      : port_tx_m2s;
 
 -- Remote network port.
 signal net_rx_data      : port_rx_m2s;  -- Ingress data in
-signal net_tx_data      : port_tx_m2s;  -- Egress data out
-signal net_tx_ctrl      : port_tx_s2m;
+signal net_tx_data      : port_tx_s2m;  -- Egress data out
+signal net_tx_ctrl      : port_tx_m2s;
 signal net_tx_ready     : std_logic := '0';
 
 -- Data to the UUT from client and server.
@@ -198,11 +198,10 @@ uut : entity work.router_inline_top
     router_time_msec    => (others => '0'));
 
 -- Reference FIFO and cross-check for the ingress stream.
-u_fifo_ig : entity work.fifo_bram
+u_fifo_ig : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH  => 8,
-    FIFO_DEPTH  => 4096,
-    FIFO_STRICT => true)
+    FIFO_DEPTH  => 4096)
     port map(
     in_data     => tst_ig_data,
     in_last     => tst_ig_last,
@@ -233,11 +232,10 @@ begin
 end process;
 
 -- Reference FIFO and cross-check for the egress stream.
-u_fifo_eg : entity work.fifo_bram
+u_fifo_eg : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH  => 8,
-    FIFO_DEPTH  => 4096,
-    FIFO_STRICT => true)
+    FIFO_DEPTH  => 4096)
     port map(
     in_data     => tst_eg_data,
     in_last     => tst_eg_last,
@@ -283,7 +281,7 @@ p_test : process
         -- ARP request from router to client.
         return make_arp_pkt(ARP_REQUEST,
             ROUTER_MACADDR, ROUTER_IPADDR,
-            MAC_BROADCAST,  CLIENT_IPADDR);
+            MAC_ADDR_BROADCAST, CLIENT_IPADDR);
     end function;
 
     function make_arp_reply return eth_packet is
@@ -320,7 +318,7 @@ p_test : process
         variable len : natural := pkt.all'length;
     begin
         -- Second, replace source MAC address and recalculate FCS.
-        return make_eth_fcs(MAC_BROADCAST, ROUTER_MACADDR, ETYPE_IPV4,
+        return make_eth_fcs(MAC_ADDR_BROADCAST, ROUTER_MACADDR, ETYPE_IPV4,
             pkt.all(len-113 downto 32));
     end function;
 

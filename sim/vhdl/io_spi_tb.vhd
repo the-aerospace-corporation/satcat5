@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -21,7 +21,7 @@
 --
 -- This testbench connects both SPI-interface variants back-to-back,
 -- to confirm successful bidirectional communication in each of the
--- four main SPI modes (Mode 0/1/2/3/).
+-- four main SPI modes (Mode 0/1/2/3) and at different baud rates.
 --
 -- The test runs indefinitely, with good coverage after 1 millisecond.
 --
@@ -35,15 +35,20 @@ use     work.eth_frame_common.all;
 
 entity io_spi_tb_helper is
     generic (
+    GLITCH_DLY  : natural;
     SPI_BAUD    : integer;
     SPI_MODE    : integer);
     port (
-    refclk_a    : std_logic;    -- Refclk for SPI-clkout
-    refclk_b    : std_logic;    -- Refclk for SPI-clkin
+    refclk_a    : std_logic;    -- Refclk for SPI-controller
+    refclk_b    : std_logic;    -- Refclk for SPI-peripheral
     reset_p     : std_logic);
 end io_spi_tb_helper;
 
 architecture tb of io_spi_tb_helper is
+
+-- Calculate clock-divider for target baud rate.
+constant CLOCK_DIV : positive :=
+    clocks_per_baud(100_000_000, 2 * SPI_BAUD);
 
 -- Error if no data received for N clock cycles
 constant DATA_CHECK_INTERVAL : integer := 10000;
@@ -55,8 +60,8 @@ constant MAX_ERROR_MESSAGES : integer := 100;
 -- Physical SPI interface
 signal spi_csb      : std_logic;
 signal spi_sck      : std_logic;
-signal spi_mosi     : std_logic;
-signal spi_miso     : std_logic;
+signal spi_copi     : std_logic;
+signal spi_cipo     : std_logic;
 
 -- Tx and Rx data streams
 signal txa_data     : byte_t := (others => '0');
@@ -157,12 +162,8 @@ begin
     end if;
 end process;
 
--- UUT: Clock source
-uut_a : entity work.io_spi_clkout
-    generic map(
-    CLKREF_HZ   => 100000000,
-    SPI_BAUD    => SPI_BAUD,
-    SPI_MODE    => SPI_MODE)
+-- UUT: Clock source (Controller)
+uut_a : entity work.io_spi_controller
     port map(
     cmd_data    => txa_data,
     cmd_last    => txa_last,
@@ -172,25 +173,28 @@ uut_a : entity work.io_spi_clkout
     rcvd_write  => rxa_write,
     spi_csb     => spi_csb,
     spi_sck     => spi_sck,
-    spi_sdo     => spi_mosi,
-    spi_sdi     => spi_miso,
+    spi_sdo     => spi_copi,
+    spi_sdi     => spi_cipo,
+    cfg_mode    => SPI_MODE,
+    cfg_rate    => to_unsigned(CLOCK_DIV, 8),
     ref_clk     => refclk_a,
     reset_p     => reset_p);
 
--- UUT: Clock follower
-uut_b : entity work.io_spi_clkin
-    generic map(SPI_MODE => SPI_MODE)
+-- UUT: Clock follower (Peripheral)
+uut_b : entity work.io_spi_peripheral
     port map(
     spi_csb     => spi_csb,
     spi_sclk    => spi_sck,
-    spi_sdi     => spi_mosi,
-    spi_sdo     => spi_miso,
+    spi_sdi     => spi_copi,
+    spi_sdo     => spi_cipo,
     spi_sdt     => open,
     tx_data     => txb_data,
     tx_valid    => txb_valid,
     tx_ready    => txb_ready,
     rx_data     => rxb_data,
     rx_write    => rxb_write,
+    cfg_gdly    => to_unsigned(GLITCH_DLY, 8),
+    cfg_mode    => SPI_MODE,
     refclk      => refclk_b);
 
 -- Measure the actual SCLK baud rate.
@@ -210,25 +214,25 @@ begin
     wait;
 end process;
 
--- Confirm that MISO doesn't "glitch" for less than a full bit-period.
+-- Confirm that CIPO doesn't "glitch" for less than a full bit-period.
 p_glitch : process
     constant ONE_BIT    : time := (1.0 sec / SPI_BAUD);
     constant MIN_GLITCH : time := 0.2 ns;
     constant MAX_GLITCH : time := (2 * ONE_BIT) / 3;
     variable prev, diff : time := 0.0 ns;
-    variable prev_miso  : std_logic := '0';
+    variable prev_cipo  : std_logic := '0';
     variable msgcount   : integer := 0;
 begin
-    wait until (spi_miso'event);
+    wait until (spi_cipo'event);
     -- Measure elapsed time, then screen for sub-nanosecond glitches.
     diff := now - prev;
     wait for MIN_GLITCH;
-    if (spi_miso /= prev_miso) then
+    if (spi_cipo /= prev_cipo) then
         -- Real transition, note new reference state
         prev := now - MIN_GLITCH;
-        prev_miso := spi_miso;
+        prev_cipo := spi_cipo;
         if ((spi_csb = '0') and (diff < MAX_GLITCH) and (msgcount < MAX_ERROR_MESSAGES)) then
-            report "MISO glitch detected: " & time'image(diff) severity error;
+            report "CIPO glitch detected: " & time'image(diff) severity error;
             msgcount := msgcount + 1;
         end if;
     end if;
@@ -301,6 +305,7 @@ architecture tb of io_spi_tb is
 
 component io_spi_tb_helper is
     generic (
+    GLITCH_DLY  : natural;
     SPI_BAUD    : integer;
     SPI_MODE    : integer);
     port (
@@ -309,7 +314,7 @@ component io_spi_tb_helper is
     reset_p     : std_logic);
 end component;
 
-signal clk_76   : std_logic := '0';
+signal clk_86   : std_logic := '0';
 signal clk_98   : std_logic := '0';
 signal clk_100  : std_logic := '0';
 signal reset_p  : std_logic := '1';
@@ -317,7 +322,7 @@ signal reset_p  : std_logic := '1';
 begin
 
 -- Clock and reset generation
-clk_76  <= not  clk_76 after 6.58 ns;
+clk_86  <= not  clk_86 after 5.81 ns;
 clk_98  <= not  clk_98 after 5.11 ns;
 clk_100 <= not clk_100 after 5.00 ns;
 reset_p <= '0' after 1 us;
@@ -325,7 +330,8 @@ reset_p <= '0' after 1 us;
 -- Instantiate functional-test configuration for each mode.
 uut0 : io_spi_tb_helper
     generic map(
-    SPI_BAUD    => 10000000,
+    GLITCH_DLY  => 2,
+    SPI_BAUD    => 10_000_000,
     SPI_MODE    => 0)
     port map(
     refclk_a    => clk_100,
@@ -334,7 +340,8 @@ uut0 : io_spi_tb_helper
 
 uut1 : io_spi_tb_helper
     generic map(
-    SPI_BAUD    => 10000000,
+    GLITCH_DLY  => 2,
+    SPI_BAUD    => 10_000_000,
     SPI_MODE    => 1)
     port map(
     refclk_a    => clk_100,
@@ -343,7 +350,8 @@ uut1 : io_spi_tb_helper
 
 uut2 : io_spi_tb_helper
     generic map(
-    SPI_BAUD    => 10000000,
+    GLITCH_DLY  => 2,
+    SPI_BAUD    => 10_000_000,
     SPI_MODE    => 2)
     port map(
     refclk_a    => clk_100,
@@ -352,22 +360,35 @@ uut2 : io_spi_tb_helper
 
 uut3 : io_spi_tb_helper
     generic map(
-    SPI_BAUD    => 10000000,
+    GLITCH_DLY  => 2,
+    SPI_BAUD    => 10_000_000,
     SPI_MODE    => 3)
     port map(
     refclk_a    => clk_100,
     refclk_b    => clk_98,
     reset_p     => reset_p);
 
--- One more instance to cover a borderline clock case (just over 3x)
--- (Note: Actual SCLK rate will be an even divisor of refclk_a, N >= 2)
+-- Higher-speed case with more aggressive glitch-detect.
 uut4 : io_spi_tb_helper
     generic map(
-    SPI_BAUD    => 25000000,
+    GLITCH_DLY  => 1,
+    SPI_BAUD    => 25_000_000,
+    SPI_MODE    => 3)
+    port map(
+    refclk_a    => clk_98,
+    refclk_b    => clk_100,
+    reset_p     => reset_p);
+
+-- One more instance to cover a borderline clock case (just over 3.5x)
+-- (Note: Actual SCLK rate will be an even divisor of refclk_a, N >= 2)
+uut5 : io_spi_tb_helper
+    generic map(
+    GLITCH_DLY  => 0,
+    SPI_BAUD    => 25_000_000,
     SPI_MODE    => 3)
     port map(
     refclk_a    => clk_100,
-    refclk_b    => clk_76,
+    refclk_b    => clk_86,
     reset_p     => reset_p);
 
 end tb;
