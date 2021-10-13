@@ -32,8 +32,8 @@ entity port_nullsink is
     port (
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s;
-    tx_data     : in  port_tx_m2s;
-    tx_ctrl     : out port_tx_s2m;
+    tx_data     : in  port_tx_s2m;
+    tx_ctrl     : out port_tx_m2s;
 
     -- Clock and reset.
     refclk      : in  std_logic;    -- Reference clock

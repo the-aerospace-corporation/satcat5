@@ -31,6 +31,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
+use     work.eth_frame_common.all;
 use     work.router_common.all;
 use     work.router_sim_tools.all;
 

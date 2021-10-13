@@ -33,19 +33,17 @@ use     work.common_functions.all;
 
 entity packet_delay is
     generic (
-    INPUT_BYTES     : integer;          -- Width of input port
-    DELAY_COUNT     : integer);         -- Fixed delay, in clocks
+    INPUT_BYTES     : positive;         -- Width of input port
+    DELAY_COUNT     : natural);         -- Fixed delay, in clocks
     port (
     -- Input port (no flow control).
     in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
-    in_bcount       : in  integer range 0 to INPUT_BYTES-1;
-    in_last         : in  std_logic;
+    in_nlast        : in  integer range 0 to INPUT_BYTES;
     in_write        : in  std_logic;
 
     -- Output port (no flow control).
     out_data        : out std_logic_vector(8*INPUT_BYTES-1 downto 0);
-    out_bcount      : out integer range 0 to INPUT_BYTES-1;
-    out_last        : out std_logic;
+    out_nlast       : out integer range 0 to INPUT_BYTES;
     out_write       : out std_logic;
 
     -- System clock and optional reset.
@@ -58,30 +56,27 @@ architecture packet_delay of packet_delay is
 constant ADDR_MAX : integer := int_max(0, DELAY_COUNT-2);
 subtype addr_t is integer range 0 to ADDR_MAX;
 subtype word_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
-subtype bcount_t is integer range 0 to INPUT_BYTES-1;
+subtype nlast_t is integer range 0 to INPUT_BYTES;
 type word_array is array(natural range <>) of word_t;
-type count_array is array(natural range <>) of bcount_t;
+type count_array is array(natural range <>) of nlast_t;
 
 signal rw_addr      : addr_t := 0;
 signal out_en       : std_logic := '0';
 signal tmp_data     : word_t := (others => '0');
-signal tmp_bcount   : bcount_t := INPUT_BYTES-1;
-signal tmp_last     : std_logic := '0';
+signal tmp_nlast    : nlast_t := INPUT_BYTES;
 signal tmp_write    : std_logic := '0';
 
 begin
 
 -- Drive the final output signals.
 out_data    <= tmp_data;
-out_bcount  <= tmp_bcount;
-out_last    <= tmp_last;
+out_nlast   <= tmp_nlast;
 out_write   <= tmp_write;
 
 -- Special case if delay is zero:
-gen_null : if (DELAY_COUNT < 1) generate
+gen_null : if (DELAY_COUNT = 0) generate
     tmp_data    <= in_data;
-    tmp_bcount  <= in_bcount;
-    tmp_last    <= in_last;
+    tmp_nlast   <= in_nlast;
     tmp_write   <= in_write;
 end generate;
 
@@ -103,17 +98,14 @@ gen_sreg : if (1 <= DELAY_COUNT and DELAY_COUNT < 16) generate
 
     p_other : process(io_clk)
         variable sreg_data  : word_array(DELAY_COUNT downto 1) := (others => (others => '0'));
-        variable sreg_count : count_array(DELAY_COUNT downto 1) := (others => INPUT_BYTES-1);
-        variable sreg_last  : std_logic_vector(DELAY_COUNT downto 1) := (others => '0');
+        variable sreg_count : count_array(DELAY_COUNT downto 1) := (others => INPUT_BYTES);
     begin
         if rising_edge(io_clk) then
             sreg_data  := sreg_data (DELAY_COUNT-1 downto 1) & in_data;
-            sreg_count := sreg_count(DELAY_COUNT-1 downto 1) & in_bcount;
-            sreg_last  := sreg_last (DELAY_COUNT-1 downto 1) & in_last;
+            sreg_count := sreg_count(DELAY_COUNT-1 downto 1) & in_nlast;
 
             tmp_data   <= sreg_data (DELAY_COUNT);
-            tmp_bcount <= sreg_count(DELAY_COUNT);
-            tmp_last   <= sreg_last (DELAY_COUNT);
+            tmp_nlast  <= sreg_count(DELAY_COUNT);
         end if;
     end process;
 end generate;
@@ -143,20 +135,17 @@ gen_bram : if (DELAY_COUNT >= 16) generate
     -- Inferred block-RAM or distributed RAM:
     p_bram : process(io_clk)
         variable ram_data   : word_array(0 to ADDR_MAX) := (others => (others => '0'));
-        variable ram_bcount : count_array(0 to ADDR_MAX) := (others => INPUT_BYTES-1);
-        variable ram_last   : std_logic_vector(0 to ADDR_MAX) := (others => '0');
+        variable ram_nlast  : count_array(0 to ADDR_MAX) := (others => INPUT_BYTES);
         variable ram_write  : std_logic_vector(0 to ADDR_MAX) := (others => '0');
     begin
         if rising_edge(io_clk) then
             -- Read before write.
             tmp_data    <= ram_data(rw_addr);
-            tmp_bcount  <= ram_bcount(rw_addr);
-            tmp_last    <= ram_last(rw_addr);
+            tmp_nlast   <= ram_nlast(rw_addr);
             tmp_write   <= ram_write(rw_addr) and out_en;
 
             ram_data(rw_addr)   := in_data;
-            ram_bcount(rw_addr) := in_bcount;
-            ram_last(rw_addr)   := in_last;
+            ram_nlast(rw_addr)  := in_nlast;
             ram_write(rw_addr)  := in_write;
         end if;
     end process;

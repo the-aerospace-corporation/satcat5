@@ -57,8 +57,8 @@ constant RX_PACKETS : integer := 100;
 signal ext_pause    : std_logic := '1';
 
 -- Streaming source and sink for each link:
-signal txdata_a, txdata_b   : port_tx_m2s;
-signal txctrl_a, txctrl_b   : port_tx_s2m;
+signal txdata_a, txdata_b   : port_tx_s2m;
+signal txctrl_a, txctrl_b   : port_tx_m2s;
 signal rxdata_a, rxdata_b   : port_rx_m2s;
 signal rxdone_a, rxdone_b   : std_logic;
 
@@ -116,7 +116,7 @@ u_src_b2a : entity work.port_test_common
     rxcount => RX_PACKETS);
 
 -- Two units under test, connected back-to-back.
-uut_a : entity work.port_serial_spi_clkout
+uut_a : entity work.port_serial_spi_controller
     generic map(
     CLKREF_HZ   => REFCLK_HZ,
     SPI_BAUD    => SPI_BAUD,
@@ -135,7 +135,7 @@ uut_a : entity work.port_serial_spi_clkout
 
 spi_tria <= '0';    -- Not used
 
-uut_b : entity work.port_serial_spi_clkin
+uut_b : entity work.port_serial_spi_peripheral
     generic map(
     CLKREF_HZ   => REFCLK_HZ,
     SPI_MODE    => SPI_MODE)

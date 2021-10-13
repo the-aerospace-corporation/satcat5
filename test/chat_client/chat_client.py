@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2021 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -25,13 +25,13 @@ Note: Requires ScaPy and must be run with administrative privileges.
       For Windows platforms, see additional instructions here:
         https://scapy.readthedocs.io/en/latest/installation.html#windows
 '''
-import ethernet_utils
+
+# Python library imports
 import logging
-import serial_utils
-import switch_cfg
 import PyQt5.QtCore as qtc
 import PyQt5.QtGui as qtg
 import PyQt5.QtWidgets as qtw
+import os
 import sys
 import threading
 import time
@@ -39,10 +39,20 @@ import traceback
 from numpy import ceil, random
 from struct import pack, unpack
 
+# Other imports from this folder.
+import switch_cfg
+
+# Additional imports from SatCat5 core.
+sys.path.append(os.path.join(
+    os.path.dirname(__file__), '..', '..', 'src', 'python'))
+import satcat5_eth
+from satcat5_gui import BetterComboBox
+import satcat5_uart
+
 # Start logging system.
 logger = logging.getLogger(__name__)
 logger.info('Starting logger...')
-logger.setLevel('WARNING')
+logger.setLevel('INFO')
 
 def create_hamlet_generator():
     '''
@@ -70,22 +80,6 @@ def create_hamlet_generator():
             elif len(para) > 0:
                 yield para.strip()  # Emit complete paragraph
                 para = ''
-
-class BetterComboBox(qtw.QComboBox):
-    '''Variant of QComboBox which indicates when user opens the dropdown.'''
-    openEvent = qtc.pyqtSignal()
-    closeEvent = qtc.pyqtSignal()
-    isOpen = False
-
-    def showPopup(self):
-        self.isOpen = True
-        self.openEvent.emit()
-        super(BetterComboBox, self).showPopup()
-
-    def hidePopup(self):
-        self.isOpen = False
-        self.closeEvent.emit()
-        super(BetterComboBox, self).hidePopup()
 
 class ChatClient(qtw.QMainWindow):
     '''GUI window representing a single chat client.'''
@@ -237,7 +231,7 @@ class ChatClient(qtw.QMainWindow):
         self.batch_timer.start(125)     # 8 updates/sec
         # Update and launch GUI.
         self.setWindowTitle('Chat: ' + port_obj.lbl)
-        self.txt_macaddr.setText(ethernet_utils.mac2str(port_obj.mac))
+        self.txt_macaddr.setText(satcat5_eth.mac2str(port_obj.mac))
         self.txt_username.setText(port_obj.lbl)
         self.username = port_obj.lbl
         self.show()
@@ -394,15 +388,15 @@ class ChatClient(qtw.QMainWindow):
         # Handle message based on Ethertype:
         if (etype == self.ETYPE_BEAT):
             if self.LOG_VERBOSE:
-                logger.info(self.port.lbl + ': Got heartbeat from ' + ethernet_utils.mac2str(mac_src))
+                logger.info(self.port.lbl + ': Got heartbeat from ' + satcat5_eth.mac2str(mac_src))
             self.frame_rcvd_beat(mac_src, self._decode_string(payload))
         elif (etype == self.ETYPE_CHAT):
             if self.LOG_VERBOSE:
-                logger.info(self.port.lbl + ': Got chat from ' + ethernet_utils.mac2str(mac_src))
+                logger.info(self.port.lbl + ': Got chat from ' + satcat5_eth.mac2str(mac_src))
             self.frame_rcvd_chat(mac_src, self._decode_string(payload))
         elif (etype == self.ETYPE_DATA):
             if self.LOG_VERBOSE:
-                logger.info(self.port.lbl + ': Got data from ' + ethernet_utils.mac2str(mac_src))
+                logger.info(self.port.lbl + ': Got data from ' + satcat5_eth.mac2str(mac_src))
         else:
             [etype_int] = unpack('>H', etype)
             logger.info(self.port.lbl + ': Unrecognized EtherType 0x%04X' % etype_int)
@@ -428,9 +422,9 @@ class ChatClient(qtw.QMainWindow):
 
     def _format_address(self, mac_src, label=''):
         if label:
-            return ethernet_utils.mac2str(mac_src) + ' (%s)' % label
+            return satcat5_eth.mac2str(mac_src) + ' (%s)' % label
         else:
-            return ethernet_utils.mac2str(mac_src)
+            return satcat5_eth.mac2str(mac_src)
 
     def frame_rcvd_beat(self, mac_src, msg_str):
         '''
@@ -461,7 +455,7 @@ class ChatClient(qtw.QMainWindow):
         if mac_src in self.rcvd_macs.keys():
             lbl_src = self.rcvd_macs[mac_src]
         else:
-            lbl_src = ethernet_utils.mac2str(mac_src)
+            lbl_src = satcat5_eth.mac2str(mac_src)
         msg_txt = 'From ' + lbl_src + ':\n' + msg_str
         # Queue this message for next GUI update.
         with self.batch_lock:
@@ -481,7 +475,7 @@ class ChatClient(qtw.QMainWindow):
         if not msg.endswith('\n'):
             msg += '\n'
         # Construct and send packet.
-        mac_dst = ethernet_utils.str2mac(self.cbo_sendto.currentText())
+        mac_dst = satcat5_eth.str2mac(self.cbo_sendto.currentText())
         mac_src = self.port.mac
         payload = pack('>H', len(msg)) + msg.encode()
         self._frame_send(mac_dst + mac_src + self.ETYPE_CHAT + payload)
@@ -492,7 +486,7 @@ class ChatClient(qtw.QMainWindow):
             # If enabled, send N identical packets.
             if self.auto_data_count > 0:
                 # Construct the reference packet.
-                mac_dst = ethernet_utils.str2mac(self.cbo_datato.currentText())
+                mac_dst = satcat5_eth.str2mac(self.cbo_datato.currentText())
                 mac_src = self.port.mac
                 pkt_dat = mac_dst + mac_src + self.ETYPE_DATA + random.bytes(1486)
                 # Send the same packet N times.
@@ -548,8 +542,7 @@ class ChatControl(qtw.QMainWindow):
         self.msg_count  = 0     # Count of status messages
         self.msg_rate   = 0.0   # Rate of status messages
         # Create config interface objects, but don't connect yet.
-        self.serial = serial_utils.AsyncSerialPort(logger, self.msg_rcvd)
-        self.switch = switch_cfg.SwitchConfig(self.serial)
+        self.serial = satcat5_uart.AsyncSerialPort(logger, self.msg_rcvd)
         # Create GUI elements.
         self.setWindowTitle('Switch Configuration')
         self.cbo_config = qtw.QComboBox(self)
@@ -572,8 +565,8 @@ class ChatControl(qtw.QMainWindow):
         self.cbo_client = qtw.QComboBox(self)
         self.cbo_client.activated[str].connect(self.open_client)
         # Populate the two interface lists.
-        self.list_eth = ethernet_utils.list_eth_interfaces()
-        self.list_uart = serial_utils.list_uart_interfaces()
+        self.list_eth = satcat5_eth.list_eth_interfaces()
+        self.list_uart = satcat5_uart.list_uart_interfaces()
         for lbl in self.list_uart.keys():
             self.cbo_config.addItem(lbl)
             self.cbo_client.addItem(lbl)
@@ -661,7 +654,8 @@ class ChatControl(qtw.QMainWindow):
         extclk = self.chk_extclk.isChecked()
         try:
             logger.info('Starting switch configuration...')
-            self.switch.reset_all(eth0rgmii, eth2sgmii, eth3sgmii, extclk)
+            cfg = switch_cfg.SwitchConfig(self.serial)
+            cfg.reset_all(eth0rgmii, eth2sgmii, eth3sgmii, extclk)
             logger.info('Done!')
         except:
             logger.error('Configuration error:\n' + traceback.format_exc())
@@ -735,10 +729,10 @@ class ChatControl(qtw.QMainWindow):
         '''
         # Open the appropriate port type.
         if port_name in self.list_uart.keys():
-            obj = serial_utils.AsyncSLIPPort(
+            obj = satcat5_uart.AsyncSLIPPort(
                 self.list_uart[port_name], logger)
         elif port_name in self.list_eth.keys():
-            obj = ethernet_utils.AsyncEthernetPort(
+            obj = satcat5_eth.AsyncEthernetPort(
                 port_name, self.list_eth[port_name], logger)
         else:
             logger.warning('No such port name')

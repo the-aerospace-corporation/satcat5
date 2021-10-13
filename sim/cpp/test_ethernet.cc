@@ -1,0 +1,117 @@
+//////////////////////////////////////////////////////////////////////////
+// Copyright 2021 The Aerospace Corporation
+//
+// This file is part of SatCat5.
+//
+// SatCat5 is free software: you can redistribute it and/or modify it under
+// the terms of the GNU Lesser General Public License as published by the
+// Free Software Foundation, either version 3 of the License, or (at your
+// option) any later version.
+//
+// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+// License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+//////////////////////////////////////////////////////////////////////////
+// Test cases for Ethernet-related data structures
+
+#include <hal_test/catch.hpp>
+#include <satcat5/ethernet.h>
+
+namespace eth   = satcat5::eth;
+namespace io    = satcat5::io;
+
+TEST_CASE("ethernet-mac") {
+    const eth::MacAddr MACADDR_A =
+        {{0x42, 0x42, 0x42, 0x42, 0x42, 0x42}};
+    const eth::MacAddr MACADDR_B =
+        {{0x42, 0x42, 0x42, 0x41, 0x42, 0x42}};
+    const eth::MacAddr MACADDR_C =
+        {{0x42, 0x42, 0x42, 0x42, 0x43, 0x42}};
+    const eth::MacType MACTYPE = {0xAABB};
+    const eth::Header HEADER_AB =
+        {MACADDR_A, MACADDR_B, MACTYPE};
+
+    SECTION("equal") {
+        CHECK(MACADDR_A == MACADDR_A);
+        CHECK(!(MACADDR_A == MACADDR_B));
+        CHECK(!(MACADDR_A == MACADDR_C));
+        CHECK(!(MACADDR_B == MACADDR_A));
+        CHECK(MACADDR_B == MACADDR_B);
+        CHECK(!(MACADDR_B == MACADDR_C));
+        CHECK(!(MACADDR_C == MACADDR_A));
+        CHECK(!(MACADDR_C == MACADDR_B));
+        CHECK(MACADDR_C == MACADDR_C);
+    }
+
+    SECTION("compare") {
+        CHECK(MACADDR_B < MACADDR_A);
+        CHECK(MACADDR_A < MACADDR_C);
+        CHECK(MACADDR_B < MACADDR_C);
+        CHECK(!(MACADDR_B < MACADDR_B));
+    }
+
+    SECTION("read-write") {
+        // Set up a working buffer.
+        u8 buffer[64];
+        io::ArrayWrite wr(buffer, sizeof(buffer));
+
+        // Write the example header to buffer.
+        HEADER_AB.write_to(&wr);
+        wr.write_finalize();
+
+        // Now check the contents, byte for byte.
+        REQUIRE(wr.written_len() == 14);
+        CHECK(buffer[0] == MACADDR_A.addr[0]);  // Dst
+        CHECK(buffer[1] == MACADDR_A.addr[1]);
+        CHECK(buffer[2] == MACADDR_A.addr[2]);
+        CHECK(buffer[3] == MACADDR_A.addr[3]);
+        CHECK(buffer[4] == MACADDR_A.addr[4]);
+        CHECK(buffer[5] == MACADDR_A.addr[5]);
+        CHECK(buffer[6] == MACADDR_B.addr[0]);  // Src
+        CHECK(buffer[7] == MACADDR_B.addr[1]);
+        CHECK(buffer[8] == MACADDR_B.addr[2]);
+        CHECK(buffer[9] == MACADDR_B.addr[3]);
+        CHECK(buffer[10] == MACADDR_B.addr[4]);
+        CHECK(buffer[11] == MACADDR_B.addr[5]);
+        CHECK(buffer[12] == 0xAA);              // Etype
+        CHECK(buffer[13] == 0xBB);
+
+        // Read new header from buffer, and check all fields match.
+        io::ArrayRead rd(buffer, wr.written_len());
+        eth::Header hdr;
+        CHECK(hdr.read_from(&rd));
+        CHECK(hdr.dst == MACADDR_A);
+        CHECK(hdr.src == MACADDR_B);
+        CHECK(hdr.type == MACTYPE);
+
+        // Read it again using different methods.
+        rd.read_finalize();
+        eth::MacAddr addr;
+        eth::MacType etype;
+        CHECK(addr.read_from(&rd));
+        CHECK(addr == MACADDR_A);
+        CHECK(addr.read_from(&rd));
+        CHECK(addr == MACADDR_B);
+        CHECK(etype.read_from(&rd));
+        CHECK(etype == MACTYPE);
+    }
+
+    SECTION("read-error") {
+        // Set up a working buffer.
+        u8 buffer[64];
+        io::ArrayWrite wr(buffer, sizeof(buffer));
+
+        // Write a partial header to the buffer.
+        MACADDR_A.write_to(&wr);
+        wr.write_finalize();
+
+        // Confirm attempted read fails.
+        io::ArrayRead rd(buffer, wr.written_len());
+        eth::Header hdr;
+        CHECK(!hdr.read_from(&rd));
+    }
+}

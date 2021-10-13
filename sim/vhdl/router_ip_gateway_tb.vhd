@@ -153,11 +153,10 @@ uut : entity work.router_ip_gateway
 
 -- FIFOs for the two test streams.
 ref_out_ready <= uut_out_valid and uut_out_ready;
-u_fifo_out : entity work.fifo_bram
+u_fifo_out : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH  => 8,
-    FIFO_DEPTH  => 4096,
-    FIFO_STRICT => true)
+    FIFO_DEPTH  => 4096)
     port map(
     in_data     => tst_out_data,
     in_last     => tst_out_last,
@@ -170,11 +169,10 @@ u_fifo_out : entity work.fifo_bram
     reset_p     => reset_p);
 
 ref_icmp_ready <= uut_icmp_valid and uut_icmp_ready;
-u_fifo_icmp : entity work.fifo_bram
+u_fifo_icmp : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH  => 8,
-    FIFO_DEPTH  => 1024,
-    FIFO_STRICT => true)
+    FIFO_DEPTH  => 1024)
     port map(
     in_data     => tst_icmp_data,
     in_last     => tst_icmp_last,
@@ -527,9 +525,9 @@ p_test : process
         variable ARP_ETH : eth_packet := make_eth_pkt(
             OUTER1_MAC, LOCAL1_MAC, ETYPE_ARP, rand_vec(64));
         variable BCAST1_ETH : eth_packet := make_eth_pkt(
-            MAC_BROADCAST, LOCAL1_MAC, ETYPE_NOIP, rand_vec(64));
+            MAC_ADDR_BROADCAST, LOCAL1_MAC, ETYPE_NOIP, rand_vec(64));
         variable BCAST2_ETH : eth_packet := make_eth_pkt(
-            OUTER2_MAC, MAC_BROADCAST, ETYPE_NOIP, rand_vec(64));
+            OUTER2_MAC, MAC_ADDR_BROADCAST, ETYPE_NOIP, rand_vec(64));
     begin
         -- Set test conditions and update high/low test index.
         test_idx_hi     <= test_idx_hi + 1;
@@ -656,8 +654,8 @@ p_test : process
 
         -- Test #11: Forbidden cases for the MAC broadcast address.
         test_start;
-        send_in(make_eth_pkt(MAC_BROADCAST, LOCAL2_MAC, ETYPE_IPV4, UDP_TTL1_IP.all).all);
-        send_in(ip_to_router(MAC_BROADCAST, UDP_TTL1_IP.all).all);
+        send_in(make_eth_pkt(MAC_ADDR_BROADCAST, LOCAL2_MAC, ETYPE_IPV4, UDP_TTL1_IP.all).all);
+        send_in(ip_to_router(MAC_ADDR_BROADCAST, UDP_TTL1_IP.all).all);
         test_finish;
 
         -- Test #12: Forbidden IP source-address
@@ -697,7 +695,7 @@ p_test : process
         -- Test #16: Echo request to the limited-broadcast IP.
         test_start;
         expect_icmp(icmp_from_router(LOCAL1_MAC, ICMP_TC_ECHORP, ECHO_BCAST_IP.all).all);
-        send_in(make_eth_pkt(MAC_BROADCAST, LOCAL1_MAC, ETYPE_IPV4, ECHO_BCAST_IP.all).all);
+        send_in(make_eth_pkt(MAC_ADDR_BROADCAST, LOCAL1_MAC, ETYPE_IPV4, ECHO_BCAST_IP.all).all);
         test_finish;
     end procedure;
 begin

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -44,7 +44,7 @@ use     work.common_functions.all;
 
 entity packet_round_robin is
     generic (
-    INPUT_COUNT : integer); -- Number of input ports
+    INPUT_COUNT : positive);    -- Number of input ports
     port (
     -- Flow control signals for each input port.
     in_last     : in  std_logic_vector(INPUT_COUNT-1 downto 0);
@@ -68,15 +68,25 @@ architecture packet_round_robin of packet_round_robin is
 subtype port_slv is std_logic_vector(INPUT_COUNT-1 downto 0);
 subtype port_idx is integer range 0 to INPUT_COUNT-1;
 
--- Simple priority encoder, returns index of first '1' bit.
-function get_priority(x: port_slv) return port_idx is
+-- Choose the next selection index using two priority encoders:
+-- The first only considers ports counting up from the previous selection.
+-- The second considers all ports, to handle the wraparound case.
+function round_robin(
+    in_valid    : port_slv;
+    prev_mask   : port_slv;
+    prev_idx    : port_idx)
+    return port_idx
+is
+    constant in_vmask : port_slv := in_valid and prev_mask;
 begin
-    for n in 0 to INPUT_COUNT-2 loop
-        if (x(n) = '1') then
-            return n;
-        end if;
-    end loop;
-    return INPUT_COUNT-1;
+    -- Combinational logic only.
+    if (or_reduce(in_vmask) = '1') then
+        return priority_encoder(in_vmask);
+    elsif (or_reduce(in_valid) = '1') then
+        return priority_encoder(in_valid);
+    else
+        return prev_idx;
+    end if;
 end function;
 
 -- Internal copies of output signals.
@@ -104,22 +114,9 @@ gen_ready : for n in in_ready'range generate
     in_ready(n) <= out_ready and bool2bit(select_curr = n);
 end generate;
 
--- Choose the next selection index using two priority encoders:
--- The first only considers ports counting up from the previous selection.
--- The second considers all ports, to handle the wraparound case.
-p_priority : process(in_valid, select_mask, select_curr)
-begin
-    -- Combinational logic only.
-    if (or_reduce(in_valid and select_mask) = '1') then
-        select_next <= get_priority(in_valid and select_mask);
-    elsif (or_reduce(in_valid) = '1') then
-        select_next <= get_priority(in_valid);
-    else
-        select_next <= select_curr;
-    end if;
-end process;
-
 -- State machine for updating the selection index.
+select_next <= round_robin(in_valid, select_mask, select_curr);
+
 p_select : process(clk)
 begin
     if rising_edge(clk) then

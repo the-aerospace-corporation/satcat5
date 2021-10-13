@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -26,8 +26,23 @@
 -- In this model, a "query" occurs any time the remote device sends the SLIP
 -- end-of-frame character (0xC0).  This includes the end of a regular frame,
 -- or simply a single byte sent between frames as a placeholder.  Once received,
--- the UART will reply with the next packet if one is available, or with a single
--- end-of-frame character if idle.
+-- the UART will reply with the next packet if one is available, or with a
+-- single end-of-frame character if idle.
+--
+-- By default, UART baud-rate is fixed at build-time.  If enabled, an optional
+-- ConfigBus interface can be used to set a different clock-divider ratio at
+-- runtime and optionally report status information.  (Connecting the read-reply
+-- interface is recommended, but not required for routine operation.)
+--
+-- If enabled, the ConfigBus interface uses three registers:
+--  REGADDR = 0: Port status (read-only)
+--      Bits 31-08: Reserved
+--      Bits 07-00: Read the 8-bit status word (i.e., rx_data.status)
+--  REGADDR = 1: Reference clock rate (read-only)
+--      Bits 31-00: Report reference clock rate, in Hz. (i.e., CLFREF_HZ)
+--  REGADDR = 2: UART baud-rate control (read-write)
+--      Bits 31-16: Reserved (zeros)
+--      Bits 15-00: Clock divider ratio = round(CLKREF_HZ / baud_hz)
 --
 -- See also: https://en.wikipedia.org/wiki/Universal_asynchronous_receiver-transmitter
 -- See also: https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol
@@ -36,15 +51,19 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
 use     work.common_functions.all;
-use     work.eth_frame_common.all;  -- For byte_t
+use     work.common_primitives.sync_reset;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_serial_uart_2wire is
     generic (
-    CLKREF_HZ   : integer;          -- Reference clock rate (Hz)
-    BAUD_HZ     : integer);         -- Input and output rate (bps)
+    -- Default baud-rate setting on startup
+    CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
+    BAUD_HZ     : positive;         -- Default UART baud rate (bps)
+    -- ConfigBus device address (optional)
+    DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
     -- External UART interface.
     uart_txd    : out std_logic;    -- Data from switch to user
@@ -52,11 +71,15 @@ entity port_serial_uart_2wire is
 
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s;  -- Data from end user to switch core
-    tx_data     : in  port_tx_m2s;  -- Data from switch core to end user
-    tx_ctrl     : out port_tx_s2m;  -- Flow control for tx_data
+    tx_data     : in  port_tx_s2m;  -- Data from switch core to end user
+    tx_ctrl     : out port_tx_m2s;  -- Flow control for tx_data
 
     -- Flow-control override, used for unit test ONLY.
     req_now     : in  std_logic := '0';
+
+    -- Optional ConfigBus interface
+    cfg_cmd     : in  cfgbus_cmd := CFGBUS_CMD_NULL;
+    cfg_ack     : out cfgbus_ack;
 
     -- Clock and reset
     refclk      : in  std_logic;    -- Reference clock
@@ -64,6 +87,17 @@ entity port_serial_uart_2wire is
 end port_serial_uart_2wire;
 
 architecture port_serial_uart_2wire of port_serial_uart_2wire is
+
+-- Default clock-divider ratio:
+constant RATE_MBPS      : positive :=
+    clocks_per_baud(BAUD_HZ, 1_000_000);
+constant RATE_DEFAULT   : cfgbus_word :=
+    i2s(clocks_per_baud_uart(CLKREF_HZ, BAUD_HZ), CFGBUS_WORD_SIZE);
+
+-- ConfigBus interface.
+signal cfg_acks     : cfgbus_ack_array(0 to 2);
+signal rate_div     : cfgbus_word := RATE_DEFAULT;
+signal status_word  : cfgbus_word;
 
 -- Raw transmit interface (flow control and idle insertion)
 signal raw_data     : byte_t;
@@ -87,12 +121,18 @@ begin
 
 -- Forward clock and reset signals.
 rx_data.clk     <= refclk;
-rx_data.rate    <= get_rate_word(clocks_per_baud(BAUD_HZ, 1_000_000));
-rx_data.status  <= (0 => reset_sync, others => '0');
+rx_data.rate    <= get_rate_word(RATE_MBPS);
+rx_data.status  <= status_word(7 downto 0);
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= wdog_rst_p;
 tx_ctrl.txerr   <= '0';     -- No error states
+
+-- Upstream status reporting.
+status_word <= (
+    0 => reset_sync,
+    1 => pkt_running,
+    others => '0');
 
 -- Synchronize the external reset signal.
 u_rsync : sync_reset
@@ -101,27 +141,59 @@ u_rsync : sync_reset
     out_reset_p => reset_sync,
     out_clk     => refclk);
 
+-- Optional ConfigBus interface:
+-- (If disabled, this simplifies down to "rate_div <= RATE_DEFAULT".)
+cfg_ack <= cfgbus_merge(cfg_acks);
+
+u_cfg_reg0 : cfgbus_readonly_sync
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 0)   -- Reg0 = Status reporting
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(0),
+    sync_clk    => refclk,
+    sync_val    => status_word);
+
+u_cfg_reg1 : cfgbus_readonly
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 1)   -- Reg1 = Reference clock rate
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(1),
+    reg_val     => i2s(CLKREF_HZ, CFGBUS_WORD_SIZE));
+
+u_cfg_reg2 : cfgbus_register_sync
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => 2,   -- Reg2 = Rate control
+    WR_ATOMIC   => true,
+    WR_MASK     => x"0000FFFF",
+    RSTVAL      => RATE_DEFAULT)
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_acks(2),
+    sync_clk    => refclk,
+    sync_val    => rate_div);
+
 -- Transmit and receive UARTs:
 u_rx : entity work.io_uart_rx
-    generic map(
-    CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => BAUD_HZ)
     port map(
     uart_rxd    => uart_rxd,
     rx_data     => dec_data,
     rx_write    => dec_write,
+    rate_div    => unsigned(rate_div(15 downto 0)),
     refclk      => refclk,
     reset_p     => reset_sync);
 
 u_tx : entity work.io_uart_tx
-    generic map(
-    CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => BAUD_HZ)
     port map(
     uart_txd    => uart_txd,
     tx_data     => raw_data,
     tx_valid    => raw_valid,
     tx_ready    => raw_ready,
+    rate_div    => unsigned(rate_div(15 downto 0)),
     refclk      => refclk,
     reset_p     => reset_sync);
 

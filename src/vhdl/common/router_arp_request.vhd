@@ -35,7 +35,6 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
 use     work.router_common.all;
-use     work.synchronization.all;
 
 entity router_arp_request is
     generic (
@@ -43,10 +42,10 @@ entity router_arp_request is
     LOCAL_MACADDR   : mac_addr_t;
     -- Options for each output frame.
     ARP_APPEND_FCS  : boolean := false;
-    MIN_FRAME_BYTES : integer := 0;
+    MIN_FRAME_BYTES : natural := 0;
     -- Rate-limiter parameters.
-    HISTORY_COUNT   : integer := 16;
-    HISTORY_TIMEOUT : integer := 10_000_000);
+    HISTORY_COUNT   : positive := 16;
+    HISTORY_TIMEOUT : natural := 10_000_000);
     port (
     -- Network interface
     pkt_tx_data     : out byte_t;
@@ -242,7 +241,7 @@ begin
         if (scan_done = '1' or tx_ready = '1') then
             tx_last <= bool2bit(tx_state = ARP_FRAME_BYTES-1);
             if (tx_state < 6) then      -- Destination MAC
-                tx_data <= get_byte_s(MAC_BROADCAST, 5-tx_state);
+                tx_data <= get_byte_s(MAC_ADDR_BROADCAST, 5-tx_state);
             elsif (tx_state < 12) then  -- Source MAC
                 tx_data <= get_byte_s(LOCAL_MACADDR, 11-tx_state);
             elsif (tx_state < 22) then  -- Fixed fields (see above)
@@ -252,7 +251,7 @@ begin
             elsif (tx_state < 32) then  -- Request SPA = Router IP
                 tx_data <= get_byte_s(router_ipaddr, 31-tx_state);
             elsif (tx_state < 38) then  -- Request THA = Filler
-                tx_data <= get_byte_s(MAC_NOT_FOUND, 37-tx_state);
+                tx_data <= (others => '1');
             elsif (tx_state < 42) then  -- Request TPA = Target IP
                 tx_data <= get_byte_s(next_addr, 41-tx_state);
             else                        -- Zero-pad (optional)

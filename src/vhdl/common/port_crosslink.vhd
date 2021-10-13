@@ -32,24 +32,24 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_reset;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_crosslink is
     generic (
     RUNT_PORTA  : boolean;          -- Allow runt packets on Port A?
     RUNT_PORTB  : boolean;          -- Allow runt packets on Port B?
-    RATE_DIV    : integer := 2);    -- Rate limit of 1/N
+    RATE_DIV    : positive := 2);   -- Rate limit of 1/N
     port (
     -- Internal interface for Port A.
     rxa_data    : out port_rx_m2s;
-    txa_data    : in  port_tx_m2s;
-    txa_ctrl    : out port_tx_s2m;
+    txa_data    : in  port_tx_s2m;
+    txa_ctrl    : out port_tx_m2s;
 
     -- Internal interface for Port B.
     rxb_data    : out port_rx_m2s;
-    txb_data    : in  port_tx_m2s;
-    txb_ctrl    : out port_tx_s2m;
+    txb_data    : in  port_tx_s2m;
+    txb_ctrl    : out port_tx_m2s;
 
     -- Other control
     ref_clk     : in  std_logic;    -- Transfer clock

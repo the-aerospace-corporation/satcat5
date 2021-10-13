@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -41,22 +41,23 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_pulse2pulse;
+use     work.common_primitives.sync_toggle2pulse;
 use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity config_port_test is
     generic (
     BAUD_HZ     : positive;                         -- UART baud rate
     CLKREF_HZ   : positive;                         -- Refclk frequency (Hz)
     ETYPE_TEST  : std_logic_vector(15 downto 0);    -- EtherType (Test traffic)
-    PORT_COUNT  : integer;                          -- Number of attached ports
+    PORT_COUNT  : positive;                         -- Number of attached ports
     SLIP_UART   : boolean := true);                 -- SLIP encode UART?
     port (
     -- Ports under test
     rx_data     : in  array_rx_m2s(PORT_COUNT-1 downto 0);
-    tx_data     : out array_tx_m2s(PORT_COUNT-1 downto 0);
-    tx_ctrl     : in  array_tx_s2m(PORT_COUNT-1 downto 0);
+    tx_data     : out array_tx_s2m(PORT_COUNT-1 downto 0);
+    tx_ctrl     : in  array_tx_m2s(PORT_COUNT-1 downto 0);
 
     -- Reporting interface(s)
     uart_txd    : out std_logic;                    -- Binary data over UART
@@ -68,10 +69,11 @@ end config_port_test;
 
 architecture config_port_test of config_port_test is
 
--- Define convenience types.
-subtype mac_addr_t is std_logic_vector(47 downto 0);
-constant MAC_ADDR_BCAST : mac_addr_t := (others => '1');
+-- UART clock-divider is fixed at build-time.
+constant UART_CLKDIV : unsigned(15 downto 0) :=
+    to_unsigned(clocks_per_baud_uart(CLKREF_HZ, BAUD_HZ), 16);
 
+-- Define convenience types.
 subtype bit_array is std_logic_vector(PORT_COUNT-1 downto 0);
 
 subtype stats_word is unsigned(31 downto 0);
@@ -81,7 +83,6 @@ constant STATS_ZERO : stats_word := (others => '0');
 constant REPORT_BYTES : positive := 4*3;
 
 -- Define MAC addresses for each port.
-
 function get_src_mac(n : natural) return mac_addr_t is
     constant SRC : mac_addr_t := x"DEADBEEF" & i2s(n, 16);
 begin
@@ -135,7 +136,7 @@ gen_ports : for p in 0 to PORT_COUNT-1 generate
     -- Traffic generator.
     u_tx : entity work.eth_traffic_src
         generic map(
-        HDR_DST     => MAC_ADDR_BCAST,
+        HDR_DST     => MAC_ADDR_BROADCAST,
         HDR_SRC     => get_src_mac(p),
         HDR_ETYPE   => ETYPE_TEST,
         FRM_NBYTES  => 1000)
@@ -317,14 +318,12 @@ end generate;
 
 -- UART interface.
 u_uart : entity work.io_uart_tx
-    generic map(
-    CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => BAUD_HZ)
     port map(
     uart_txd    => uart_txd,
     tx_data     => enc_data,
     tx_valid    => enc_valid,
     tx_ready    => enc_ready,
+    rate_div    => UART_CLKDIV,
     refclk      => refclk,
     reset_p     => reset_p);
 

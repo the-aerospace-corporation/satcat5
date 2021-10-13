@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,29 +31,30 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_toggle2pulse;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_inline_status is
     generic (
     SEND_EGRESS     : boolean;          -- Send to external network port?
     SEND_INGRESS    : boolean;          -- Send to internal switch port?
-    MSG_BYTES       : integer := 0;     -- Bytes per status message (0 = none)
-    MSG_ETYPE       : std_logic_vector(15 downto 0) := x"5C00";
-    MAC_DEST        : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
-    MAC_SOURCE      : std_logic_vector(47 downto 0) := x"5A5ADEADBEEF";
-    AUTO_DELAY_CLKS : integer := 0;     -- Send every N clocks, or 0 for on-demand
-    MIN_FRAME_BYTES : integer := 0);    -- Pad to minimum frame size?
+    MSG_BYTES       : natural := 0;     -- Bytes per status message (0 = none)
+    MSG_ETYPE       : mac_type_t := x"5C00";
+    MAC_DEST        : mac_addr_t := x"FFFFFFFFFFFF";
+    MAC_SOURCE      : mac_addr_t := x"5A5ADEADBEEF";
+    AUTO_DELAY_CLKS : natural := 0;     -- Send every N clocks, or 0 for on-demand
+    MIN_FRAME_BYTES : natural := 0);    -- Pad to minimum frame size?
     port (
     -- Internal switch port.
     lcl_rx_data     : out port_rx_m2s;  -- Ingress data out
-    lcl_tx_data     : in  port_tx_m2s;  -- Egress data in
-    lcl_tx_ctrl     : out port_tx_s2m;
+    lcl_tx_data     : in  port_tx_s2m;  -- Egress data in
+    lcl_tx_ctrl     : out port_tx_m2s;
 
     -- External network port.
     net_rx_data     : in  port_rx_m2s;  -- Ingress data in
-    net_tx_data     : out port_tx_m2s;  -- Egress data out
-    net_tx_ctrl     : in  port_tx_s2m;
+    net_tx_data     : out port_tx_s2m;  -- Egress data out
+    net_tx_ctrl     : in  port_tx_m2s;
 
     -- Optional status message and write-toggle.
     status_val      : in  std_logic_vector(8*MSG_BYTES-1 downto 0) := (others => '0');
@@ -63,8 +64,10 @@ end port_inline_status;
 architecture port_inline_status of port_inline_status is
 
 -- Calculate required ingress FIFO size:
-constant IG_FRM_SIZE    : integer := int_max(MIN_FRAME_BYTES, 18 + MSG_BYTES);
-constant IG_FIFO_DEPTH  : integer := 2**log2_ceil(IG_FRM_SIZE);
+-- (+3 is minimum safe margin for packet_inject block.)
+constant IG_FRM_SIZE    : integer := int_max(
+    MIN_FRAME_BYTES, HEADER_CRC_BYTES + MSG_BYTES);
+constant IG_FIFO_DEPTH  : integer := 2**log2_ceil(IG_FRM_SIZE + 3);
 
 -- Egress datapath
 signal eg_clk       : std_logic;
@@ -203,7 +206,7 @@ end generate;
 ig_inject : if SEND_INGRESS generate
     -- Small FIFO for buffering received data.
     -- (No flow control back-pressure on the ingress input.)
-    u_fifo : entity work.fifo_bram
+    u_fifo : entity work.fifo_large_sync
         generic map(
         FIFO_WIDTH      => 8,
         FIFO_DEPTH      => IG_FIFO_DEPTH)
@@ -211,13 +214,11 @@ ig_inject : if SEND_INGRESS generate
         in_data         => ig_in_data,
         in_last         => ig_in_last,
         in_write        => ig_in_write,
+        in_error        => ig_err_fifo,
         out_data        => ig_main_in.data,
         out_last        => ig_main_in.last,
         out_valid       => ig_main_in.valid,
         out_ready       => ig_main_in.ready,
-        fifo_error      => ig_err_fifo,
-        fifo_empty      => open,
-        fifo_full       => open,
         clk             => ig_clk,
         reset_p         => ig_reset_p);
 

@@ -41,8 +41,8 @@ package IO_LEDS is
     -- The complete cycle occurs every 64 * RATE * PREDIV clock cycles.
     component breathe_led is
         generic (
-            RATE     : integer := 10000000;
-            PREDIV   : integer := 1;
+            RATE     : positive := 10000000;
+            PREDIV   : positive := 1;
             LED_LIT  : std_logic := '0');
         port (
             LED   : out std_logic;
@@ -55,8 +55,8 @@ package IO_LEDS is
     -- time constant of approximately 16 * DIV * PREDIV clock cycles.
     component sustain_exp_led is
         generic (
-            DIV      : integer := 10000000;
-            PREDIV   : integer := 1;
+            DIV      : positive := 10000000;
+            PREDIV   : positive := 1;
             LED_LIT  : std_logic := '0');
         port (
             LED   : out std_logic;
@@ -120,8 +120,8 @@ use work.io_leds.pwm_led;
 
 entity breathe_led is
     generic (
-        RATE     : integer := 10000000;
-        PREDIV   : integer := 1;
+        RATE     : positive := 10000000;
+        PREDIV   : positive := 1;
         LED_LIT  : std_logic := '0');
     port (
         LED   : out std_logic;
@@ -191,8 +191,8 @@ use work.io_leds.pwm_led;
 
 entity sustain_exp_led is
     generic (
-        DIV      : integer := 10000000;
-        PREDIV   : integer := 1;
+        DIV      : positive := 10000000;
+        PREDIV   : positive := 1;
         LED_LIT  : std_logic := '0');
     port (
         LED   : out std_logic;

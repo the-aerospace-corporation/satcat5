@@ -231,7 +231,7 @@ uut : entity work.eth_frame_check
     reset_p     => reset_p);
 
 -- Matched-delay FIFO.
-u_fifo : entity work.fifo_smol
+u_fifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,
     META_WIDTH  => 2,

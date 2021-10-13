@@ -31,10 +31,10 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
 use     work.router_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity router_inline_top is
     generic (
@@ -47,7 +47,7 @@ entity router_inline_top is
     PROXY_EN_INGRESS    : boolean := true;
     PROXY_RETRY_KBYTES  : natural := 4;
     PROXY_RETRY_DELAY   : natural := 1_000_000;
-    PROXY_CACHE_SIZE    : integer := 32;
+    PROXY_CACHE_SIZE    : natural := 32;
     -- ICMP buffer and ID parameters.
     ICMP_ECHO_BYTES     : natural := 64;
     ICMP_REPLY_TTL      : natural := 64;
@@ -64,18 +64,18 @@ entity router_inline_top is
     NOIP_DMAC_REPLACE   : boolean := true;  -- Replace destination MAC in output?
     NOIP_SMAC_REPLACE   : boolean := true;  -- Replace source MAC in output?
     -- Minimum and maximum frame-size on each subnet.
-    LCL_FRAME_BYTES_MIN : integer := MIN_FRAME_BYTES;
-    NET_FRAME_BYTES_MIN : integer := MIN_FRAME_BYTES);
+    LCL_FRAME_BYTES_MIN : natural := MIN_FRAME_BYTES;
+    NET_FRAME_BYTES_MIN : natural := MIN_FRAME_BYTES);
     port (
     -- Local switch port.
     lcl_rx_data         : out port_rx_m2s;  -- Ingress data out
-    lcl_tx_data         : in  port_tx_m2s;  -- Egress data in
-    lcl_tx_ctrl         : out port_tx_s2m;
+    lcl_tx_data         : in  port_tx_s2m;  -- Egress data in
+    lcl_tx_ctrl         : out port_tx_m2s;
 
     -- Remote network port.
     net_rx_data         : in  port_rx_m2s;  -- Ingress data in
-    net_tx_data         : out port_tx_m2s;  -- Egress data out
-    net_tx_ctrl         : in  port_tx_s2m;
+    net_tx_data         : out port_tx_s2m;  -- Egress data out
+    net_tx_ctrl         : in  port_tx_m2s;
 
     -- Router subnet configuration.
     -- TODO: Replace this with a true FIB table.
@@ -165,6 +165,7 @@ lcl_rx_data.last    <= ig_out.last;
 lcl_rx_data.write   <= ig_out.valid;
 lcl_rx_data.rxerr   <= error_combined;
 lcl_rx_data.rate    <= net_rx_data.rate;
+lcl_rx_data.status  <= net_rx_data.status;
 lcl_rx_data.reset_p <= reset_p;
 ig_out.ready        <= '1';
 

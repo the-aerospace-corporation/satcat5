@@ -48,18 +48,15 @@ architecture single of packet_delay_tb_single is
 
 -- Test I/O
 signal in_data      : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
-signal in_bcount    : integer range 0 to INPUT_BYTES-1 := 0;
-signal in_last      : std_logic := '0';
+signal in_nlast     : integer range 0 to INPUT_BYTES := 0;
 signal in_write     : std_logic := '0';
 signal out_data     : std_logic_vector(8*INPUT_BYTES-1 downto 0);
-signal out_bcount   : integer range 0 to INPUT_BYTES-1;
-signal out_last     : std_logic;
+signal out_nlast    : integer range 0 to INPUT_BYTES;
 signal out_write    : std_logic;
 
 -- Reference sequence
 signal ref_data     : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
-signal ref_bcount   : integer range 0 to INPUT_BYTES-1 := 0;
-signal ref_last     : std_logic := '0';
+signal ref_nlast    : integer range 0 to INPUT_BYTES := 0;
 signal ref_write    : std_logic := '0';
 signal ref_enable   : std_logic := '0';
 
@@ -74,8 +71,7 @@ begin
     if rising_edge(io_clk) then
         if (reset_p = '1') then
             in_data     <= (others => '0');
-            in_bcount   <= INPUT_BYTES-1;
-            in_last     <= '0';
+            in_nlast    <= INPUT_BYTES-1;
             in_write    <= '0';
         else
             for n in in_data'range loop
@@ -83,9 +79,7 @@ begin
                 in_data(n) <= bool2bit(rand < 0.5);
             end loop;
             uniform(seed1, seed2, rand);
-            in_bcount <= integer(floor(rand * real(INPUT_BYTES)));
-            uniform(seed1, seed2, rand);
-            in_last <= bool2bit(rand < 0.1);
+            in_nlast <= integer(floor(rand * real(INPUT_BYTES+1)));
             uniform(seed1, seed2, rand);
             in_write <= bool2bit(rand < 0.5);
         end if;
@@ -101,8 +95,7 @@ begin
     if rising_edge(io_clk) then
         if (reset_p = '1') then
             ref_data     <= (others => '0');
-            ref_bcount   <= INPUT_BYTES-1;
-            ref_last     <= '0';
+            ref_nlast    <= INPUT_BYTES-1;
             ref_write    <= '0';
             delay        := DELAY_COUNT;
         elsif (delay > 0) then
@@ -113,9 +106,7 @@ begin
                 ref_data(n) <= bool2bit(rand < 0.5);
             end loop;
             uniform(seed1, seed2, rand);
-            ref_bcount <= integer(floor(rand * real(INPUT_BYTES)));
-            uniform(seed1, seed2, rand);
-            ref_last <= bool2bit(rand < 0.1);
+            ref_nlast <= integer(floor(rand * real(INPUT_BYTES+1)));
             uniform(seed1, seed2, rand);
             ref_write <= bool2bit(rand < 0.5);
         end if;
@@ -130,12 +121,10 @@ uut : entity work.packet_delay
     DELAY_COUNT     => DELAY_COUNT)
     port map(
     in_data         => in_data,
-    in_bcount       => in_bcount,
-    in_last         => in_last,
+    in_nlast        => in_nlast,
     in_write        => in_write,
     out_data        => out_data,
-    out_bcount      => out_bcount,
-    out_last        => out_last,
+    out_nlast       => out_nlast,
     out_write       => out_write,
     io_clk          => io_clk,
     reset_p         => reset_p);
@@ -152,10 +141,8 @@ begin
             -- At all other times, check for 100% match.
             assert (out_data = ref_data)
                 report "Data mismatch." severity error;
-            assert (out_bcount = ref_bcount)
-                report "BCount mismatch." severity error;
-            assert (out_last = ref_last)
-                report "Last mismatch." severity error;
+            assert (out_nlast = ref_nlast)
+                report "NLast mismatch." severity error;
             assert (out_write = ref_write)
                 report "Write mismatch." severity error;
         end if;

@@ -37,10 +37,13 @@ If you have any questions, please [e-mail us here](open-source@aero.org).
   * Test failures are indicated using "report" or "assert" statements with severity of "error" or higher.
   * A comment at the top of the file should indicate the runtime required to complete the test.
   * Add your unit test to the [Jenkins shell script](../sim/vhdl/xsim_run.sh).
+* Whenever practical, all C++ functional blocks should include an automated unit test.
+  * Our unit tests use the [Catch framework](https://github.com/catchorg/Catch2).
+  * Code coverage is analyzed using gcov and gcovr.
 
 # Copyright Notice
 
-Copyright 2020 The Aerospace Corporation
+Copyright 2020, 2021 The Aerospace Corporation
 
 This file is part of SatCat5.
 

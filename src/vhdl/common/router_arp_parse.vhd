@@ -57,8 +57,8 @@ end router_arp_parse;
 
 architecture router_arp_parse of router_arp_parse is
 
-constant BCOUNT_MAX : unsigned(7 downto 0) := (others => '1');
-signal parse_bcount : unsigned(7 downto 0) := (others => '0');
+constant BCOUNT_MAX : byte_u := (others => '1');
+signal parse_bcount : byte_u := (others => '0');
 signal parse_ignore : std_logic := '0';
 signal reg_data     : byte_t := (others => '0');
 signal reg_first    : std_logic := '0';

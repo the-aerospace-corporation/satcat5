@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2020 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -19,7 +19,7 @@
 # along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 
 '''
-GUI for displaying test results from the "loopback_ac701" design
+GUI for displaying test results from the "config_stats" block
 
 Dependencies: PySerial
 '''
@@ -31,9 +31,11 @@ import PyQt5.QtGui as qtg
 import PyQt5.QtWidgets as qtw
 from struct import unpack
 
-# Additional imports from satcat5.
-import serial_utils
-from chat_client import BetterComboBox
+# Additional imports from SatCat5 core.
+sys.path.append(os.path.join(
+    os.path.dirname(__file__), '..', '..', 'src', 'python'))
+import satcat5_uart
+from satcat5_gui import BetterComboBox
 
 # Start logging system.
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ class LoopbackGUI(qtw.QMainWindow):
         group_main.setLayout(layout_main)
         self.setCentralWidget(group_main)
         # Setup list of UART interfaces.
-        self.list_uart = serial_utils.list_uart_interfaces()
+        self.list_uart = satcat5_uart.list_uart_interfaces()
         for lbl in self.list_uart.keys():
             self.cbo_uart.addItem(lbl)
         # Start a timer for refreshing the display.
@@ -83,7 +85,7 @@ class LoopbackGUI(qtw.QMainWindow):
         self.close_uart()
         if port_name in self.list_uart:
             logger.info('Connecting to UART port: %s' % port_name)
-            self._open_uart_object(serial_utils.AsyncSLIPPort(
+            self._open_uart_object(satcat5_uart.AsyncSLIPPort(
                 self.list_uart[port_name], logger, baudrate=115200, eth_fcs=False))
         else:
             logger.warning('Connection failed, no such port name: %s' % port_name)

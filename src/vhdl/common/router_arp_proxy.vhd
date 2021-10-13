@@ -53,7 +53,7 @@ entity router_arp_proxy is
     LOCAL_MACADDR   : mac_addr_t;
     -- Options for each output frame.
     ARP_APPEND_FCS  : boolean := false;
-    MIN_FRAME_BYTES : integer := 0);
+    MIN_FRAME_BYTES : natural := 0);
     port (
     -- Filtered receive interface
     arp_rx_data     : in  byte_t;

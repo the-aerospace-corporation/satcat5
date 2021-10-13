@@ -42,8 +42,8 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_reset;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_gmii_internal is
     port (
@@ -59,8 +59,8 @@ entity port_gmii_internal is
 
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s;
-    tx_data     : in  port_tx_m2s;
-    tx_ctrl     : out port_tx_s2m;
+    tx_data     : in  port_tx_s2m;
+    tx_ctrl     : out port_tx_m2s;
 
     -- Reference clock and reset.
     clk_125     : in  std_logic;    -- Main reference clock
@@ -111,7 +111,6 @@ status_word <= (0 => reset_sync, others => '0');
 -- Receive state machine, including preamble removal.
 u_amble_rx : entity work.eth_preamble_rx
     generic map(
-    RATE_MBPS   => 1000,
     DV_XOR_ERR  => false)
     port map(
     raw_clk     => rxclk,
@@ -119,6 +118,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_data    => rxdata,
     raw_dv      => rxdv,
     raw_err     => rxerr,
+    rate_word   => get_rate_word(1000),
     status      => status_word,
     rx_data     => rx_data);
 

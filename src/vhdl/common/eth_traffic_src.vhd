@@ -32,10 +32,10 @@ use     work.eth_frame_common.all;
 
 entity eth_traffic_src is
     generic (
-    HDR_DST     : std_logic_vector(47 downto 0);    -- Destination MAC
-    HDR_SRC     : std_logic_vector(47 downto 0);    -- Source MAC
-    HDR_ETYPE   : std_logic_vector(15 downto 0);    -- EtherType
-    FRM_NBYTES  : positive := 1000);                -- Payload bytes per frame
+    HDR_DST     : mac_addr_t;           -- Destination MAC
+    HDR_SRC     : mac_addr_t;           -- Source MAC
+    HDR_ETYPE   : mac_type_t;           -- EtherType
+    FRM_NBYTES  : positive := 1000);    -- Payload bytes per frame
     port (
     -- Output stream.
     out_data    : out byte_t;

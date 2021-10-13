@@ -1,4 +1,4 @@
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2021 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -37,4 +37,7 @@ project/icecube2_2017.8/**
 !project/icecube2_2017.8/*/*.sdc
 
 # Ignore all libero-created subfolders
-project/libero_12.3/*/
+project/libero/*/
+
+# Ignore all yosys-created subfolders
+project/yosys/*/

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -24,44 +24,43 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-library unisim;
-use     unisim.vcomponents.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity switch_gmii_to_spi is
+    generic (
+    SPI_MODE    : natural := 3);
     port (
     -- GMII Interface
-    gmii_col            : out std_logic;
-    gmii_crs            : out std_logic;
+    gmii_col    : out std_logic;
+    gmii_crs    : out std_logic;
 
-    gmii_txc            : out std_logic;
-    gmii_txd            : out std_logic_vector(7 downto 0);
-    gmii_txen           : out std_logic;
-    gmii_txerr          : out std_logic;
+    gmii_txc    : out std_logic;
+    gmii_txd    : out std_logic_vector(7 downto 0);
+    gmii_txen   : out std_logic;
+    gmii_txerr  : out std_logic;
 
-    gmii_rxc            : out std_logic;
-    gmii_rxd            : in std_logic_vector(7 downto 0);
-    gmii_rxdv           : in std_logic;
-    gmii_rxerr          : in std_logic;
+    gmii_rxc    : out std_logic;
+    gmii_rxd    : in  std_logic_vector(7 downto 0);
+    gmii_rxdv   : in  std_logic;
+    gmii_rxerr  : in  std_logic;
 
     -- EoS-PMOD interfaces (SPI/UART)
-    eos                 : inout std_logic_vector(3 downto 0);
+    eos         : inout std_logic_vector(3 downto 0);
 
-    clk_125             : in std_logic;  -- 125MHz clock
-
-    reset_p             : in std_logic); -- Global external reset
+    -- System clock and reset
+    clk_125     : in  std_logic;
+    reset_p     : in  std_logic);
 end switch_gmii_to_spi;
 
 architecture gmii of switch_gmii_to_spi is
 
 signal rx_data      : array_rx_m2s(1 downto 0);
-signal tx_data      : array_tx_m2s(1 downto 0);
-signal tx_ctrl      : array_tx_s2m(1 downto 0);
+signal tx_data      : array_tx_s2m(1 downto 0);
+signal tx_ctrl      : array_tx_m2s(1 downto 0);
 
 signal adj_rx_data  : port_rx_m2s;
-signal adj_tx_data  : port_tx_m2s;
-signal adj_tx_ctrl  : port_tx_s2m;
+signal adj_tx_data  : port_tx_s2m;
+signal adj_tx_ctrl  : port_tx_m2s;
 
 signal switch_err_t : std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);
 
@@ -112,11 +111,11 @@ u_core : entity work.switch_dual
     ports_tx_ctrl   => tx_ctrl,
     errvec_t        => switch_err_t);
 
-u_pmod : entity work.port_serial_spi_clkout
+u_pmod : entity work.port_serial_spi_controller
     generic map(
     CLKREF_HZ       => 125_000_000,
     SPI_BAUD        => 4_000_000,
-    SPI_MODE        => 3)
+    SPI_MODE        => SPI_MODE)
     port map (
     spi_csb         => eos(0),
     spi_sclk        => eos(3),

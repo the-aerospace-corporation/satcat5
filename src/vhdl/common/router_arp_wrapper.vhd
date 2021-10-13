@@ -56,10 +56,10 @@ entity router_arp_wrapper is
     -- ICMP buffer and ID parameters.
     ICMP_ECHO_BYTES : natural := 64;
     ICMP_REPLY_TTL  : natural := 64;
-    ICMP_ID_INIT    : integer := 0;
-    ICMP_ID_INCR    : integer := 1;
+    ICMP_ID_INIT    : natural := 0;
+    ICMP_ID_INCR    : natural := 1;
     -- Size of the ARP cache
-    ARP_CACHE_SIZE  : integer := 32);
+    ARP_CACHE_SIZE  : positive := 32);
     port (
     -- Local network port.
     lcl_rx_data     : in  byte_t;

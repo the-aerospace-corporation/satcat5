@@ -31,14 +31,14 @@ entity switch_dual is
     generic (
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;          -- Allow runt frames? (Size < 64 bytes)
-    OBUF_KBYTES     : integer);         -- Output buffer size (kilobytes)
+    OBUF_KBYTES     : positive);        -- Output buffer size (kilobytes)
     port (
     -- Input from each port.
     ports_rx_data   : in  array_rx_m2s(1 downto 0);
 
     -- Output to each port.
-    ports_tx_data   : out array_tx_m2s(1 downto 0);
-    ports_tx_ctrl   : in  array_tx_s2m(1 downto 0);
+    ports_tx_data   : out array_tx_s2m(1 downto 0);
+    ports_tx_ctrl   : in  array_tx_m2s(1 downto 0);
 
     -- Error events are marked by toggling these bits.
     errvec_t        : out std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0));

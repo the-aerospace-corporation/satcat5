@@ -27,17 +27,17 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_toggle2pulse_slv;
 use     work.io_leds.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity switch_aux is
     generic (
-    SCRUB_CLK_HZ    : integer;          -- Scrubbing clock frequency (Hz)
+    SCRUB_CLK_HZ    : positive;         -- Scrubbing clock frequency (Hz)
     STARTUP_MSG     : string;           -- On-boot message (e.g., build date)
     STATUS_LED_LIT  : std_logic;        -- Polarity for status LEDs
-    UART_BAUD       : integer := 921600;-- Baud rate for status UART
-    CORE_COUNT      : integer := 1);    -- Number of switch_core units
+    UART_BAUD       : positive := 921_600;  -- Baud rate for status UART
+    CORE_COUNT      : positive := 1);   -- Number of switch_core units
     port (
     -- Concatenated error vector from each switch_core.
     -- (Each is a "toggle" indicator in any clock domain.)
@@ -103,13 +103,12 @@ begin
 end process;
 
 -- Synchronize error signals from each switch core:
-gen_sync : for n in swerr_sync'range generate
-    u_sync : sync_toggle2pulse
-        port map(
-        in_toggle   => swerr_vec_t(n),
-        out_strobe  => swerr_sync(n),
-        out_clk     => scrub_clk);
-end generate;
+u_sync : sync_toggle2pulse_slv
+    generic map(IO_WIDTH => swerr_sync'length)
+    port map(
+    in_toggle   => swerr_vec_t,
+    out_strobe  => swerr_sync,
+    out_clk     => scrub_clk);
 
 -- Aggregate error-strobes from multiple sources.
 p_errors : process(scrub_clk)
@@ -143,8 +142,8 @@ u_uart : entity work.io_error_reporting
     ERR_MSG00       => "SCRUB_SEU",
     ERR_MSG01       => "OVR_RX",
     ERR_MSG02       => "OVR_TX",
-    ERR_MSG03       => "MAC_LATE",
-    ERR_MSG04       => "MAC_OVR",
+    ERR_MSG03       => "MAC_INT",
+    ERR_MSG04       => "MAC_DUP",
     ERR_MSG05       => "MAC_TBL",
     ERR_MSG06       => "MII_RX",
     ERR_MSG07       => "MII_TX",

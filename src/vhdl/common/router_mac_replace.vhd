@@ -69,8 +69,8 @@ entity router_mac_replace is
     -- Parameters for ICMP replies
     ICMP_ECHO_BYTES : natural := 64;
     ICMP_REPLY_TTL  : natural := 64;
-    ICMP_ID_INIT    : integer := 0;
-    ICMP_ID_INCR    : integer := 1;
+    ICMP_ID_INIT    : natural := 0;
+    ICMP_ID_INCR    : natural := 1;
     -- Block all non-IPv4 packets?
     NOIP_BLOCK_ALL  : boolean := true);
     port (
@@ -326,7 +326,7 @@ dfifo_read  <= fwd_hempty and dfifo_valid and cfifo_valid and (mfifo_valid or mf
 cfifo_read  <= dfifo_read and dfifo_last;
 mfifo_read  <= dfifo_read and (not mfifo_skip) and (bool2bit(fwd_bct < 5) or dfifo_last);
 
-u_dfifo : entity work.fifo_smol
+u_dfifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,           -- Word size = 1 byte
     DEPTH_LOG2  => 6)           -- Depth = 2^6 = 64 bytes
@@ -341,7 +341,7 @@ u_dfifo : entity work.fifo_smol
     clk         => clk,
     reset_p     => reset_p);
 
-u_cfifo : entity work.fifo_smol
+u_cfifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => CMD_WIDTH,   -- Word size = 1 command word
     DEPTH_LOG2  => 3)           -- Depth = 2^3 = 8 commands
@@ -354,7 +354,7 @@ u_cfifo : entity work.fifo_smol
     clk         => clk,
     reset_p     => reset_p);
 
-u_mfifo : entity work.fifo_smol
+u_mfifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,           -- Word size = 1 byte
     META_WIDTH  => 2,           -- Retain "first" and "match" flags
@@ -418,7 +418,7 @@ begin
 end process;
 
 -- Output FIFO for downstream flow-control.
-u_ofifo : entity work.fifo_smol
+u_ofifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 8,
     DEPTH_LOG2  => 4)

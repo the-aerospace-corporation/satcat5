@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -62,9 +62,6 @@ signal reset_p      : std_logic := '0';
 signal pri_data     : byte_t := (others => '0');
 signal pri_last     : std_logic := '0';
 signal pri_write    : std_logic := '0';
-signal pri_write2   : std_logic := '0';
-signal pri_safe     : std_logic;
-signal pri_full     : std_logic;
 
 -- Auxiliary input ports (valid/ready flow control)
 signal aux_data     : byte_array_t(AUX_COUNT downto 1) := (others => (others => '0'));
@@ -126,6 +123,9 @@ p_input : process(clk_100)
         return result;
     end function;
 
+    -- Track FIFO state to avoid overflow.
+    variable fifo_ct : natural := 0;
+
     -- Track remaining bytes in each auxiliary frame.
     type rem_bytes_t is array(1 to AUX_COUNT) of integer;
     variable rem_bytes : rem_bytes_t := (others => 0);
@@ -134,9 +134,25 @@ p_input : process(clk_100)
     variable rem_pause : natural := 0;
 begin
     if rising_edge(clk_100) then
+        -- Track words in FIFO.
+        if (reset_p = '1') then
+            fifo_ct := 0;
+        elsif (pri_write = '1' and (in_valid(0) = '0' or in_ready(0) = '0')) then
+            fifo_ct := fifo_ct + 1;
+        elsif (pri_write = '0' and in_valid(0) = '1' and in_ready(0) = '1') then
+            fifo_ct := fifo_ct - 1;
+        end if;
+
+        -- Sanity-check that the required FIFO depth matches documentation.
+        -- (Note: This only applies if output is never bottlenecked.)
+        if (rate_out >= 1.0 and rate_pause = 0.0) then
+            assert (fifo_ct < MAX_AUX_BYTES + 3)
+                report "FIFO depth = " & integer'image(fifo_ct) severity warning;
+        end if;
+
         -- Generate each new primary data word.
         uniform(seed1, seed2, rand);
-        if (reset_p = '0' and rand < rate_pri) then
+        if (reset_p = '0' and rand < rate_pri and fifo_ct < 2*MAX_AUX_BYTES) then
             pri_data  <= rand_byte(0);
             pri_write <= '1';
             uniform(seed1, seed2, rand);
@@ -195,7 +211,7 @@ gen_fifo : for n in 0 to AUX_COUNT generate
     gen_pri : if n = 0 generate
         fifo_in_data(n) <= pri_data;
         fifo_in_last(n) <= pri_last;
-        fifo_wr(n)      <= pri_write2;
+        fifo_wr(n)      <= pri_write;
     end generate;
     gen_aux : if n > 0 generate
         fifo_in_data(n) <= aux_data(n);
@@ -204,7 +220,7 @@ gen_fifo : for n in 0 to AUX_COUNT generate
     end generate;
     fifo_rd(n) <= out_valid and out_ready and bool2bit(n = get_stream(out_data));
 
-    u_fifo_pri : entity work.fifo_smol
+    u_fifo_pri : entity work.fifo_smol_sync
         generic map(
         IO_WIDTH    => 8,
         DEPTH_LOG2  => 6)
@@ -226,21 +242,14 @@ gen_fifo : for n in 0 to AUX_COUNT generate
 end generate;
 
 -- Convert primary flow control.
--- Note: If output is rate-constrained, override write strobe to avoid
---       accidental overflow; FIFO isn't deep enough for averaging.
-pri_safe   <= bool2bit(rate_out < 1.0 or rate_pause > 0.0);
-pri_write2 <= pri_write and not (pri_safe and pri_full);
-u_conv : entity work.fifo_bram
+u_conv : entity work.fifo_large_sync
     generic map(
     FIFO_WIDTH      => 8,
-    FIFO_DEPTH      => MAX_AUX_BYTES + 1)
+    FIFO_DEPTH      => 2 * MAX_AUX_BYTES)
     port map(
     in_data         => pri_data,
     in_last         => pri_last,
-    in_write        => pri_write2,
-    fifo_empty      => open,
-    fifo_full       => pri_full,
-    fifo_error      => open,
+    in_write        => pri_write,
     out_data        => in_data(0),
     out_last        => in_last(0),
     out_valid       => in_valid(0),
@@ -292,7 +301,7 @@ begin
             strm := get_stream(out_data);
             -- Check for pause violations at start of frame.
             if (bcount = 0) then
-                assert (pcount < 2)
+                assert (pcount < 3)
                     report "Pause violation: " & integer'image(pcount)
                     severity error;
             end if;

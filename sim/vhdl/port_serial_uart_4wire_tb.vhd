@@ -47,8 +47,8 @@ signal clk_125      : std_logic := '0';
 signal reset_p      : std_logic := '1';
 
 -- Streaming source and sink for each link:
-signal txdata_a, txdata_b   : port_tx_m2s;
-signal txctrl_a, txctrl_b   : port_tx_s2m;
+signal txdata_a, txdata_b   : port_tx_s2m;
+signal txctrl_a, txctrl_b   : port_tx_m2s;
 signal rxdata_a, rxdata_b   : port_rx_m2s;
 signal rxdone_a, rxdone_b   : std_logic;
 

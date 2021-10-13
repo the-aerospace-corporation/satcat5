@@ -41,7 +41,6 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
 use     work.router_common.all;
-use     work.synchronization.all;
 
 entity router_arp_update is
     generic (
@@ -134,7 +133,7 @@ p_cmd : process(clk)
     begin
         if (ip_is_reserved(ip) or ip_is_multicast(ip) or ip_is_broadcast(ip)) then
             return '0'; -- Block multicast or reserved IP
-        elsif (mac_is_broadcast(hw) or mac_is_multicast(hw)) then
+        elsif (mac_is_broadcast(hw) or mac_is_l2multicast(hw) or mac_is_l3multicast(hw)) then
             return '0'; -- Block multicast MAC address
         else
             return bool2bit(sub xnor SUBNET_INNER);

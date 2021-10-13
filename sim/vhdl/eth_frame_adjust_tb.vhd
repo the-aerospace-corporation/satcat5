@@ -198,7 +198,7 @@ fifo_in <= in_last_ovr & in_data;
 fifo_wr <= in_valid_raw and in_valid_ovr and in_ready;
 fifo_rd <= out_write and (out_last or not ref_last);
 
-u_fifo : entity work.fifo_smol
+u_fifo : entity work.fifo_smol_sync
     generic map(
     IO_WIDTH    => 9,
     DEPTH_LOG2  => 6)   -- FIFO depth = 2^N

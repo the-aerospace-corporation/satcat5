@@ -1,0 +1,86 @@
+##########################################################################
+## Copyright 2019 The Aerospace Corporation
+##
+## This file is part of SatCat5.
+##
+## SatCat5 is free software: you can redistribute it and/or modify it under
+## the terms of the GNU Lesser General Public License as published by the
+## Free Software Foundation, either version 3 of the License, or (at your
+## option) any later version.
+##
+## SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+## ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+## FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+## License for more details.
+##
+## You should have received a copy of the GNU Lesser General Public License
+## along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+##########################################################################
+
+# Pin Assignment Constraints
+
+# Board 50MHz oscillator
+set_io -port_name REF_CLK_50MHZ     -pin_name H7    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+
+# Board reset button
+set_io -port_name RST_N             -pin_name N4    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+
+# PHY signals
+set_io -port_name uplnk_txc         -pin_name G2    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_txd[3]}    -pin_name F2    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_txd[2]}    -pin_name F1    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_txd[1]}    -pin_name H1    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_txd[0]}    -pin_name J1    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name uplnk_txctl       -pin_name H2    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+
+set_io -port_name uplnk_rxc         -pin_name K3    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_rxd[3]}    -pin_name L2    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_rxd[2]}    -pin_name J2    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_rxd[1]}    -pin_name K1    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+set_io -port_name {uplnk_rxd[0]}    -pin_name L1    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+set_io -port_name uplnk_rxctl       -pin_name J3    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+
+set_io -port_name mdio_clk          -pin_name R1    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name mdio_data         -pin_name T1    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+
+set_io -port_name eth1_rstn         -pin_name N1    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name eth1_squelch      -pin_name J4    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+
+# Status indicators and host control
+# Pin assignments for Xilinx XM105 FMC breakout
+# G: DS1, Y: DS2, R: DS3
+set_io -port_name stat_led_g        -pin_name P7    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name stat_led_y        -pin_name N8    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name stat_led_r        -pin_name M8    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+# TX: J16/5, RX: J16/7, GND: J16/3
+set_io -port_name host_tx           -pin_name E3    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+# Control UART from host unused
+# set_io -port_name host_rx           -pin_name D3    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+
+# EoS-PMOD UART interfaces
+# Pin assignments for Xilinx XM105 FMC breakout
+# TX: J16/6, RX: J16/8, GND: J16/4
+set_io -port_name {uart_txd[2]}     -pin_name E6    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uart_rxd[2]}     -pin_name D6    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+# TX: J16/9, RX: J16/11, GND: J15/2
+set_io -port_name {uart_txd[1]}     -pin_name E8    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uart_rxd[1]}     -pin_name D8    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+# TX: J16/10, RX: J16/12, GND: J5/2
+set_io -port_name {uart_txd[0]}     -pin_name C6    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+set_io -port_name {uart_rxd[0]}     -pin_name B7    -DIRECTION INPUT    -fixed true -LOCK_DOWN Yes
+
+
+# Debug ports
+# XM105 J1 1,5,9,13,17,21,25,29,33,37,39(!!)
+# aka FMC_LA0,1,2,3,4,5,6,7,8_P and 9_P,N
+#set_io -port_name {dbg_dv}             -pin_name A17    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_err}            -pin_name G17    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_data_err}       -pin_name B12    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_rxclk}          -pin_name A12    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_mdc}            -pin_name F15    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_rst_p}          -pin_name D16    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_clk_stopped}    -pin_name B9     -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_uplnk_txc}      -pin_name H15    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_uplnk_rxc}      -pin_name C11    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_uplnk_txctl}    -pin_name C11    -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes
+#set_io -port_name {dbg_uplnk_rxctl}    -pin_name A8     -DIRECTION OUTPUT   -fixed true -LOCK_DOWN Yes

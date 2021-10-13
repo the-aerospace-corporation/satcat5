@@ -33,9 +33,9 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     work.common_primitives.sync_toggle2pulse;
 use     work.eth_frame_common.all;
 use     work.switch_types.all;
-use     work.synchronization.all;
 
 entity port_sgmii_gtx is
     port (
@@ -47,8 +47,8 @@ entity port_sgmii_gtx is
 
     -- Generic internal port interfaces.
     prx_data    : out port_rx_m2s;
-    ptx_data    : in  port_tx_m2s;
-    ptx_ctrl    : out port_tx_s2m;
+    ptx_data    : in  port_tx_s2m;
+    ptx_ctrl    : out port_tx_m2s;
     port_shdn   : in  std_logic;
 
     -- Reference clocks and reset.
@@ -141,8 +141,6 @@ u_amble_tx : entity work.eth_preamble_tx
 
 -- Remove preambles from the incoming data:
 u_amble_rx : entity work.eth_preamble_rx
-    generic map(
-    RATE_MBPS   => 1000)
     port map(
     raw_clk     => gmii_rx_clk,
     raw_lock    => clk_locked,
@@ -150,6 +148,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_data    => gmii_rx_data,
     raw_dv      => gmii_rx_dv,
     raw_err     => gmii_rx_er,
+    rate_word   => get_rate_word(1000),
     aux_err     => aux_err_sync,
     status      => gmii_status,
     rx_data     => prx_data);

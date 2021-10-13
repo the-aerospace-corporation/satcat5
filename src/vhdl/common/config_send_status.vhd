@@ -49,12 +49,12 @@ use     work.eth_frame_common.all;
 
 entity config_send_status is
     generic (
-    MSG_BYTES       : integer := 0;     -- Bytes per status message (0 = none)
+    MSG_BYTES       : natural := 0;     -- Bytes per status message (0 = none)
     MSG_ETYPE       : std_logic_vector(15 downto 0) := x"5C00";
     MAC_DEST        : std_logic_vector(47 downto 0) := x"FFFFFFFFFFFF";
     MAC_SOURCE      : std_logic_vector(47 downto 0) := x"5A5ADEADBEEF";
-    AUTO_DELAY_CLKS : integer := 0;     -- Send every N clocks, or 0 for on-demand
-    MIN_FRAME_BYTES : integer := 0);    -- Pad to minimum frame size?
+    AUTO_DELAY_CLKS : natural := 0;     -- Send every N clocks, or 0 for on-demand
+    MIN_FRAME_BYTES : natural := 0);    -- Pad to minimum frame size?
     port (
     -- Status message, and optional write strobe (send immediately)
     status_val  : in  std_logic_vector(8*MSG_BYTES-1 downto 0) := (others => '0');

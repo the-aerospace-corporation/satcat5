@@ -40,7 +40,6 @@ use     ieee.std_logic_1164.all;
 library unisim;
 use     unisim.vcomponents.all;
 use     work.common_functions.all;
-use     work.synchronization.all;
 
 entity clkgen_sgmii_xilinx is
     generic (

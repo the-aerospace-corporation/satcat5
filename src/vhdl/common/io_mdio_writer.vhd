@@ -17,7 +17,7 @@
 -- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 --------------------------------------------------------------------------
 --
--- A simple byte-by-byte MDIO writer.
+-- A simple byte-by-byte MDIO writer, with no read support.
 --
 -- The "Management Data Input/Output" (MDIO) is an interface defined in
 -- IEEE 802.3, Part 3.  It is commonly used to configure Ethernet PHY
@@ -30,8 +30,6 @@
 -- strobe for the first byte should not be raised until the entire frame
 -- has been received.  This is the default for fifo_packet, but UART-based
 -- interfaces will need to buffer the frame contents.
---
--- Currently this block is write-only, it doesn't support MDIO reads.
 --
 
 library ieee;
