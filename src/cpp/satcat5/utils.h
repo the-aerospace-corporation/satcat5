@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <satcat5/types.h>
 
 namespace satcat5 {
@@ -193,5 +194,18 @@ namespace satcat5 {
         enum {SATCAT5_LITTLE_ENDIAN = 0x03020100ul, SATCAT5_BIG_ENDIAN = 0x00010203ul};
         constexpr union {u8 bytes[4]; u32 value;} HOST_ORDER_CANARY = {{0,1,2,3}};
         inline u32 HOST_BYTE_ORDER() {return HOST_ORDER_CANARY.value;}
+
+        // In-place byte-for-byte format conversion, aka "type-punning".
+        template<typename T1, typename T2> inline T2 reinterpret(T1 x)
+        {
+            static_assert(sizeof(T1) == sizeof(T2), "Type size mismatch");
+            // Note: Using "memcpy" for type-punning is preferred safe-ish method.
+            // Most compilers will optimize this to a no-op, as desired.  See also:
+            //  https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8
+            //  https://stackoverflow.com/questions/48803363/bitwise-casting-uint32-t-to-float-in-c-c
+            T2 y;
+            std::memcpy(&y, &x, sizeof(T1));
+            return y;
+        }
     }
 }

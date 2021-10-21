@@ -19,6 +19,9 @@
 
 #include <cstring>
 #include <satcat5/io_core.h>
+#include <satcat5/utils.h>
+
+using satcat5::util::reinterpret;
 
 void satcat5::io::Writeable::write_u8(u8 data)
 {
@@ -59,18 +62,34 @@ void satcat5::io::Writeable::write_u64(u64 data)
     } else write_overflow();
 }
 
+void satcat5::io::Writeable::write_s8(s8 data)
+{
+    write_u8(reinterpret<s8,u8>(data));
+}
+
+void satcat5::io::Writeable::write_s16(s16 data)
+{
+    write_u16(reinterpret<s16,u16>(data));
+}
+
+void satcat5::io::Writeable::write_s32(s32 data)
+{
+    write_u32(reinterpret<s32,u32>(data));
+}
+
+void satcat5::io::Writeable::write_s64(s64 data)
+{
+    write_u64(reinterpret<s64,u64>(data));
+}
+
 void satcat5::io::Writeable::write_f32(float data)
 {
-    union {float f; u32 u;} temp;
-    temp.f = data;
-    write_u32(temp.u);
+    write_u32(reinterpret<float,u32>(data));
 }
 
 void satcat5::io::Writeable::write_f64(double data)
 {
-    union {double f; u64 u;} temp;
-    temp.f = data;
-    write_u64(temp.u);
+    write_u64(reinterpret<double,u64>(data));
 }
 
 void satcat5::io::Writeable::write_bytes(unsigned nbytes, const void* src)
@@ -157,18 +176,34 @@ u64 satcat5::io::Readable::read_u64()
     }
 }
 
+s8 satcat5::io::Readable::read_s8()
+{
+    return reinterpret<u8, s8>(read_u8());
+}
+
+s16 satcat5::io::Readable::read_s16()
+{
+    return reinterpret<u16, s16>(read_u16());
+}
+
+s32 satcat5::io::Readable::read_s32()
+{
+    return reinterpret<u32, s32>(read_u32());
+}
+
+s64 satcat5::io::Readable::read_s64()
+{
+    return reinterpret<u64, s64>(read_u64());
+}
+
 float satcat5::io::Readable::read_f32()
 {
-    union {float f; u32 u;} temp;
-    temp.u = read_u32();
-    return temp.f;
+    return reinterpret<u32, float>(read_u32());
 }
 
 double satcat5::io::Readable::read_f64()
 {
-    union {double f; u64 u;} temp;
-    temp.u = read_u64();
-    return temp.f;
+    return reinterpret<u64, double>(read_u64());
 }
 
 bool satcat5::io::Readable::read_bytes(unsigned nbytes, void* dst)

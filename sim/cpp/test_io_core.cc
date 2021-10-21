@@ -158,6 +158,32 @@ TEST_CASE("ArrayWrite") {
     }
 }
 
+TEST_CASE("SignedInts") {
+    u8 buff[32];
+    io::ArrayWrite uut(buff, sizeof(buff));
+
+    uut.write_s8(-123);
+    uut.write_s8(+123);
+    uut.write_s16(-12345);
+    uut.write_s16(+12345);
+    uut.write_s32(-1234567890);
+    uut.write_s32(+1234567890);
+    uut.write_s64(-1234567890123456789ll);
+    uut.write_s64(+1234567890123456789ll);
+    uut.write_finalize();
+    CHECK(uut.written_len() == 30);
+
+    io::ArrayRead rd(buff, uut.written_len());
+    CHECK(rd.read_s8() == -123);
+    CHECK(rd.read_s8() == +123);
+    CHECK(rd.read_s16() == -12345);
+    CHECK(rd.read_s16() == +12345);
+    CHECK(rd.read_s32() == -1234567890);
+    CHECK(rd.read_s32() == +1234567890);
+    CHECK(rd.read_s64() == -1234567890123456789ll);
+    CHECK(rd.read_s64() == +1234567890123456789ll);
+}
+
 TEST_CASE("NullIO") {
     SECTION("NullRead") {
         NullRead uut;
