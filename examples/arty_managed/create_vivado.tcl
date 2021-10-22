@@ -369,7 +369,7 @@ connect_bd_intf_net [get_bd_intf_ports text] [get_bd_intf_pins switch_aux_0/text
 # Create address segments
 create_bd_addr_seg -range 0x00010000 -offset 0x44A00000 \
     [get_bd_addr_spaces ublaze/microblaze_0/Data] [get_bd_addr_segs ublaze/axi_uart16550_0/S_AXI/Reg] SEG_axi_uart16550_0_Reg
-create_bd_addr_seg -range 0x00010000 -offset 0x44A10000 \
+create_bd_addr_seg -range 0x00100000 -offset 0x44B00000 \
     [get_bd_addr_spaces ublaze/microblaze_0/Data] [get_bd_addr_segs ublaze/cfgbus_host_axi_0/CtrlAxi/CtrlAxi_addr] SEG_cfgbus_host_axi_0_CtrlAxi_addr
 create_bd_addr_seg -range 0x00010000 -offset 0x00000000 \
     [get_bd_addr_spaces ublaze/microblaze_0/Data] [get_bd_addr_segs ublaze/ublaze_mem/dlmb_bram_if_cntlr/SLMB/Mem] SEG_dlmb_bram_if_cntlr_Mem

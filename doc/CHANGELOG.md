@@ -56,6 +56,11 @@ This log will be updated for each new release, but may not reflect the latest de
 * Reworked switch-core to allow rudimentary IGMP snooping.
 * Reworked switch-core to allow traffic prioritization based on EtherType.
 
+## v2.0.1
+
+* Added read/write functions for s8, s16, s32, and s64.
+* Hotfix for UART-16550 driver and Arty-Managed example design.
+
 # Copyright Notice
 
 Copyright 2019, 2020, 2021 The Aerospace Corporation

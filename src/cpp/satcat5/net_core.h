@@ -166,7 +166,6 @@ namespace satcat5 {
                 : m_filter(type), m_next(0) {}
             ~Protocol() {}
 
-        public://???
             satcat5::net::Type m_filter;        // Incoming packet filter
 
         private:

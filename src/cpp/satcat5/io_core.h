@@ -51,6 +51,10 @@ namespace satcat5 {
             void write_u16(u16 data);
             void write_u32(u32 data);
             void write_u64(u64 data);
+            void write_s8(s8 data);
+            void write_s16(s16 data);
+            void write_s32(s32 data);
+            void write_s64(s64 data);
             void write_f32(float data);
             void write_f64(double data);
             void write_str(const char* str);
@@ -107,6 +111,10 @@ namespace satcat5 {
             u16 read_u16();
             u32 read_u32();
             u64 read_u64();
+            s8 read_s8();
+            s16 read_s16();
+            s32 read_s32();
+            s64 read_s64();
             float read_f32();
             double read_f64();
             virtual bool read_bytes(unsigned nbytes, void* dst);

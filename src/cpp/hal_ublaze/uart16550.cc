@@ -66,7 +66,7 @@ Uart16550::Uart16550(
                 | XUN_OPTION_RESET_TX_FIFO
                 | XUN_OPTION_RESET_RX_FIFO;
     // Enable Rx-Data interrupt?
-    if (irq >= 0) options |= XUN_OPTION_DATA_INTR;
+    if (m_irq_idx >= 0) options |= XUN_OPTION_DATA_INTR;
     // Set hardware option flags:
     m_status = XUartNs550_SetOptions(&m_uart, options);
     if (m_status != XST_SUCCESS) return;
@@ -95,7 +95,7 @@ void Uart16550::irq_event()
 {
     // Read and clear interrupt status register.
     u8 isr_type = (u8)XUartNs550_ReadReg(m_uart.BaseAddress, XUN_IIR_OFFSET) & XUN_INT_ID_MASK;
-    XUartNs550_GetLineStatusReg(m_uart.BaseAddress);
+    u32 linereg = XUartNs550_GetLineStatusReg(m_uart.BaseAddress);
 
     // Outgoing data ready to send?
     u32 txbytes = m_tx.get_peek_ready();
@@ -117,8 +117,9 @@ void Uart16550::irq_event()
 
     // Copy any new incoming data to the software buffer.
     // Use the three-step zero-copy-write (ZCW) method.
+    constexpr u32 LSR_READ_ANY = XUN_LSR_BREAK_INT | XUN_LSR_DATA_READY;
     u32 rxmax = m_rx.zcw_maxlen();      // Max safe to read?
-    if ((rxmax > 0) && (isr_type != UART_IRQ_NONE)) {
+    if ((rxmax > 0) && (linereg & LSR_READ_ANY)) {
         u8* rxtmp = m_rx.zcw_start();   // Get pointer to buffer
         u32 rcvd = XUartNs550_Recv(&m_uart, rxtmp, rxmax);
         if (rcvd) {
