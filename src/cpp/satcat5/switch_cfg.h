@@ -27,15 +27,50 @@
 #pragma once
 
 #include <satcat5/cfgbus_core.h>
+#include <satcat5/ethernet.h>
 
 namespace satcat5 {
     namespace eth {
+        // Define VLAN policy modes for each switch port:
+        //  ADMIT_ALL: Default, suitable for most network endpoints.
+        //      Rx: Accept any frame, tagged or untagged.
+        //      Tx: Never emit tagged frames.
+        //  RESTRICTED: Suitable for locking devices to a single VID.
+        //      Rx: Accept tagged frames with VID = 0, or untagged frames.
+        //      Tx: Never emit tagged frames.
+        //  PRIORITY: Suitable for VLAN-aware devices with a single VID.
+        //      Rx: Accept tagged frames with VID = 0, or untagged frames.
+        //      Tx: Always emit tagged frames with VID = 0.
+        //  MANDATORY: Recommended for crosslinks to another VLAN-aware switch.
+        //      Rx: Accept tagged frames only, with any VID.
+        //      Tx: Always emit tagged frames with VID > 0.
+        constexpr u32 VTAG_ADMIT_ALL    = 0x00000000u;
+        constexpr u32 VTAG_RESTRICT     = 0x00010000u;
+        constexpr u32 VTAG_PRIORITY     = 0x00110000u;
+        constexpr u32 VTAG_MANDATORY    = 0x00220000u;
+
+        // Common port-connection masks for use with "vlan_set_mask".
+        constexpr u32 VLAN_CONNECT_ALL  = (u32)(-1);
+        constexpr u32 VLAN_CONNECT_NONE = 0;
+
+        // Set configuration word for a given port index:
+        inline constexpr u32 vlan_portcfg(u32 port, u32 policy,
+            satcat5::eth::VlanTag vtag = satcat5::eth::VTAG_DEFAULT)
+        {
+            return policy                       // VLAN_ADMIT_ALL, etc (see above)
+                | ((port & 0xFF)    << 24)      // Port index (0-255)
+                | (vtag.value);                 // VLAN identifier and/or priority
+        }
+
         class SwitchConfig {
         public:
             SwitchConfig(satcat5::cfg::ConfigBus* cfg, unsigned devaddr);
 
             // Log some basic info about this switch.
             void log_info(const char* label);
+
+            // Number of ports on this switch.
+            u32 port_count();
 
             // Designate specific EtherType range(s) as high-priority.
             // Each range is specified with a CIDR-style prefix-length:
@@ -62,6 +97,14 @@ namespace satcat5 {
             // Get the minimum and maximum frame size, in bytes.
             u16 get_frame_min();
             u16 get_frame_max();
+
+            // VLAN configuration for each port and each VID.
+            void vlan_reset(bool lockdown = false);     // Revert all settings to default
+            u32 vlan_get_mask(u16 vid);                 // Get port-mask for designated VID
+            void vlan_set_mask(u16 vid, u32 mask);      // Limit VID to designated ports
+            void vlan_set_port(u32 cfg);                // Port settings (see vlan_portcfg)
+            void vlan_join(u16 vid, unsigned port);     // Port should join VLAN
+            void vlan_leave(u16 vid, unsigned port);    // Port should leave VLAN
 
         protected:
             satcat5::cfg::Register m_reg;

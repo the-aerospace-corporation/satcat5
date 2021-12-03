@@ -30,7 +30,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 
-entity lcd_control is
+entity io_text_lcd is
     generic (
     REFCLK_HZ   : integer;          -- Reference clock frequency
     MSG_WAIT    : integer := 255);  -- Minimum time before refresh (msec)
@@ -46,9 +46,9 @@ entity lcd_control is
     strm_data   : in  std_logic_vector(7 downto 0);
     strm_wr     : in  std_logic;
     reset_p     : in  std_logic);
-end lcd_control;
+end io_text_lcd;
 
-architecture lcd_control of lcd_control is
+architecture io_text_lcd of io_text_lcd is
 
 -- Define various character constants and LCD command codes.
 subtype nybb_t is std_logic_vector(3 downto 0);
@@ -368,4 +368,4 @@ begin
     end if;
 end process;
 
-end;
+end io_text_lcd;

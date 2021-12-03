@@ -31,6 +31,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
 
 entity wrap_switch_core is
@@ -41,9 +42,12 @@ entity wrap_switch_core is
     STATS_DEVADDR   : integer;  -- ConfigBus address for statistics
     CORE_CLK_HZ     : integer;  -- Clock frequency for CORE_CLK
     SUPPORT_PAUSE   : boolean;  -- Support or ignore PAUSE frames?
+    SUPPORT_PTP     : boolean;  -- Support precise frame timestamps?
+    SUPPORT_VLAN    : boolean;  -- Support or ignore 802.1q VLAN tags?
     ALLOW_JUMBO     : boolean;  -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;  -- Allow runt frames? (Size < 64 bytes)
-    PORT_COUNT      : integer;  -- Total number of Ethernet ports
+    PORT_COUNT      : integer;  -- Total standard Ethernet ports
+    PORTX_COUNT     : integer;  -- Total 10-gigabit Ethernet ports
     DATAPATH_BYTES  : integer;  -- Width of shared pipeline
     IBUF_KBYTES     : integer;  -- Input buffer size (kilobytes)
     HBUF_KBYTES     : integer;  -- High-priority output buffer (kilobytes)
@@ -564,6 +568,135 @@ entity wrap_switch_core is
     p31_tx_error    : in  std_logic;
     p31_tx_reset    : in  std_logic;
 
+    -- Up to 8 high-speed network ports, enabled/hidden based on PORTX_COUNT.
+    x00_rx_clk      : in  std_logic;
+    x00_rx_data     : in  std_logic_vector(63 downto 0);
+    x00_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x00_rx_write    : in  std_logic;
+    x00_rx_error    : in  std_logic;
+    x00_rx_rate     : in  std_logic_vector(15 downto 0);
+    x00_rx_status   : in  std_logic_vector(7 downto 0);
+    x00_rx_reset    : in  std_logic;
+    x00_tx_clk      : in  std_logic;
+    x00_tx_data     : out std_logic_vector(63 downto 0);
+    x00_tx_nlast    : out std_logic_vector(3 downto 0);
+    x00_tx_valid    : out std_logic;
+    x00_tx_ready    : in  std_logic;
+    x00_tx_error    : in  std_logic;
+    x00_tx_reset    : in  std_logic;
+
+    x01_rx_clk      : in  std_logic;
+    x01_rx_data     : in  std_logic_vector(63 downto 0);
+    x01_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x01_rx_write    : in  std_logic;
+    x01_rx_error    : in  std_logic;
+    x01_rx_rate     : in  std_logic_vector(15 downto 0);
+    x01_rx_status   : in  std_logic_vector(7 downto 0);
+    x01_rx_reset    : in  std_logic;
+    x01_tx_clk      : in  std_logic;
+    x01_tx_data     : out std_logic_vector(63 downto 0);
+    x01_tx_nlast    : out std_logic_vector(3 downto 0);
+    x01_tx_valid    : out std_logic;
+    x01_tx_ready    : in  std_logic;
+    x01_tx_error    : in  std_logic;
+    x01_tx_reset    : in  std_logic;
+
+    x02_rx_clk      : in  std_logic;
+    x02_rx_data     : in  std_logic_vector(63 downto 0);
+    x02_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x02_rx_write    : in  std_logic;
+    x02_rx_error    : in  std_logic;
+    x02_rx_rate     : in  std_logic_vector(15 downto 0);
+    x02_rx_status   : in  std_logic_vector(7 downto 0);
+    x02_rx_reset    : in  std_logic;
+    x02_tx_clk      : in  std_logic;
+    x02_tx_data     : out std_logic_vector(63 downto 0);
+    x02_tx_nlast    : out std_logic_vector(3 downto 0);
+    x02_tx_valid    : out std_logic;
+    x02_tx_ready    : in  std_logic;
+    x02_tx_error    : in  std_logic;
+    x02_tx_reset    : in  std_logic;
+
+    x03_rx_clk      : in  std_logic;
+    x03_rx_data     : in  std_logic_vector(63 downto 0);
+    x03_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x03_rx_write    : in  std_logic;
+    x03_rx_error    : in  std_logic;
+    x03_rx_rate     : in  std_logic_vector(15 downto 0);
+    x03_rx_status   : in  std_logic_vector(7 downto 0);
+    x03_rx_reset    : in  std_logic;
+    x03_tx_clk      : in  std_logic;
+    x03_tx_data     : out std_logic_vector(63 downto 0);
+    x03_tx_nlast    : out std_logic_vector(3 downto 0);
+    x03_tx_valid    : out std_logic;
+    x03_tx_ready    : in  std_logic;
+    x03_tx_error    : in  std_logic;
+    x03_tx_reset    : in  std_logic;
+
+    x04_rx_clk      : in  std_logic;
+    x04_rx_data     : in  std_logic_vector(63 downto 0);
+    x04_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x04_rx_write    : in  std_logic;
+    x04_rx_error    : in  std_logic;
+    x04_rx_rate     : in  std_logic_vector(15 downto 0);
+    x04_rx_status   : in  std_logic_vector(7 downto 0);
+    x04_rx_reset    : in  std_logic;
+    x04_tx_clk      : in  std_logic;
+    x04_tx_data     : out std_logic_vector(63 downto 0);
+    x04_tx_nlast    : out std_logic_vector(3 downto 0);
+    x04_tx_valid    : out std_logic;
+    x04_tx_ready    : in  std_logic;
+    x04_tx_error    : in  std_logic;
+    x04_tx_reset    : in  std_logic;
+
+    x05_rx_clk      : in  std_logic;
+    x05_rx_data     : in  std_logic_vector(63 downto 0);
+    x05_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x05_rx_write    : in  std_logic;
+    x05_rx_error    : in  std_logic;
+    x05_rx_rate     : in  std_logic_vector(15 downto 0);
+    x05_rx_status   : in  std_logic_vector(7 downto 0);
+    x05_rx_reset    : in  std_logic;
+    x05_tx_clk      : in  std_logic;
+    x05_tx_data     : out std_logic_vector(63 downto 0);
+    x05_tx_nlast    : out std_logic_vector(3 downto 0);
+    x05_tx_valid    : out std_logic;
+    x05_tx_ready    : in  std_logic;
+    x05_tx_error    : in  std_logic;
+    x05_tx_reset    : in  std_logic;
+
+    x06_rx_clk      : in  std_logic;
+    x06_rx_data     : in  std_logic_vector(63 downto 0);
+    x06_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x06_rx_write    : in  std_logic;
+    x06_rx_error    : in  std_logic;
+    x06_rx_rate     : in  std_logic_vector(15 downto 0);
+    x06_rx_status   : in  std_logic_vector(7 downto 0);
+    x06_rx_reset    : in  std_logic;
+    x06_tx_clk      : in  std_logic;
+    x06_tx_data     : out std_logic_vector(63 downto 0);
+    x06_tx_nlast    : out std_logic_vector(3 downto 0);
+    x06_tx_valid    : out std_logic;
+    x06_tx_ready    : in  std_logic;
+    x06_tx_error    : in  std_logic;
+    x06_tx_reset    : in  std_logic;
+
+    x07_rx_clk      : in  std_logic;
+    x07_rx_data     : in  std_logic_vector(63 downto 0);
+    x07_rx_nlast    : in  std_logic_vector(3 downto 0);
+    x07_rx_write    : in  std_logic;
+    x07_rx_error    : in  std_logic;
+    x07_rx_rate     : in  std_logic_vector(15 downto 0);
+    x07_rx_status   : in  std_logic_vector(7 downto 0);
+    x07_rx_reset    : in  std_logic;
+    x07_tx_clk      : in  std_logic;
+    x07_tx_data     : out std_logic_vector(63 downto 0);
+    x07_tx_nlast    : out std_logic_vector(3 downto 0);
+    x07_tx_valid    : out std_logic;
+    x07_tx_ready    : in  std_logic;
+    x07_tx_error    : in  std_logic;
+    x07_tx_reset    : in  std_logic;
+
     -- Error reporting (see switch_aux).
     errvec_t        : out std_logic_vector(7 downto 0);
 
@@ -589,18 +722,24 @@ end wrap_switch_core;
 
 architecture wrap_switch_core of wrap_switch_core is
 
+constant PORT_TOTAL : integer := PORT_COUNT + PORTX_COUNT;
 signal rx_data      : array_rx_m2s(PORT_COUNT-1 downto 0);
 signal tx_data      : array_tx_s2m(PORT_COUNT-1 downto 0);
 signal tx_ctrl      : array_tx_m2s(PORT_COUNT-1 downto 0);
+signal xrx_data     : array_rx_m2sx(PORTX_COUNT-1 downto 0);
+signal xtx_data     : array_tx_s2mx(PORTX_COUNT-1 downto 0);
+signal xtx_ctrl     : array_tx_m2sx(PORTX_COUNT-1 downto 0);
 signal cfg_cmd      : cfgbus_cmd;
 signal cfg_ack      : cfgbus_ack;
 signal cfg_acks     : cfgbus_ack_array(0 to 1) := (others => cfgbus_idle);
-signal err_ports    : array_port_error(PORT_COUNT-1 downto 0);
+signal err_ports    : array_port_error(PORT_TOTAL-1 downto 0);
 signal err_switch   : switch_error_t;
 
 begin
 
+---------------------------------------------------------------------
 -- Convert ConfigBus signals.
+---------------------------------------------------------------------
 cfg_cmd.clk     <= cfg_clk;
 cfg_cmd.sysaddr <= 0;   -- Unused
 cfg_cmd.devaddr <= u2i(cfg_devaddr);
@@ -616,7 +755,9 @@ cfg_rdack       <= cfg_ack.rdack;
 cfg_rderr       <= cfg_ack.rderr;
 cfg_irq         <= cfg_ack.irq;
 
--- Convert port signals.
+---------------------------------------------------------------------
+-- Convert standard port signals.
+---------------------------------------------------------------------
 gen_p00 : if (PORT_COUNT > 0) generate
     rx_data(0).clk      <= p00_rx_clk;
     rx_data(0).data     <= p00_rx_data;
@@ -635,7 +776,7 @@ gen_p00 : if (PORT_COUNT > 0) generate
     p00_tx_valid        <= tx_data(0).valid;
 end generate;
 
-gen_n00 : if (PORT_COUNT < 1) generate
+gen_n00 : if (PORT_COUNT <= 0) generate
     p00_tx_data         <= (others => '0');
     p00_tx_last         <= '0';
     p00_tx_valid        <= '0';
@@ -659,7 +800,7 @@ gen_p01 : if (PORT_COUNT > 1) generate
     p01_tx_valid        <= tx_data(1).valid;
 end generate;
 
-gen_n01 : if (PORT_COUNT < 2) generate
+gen_n01 : if (PORT_COUNT <= 1) generate
     p01_tx_data         <= (others => '0');
     p01_tx_last         <= '0';
     p01_tx_valid        <= '0';
@@ -683,7 +824,7 @@ gen_p02 : if (PORT_COUNT > 2) generate
     p02_tx_valid        <= tx_data(2).valid;
 end generate;
 
-gen_n02 : if (PORT_COUNT < 3) generate
+gen_n02 : if (PORT_COUNT <= 2) generate
     p02_tx_data         <= (others => '0');
     p02_tx_last         <= '0';
     p02_tx_valid        <= '0';
@@ -707,7 +848,7 @@ gen_p03 : if (PORT_COUNT > 3) generate
     p03_tx_valid        <= tx_data(3).valid;
 end generate;
 
-gen_n03 : if (PORT_COUNT < 4) generate
+gen_n03 : if (PORT_COUNT <= 3) generate
     p03_tx_data         <= (others => '0');
     p03_tx_last         <= '0';
     p03_tx_valid        <= '0';
@@ -731,7 +872,7 @@ gen_p04 : if (PORT_COUNT > 4) generate
     p04_tx_valid        <= tx_data(4).valid;
 end generate;
 
-gen_n04 : if (PORT_COUNT < 5) generate
+gen_n04 : if (PORT_COUNT <= 4) generate
     p04_tx_data         <= (others => '0');
     p04_tx_last         <= '0';
     p04_tx_valid        <= '0';
@@ -755,7 +896,7 @@ gen_p05 : if (PORT_COUNT > 5) generate
     p05_tx_valid        <= tx_data(5).valid;
 end generate;
 
-gen_n05 : if (PORT_COUNT < 6) generate
+gen_n05 : if (PORT_COUNT <= 5) generate
     p05_tx_data         <= (others => '0');
     p05_tx_last         <= '0';
     p05_tx_valid        <= '0';
@@ -779,7 +920,7 @@ gen_p06 : if (PORT_COUNT > 6) generate
     p06_tx_valid        <= tx_data(6).valid;
 end generate;
 
-gen_n06 : if (PORT_COUNT < 7) generate
+gen_n06 : if (PORT_COUNT <= 6) generate
     p06_tx_data         <= (others => '0');
     p06_tx_last         <= '0';
     p06_tx_valid        <= '0';
@@ -803,7 +944,7 @@ gen_p07 : if (PORT_COUNT > 7) generate
     p07_tx_valid        <= tx_data(7).valid;
 end generate;
 
-gen_n07 : if (PORT_COUNT < 8) generate
+gen_n07 : if (PORT_COUNT <= 7) generate
     p07_tx_data         <= (others => '0');
     p07_tx_last         <= '0';
     p07_tx_valid        <= '0';
@@ -827,7 +968,7 @@ gen_p08 : if (PORT_COUNT > 8) generate
     p08_tx_valid        <= tx_data(8).valid;
 end generate;
 
-gen_n08 : if (PORT_COUNT < 9) generate
+gen_n08 : if (PORT_COUNT <= 8) generate
     p08_tx_data         <= (others => '0');
     p08_tx_last         <= '0';
     p08_tx_valid        <= '0';
@@ -851,7 +992,7 @@ gen_p09 : if (PORT_COUNT > 9) generate
     p09_tx_valid        <= tx_data(9).valid;
 end generate;
 
-gen_n09 : if (PORT_COUNT < 10) generate
+gen_n09 : if (PORT_COUNT <= 9) generate
     p09_tx_data         <= (others => '0');
     p09_tx_last         <= '0';
     p09_tx_valid        <= '0';
@@ -875,7 +1016,7 @@ gen_p10 : if (PORT_COUNT > 10) generate
     p10_tx_valid        <= tx_data(10).valid;
 end generate;
 
-gen_n10 : if (PORT_COUNT < 11) generate
+gen_n10 : if (PORT_COUNT <= 10) generate
     p10_tx_data         <= (others => '0');
     p10_tx_last         <= '0';
     p10_tx_valid        <= '0';
@@ -899,7 +1040,7 @@ gen_p11 : if (PORT_COUNT > 11) generate
     p11_tx_valid        <= tx_data(11).valid;
 end generate;
 
-gen_n11 : if (PORT_COUNT < 12) generate
+gen_n11 : if (PORT_COUNT <= 11) generate
     p11_tx_data         <= (others => '0');
     p11_tx_last         <= '0';
     p11_tx_valid        <= '0';
@@ -923,7 +1064,7 @@ gen_p12 : if (PORT_COUNT > 12) generate
     p12_tx_valid        <= tx_data(12).valid;
 end generate;
 
-gen_n12 : if (PORT_COUNT < 13) generate
+gen_n12 : if (PORT_COUNT <= 12) generate
     p12_tx_data         <= (others => '0');
     p12_tx_last         <= '0';
     p12_tx_valid        <= '0';
@@ -947,7 +1088,7 @@ gen_p13 : if (PORT_COUNT > 13) generate
     p13_tx_valid        <= tx_data(13).valid;
 end generate;
 
-gen_n13 : if (PORT_COUNT < 14) generate
+gen_n13 : if (PORT_COUNT <= 13) generate
     p13_tx_data         <= (others => '0');
     p13_tx_last         <= '0';
     p13_tx_valid        <= '0';
@@ -971,7 +1112,7 @@ gen_p14 : if (PORT_COUNT > 14) generate
     p14_tx_valid        <= tx_data(14).valid;
 end generate;
 
-gen_n14 : if (PORT_COUNT < 15) generate
+gen_n14 : if (PORT_COUNT <= 14) generate
     p14_tx_data         <= (others => '0');
     p14_tx_last         <= '0';
     p14_tx_valid        <= '0';
@@ -995,7 +1136,7 @@ gen_p15 : if (PORT_COUNT > 15) generate
     p15_tx_valid        <= tx_data(15).valid;
 end generate;
 
-gen_n15 : if (PORT_COUNT < 16) generate
+gen_n15 : if (PORT_COUNT <= 15) generate
     p15_tx_data         <= (others => '0');
     p15_tx_last         <= '0';
     p15_tx_valid        <= '0';
@@ -1019,7 +1160,7 @@ gen_p16 : if (PORT_COUNT > 16) generate
     p16_tx_valid        <= tx_data(16).valid;
 end generate;
 
-gen_n16 : if (PORT_COUNT < 17) generate
+gen_n16 : if (PORT_COUNT <= 16) generate
     p16_tx_data         <= (others => '0');
     p16_tx_last         <= '0';
     p16_tx_valid        <= '0';
@@ -1043,7 +1184,7 @@ gen_p17 : if (PORT_COUNT > 17) generate
     p17_tx_valid        <= tx_data(17).valid;
 end generate;
 
-gen_n17 : if (PORT_COUNT < 18) generate
+gen_n17 : if (PORT_COUNT <= 17) generate
     p17_tx_data         <= (others => '0');
     p17_tx_last         <= '0';
     p17_tx_valid        <= '0';
@@ -1067,7 +1208,7 @@ gen_p18 : if (PORT_COUNT > 18) generate
     p18_tx_valid        <= tx_data(18).valid;
 end generate;
 
-gen_n18 : if (PORT_COUNT < 19) generate
+gen_n18 : if (PORT_COUNT <= 18) generate
     p18_tx_data         <= (others => '0');
     p18_tx_last         <= '0';
     p18_tx_valid        <= '0';
@@ -1091,7 +1232,7 @@ gen_p19 : if (PORT_COUNT > 19) generate
     p19_tx_valid        <= tx_data(19).valid;
 end generate;
 
-gen_n19 : if (PORT_COUNT < 20) generate
+gen_n19 : if (PORT_COUNT <= 19) generate
     p19_tx_data         <= (others => '0');
     p19_tx_last         <= '0';
     p19_tx_valid        <= '0';
@@ -1115,7 +1256,7 @@ gen_p20 : if (PORT_COUNT > 20) generate
     p20_tx_valid        <= tx_data(20).valid;
 end generate;
 
-gen_n20 : if (PORT_COUNT < 21) generate
+gen_n20 : if (PORT_COUNT <= 20) generate
     p20_tx_data         <= (others => '0');
     p20_tx_last         <= '0';
     p20_tx_valid        <= '0';
@@ -1139,7 +1280,7 @@ gen_p21 : if (PORT_COUNT > 21) generate
     p21_tx_valid        <= tx_data(21).valid;
 end generate;
 
-gen_n21 : if (PORT_COUNT < 22) generate
+gen_n21 : if (PORT_COUNT <= 21) generate
     p21_tx_data         <= (others => '0');
     p21_tx_last         <= '0';
     p21_tx_valid        <= '0';
@@ -1163,7 +1304,7 @@ gen_p22 : if (PORT_COUNT > 22) generate
     p22_tx_valid        <= tx_data(22).valid;
 end generate;
 
-gen_n22 : if (PORT_COUNT < 23) generate
+gen_n22 : if (PORT_COUNT <= 22) generate
     p22_tx_data         <= (others => '0');
     p22_tx_last         <= '0';
     p22_tx_valid        <= '0';
@@ -1187,7 +1328,7 @@ gen_p23 : if (PORT_COUNT > 23) generate
     p23_tx_valid        <= tx_data(23).valid;
 end generate;
 
-gen_n23 : if (PORT_COUNT < 24) generate
+gen_n23 : if (PORT_COUNT <= 23) generate
     p23_tx_data         <= (others => '0');
     p23_tx_last         <= '0';
     p23_tx_valid        <= '0';
@@ -1211,7 +1352,7 @@ gen_p24 : if (PORT_COUNT > 24) generate
     p24_tx_valid        <= tx_data(24).valid;
 end generate;
 
-gen_n24 : if (PORT_COUNT < 25) generate
+gen_n24 : if (PORT_COUNT <= 24) generate
     p24_tx_data         <= (others => '0');
     p24_tx_last         <= '0';
     p24_tx_valid        <= '0';
@@ -1235,7 +1376,7 @@ gen_p25 : if (PORT_COUNT > 25) generate
     p25_tx_valid        <= tx_data(25).valid;
 end generate;
 
-gen_n25 : if (PORT_COUNT < 26) generate
+gen_n25 : if (PORT_COUNT <= 25) generate
     p25_tx_data         <= (others => '0');
     p25_tx_last         <= '0';
     p25_tx_valid        <= '0';
@@ -1259,7 +1400,7 @@ gen_p26 : if (PORT_COUNT > 26) generate
     p26_tx_valid        <= tx_data(26).valid;
 end generate;
 
-gen_n26 : if (PORT_COUNT < 27) generate
+gen_n26 : if (PORT_COUNT <= 26) generate
     p26_tx_data         <= (others => '0');
     p26_tx_last         <= '0';
     p26_tx_valid        <= '0';
@@ -1283,7 +1424,7 @@ gen_p27 : if (PORT_COUNT > 27) generate
     p27_tx_valid        <= tx_data(27).valid;
 end generate;
 
-gen_n27 : if (PORT_COUNT < 28) generate
+gen_n27 : if (PORT_COUNT <= 27) generate
     p27_tx_data         <= (others => '0');
     p27_tx_last         <= '0';
     p27_tx_valid        <= '0';
@@ -1307,7 +1448,7 @@ gen_p28 : if (PORT_COUNT > 28) generate
     p28_tx_valid        <= tx_data(28).valid;
 end generate;
 
-gen_n28 : if (PORT_COUNT < 29) generate
+gen_n28 : if (PORT_COUNT <= 28) generate
     p28_tx_data         <= (others => '0');
     p28_tx_last         <= '0';
     p28_tx_valid        <= '0';
@@ -1331,7 +1472,7 @@ gen_p29 : if (PORT_COUNT > 29) generate
     p29_tx_valid        <= tx_data(29).valid;
 end generate;
 
-gen_n29 : if (PORT_COUNT < 30) generate
+gen_n29 : if (PORT_COUNT <= 29) generate
     p29_tx_data         <= (others => '0');
     p29_tx_last         <= '0';
     p29_tx_valid        <= '0';
@@ -1355,7 +1496,7 @@ gen_p30 : if (PORT_COUNT > 30) generate
     p30_tx_valid        <= tx_data(30).valid;
 end generate;
 
-gen_n30 : if (PORT_COUNT < 31) generate
+gen_n30 : if (PORT_COUNT <= 30) generate
     p30_tx_data         <= (others => '0');
     p30_tx_last         <= '0';
     p30_tx_valid        <= '0';
@@ -1379,11 +1520,210 @@ gen_p31 : if (PORT_COUNT > 31) generate
     p31_tx_valid        <= tx_data(31).valid;
 end generate;
 
-gen_n31 : if (PORT_COUNT < 32) generate
+gen_n31 : if (PORT_COUNT <= 31) generate
     p31_tx_data         <= (others => '0');
     p31_tx_last         <= '0';
     p31_tx_valid        <= '0';
 end generate;
+
+---------------------------------------------------------------------
+-- Convert 10 GbE port signals.
+---------------------------------------------------------------------
+gen_xp00 : if (PORTX_COUNT > 0) generate
+    xrx_data(0).clk     <= x00_rx_clk;
+    xrx_data(0).data    <= x00_rx_data;
+    xrx_data(0).nlast   <= xlast_v2i(x00_rx_nlast);
+    xrx_data(0).write   <= x00_rx_write;
+    xrx_data(0).rxerr   <= x00_rx_error;
+    xrx_data(0).rate    <= x00_rx_rate;
+    xrx_data(0).status  <= x00_rx_status;
+    xrx_data(0).reset_p <= x00_rx_reset;
+    xtx_ctrl(0).clk     <= x00_tx_clk;
+    xtx_ctrl(0).ready   <= x00_tx_ready;
+    xtx_ctrl(0).txerr   <= x00_tx_error;
+    xtx_ctrl(0).reset_p <= x00_tx_reset;
+    x00_tx_data         <= xtx_data(0).data;
+    x00_tx_nlast        <= xlast_i2v(xtx_data(0).nlast);
+    x00_tx_valid        <= xtx_data(0).valid;
+end generate;
+
+gen_xn00 : if (PORTX_COUNT <= 0) generate
+    x00_tx_data         <= (others => '0');
+    x00_tx_nlast        <= (others => '0');
+    x00_tx_valid        <= '0';
+end generate;
+
+gen_xp01 : if (PORTX_COUNT > 1) generate
+    xrx_data(1).clk     <= x01_rx_clk;
+    xrx_data(1).data    <= x01_rx_data;
+    xrx_data(1).nlast   <= xlast_v2i(x01_rx_nlast);
+    xrx_data(1).write   <= x01_rx_write;
+    xrx_data(1).rxerr   <= x01_rx_error;
+    xrx_data(1).rate    <= x01_rx_rate;
+    xrx_data(1).status  <= x01_rx_status;
+    xrx_data(1).reset_p <= x01_rx_reset;
+    xtx_ctrl(1).clk     <= x01_tx_clk;
+    xtx_ctrl(1).ready   <= x01_tx_ready;
+    xtx_ctrl(1).txerr   <= x01_tx_error;
+    xtx_ctrl(1).reset_p <= x01_tx_reset;
+    x01_tx_data         <= xtx_data(1).data;
+    x01_tx_nlast        <= xlast_i2v(xtx_data(1).nlast);
+    x01_tx_valid        <= xtx_data(1).valid;
+end generate;
+
+gen_xn01 : if (PORTX_COUNT <= 1) generate
+    x01_tx_data         <= (others => '0');
+    x01_tx_nlast        <= (others => '0');
+    x01_tx_valid        <= '0';
+end generate;
+
+gen_xp02 : if (PORTX_COUNT > 2) generate
+    xrx_data(2).clk     <= x02_rx_clk;
+    xrx_data(2).data    <= x02_rx_data;
+    xrx_data(2).nlast   <= xlast_v2i(x02_rx_nlast);
+    xrx_data(2).write   <= x02_rx_write;
+    xrx_data(2).rxerr   <= x02_rx_error;
+    xrx_data(2).rate    <= x02_rx_rate;
+    xrx_data(2).status  <= x02_rx_status;
+    xrx_data(2).reset_p <= x02_rx_reset;
+    xtx_ctrl(2).clk     <= x02_tx_clk;
+    xtx_ctrl(2).ready   <= x02_tx_ready;
+    xtx_ctrl(2).txerr   <= x02_tx_error;
+    xtx_ctrl(2).reset_p <= x02_tx_reset;
+    x02_tx_data         <= xtx_data(2).data;
+    x02_tx_nlast        <= xlast_i2v(xtx_data(2).nlast);
+    x02_tx_valid        <= xtx_data(2).valid;
+end generate;
+
+gen_xn02 : if (PORTX_COUNT <= 2) generate
+    x02_tx_data         <= (others => '0');
+    x02_tx_nlast        <= (others => '0');
+    x02_tx_valid        <= '0';
+end generate;
+
+gen_xp03 : if (PORTX_COUNT > 3) generate
+    xrx_data(3).clk     <= x03_rx_clk;
+    xrx_data(3).data    <= x03_rx_data;
+    xrx_data(3).nlast   <= xlast_v2i(x03_rx_nlast);
+    xrx_data(3).write   <= x03_rx_write;
+    xrx_data(3).rxerr   <= x03_rx_error;
+    xrx_data(3).rate    <= x03_rx_rate;
+    xrx_data(3).status  <= x03_rx_status;
+    xrx_data(3).reset_p <= x03_rx_reset;
+    xtx_ctrl(3).clk     <= x03_tx_clk;
+    xtx_ctrl(3).ready   <= x03_tx_ready;
+    xtx_ctrl(3).txerr   <= x03_tx_error;
+    xtx_ctrl(3).reset_p <= x03_tx_reset;
+    x03_tx_data         <= xtx_data(3).data;
+    x03_tx_nlast        <= xlast_i2v(xtx_data(3).nlast);
+    x03_tx_valid        <= xtx_data(3).valid;
+end generate;
+
+gen_xn03 : if (PORTX_COUNT <= 3) generate
+    x03_tx_data         <= (others => '0');
+    x03_tx_nlast        <= (others => '0');
+    x03_tx_valid        <= '0';
+end generate;
+
+gen_xp04 : if (PORTX_COUNT > 4) generate
+    xrx_data(4).clk     <= x04_rx_clk;
+    xrx_data(4).data    <= x04_rx_data;
+    xrx_data(4).nlast   <= xlast_v2i(x04_rx_nlast);
+    xrx_data(4).write   <= x04_rx_write;
+    xrx_data(4).rxerr   <= x04_rx_error;
+    xrx_data(4).rate    <= x04_rx_rate;
+    xrx_data(4).status  <= x04_rx_status;
+    xrx_data(4).reset_p <= x04_rx_reset;
+    xtx_ctrl(4).clk     <= x04_tx_clk;
+    xtx_ctrl(4).ready   <= x04_tx_ready;
+    xtx_ctrl(4).txerr   <= x04_tx_error;
+    xtx_ctrl(4).reset_p <= x04_tx_reset;
+    x04_tx_data         <= xtx_data(4).data;
+    x04_tx_nlast        <= xlast_i2v(xtx_data(4).nlast);
+    x04_tx_valid        <= xtx_data(4).valid;
+end generate;
+
+gen_xn04 : if (PORTX_COUNT <= 4) generate
+    x04_tx_data         <= (others => '0');
+    x04_tx_nlast        <= (others => '0');
+    x04_tx_valid        <= '0';
+end generate;
+
+gen_xp05 : if (PORTX_COUNT > 5) generate
+    xrx_data(5).clk     <= x05_rx_clk;
+    xrx_data(5).data    <= x05_rx_data;
+    xrx_data(5).nlast   <= xlast_v2i(x05_rx_nlast);
+    xrx_data(5).write   <= x05_rx_write;
+    xrx_data(5).rxerr   <= x05_rx_error;
+    xrx_data(5).rate    <= x05_rx_rate;
+    xrx_data(5).status  <= x05_rx_status;
+    xrx_data(5).reset_p <= x05_rx_reset;
+    xtx_ctrl(5).clk     <= x05_tx_clk;
+    xtx_ctrl(5).ready   <= x05_tx_ready;
+    xtx_ctrl(5).txerr   <= x05_tx_error;
+    xtx_ctrl(5).reset_p <= x05_tx_reset;
+    x05_tx_data         <= xtx_data(5).data;
+    x05_tx_nlast        <= xlast_i2v(xtx_data(5).nlast);
+    x05_tx_valid        <= xtx_data(5).valid;
+end generate;
+
+gen_xn05 : if (PORTX_COUNT <= 5) generate
+    x05_tx_data         <= (others => '0');
+    x05_tx_nlast        <= (others => '0');
+    x05_tx_valid        <= '0';
+end generate;
+
+gen_xp06 : if (PORTX_COUNT > 6) generate
+    xrx_data(6).clk     <= x06_rx_clk;
+    xrx_data(6).data    <= x06_rx_data;
+    xrx_data(6).nlast   <= xlast_v2i(x06_rx_nlast);
+    xrx_data(6).write   <= x06_rx_write;
+    xrx_data(6).rxerr   <= x06_rx_error;
+    xrx_data(6).rate    <= x06_rx_rate;
+    xrx_data(6).status  <= x06_rx_status;
+    xrx_data(6).reset_p <= x06_rx_reset;
+    xtx_ctrl(6).clk     <= x06_tx_clk;
+    xtx_ctrl(6).ready   <= x06_tx_ready;
+    xtx_ctrl(6).txerr   <= x06_tx_error;
+    xtx_ctrl(6).reset_p <= x06_tx_reset;
+    x06_tx_data         <= xtx_data(6).data;
+    x06_tx_nlast        <= xlast_i2v(xtx_data(6).nlast);
+    x06_tx_valid        <= xtx_data(6).valid;
+end generate;
+
+gen_xn06 : if (PORTX_COUNT <= 6) generate
+    x06_tx_data         <= (others => '0');
+    x06_tx_nlast        <= (others => '0');
+    x06_tx_valid        <= '0';
+end generate;
+
+gen_xp07 : if (PORTX_COUNT > 7) generate
+    xrx_data(7).clk     <= x07_rx_clk;
+    xrx_data(7).data    <= x07_rx_data;
+    xrx_data(7).nlast   <= xlast_v2i(x07_rx_nlast);
+    xrx_data(7).write   <= x07_rx_write;
+    xrx_data(7).rxerr   <= x07_rx_error;
+    xrx_data(7).rate    <= x07_rx_rate;
+    xrx_data(7).status  <= x07_rx_status;
+    xrx_data(7).reset_p <= x07_rx_reset;
+    xtx_ctrl(7).clk     <= x07_tx_clk;
+    xtx_ctrl(7).ready   <= x07_tx_ready;
+    xtx_ctrl(7).txerr   <= x07_tx_error;
+    xtx_ctrl(7).reset_p <= x07_tx_reset;
+    x07_tx_data         <= xtx_data(7).data;
+    x07_tx_nlast        <= xlast_i2v(xtx_data(7).nlast);
+    x07_tx_valid        <= xtx_data(7).valid;
+end generate;
+
+gen_xn07 : if (PORTX_COUNT <= 7) generate
+    x07_tx_data         <= (others => '0');
+    x07_tx_nlast        <= (others => '0');
+    x07_tx_valid        <= '0';
+end generate;
+
+---------------------------------------------------------------------
+-- Statistics reporting
+---------------------------------------------------------------------
 
 -- Optional statistics reporting (ConfigBus)
 gen_stats_en : if STATS_ENABLE generate
@@ -1393,13 +1733,17 @@ gen_stats_en : if STATS_ENABLE generate
     u_stats : entity work.cfgbus_port_stats
         generic map(
         PORT_COUNT  => PORT_COUNT,
+        PORTX_COUNT => PORTX_COUNT,
         CFG_DEVADDR => STATS_DEVADDR,
-        COUNT_WIDTH => 28,
+        COUNT_WIDTH => 31,
         SAFE_COUNT  => false)
         port map(
         rx_data     => rx_data,
         tx_data     => tx_data,
         tx_ctrl     => tx_ctrl,
+        xrx_data    => xrx_data,
+        xtx_data    => xtx_data,
+        xtx_ctrl    => xtx_ctrl,
         err_ports   => err_ports,
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(0));
@@ -1410,15 +1754,21 @@ gen_stats_no : if not STATS_ENABLE generate
     cfg_acks(0) <= cfgbus_idle;
 end generate;
 
--- Unit being wrapped.
+---------------------------------------------------------------------
+-- Switch core
+---------------------------------------------------------------------
+
 u_wrap : entity work.switch_core
     generic map(
     DEV_ADDR        => cfgbus_devaddr_if(CFG_DEV_ADDR, CFG_ENABLE),
     CORE_CLK_HZ     => CORE_CLK_HZ,
     SUPPORT_PAUSE   => SUPPORT_PAUSE,
+    SUPPORT_PTP     => SUPPORT_PTP,
+    SUPPORT_VLAN    => SUPPORT_VLAN,
     ALLOW_JUMBO     => ALLOW_JUMBO,
     ALLOW_RUNT      => ALLOW_RUNT,
     PORT_COUNT      => PORT_COUNT,
+    PORTX_COUNT     => PORTX_COUNT,
     DATAPATH_BYTES  => DATAPATH_BYTES,
     IBUF_KBYTES     => IBUF_KBYTES,
     HBUF_KBYTES     => HBUF_KBYTES,
@@ -1428,6 +1778,9 @@ u_wrap : entity work.switch_core
     ports_rx_data   => rx_data,
     ports_tx_data   => tx_data,
     ports_tx_ctrl   => tx_ctrl,
+    portx_rx_data   => xrx_data,
+    portx_tx_data   => xtx_data,
+    portx_tx_ctrl   => xtx_ctrl,
     err_ports       => err_ports,
     err_switch      => err_switch,
     errvec_t        => errvec_t,

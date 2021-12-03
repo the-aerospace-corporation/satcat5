@@ -22,22 +22,28 @@
 -- This module handles configuration scrubbing, error-reporting, status
 -- LEDs, and other functions to support one or more switch_core units.
 --
+-- If enabled, this block can instantiate an FPGA-wide "scrubber" block
+-- to detect SEU. Using this feature allows such events to be logged by
+-- the error-reporting UART.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.scrub_generic;
 use     work.common_primitives.sync_toggle2pulse_slv;
 use     work.io_leds.all;
 use     work.switch_types.all;
 
 entity switch_aux is
     generic (
-    SCRUB_CLK_HZ    : positive;         -- Scrubbing clock frequency (Hz)
-    STARTUP_MSG     : string;           -- On-boot message (e.g., build date)
-    STATUS_LED_LIT  : std_logic;        -- Polarity for status LEDs
+    SCRUB_CLK_HZ    : positive;             -- Scrubbing clock frequency (Hz)
+    STARTUP_MSG     : string;               -- On-boot message (e.g., build date)
+    STATUS_LED_LIT  : std_logic;            -- Polarity for status LEDs
     UART_BAUD       : positive := 921_600;  -- Baud rate for status UART
-    CORE_COUNT      : positive := 1);   -- Number of switch_core units
+    CORE_COUNT      : positive := 1 ;       -- Number of switch_core units
+    SCRUB_ENABLE    : boolean := false);    -- Enable FPGA-wide scrubbing?
     port (
     -- Concatenated error vector from each switch_core.
     -- (Each is a "toggle" indicator in any clock domain.)
@@ -66,7 +72,7 @@ end switch_aux;
 architecture switch_aux of switch_aux is
 
 -- Configuration scrubbing error strobe.
-signal scrub_err    : std_logic;
+signal scrub_err    : std_logic := '0';
 
 -- MAC-table scrub request toggle (internal)
 signal scrub_req_ti : std_logic := '0';
@@ -78,11 +84,13 @@ signal error_any    : std_logic := '0';
 
 begin
 
--- FPGA configuration scrubbing for SEU mitigation.
-u_cfg_scrub : entity work.scrub_generic
-    port map(
-    clk_raw => scrub_clk,
-    err_out => scrub_err);
+-- Optional FPGA configuration scrubbing for SEU mitigation.
+gen_scrub : if SCRUB_ENABLE generate
+    u_cfg_scrub : scrub_generic
+        port map(
+        clk_raw => scrub_clk,
+        err_out => scrub_err);
+end generate;
 
 -- Toggle the MAC-scrub request signal every N clocks.
 scrub_req_t <= scrub_req_ti;

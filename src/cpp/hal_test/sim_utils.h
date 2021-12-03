@@ -59,7 +59,7 @@ namespace satcat5 {
             CountAlways() : m_count(0) {}
             virtual ~CountAlways() {}
             unsigned count() const {return m_count;}
-            void poll() override {++m_count;}
+            void poll_always() override {++m_count;}
         protected:
             unsigned m_count;
         };
@@ -69,7 +69,7 @@ namespace satcat5 {
             CountOnDemand() : m_count(0) {}
             virtual ~CountOnDemand() {}
             unsigned count() const {return m_count;}
-            void poll() override {++m_count;}
+            void poll_demand() override {++m_count;}
         protected:
             unsigned m_count;
         };
@@ -123,7 +123,7 @@ namespace satcat5 {
         // Timekeeper object that always fires a timer interrupt.
         class TimerAlways : public satcat5::poll::Always {
         protected:
-            void poll() {
+            void poll_always() override {
                 satcat5::poll::timekeeper.request_poll();
             }
         };

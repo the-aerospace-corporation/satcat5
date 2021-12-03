@@ -34,29 +34,30 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
+use     work.switch_types.switch_meta_null;
 
 entity packet_delay_tb_single is
     generic (
-    INPUT_BYTES     : integer;          -- Width of input port
-    DELAY_COUNT     : integer);         -- Fixed delay, in clocks
+    IO_BYTES    : integer;          -- Width of input port
+    DELAY_COUNT : integer);         -- Fixed delay, in clocks
     port (
-    io_clk          : in  std_logic;
-    reset_p         : in  std_logic);
+    io_clk      : in  std_logic;
+    reset_p     : in  std_logic);
 end packet_delay_tb_single;
 
 architecture single of packet_delay_tb_single is
 
 -- Test I/O
-signal in_data      : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
-signal in_nlast     : integer range 0 to INPUT_BYTES := 0;
+signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0');
+signal in_nlast     : integer range 0 to IO_BYTES := 0;
 signal in_write     : std_logic := '0';
-signal out_data     : std_logic_vector(8*INPUT_BYTES-1 downto 0);
-signal out_nlast    : integer range 0 to INPUT_BYTES;
+signal out_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
+signal out_nlast    : integer range 0 to IO_BYTES;
 signal out_write    : std_logic;
 
 -- Reference sequence
-signal ref_data     : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
-signal ref_nlast    : integer range 0 to INPUT_BYTES := 0;
+signal ref_data     : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0');
+signal ref_nlast    : integer range 0 to IO_BYTES := 0;
 signal ref_write    : std_logic := '0';
 signal ref_enable   : std_logic := '0';
 
@@ -71,7 +72,7 @@ begin
     if rising_edge(io_clk) then
         if (reset_p = '1') then
             in_data     <= (others => '0');
-            in_nlast    <= INPUT_BYTES-1;
+            in_nlast    <= IO_BYTES-1;
             in_write    <= '0';
         else
             for n in in_data'range loop
@@ -79,7 +80,7 @@ begin
                 in_data(n) <= bool2bit(rand < 0.5);
             end loop;
             uniform(seed1, seed2, rand);
-            in_nlast <= integer(floor(rand * real(INPUT_BYTES+1)));
+            in_nlast <= integer(floor(rand * real(IO_BYTES+1)));
             uniform(seed1, seed2, rand);
             in_write <= bool2bit(rand < 0.5);
         end if;
@@ -95,7 +96,7 @@ begin
     if rising_edge(io_clk) then
         if (reset_p = '1') then
             ref_data     <= (others => '0');
-            ref_nlast    <= INPUT_BYTES-1;
+            ref_nlast    <= IO_BYTES-1;
             ref_write    <= '0';
             delay        := DELAY_COUNT;
         elsif (delay > 0) then
@@ -106,7 +107,7 @@ begin
                 ref_data(n) <= bool2bit(rand < 0.5);
             end loop;
             uniform(seed1, seed2, rand);
-            ref_nlast <= integer(floor(rand * real(INPUT_BYTES+1)));
+            ref_nlast <= integer(floor(rand * real(IO_BYTES+1)));
             uniform(seed1, seed2, rand);
             ref_write <= bool2bit(rand < 0.5);
         end if;
@@ -117,17 +118,19 @@ end process;
 -- Unit under test
 uut : entity work.packet_delay
     generic map(
-    INPUT_BYTES     => INPUT_BYTES,
-    DELAY_COUNT     => DELAY_COUNT)
+    IO_BYTES    => IO_BYTES,
+    DELAY_COUNT => DELAY_COUNT)
     port map(
-    in_data         => in_data,
-    in_nlast        => in_nlast,
-    in_write        => in_write,
-    out_data        => out_data,
-    out_nlast       => out_nlast,
-    out_write       => out_write,
-    io_clk          => io_clk,
-    reset_p         => reset_p);
+    in_data     => in_data,
+    in_meta     => SWITCH_META_NULL,    -- Not tested
+    in_nlast    => in_nlast,
+    in_write    => in_write,
+    out_data    => out_data,
+    out_meta    => open,                -- Not tested
+    out_nlast   => out_nlast,
+    out_write   => out_write,
+    io_clk      => io_clk,
+    reset_p     => reset_p);
 
 -- Output checking.
 p_check : process(io_clk)
@@ -179,34 +182,34 @@ reset_p <= '0' after 1 us;
 -- Instantiate each test configuration.
 u0 : entity work.packet_delay_tb_single
     generic map(
-    INPUT_BYTES     => 1,
-    DELAY_COUNT     => 0)
+    IO_BYTES    => 1,
+    DELAY_COUNT => 0)
     port map(
-    io_clk          => clk_100,
-    reset_p         => reset_p);
+    io_clk      => clk_100,
+    reset_p     => reset_p);
 
 u1 : entity work.packet_delay_tb_single
     generic map(
-    INPUT_BYTES     => 2,
-    DELAY_COUNT     => 1)
+    IO_BYTES    => 2,
+    DELAY_COUNT => 1)
     port map(
-    io_clk          => clk_100,
-    reset_p         => reset_p);
+    io_clk      => clk_100,
+    reset_p     => reset_p);
 
 u3 : entity work.packet_delay_tb_single
     generic map(
-    INPUT_BYTES     => 1,
-    DELAY_COUNT     => 3)
+    IO_BYTES    => 1,
+    DELAY_COUNT => 3)
     port map(
-    io_clk          => clk_100,
-    reset_p         => reset_p);
+    io_clk      => clk_100,
+    reset_p     => reset_p);
 
 u63 : entity work.packet_delay_tb_single
     generic map(
-    INPUT_BYTES     => 1,
-    DELAY_COUNT     => 63)
+    IO_BYTES    => 1,
+    DELAY_COUNT => 63)
     port map(
-    io_clk          => clk_100,
-    reset_p         => reset_p);
+    io_clk      => clk_100,
+    reset_p     => reset_p);
 
 end tb;

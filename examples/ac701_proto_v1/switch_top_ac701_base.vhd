@@ -160,7 +160,7 @@ eth2_rstn   <= ctrl_gpo(21);
 eth3_rstn   <= ctrl_gpo(22);
 
 -- LCD controller mirrors status messages.
-u_lcd : entity work.lcd_control
+u_lcd : entity work.io_text_lcd
     generic map(REFCLK_HZ => 25000000)
     port map(
     lcd_db      => lcd_db,
@@ -239,6 +239,7 @@ u_core : entity work.switch_core
 u_aux : entity work.switch_aux
     generic map(
     SCRUB_CLK_HZ    => 25000000,
+    SCRUB_ENABLE    => true,
     STARTUP_MSG     => "AC701_Base_" & BUILD_DATE,
     STATUS_LED_LIT  => '1')
     port map(

@@ -262,7 +262,9 @@ u_combine : entity work.packet_inject
     INPUT_COUNT     => COMBINE_STREAMS,
     APPEND_FCS      => false)
     port map(
-    in_data         => combine_data,
+    in0_data        => combine_data(0),
+    in1_data        => combine_data(1),
+    in2_data        => combine_data(2),
     in_last         => combine_last,
     in_valid        => combine_valid,
     in_ready        => combine_ready,

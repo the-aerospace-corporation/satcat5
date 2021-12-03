@@ -37,10 +37,17 @@ use     work.switch_types.all;
 
 entity eth_pause_ctrl is
     generic (
-    REFCLK_HZ   : positive);    -- Rate of ref_clk (Hz)
+    REFCLK_HZ   : positive;         -- Rate of ref_clk (Hz)
+    IO_BYTES    : positive := 1);   -- Width of input stream
     port (
     -- Input data stream
-    port_rx     : in  port_rx_m2s;
+    rx_clk      : in  std_logic;
+    rx_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
+    rx_nlast    : in  integer range 0 to IO_BYTES := 0;
+    rx_last     : in  std_logic := '0'; -- Choose LAST or NLAST
+    rx_write    : in  std_logic;
+    rx_rate     : in  port_rate_t;
+    rx_reset_p  : in  std_logic;
 
     -- On command, assert PAUSE flag
     pause_tx    : out std_logic;
@@ -51,9 +58,6 @@ entity eth_pause_ctrl is
 end eth_pause_ctrl;
 
 architecture eth_pause_ctrl of eth_pause_ctrl is
-
--- Port clock.
-signal rx_clk   : std_logic;
 
 -- Packet-parsing state machine
 signal cmd_val  : unsigned(15 downto 0) := (others => '0');
@@ -72,14 +76,15 @@ begin
 -- Drive the final pause signal signal.
 pause_tx <= pause_i;
 
--- Force clock assignment, as a workaround for bugs in Vivado XSIM.
--- (Further discussion in "switch_core.vhd".)
-rx_clk <= to_01_std(port_rx.clk);
-
 -- Packet-parsing state machine.
 p_parse : process(rx_clk)
-    variable is_cmd : std_logic := '0';
-    variable bcount : integer range 0 to 18 := 0;
+    constant PAUSE_DST : mac_addr_t := x"0180C2000001";
+    constant PAUSE_TYP : mac_type_t := x"8808";
+    constant PAUSE_OPC : mac_type_t := x"0001";
+    constant WCOUNT_MAX : mac_bcount_t := mac_wcount_max(IO_BYTES);
+    variable wcount : integer range 0 to WCOUNT_MAX := 0;
+    variable is_cmd : std_logic_vector(9 downto 0) := (others => '0');
+    variable btmp, bref : byte_t;
 begin
     if rising_edge(rx_clk) then
         -- Read headers to see if this is a PAUSE command:
@@ -89,45 +94,53 @@ begin
         --   Opcode = Bytes 14-15 = 0x0001
         --   Pause  = Bytes 16-17 = Read from packet
         --   Rest of packet       = Don't care (Note: Not checking FCS!)
-        if (port_rx.write = '1') then
-            if (bcount = 0) then
-                is_cmd := bool2bit(port_rx.data = x"01");
-            elsif (bcount = 1) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"80");
-            elsif (bcount = 2) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"C2");
-            elsif (bcount = 3) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"00");
-            elsif (bcount = 4) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"00");
-            elsif (bcount = 5) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"01");
-            elsif (bcount = 12) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"88");
-            elsif (bcount = 13) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"08");
-            elsif (bcount = 14) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"00");
-            elsif (bcount = 15) then
-                is_cmd := is_cmd and bool2bit(port_rx.data = x"01");
-            elsif (bcount = 16) then
-                cmd_val(15 downto 8) <= unsigned(port_rx.data);
-            elsif (bcount = 17) then
-                cmd_val( 7 downto 0) <= unsigned(port_rx.data);
-                -- If command received, generate toggle event.
-                cmd_wr_t <= cmd_wr_t xor is_cmd;
+        if (rx_write = '1') then
+            -- DST (Bytes 0-5 = Flags 0-5)
+            for n in 0 to 5 loop
+                if (strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+n, wcount)) then
+                    bref := strm_byte_value(n, PAUSE_DST);
+                    btmp := strm_byte_value(ETH_HDR_DSTMAC+n, rx_data);
+                    is_cmd(n+0) := bool2bit(bref = btmp);
+                end if;
+            end loop;
+            -- EType (Bytes 12-13 = Flags 6-7)
+            for n in 0 to 1 loop
+                if (strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+n, wcount)) then
+                    bref := strm_byte_value(n, PAUSE_TYP);
+                    btmp := strm_byte_value(ETH_HDR_ETYPE+n, rx_data);
+                    is_cmd(n+6) := bool2bit(bref = btmp);
+                end if;
+            end loop;
+            -- Opcode (Bytes 14-15 = Flags 8-9)
+            for n in 0 to 1 loop
+                if (strm_byte_present(IO_BYTES, ETH_HDR_DATA+n, wcount)) then
+                    bref := strm_byte_value(n, PAUSE_OPC);
+                    btmp := strm_byte_value(ETH_HDR_DATA+n, rx_data);
+                    is_cmd(n+8) := bool2bit(bref = btmp);
+                end if;
+            end loop;
+            -- If this is a PAUSE command...
+            if (and_reduce(is_cmd) = '1') then
+                -- Latch the duration argument (Bytes 16-17)
+                if (strm_byte_present(IO_BYTES, ETH_HDR_DATA+2, wcount)) then
+                    btmp := strm_byte_value(ETH_HDR_DATA+2, rx_data);
+                    cmd_val(15 downto 8) <= unsigned(btmp);
+                end if;
+                if (strm_byte_present(IO_BYTES, ETH_HDR_DATA+3, wcount)) then
+                    btmp := strm_byte_value(ETH_HDR_DATA+3, rx_data);
+                    cmd_val(7 downto 0) <= unsigned(btmp);
+                    cmd_wr_t <= not cmd_wr_t;   -- Signal new command
+                end if;
             end if;
         end if;
 
-        -- Count bytes in each packet.
-        if (port_rx.reset_p = '1') then
-            bcount := 0;
-        elsif (port_rx.write = '1') then
-            if (port_rx.last = '1') then
-                bcount := 0;
-            elsif (bcount < 18) then
-                bcount := bcount + 1;
-            end if;
+        -- Count words in each packet.
+        if (rx_reset_p = '1') then
+            wcount := 0;
+        elsif (rx_write = '1' and (rx_last = '1' or rx_nlast > 0)) then
+            wcount := 0;
+        elsif (rx_write = '1' and wcount < WCOUNT_MAX) then
+            wcount := wcount + 1;
         end if;
     end if;
 end process;
@@ -143,7 +156,7 @@ u_sync : sync_toggle2pulse
 -- Do this in the REF_CLK domain, since we know how it translates to real-time.
 p_timer : process(ref_clk)
     constant CT_DIV : positive := 1_000_000 / 512;
-    constant CT_MAX : positive := (REFCLK_HZ + CT_DIV - 1) / CT_DIV;
+    constant CT_MAX : positive := div_ceil(REFCLK_HZ, CT_DIV);
     variable accum  : integer range 0 to CT_MAX-1 := 0;
     variable incr   : integer range 0 to CT_MAX := 0;
 begin
@@ -163,8 +176,8 @@ begin
 
         -- Increment amount is equal to the port's rate parameter.
         -- (Quasi-static, no need to worry about clock-domain crossing.)
-        if (unsigned(port_rx.rate) < CT_MAX) then
-            incr := to_integer(unsigned(port_rx.rate));
+        if (unsigned(rx_rate) < CT_MAX) then
+            incr := to_integer(unsigned(rx_rate));
         else
             incr := CT_MAX;
         end if;

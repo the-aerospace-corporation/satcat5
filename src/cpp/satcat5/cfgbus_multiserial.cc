@@ -122,7 +122,7 @@ void satcat5::cfg::MultiSerial::irq_event()
     request_poll();
 }
 
-void satcat5::cfg::MultiSerial::poll()
+void satcat5::cfg::MultiSerial::poll_demand()
 {
     // Read each reply byte from the hardware FIFO.
     while (m_irq_rdrem > 1) {

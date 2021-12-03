@@ -71,7 +71,7 @@ signal aux_ready    : std_logic_vector(AUX_COUNT downto 1);
 signal aux_error    : std_logic;
 
 -- Combined input vector
-signal in_data      : byte_array_t(AUX_COUNT downto 0) := (others => (others => '0'));
+signal in_data      : byte_array_t(7 downto 0) := (others => (others => '0'));
 signal in_last      : std_logic_vector(AUX_COUNT downto 0) := (others => '0');
 signal in_valid     : std_logic_vector(AUX_COUNT downto 0) := (others => '0');
 signal in_ready     : std_logic_vector(AUX_COUNT downto 0);
@@ -276,7 +276,14 @@ uut : entity work.packet_inject
     RULE_AUX_MAXLEN => true,
     RULE_AUX_CONTIG => true)
     port map(
-    in_data         => in_data,
+    in0_data        => in_data(0),
+    in1_data        => in_data(1),
+    in2_data        => in_data(2),
+    in3_data        => in_data(3),
+    in4_data        => in_data(4),
+    in5_data        => in_data(5),
+    in6_data        => in_data(6),
+    in7_data        => in_data(7),
     in_last         => in_last,
     in_valid        => in_valid,
     in_ready        => in_ready,

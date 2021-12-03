@@ -238,7 +238,7 @@ begin
 end process;
 
 -- LCD controller emits ASCII counter values.
-u_lcd : entity work.lcd_control
+u_lcd : entity work.io_text_lcd
     generic map(REFCLK_HZ => 125_000_000)
     port map(
     lcd_db      => lcd_db,

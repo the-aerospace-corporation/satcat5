@@ -83,6 +83,7 @@ namespace satcat5 {
         struct Header;              // satcat5/ethernet.h
         struct MacAddr;             // satcat5/ethernet.h
         struct MacType;             // satcat5/ethernet.h
+        struct VlanTag;             // satcat5/ethernet.h
         class Address;              // satcat5/ethernet.h
         class ArpListener;          // satcat5/eth_arp.h
         class ChecksumRx;           // satcat5/eth_checksum.h

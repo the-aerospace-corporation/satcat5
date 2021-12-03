@@ -23,8 +23,8 @@
 -- number of randomized Ethernet frames, and confirms that each one is
 -- categorized correctly.
 --
--- The complete test takes less than 0.1 milliseconds @ INPUT_BYTES = 16.
--- The complete test takes less than 0.6 milliseconds @ INPUT_BYTES = 1.
+-- The complete test takes less than 0.1 milliseconds @ IO_BYTES = 16.
+-- The complete test takes less than 0.6 milliseconds @ IO_BYTES = 1.
 --
 
 library ieee;
@@ -39,7 +39,7 @@ use     work.router_sim_tools.all;
 
 entity mac_priority_tb is
     generic (
-    INPUT_BYTES : positive := 16);  -- Set pipeline width
+    IO_BYTES : positive := 16);  -- Set pipeline width
     -- Testbench has no top-level I/O.
 end mac_priority_tb;
 
@@ -51,7 +51,7 @@ signal reset_p      : std_logic := '1';
 
 -- Input and output streams.
 signal in_wcount    : mac_bcount_t := 0;
-signal in_data      : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
+signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0');
 signal in_last      : std_logic := '0';
 signal in_write     : std_logic := '0';
 signal out_pri      : std_logic := '0';
@@ -99,12 +99,12 @@ begin
         -- Flow control and output-data randomization
         if (bcount < blen and rand_bit(test_rate) = '1') then
             -- Drive the "last" and "write" strobes.
-            in_last  <= bool2bit(bcount + INPUT_BYTES >= blen);
+            in_last  <= bool2bit(bcount + IO_BYTES >= blen);
             in_write <= '1';
             -- Word-counter for packet parsing.
-            in_wcount <= int_min(bcount / INPUT_BYTES, IP_HDR_MAX);
+            in_wcount <= int_min(bcount / IO_BYTES, IP_HDR_MAX);
             -- Generate each byte.  (All random except EtherType.)
-            for b in INPUT_BYTES-1 downto 0 loop
+            for b in IO_BYTES-1 downto 0 loop
                 if (bcount = 12) then
                     temp := test_etype(15 downto 8);    -- EtherType (MSBs)
                 elsif (bcount = 13) then
@@ -144,7 +144,7 @@ uut : entity work.mac_priority
     generic map(
     DEVADDR     => CFGBUS_ADDR_ANY,
     REGADDR     => CFGBUS_ADDR_ANY,
-    INPUT_BYTES => INPUT_BYTES,
+    IO_BYTES    => IO_BYTES,
     TABLE_SIZE  => 4)
     port map(
     in_wcount   => in_wcount,

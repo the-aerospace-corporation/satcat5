@@ -162,7 +162,9 @@ Beyond that scale, a more complex crossbar or shared-memory topology is typicall
 ### What switch features are supported?
 
 The core of SatCat5 is a Layer-2 Ethernet switch.
-It directs packets based on destination MAC address.
+The switch can be built in managed or unmanaged configurations.
+
+The switch directs packets based on destination MAC address.
 The MAC-address(es) associated with each port are learned automatically
 by inspecting the source MAC address of each frame.
 Packets with an unrecognized destination are treated as broadcast packets.
@@ -170,10 +172,21 @@ Packets with an unrecognized destination are treated as broadcast packets.
 The switch supports broadcast packets (destination MAC FF:FF:FF:FF:FF:FF)
 and will send such packets to every port except the original ingress port.
 
-[Spanning Tree Protocol](https://en.wikipedia.org/wiki/Spanning_Tree_Protocol) is not supported.
-It is up to the user to ensure no loops are present in the network.
+[Internet Group Management Protocol (IGMP)](https://en.wikipedia.org/wiki/Internet_Group_Management_Protocol)
+has rudimentary support.
+The switch does not track group membership on an address-by-address basis,
+but will limit multicast traffic to ports that are IGMP-aware.
 
-[Simple Network Management Protocol](https://en.wikipedia.org/wiki/Simple_Network_Management_Protocol)
+[Virtual local-area networks (VLAN / IEEE 802.1Q)](https://en.wikipedia.org/wiki/IEEE_802.1Q)
+are supported, but disabled by default to save FPGA resources.
+
+[Precision time protocol (PTP / IEEE 1588-2008](https://en.wikipedia.org/wiki/Precision_Time_Protocol)
+may be supported in a future release.
+
+[Spanning Tree Protocol](https://en.wikipedia.org/wiki/Spanning_Tree_Protocol)
+is not supported. It is up to the user to ensure no loops are present in the network.
+
+[Simple Network Management Protocol (SNMP)](https://en.wikipedia.org/wiki/Simple_Network_Management_Protocol)
 is not supported. We may add a simpler management protocol in a future release.
 (e.g., So that a network device can activate or deactivate certain high-speed ports to save power.)
 
@@ -181,7 +194,8 @@ is not supported. We may add a simpler management protocol in a future release.
 for latency reduction is not supported.
 Due to extreme disparities in line-rates, this would be difficult to integrate.
 
-Packet prioritization is optionally supported, filtered by EtherType.
+Packet prioritization is optionally supported.
+Packets can receive elevated priority based on EtherType and/or VLAN priority tags.
 
 ### How are MAC addresses assigned to network devices?
 

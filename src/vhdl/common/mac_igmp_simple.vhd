@@ -51,7 +51,7 @@ use     work.eth_frame_common.all;
 
 entity mac_igmp_simple is
     generic (
-    INPUT_BYTES     : positive;         -- Width of main data port
+    IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     IGMP_TIMEOUT    : positive := 63);  -- Timeout for stale entries
     port (
@@ -59,7 +59,7 @@ entity mac_igmp_simple is
     -- PSRC is the input port-mask and must be held for the full frame.
     in_psrc         : in  integer range 0 to PORT_COUNT-1;
     in_wcount       : in  mac_bcount_t;
-    in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
+    in_data         : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_last         : in  std_logic;
     in_write        : in  std_logic;
 
@@ -124,27 +124,27 @@ begin
 
         -- Confirm each field as it passes through on the main stream.
         -- (Depending on bus width, these might happen in sequence or all at once.)
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_ETYPE+0, in_wcount)) then
-            temp := strm_byte_value(INPUT_BYTES, ETH_HDR_ETYPE+0, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+0, in_wcount)) then
+            temp := strm_byte_value(IO_BYTES, ETH_HDR_ETYPE+0, in_data);
             etype_ipv4m := bool2bit(temp = x"08");  -- Etype = IPv4 (0x0800)
         end if;
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_ETYPE+1, in_wcount)) then
-            temp := strm_byte_value(INPUT_BYTES, ETH_HDR_ETYPE+1, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+1, in_wcount)) then
+            temp := strm_byte_value(IO_BYTES, ETH_HDR_ETYPE+1, in_data);
             etype_ipv4l := bool2bit(temp = x"00");  -- Etype = IPv4 (0x0800)
         end if;
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, IP_HDR_VERSION, in_wcount)) then
-            temp    := strm_byte_value(INPUT_BYTES, IP_HDR_VERSION, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, IP_HDR_VERSION, in_wcount)) then
+            temp    := strm_byte_value(IO_BYTES, IP_HDR_VERSION, in_data);
             temph   := unsigned(temp(7 downto 4));  -- Version (Expect IPv4 = 0x4)
             templ   := unsigned(temp(3 downto 0));  -- Header length = 5-15 words
             data_start  := IP_HDR_DATA(templ);      -- Location for start of data?
             iphdr_ipv4  := bool2bit(temph = 4 and templ >= 5);  -- Valid IPv4 header?
         end if;
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, IP_HDR_PROTOCOL, in_wcount)) then
-            temp := strm_byte_value(INPUT_BYTES, IP_HDR_PROTOCOL, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, IP_HDR_PROTOCOL, in_wcount)) then
+            temp := strm_byte_value(IO_BYTES, IP_HDR_PROTOCOL, in_data);
             iphdr_proto := bool2bit(temp = x"02");  -- IP-Protocol = IGMP (0x02)
         end if;
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, data_start, in_wcount)) then
-            temp := strm_byte_value(INPUT_BYTES, data_start, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, data_start, in_wcount)) then
+            temp := strm_byte_value(IO_BYTES, data_start, in_data);
             igmp_type := bool2bit(temp = x"12")     -- IGMPv1 Report
                       or bool2bit(temp = x"16")     -- IGMPv2 Report
                       or bool2bit(temp = x"22");    -- IGMPv3 Report
@@ -196,13 +196,13 @@ begin
         -- Latch each byte of the destination MAC.
         -- (As above, odd structure is so we can handle arbitrary input widths.)
         for n in 0 to 5 loop
-            if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_DSTMAC+n, in_wcount)) then
-                mac_dst(47-8*n downto 40-8*n) := strm_byte_value(INPUT_BYTES, ETH_HDR_DSTMAC+n, in_data);
+            if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+n, in_wcount)) then
+                mac_dst(47-8*n downto 40-8*n) := strm_byte_value(IO_BYTES, ETH_HDR_DSTMAC+n, in_data);
             end if;
         end loop;
         -- Destination MAC is the only field we care about.
         mac_rdy := (not reset_p) and in_write and bool2bit(
-            strm_byte_present(INPUT_BYTES, ETH_HDR_DSTMAC+5, in_wcount));
+            strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+5, in_wcount));
     end if;
 end process;
 

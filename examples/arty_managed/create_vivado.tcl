@@ -280,6 +280,8 @@ set_property -dict [ list \
     CONFIG.PORT_COUNT {6} \
     CONFIG.STATS_DEVADDR {6} \
     CONFIG.STATS_ENABLE {true} \
+    CONFIG.SUPPORT_PTP {true} \
+    CONFIG.SUPPORT_VLAN {true} \
 ] $switch_core_0
 
 set cfgbus_mdio_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:cfgbus_mdio cfgbus_mdio_0 ]

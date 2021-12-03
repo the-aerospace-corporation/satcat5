@@ -46,11 +46,14 @@ set files_main [list \
  "[file normalize "../../src/vhdl/common/eth_frame_adjust.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_check.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_frame_common.vhd"]"\
+ "[file normalize "../../src/vhdl/common/eth_frame_vstrip.vhd"]"\
+ "[file normalize "../../src/vhdl/common/eth_frame_vtag.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_pause_ctrl.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_preamble_rx.vhd"]"\
  "[file normalize "../../src/vhdl/common/eth_preamble_tx.vhd"]"\
  "[file normalize "../../src/vhdl/common/fifo_packet.vhd"]"\
  "[file normalize "../../src/vhdl/common/fifo_priority.vhd"]"\
+ "[file normalize "../../src/vhdl/common/fifo_repack.vhd"]"\
  "[file normalize "../../src/vhdl/common/fifo_smol_async.vhd"]"\
  "[file normalize "../../src/vhdl/common/fifo_smol_resize.vhd"]"\
  "[file normalize "../../src/vhdl/common/fifo_smol_sync.vhd"]"\
@@ -65,6 +68,7 @@ set files_main [list \
  "[file normalize "../../src/vhdl/common/mac_igmp_simple.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_lookup.vhd"]"\
  "[file normalize "../../src/vhdl/common/mac_priority.vhd"]"\
+ "[file normalize "../../src/vhdl/common/mac_vlan_mask.vhd"]"\
  "[file normalize "../../src/vhdl/common/packet_delay.vhd"]"\
  "[file normalize "../../src/vhdl/common/packet_inject.vhd"]"\
  "[file normalize "../../src/vhdl/common/packet_round_robin.vhd"]"\

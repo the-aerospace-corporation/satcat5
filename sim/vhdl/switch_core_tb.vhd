@@ -166,6 +166,7 @@ gen_ports : for n in PORT_COUNT-1 downto 0 generate
 
     u_src : entity work.eth_traffic_sim
         generic map(
+        CLK_DELAY   => 0.1 ns,
         INIT_SEED1  => (n+1)*12345,
         INIT_SEED2  => (n+1)*54321,
         AUTO_START  => false)

@@ -67,7 +67,7 @@ set_msg_config -suppress -id {Vivado 12-3645}
 set src_files [get_filesets sources_1]
 
 foreach fi $files_main {
-    set file_obj [add_files -norecurse -fileset $src_files $fi]
+    set file_obj [add_files -norecurse -fileset $src_files [glob $fi]]
     set_property "file_type" "VHDL" $file_obj
     set_property "library" $target_lib $file_obj
 }

@@ -43,13 +43,16 @@ namespace satcat5 {
         {
         public:
             // Listening mode only (no remote address).
-            void bind(const satcat5::eth::MacType& lcltype);
+            void bind(
+                const satcat5::eth::MacType& lcltype,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
             // Two-way connection.
             void connect(
                 const satcat5::eth::MacAddr& dstmac,
                 const satcat5::eth::MacType& dsttype,
-                const satcat5::eth::MacType& lcltype = satcat5::eth::ETYPE_NONE);
+                const satcat5::eth::MacType& lcltype = satcat5::eth::ETYPE_NONE,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
         protected:
             SocketCore(

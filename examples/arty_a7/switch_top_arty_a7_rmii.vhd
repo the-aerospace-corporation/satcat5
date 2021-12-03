@@ -168,7 +168,7 @@ u_periph : entity work.config_peripherals
     cfg_ack     => cfg_ack);
 
 -- LCD controller mirrors status messages.
-u_lcd : entity work.lcd_control
+u_lcd : entity work.io_text_lcd
     generic map(REFCLK_HZ => 100_000_000)
     port map(
     lcd_db      => lcd_db,
@@ -248,6 +248,7 @@ u_core : entity work.switch_core
 u_aux : entity work.switch_aux
     generic map(
     SCRUB_CLK_HZ    => 100_000_000,
+    SCRUB_ENABLE    => true,
     STARTUP_MSG     => "ARTY_A7_Ref_" & BUILD_DATE,
     STATUS_LED_LIT  => '1')
     port map(

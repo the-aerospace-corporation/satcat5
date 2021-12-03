@@ -44,6 +44,9 @@ package router_sim_tools is
     -- Random vector with N bits.
     impure function rand_vec(nbits : integer) return std_logic_vector;
 
+    -- Random vector with N bytes.
+    impure function rand_bytes(nbytes : integer) return std_logic_vector;
+
     -- Random IP address, not part of a reserved subnet.
     impure function rand_ip_any return ip_addr_t;
 
@@ -131,7 +134,7 @@ package router_sim_tools is
         dstip   : ip_addr_t;
     end record;
 
-    function calc_checksum(x : std_logic_vector) return slv16;
+    function ipv4_checksum(x : std_logic_vector) return slv16;
 
     function make_ipv4_header(
         dst, src    : ip_addr_t;
@@ -140,6 +143,9 @@ package router_sim_tools is
         flags       : slv16 := IPFLAG_NORMAL;
         ttl         : integer := 64)
         return ipv4_header;
+
+    -- Calculate CRC of an input vector, using Ethernet CRC32 method.
+    function eth_checksum(x : std_logic_vector) return crc_word_t;
 
     -- Make an Ethernet frame with the given parameters and payload.
     -- Note: Most router internal logic omits the FCS/CRC at end of frame.
@@ -156,6 +162,26 @@ package router_sim_tools is
         etype   : ethertype;
         data    : std_logic_vector)
         return eth_packet;  -- Header + Data + FCS
+
+    function make_eth_fcs(frm : std_logic_vector)
+        return eth_packet;  -- Header + Data + FCS
+
+    -- As above but with 802.1Q VLAN tags.
+    function make_vlan_pkt(
+        dst     : mac_addr_t;
+        src     : mac_addr_t;
+        vtag    : vlan_hdr_t;
+        etype   : ethertype;
+        data    : std_logic_vector)
+        return eth_packet;  -- Header + Tag + Data only
+
+    function make_vlan_fcs(
+        dst     : mac_addr_t;
+        src     : mac_addr_t;
+        vtag    : vlan_hdr_t;
+        etype   : ethertype;
+        data    : std_logic_vector)
+        return eth_packet;  -- Header + Tag Data + FCS
 
     -- Make an IPv4 frame with the given parameters and payload.
     -- Note: Typically the result is passed to make_pkt_raw().
@@ -253,6 +279,11 @@ package body router_sim_tools is
             tmp(n) := bool2bit(rand < 0.5);
         end loop;
         return tmp;
+    end function;
+
+    impure function rand_bytes(nbytes : integer) return std_logic_vector is
+    begin
+        return rand_vec(8 * nbytes);
     end function;
 
     impure function rand_ip_any return ip_addr_t is
@@ -367,8 +398,7 @@ package body router_sim_tools is
     end function;
 
     -- Calculate IP-checksum of a given vector.
-    function calc_checksum(x : std_logic_vector) return slv16
-    is
+    function ipv4_checksum(x : std_logic_vector) return slv16 is
         constant NWORDS : integer := x'length / 16;
         variable chksum : ip_checksum_t := (others => '0');
         variable chktmp : slv16 := (others => '0');
@@ -378,6 +408,22 @@ package body router_sim_tools is
         end loop;
         chktmp := std_logic_vector(not chksum);
         return chktmp;
+    end function;
+
+    -- Calculate CRC of an input vector, using Ethernet CRC32 method.
+    function eth_checksum(x : std_logic_vector) return crc_word_t is
+        variable crc, fcs : crc_word_t := CRC_INIT;
+        constant NBYTES : natural := x'length / 8;
+    begin
+        -- Byte-at-a-time CRC calculation.
+        for n in NBYTES-1 downto 0 loop
+            crc := crc_next(crc, get_byte_s(x, n));
+        end loop;
+        -- FCS is big-endian, but LSB-first within each byte.
+        for n in crc'range loop
+            fcs(n) := not crc(8*(n/8) + 7 - (n mod 8));
+        end loop;
+        return fcs;
     end function;
 
     -- Make an Ethertype frame with the given parameters and payload.
@@ -403,21 +449,45 @@ package body router_sim_tools is
     is
         constant tmp : std_logic_vector(111 + data'length downto 0)
             := dst & src & etype & data;
-        variable pkt : std_logic_vector(143 + data'length downto 0)
-            := tmp & ZPAD32;
-        variable crc : crc_word_t := CRC_INIT;
-        constant NBYTES : natural := tmp'length / 8;
     begin
-        -- Byte-at-a-time CRC calculation.
-        for n in NBYTES-1 downto 0 loop
-            crc := crc_next(crc, get_byte_s(tmp, n));
-        end loop;
-        -- FCS is big-endian, but LSB-first within each byte.
-        for n in crc'range loop
-            pkt(n) := not crc(8*(n/8) + 7 - (n mod 8));
-        end loop;
-        -- Return the concatenated result.
+        return make_eth_fcs(tmp);
+    end function;
+
+    function make_eth_fcs(frm : std_logic_vector)
+        return eth_packet   -- Header + Data + FCS
+    is
+        constant pkt : std_logic_vector(31 + frm'length downto 0)
+            := frm & eth_checksum(frm);
+    begin
         return new std_logic_vector'(pkt);
+    end function;
+
+    function make_vlan_pkt(
+        dst     : mac_addr_t;
+        src     : mac_addr_t;
+        vtag    : vlan_hdr_t;
+        etype   : ethertype;
+        data    : std_logic_vector)
+        return eth_packet
+    is
+        constant tmp : std_logic_vector(143 + data'length downto 0)
+            := dst & src & x"8100" & vtag & etype & data;
+    begin
+        return new std_logic_vector'(tmp);
+    end function;
+
+    function make_vlan_fcs(
+        dst     : mac_addr_t;
+        src     : mac_addr_t;
+        vtag    : vlan_hdr_t;
+        etype   : ethertype;
+        data    : std_logic_vector)
+        return eth_packet
+    is
+        constant tmp : std_logic_vector(143 + data'length downto 0)
+            := dst & src & x"8100" & vtag & etype & data;
+    begin
+        return make_eth_fcs(tmp);
     end function;
 
     -- Make an IPv4 frame with the given parameters and payload.
@@ -441,7 +511,7 @@ package body router_sim_tools is
         constant hdr2 : std_logic_vector(63+opts'length downto 0)
             := hdr.srcip & hdr.dstip & opts;
         -- Calculate header checksum:
-        constant chk  : slv16 := calc_checksum(concat(hdr1, hdr2));
+        constant chk  : slv16 := ipv4_checksum(concat(hdr1, hdr2));
         -- Full concatenated packet:
         constant pkt  : std_logic_vector(159+opts'length+data'length downto 0)
             := hdr1 & chk & hdr2 & data;
@@ -508,7 +578,7 @@ package body router_sim_tools is
         constant hdr  : ipv4_header := make_ipv4_header(
             dst, src, ident, IPPROTO_ICMP, IPFLAG_NOFRAG, ttl);
         -- Placeholder for the ICMP checksum.
-        variable chk  : slv16 := calc_checksum(concat(opcode, refdat));
+        variable chk  : slv16 := ipv4_checksum(concat(opcode, refdat));
     begin
         -- Sanity check on the reference data:
         assert (check_vector(refdat)) report "Bad input" severity failure;
@@ -560,16 +630,16 @@ package body router_sim_tools is
         if (opcode = ICMP_TC_ECHORP or      -- Echo reply
             opcode = ICMP_TC_MASKRP or      -- Address mask reply
             opcode = ICMP_TC_TIMERP) then   -- Timestamp reply
-            chk := calc_checksum(concat(opcode, rdat));
+            chk := ipv4_checksum(concat(opcode, rdat));
             return make_ipv4_pkt(hdr, opcode & chk & rdat);
         elsif (opcode = ICMP_TC_TTL) then   -- Time exceeded
-            chk := calc_checksum(concat(opcode, rpkt));
+            chk := ipv4_checksum(concat(opcode, rpkt));
             return make_ipv4_pkt(hdr, opcode & chk & ZPAD32 & rpkt);
         elsif (opcode = ICMP_TC_DNU
             or opcode = ICMP_TC_DHU
             or opcode = ICMP_TC_DPU
             or opcode = ICMP_TC_DRU) then   -- Destination unreachable
-            chk := calc_checksum(concat(opcode, rpkt));
+            chk := ipv4_checksum(concat(opcode, rpkt));
             return make_ipv4_pkt(hdr, opcode & chk & ZPAD32 & rpkt);
         else
             report "Unsupported ICMP reply" severity error;

@@ -50,7 +50,7 @@ use     work.tcam_constants.all;
 entity mac_lookup_tb_single is
     generic (
     UUT_LABEL       : string;           -- Human-readable label
-    INPUT_BYTES     : positive;         -- Width of main data port
+    IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Max stored MAC addresses
     MISS_BCAST      : std_logic;        -- Broadcast or drop unknown MAC?
@@ -66,7 +66,7 @@ end mac_lookup_tb_single;
 architecture single of mac_lookup_tb_single is
 
 -- Define convenience types.
-constant INPUT_WIDTH : positive := 8 * INPUT_BYTES;
+constant INPUT_WIDTH : positive := 8 * IO_BYTES;
 subtype port_idx_t is integer range 0 to PORT_COUNT-1;
 subtype port_mask_t is std_logic_vector(PORT_COUNT-1 downto 0);
 
@@ -324,8 +324,8 @@ begin
             end if;
             -- Generate the next data word, one byte at a time.
             in_data <= (others => '0');
-            in_wcount <= int_min(bcount / INPUT_BYTES, IP_HDR_MAX);
-            for b in INPUT_BYTES downto 1 loop  -- MSW first
+            in_wcount <= int_min(bcount / IO_BYTES, IP_HDR_MAX);
+            for b in IO_BYTES downto 1 loop  -- MSW first
                 if (bcount < 6) then
                     -- Destination MAC address (repeat byte six times)
                     bnext := pkt_dst;
@@ -450,7 +450,7 @@ ref_rd <= out_valid and out_ready;
 -- Unit under test. (One of several configurations.)
 uut : entity work.mac_lookup
     generic map(
-    INPUT_BYTES     => INPUT_BYTES,
+    IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => TABLE_SIZE,
     MISS_BCAST      => MISS_BCAST,
@@ -576,7 +576,7 @@ end process;
 uut0 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit0",
-    INPUT_BYTES     => 1,
+    IO_BYTES        => 1,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 12,
     MISS_BCAST      => '1',
@@ -589,7 +589,7 @@ uut0 : entity work.mac_lookup_tb_single
 uut1 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit1",
-    INPUT_BYTES     => 6,
+    IO_BYTES        => 6,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 16,
     MISS_BCAST      => '1')
@@ -601,7 +601,7 @@ uut1 : entity work.mac_lookup_tb_single
 uut2 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit2",
-    INPUT_BYTES     => 12,
+    IO_BYTES        => 12,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 32,
     MISS_BCAST      => '1')
@@ -613,7 +613,7 @@ uut2 : entity work.mac_lookup_tb_single
 uut3 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit3",
-    INPUT_BYTES     => 16,
+    IO_BYTES        => 16,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 32,
     MISS_BCAST      => '1')

@@ -39,12 +39,7 @@ TEST_CASE("cfgbus_timer") {
     satcat5::log::ToConsole log;
 
     // Object for counting callback events.
-    class CallbackCounter : public satcat5::poll::OnDemand {
-    public:
-        CallbackCounter() : m_count(0) {}
-        void poll() override {++m_count;}
-        unsigned m_count;
-    } callback;
+    satcat5::test::CountOnDemand callback;
 
     // Configure simulated register-map.
     satcat5::test::CfgDevice regs;
@@ -90,7 +85,7 @@ TEST_CASE("cfgbus_timer") {
     SECTION("timer_callback") {
         // Each interrupt event should trigger a callback.
         for (unsigned a = 0 ; a < 10 ; ++a) {
-            CHECK(callback.m_count == a);
+            CHECK(callback.count() == a);
             regs.irq_poll();            // Trigger a timer interrupt
             satcat5::poll::service();   // Notify test handler
         }

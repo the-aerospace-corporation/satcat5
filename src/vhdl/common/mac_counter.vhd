@@ -47,12 +47,12 @@ entity mac_counter is
     generic (
     DEV_ADDR    : integer;          -- ConfigBus device address
     REG_ADDR    : integer;          -- ConfigBus register address
-    INPUT_BYTES : positive);        -- Width of main data port
+    IO_BYTES    : positive);        -- Width of main data port
     port (
     -- Main input
     -- PSRC is the input port-index and must be held for the full frame.
     in_wcount   : in  mac_bcount_t;
-    in_data     : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
+    in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_last     : in  std_logic;
     in_write    : in  std_logic;
 
@@ -90,11 +90,11 @@ begin
 p_etype : process(clk)
 begin
     if rising_edge(clk) then
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_ETYPE+0, in_wcount)) then
-            pkt_etype(15 downto 8) <= strm_byte_value(INPUT_BYTES, ETH_HDR_ETYPE+0, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+0, in_wcount)) then
+            pkt_etype(15 downto 8) <= strm_byte_value(IO_BYTES, ETH_HDR_ETYPE+0, in_data);
         end if;
-        if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_ETYPE+1, in_wcount)) then
-            pkt_etype(7 downto 0) <= strm_byte_value(INPUT_BYTES, ETH_HDR_ETYPE+1, in_data);
+        if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+1, in_wcount)) then
+            pkt_etype(7 downto 0) <= strm_byte_value(IO_BYTES, ETH_HDR_ETYPE+1, in_data);
             pkt_rdy <= not reset_p;
         else
             pkt_rdy <= '0';

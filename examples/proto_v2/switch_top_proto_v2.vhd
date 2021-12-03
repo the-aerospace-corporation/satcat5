@@ -274,6 +274,7 @@ u_aux : entity work.switch_aux
     generic map(
     CORE_COUNT      => 2,
     SCRUB_CLK_HZ    => 25000000,
+    SCRUB_ENABLE    => true,
     STARTUP_MSG     => "PROTO_V2_" & BUILD_DATE,
     STATUS_LED_LIT  => '1')
     port map(

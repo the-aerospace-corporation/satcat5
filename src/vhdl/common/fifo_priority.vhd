@@ -56,7 +56,9 @@ use     work.common_primitives.sync_buffer;
 
 entity fifo_priority is
     generic (
-    INPUT_BYTES     : natural;              -- Width of input port
+    INPUT_BYTES     : positive;             -- Width of input port
+    OUTPUT_BYTES    : positive := 1;        -- Width of output port
+    META_WIDTH      : natural := 0;         -- Width of packet metadata
     BUFF_HI_KBYTES  : natural;              -- High-priority buffer (kilobytes)
     BUFF_LO_KBYTES  : natural;              -- Low-priority buffer (kilobytes)
     MAX_PACKETS     : positive;             -- Maximum queued packets
@@ -66,19 +68,24 @@ entity fifo_priority is
     -- Input port does not use flow control.
     in_clk          : in  std_logic;
     in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
+    in_meta         : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
     in_nlast        : in  integer range 0 to INPUT_BYTES := INPUT_BYTES;
     in_last_keep    : in  std_logic;        -- Keep or revert this packet?
     in_last_hipri   : in  std_logic;        -- High-priority packet?
     in_write        : in  std_logic;
     in_overflow     : out std_logic;        -- Warning strobe (invalid commit)
+    in_reset        : out std_logic;        -- Reset sync'd to in_clk
 
     -- Output port uses AXI-style flow control.
     out_clk         : in  std_logic;
-    out_data        : out std_logic_vector(7 downto 0);
+    out_data        : out std_logic_vector(8*OUTPUT_BYTES-1 downto 0);
+    out_meta        : out std_logic_vector(META_WIDTH-1 downto 0);
+    out_nlast       : out integer range 0 to OUTPUT_BYTES;
     out_last        : out std_logic;
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
     out_hipri       : out std_logic;        -- Identify output stream
+    out_reset       : out std_logic;        -- Reset sync'd to out_clk
 
     -- Global asynchronous pause and reset.
     async_pause     : in  std_logic;
@@ -92,9 +99,15 @@ constant BUFF_HI_ENABLE : boolean := (BUFF_HI_KBYTES > 0);
 -- Single-cycle delay for input to low-priority FIFO?
 constant LO_DLY_ENABLE  : boolean := BUFF_HI_ENABLE and BUFF_FAILOVER;
 
+-- Local type definitions
+subtype inword_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
+subtype outword_t is std_logic_vector(8*OUTPUT_BYTES-1 downto 0);
+subtype meta_t is std_logic_vector(META_WIDTH-1 downto 0);
+
 -- Synchronize various async inputs.
 signal sync_pause       : std_logic;
-signal sync_reset       : std_logic;
+signal sync_reset_i     : std_logic;
+signal sync_reset_o     : std_logic;
 
 -- Generate KEEP strobes for each input.
 signal in_final         : std_logic;
@@ -102,7 +115,8 @@ signal in_keep_hipri    : std_logic;
 signal in_keep_lopri    : std_logic;
 
 -- One-cycle delay for the input stream.
-signal dly_data         : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
+signal dly_data         : inword_t := (others => '0');
+signal dly_meta         : meta_t := (others => '0');
 signal dly_nlast        : integer range 0 to INPUT_BYTES := INPUT_BYTES;
 signal dly_lo_keep      : std_logic := '0';
 signal dly_final        : std_logic := '0';
@@ -115,13 +129,18 @@ signal lo_revert,   hi_revert   : std_logic;
 
 -- Output streams.
 signal strm_sel                 : std_logic := '0';
-signal lo_data,     hi_data     : std_logic_vector(7 downto 0) := (others => '0');
-signal lo_last,     hi_last     : std_logic := '0';
+signal lo_data,     hi_data     : outword_t := (others => '0');
+signal lo_meta,     hi_meta     : meta_t := (others => '0');
+signal lo_nlast,    hi_nlast    : integer range 0 to OUTPUT_BYTES := 0;
 signal lo_valid,    hi_valid    : std_logic := '0';
 signal lo_ready,    hi_ready    : std_logic := '0';
 signal lo_overflow, hi_overflow : std_logic := '0';
 
 begin
+
+-- Top-level output signals.
+in_reset    <= sync_reset_i;
+out_reset   <= sync_reset_o;
 
 -- Synchronize the PAUSE flag.
 u_pause : sync_buffer
@@ -142,6 +161,7 @@ gen_dly1 : if LO_DLY_ENABLE generate
     begin
         if rising_edge(in_clk) then
             dly_data    <= in_data;
+            dly_meta    <= in_meta;
             dly_nlast   <= in_nlast;
             dly_final   <= in_final;
             dly_lo_keep <= in_keep_lopri;
@@ -153,6 +173,7 @@ end generate;
 gen_dly0 : if not LO_DLY_ENABLE generate
     -- No delay required.
     dly_data    <= in_data;
+    dly_meta    <= in_meta;
     dly_nlast   <= in_nlast;
     dly_final   <= in_final;
     dly_lo_keep <= in_keep_lopri;
@@ -173,7 +194,8 @@ hi_revert   <= in_final and not hi_select;
 u_fifo_lo : entity work.fifo_packet
     generic map(
     INPUT_BYTES     => INPUT_BYTES,
-    OUTPUT_BYTES    => 1,
+    OUTPUT_BYTES    => OUTPUT_BYTES,
+    META_WIDTH      => META_WIDTH,
     BUFFER_KBYTES   => BUFF_LO_KBYTES,
     MAX_PACKETS     => MAX_PACKETS,
     MAX_PKT_BYTES   => MAX_PKT_BYTES)
@@ -181,17 +203,20 @@ u_fifo_lo : entity work.fifo_packet
     in_clk          => in_clk,
     in_data         => dly_data,
     in_nlast        => dly_nlast,
+    in_pkt_meta     => dly_meta,
     in_write        => dly_write,
     in_last_commit  => lo_commit,
     in_last_revert  => lo_revert,
     in_overflow     => lo_overflow,
+    in_reset        => sync_reset_i,
     out_clk         => out_clk,
     out_data        => lo_data,
-    out_last        => lo_last,
+    out_pkt_meta    => lo_meta,
+    out_nlast       => lo_nlast,
     out_valid       => lo_valid,
     out_ready       => lo_ready,
     out_pause       => sync_pause,
-    out_reset       => sync_reset,
+    out_reset       => sync_reset_o,
     reset_p         => reset_p);
 
 -- Priority system enabled?
@@ -200,7 +225,8 @@ gen_hi : if BUFF_HI_ENABLE generate
     u_fifo_hi : entity work.fifo_packet
         generic map(
         INPUT_BYTES     => INPUT_BYTES,
-        OUTPUT_BYTES    => 1,
+        OUTPUT_BYTES    => OUTPUT_BYTES,
+        META_WIDTH      => META_WIDTH,
         BUFFER_KBYTES   => BUFF_HI_KBYTES,
         MAX_PACKETS     => MAX_PACKETS,
         MAX_PKT_BYTES   => MAX_PKT_BYTES)
@@ -209,12 +235,14 @@ gen_hi : if BUFF_HI_ENABLE generate
         in_data         => in_data,
         in_nlast        => in_nlast,
         in_write        => in_write,
+        in_pkt_meta     => in_meta,
         in_last_commit  => hi_commit,
         in_last_revert  => hi_revert,
         in_overflow     => hi_overflow,
         out_clk         => out_clk,
         out_data        => hi_data,
-        out_last        => hi_last,
+        out_pkt_meta    => hi_meta,
+        out_nlast       => hi_nlast,
         out_valid       => hi_valid,
         out_ready       => hi_ready,
         out_pause       => sync_pause,
@@ -224,25 +252,31 @@ gen_hi : if BUFF_HI_ENABLE generate
     u_combine : entity work.packet_inject
         generic map(
         INPUT_COUNT     => 2,
+        IO_BYTES        => OUTPUT_BYTES,
+        META_WIDTH      => META_WIDTH,
         APPEND_FCS      => false)
         port map(
-        in_data(0)      => hi_data,
-        in_data(1)      => lo_data,
-        in_last(0)      => hi_last,
-        in_last(1)      => lo_last,
+        in0_data        => hi_data,
+        in1_data        => lo_data,
+        in0_meta        => hi_meta,
+        in1_meta        => lo_meta,
+        in0_nlast       => hi_nlast,
+        in1_nlast       => lo_nlast,
         in_valid(0)     => hi_valid,
         in_valid(1)     => lo_valid,
         in_ready(0)     => hi_ready,
         in_ready(1)     => lo_ready,
         in_error        => open,
         out_data        => out_data,
+        out_meta        => out_meta,
+        out_nlast       => out_nlast,
         out_last        => out_last,
         out_valid       => out_valid,
         out_ready       => out_ready,
         out_aux         => strm_sel,
         out_pause       => sync_pause,
         clk             => out_clk,
-        reset_p         => sync_reset);
+        reset_p         => sync_reset_o);
 
     -- Indicate selected stream.
     out_hipri <= not strm_sel;
@@ -253,7 +287,9 @@ gen_no : if not BUFF_HI_ENABLE generate
     -- Connect primary FIFO directly to output.
     out_hipri   <= '0';
     out_data    <= lo_data;
-    out_last    <= lo_last;
+    out_meta    <= lo_meta;
+    out_nlast   <= lo_nlast;
+    out_last    <= bool2bit(lo_nlast > 0);
     out_valid   <= lo_valid;
     lo_ready    <= out_ready;
 end generate;

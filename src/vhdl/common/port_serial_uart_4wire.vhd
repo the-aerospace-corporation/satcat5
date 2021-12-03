@@ -50,7 +50,8 @@
 --  REGADDR = 1: Reference clock rate (read-only)
 --      Bits 31-00: Report reference clock rate, in Hz. (i.e., CLFREF_HZ)
 --  REGADDR = 2: UART baud-rate control (read-write)
---      Bits 31-16: Reserved (zeros)
+--      Bit     31: Ignore external flow-control (CTS)
+--      Bits 30-16: Reserved (zeros)
 --      Bits 15-00: Clock divider ratio = round(CLKREF_HZ / baud_hz)
 --
 -- See also: https://en.wikipedia.org/wiki/Universal_asynchronous_receiver-transmitter
@@ -106,8 +107,10 @@ constant RATE_DEFAULT   : cfgbus_word :=
 
 -- ConfigBus interface.
 signal cfg_acks     : cfgbus_ack_array(0 to 2);
-signal rate_div     : cfgbus_word := RATE_DEFAULT;
 signal status_word  : cfgbus_word;
+signal rate_cfg     : cfgbus_word := RATE_DEFAULT;
+signal rate_div     : unsigned(15 downto 0);
+signal ignore_cts   : std_logic;
 
 -- Raw transmit interface (flow control)
 signal cts_n        : std_logic;
@@ -120,6 +123,7 @@ signal reset_sync   : std_logic;
 signal wdog_rst_p   : std_logic := '1';
 
 -- SLIP encoder and decoder
+signal flow_en      : std_logic;
 signal dec_data     : byte_t;
 signal dec_write    : std_logic;
 signal enc_data     : byte_t;
@@ -151,7 +155,7 @@ u_rsync : sync_reset
     out_clk     => refclk);
 
 -- Optional ConfigBus interface.
--- (If disabled, this simplifies down to "rate_div <= RATE_DEFAULT".)
+-- (If disabled, this simplifies down to "rate_cfg <= RATE_DEFAULT".)
 cfg_ack <= cfgbus_merge(cfg_acks);
 
 u_cfg_reg0 : cfgbus_readonly_sync
@@ -178,13 +182,17 @@ u_cfg_reg2 : cfgbus_register_sync
     DEVADDR     => DEVADDR,
     REGADDR     => 2,   -- Reg2 = Rate control
     WR_ATOMIC   => true,
-    WR_MASK     => x"0000FFFF",
+    WR_MASK     => x"8000FFFF",
     RSTVAL      => RATE_DEFAULT)
     port map(
     cfg_cmd     => cfg_cmd,
     cfg_ack     => cfg_acks(2),
     sync_clk    => refclk,
-    sync_val    => rate_div);
+    sync_val    => rate_cfg);
+
+-- Convert the UART configuration word.
+rate_div    <= unsigned(rate_cfg(15 downto 0));
+ignore_cts  <= rate_cfg(31);
 
 -- Transmit and receive UARTs:
 u_rx : entity work.io_uart_rx
@@ -192,7 +200,7 @@ u_rx : entity work.io_uart_rx
     uart_rxd    => uart_rxd,
     rx_data     => dec_data,
     rx_write    => dec_write,
-    rate_div    => unsigned(rate_div(15 downto 0)),
+    rate_div    => rate_div,
     refclk      => refclk,
     reset_p     => reset_sync);
 
@@ -202,7 +210,7 @@ u_tx : entity work.io_uart_tx
     tx_data     => raw_data,
     tx_valid    => raw_valid,
     tx_ready    => raw_ready,
-    rate_div    => unsigned(rate_div(15 downto 0)),
+    rate_div    => rate_div,
     refclk      => refclk,
     reset_p     => reset_sync);
 
@@ -213,10 +221,11 @@ u_cts : sync_buffer
     out_flag    => cts_n,
     out_clk     => refclk);
 
-raw_data  <= enc_data;
-raw_valid <= enc_valid and not cts_n;
-enc_ready <= raw_ready and not cts_n;
-uart_rts_n <= not enc_valid;
+raw_data    <= enc_data;
+raw_valid   <= enc_valid and flow_en;
+enc_ready   <= raw_ready and flow_en;
+flow_en     <= ignore_cts or not cts_n;
+uart_rts_n  <= not enc_valid;
 
 -- Detect stuck ports (flow control blocked) and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)

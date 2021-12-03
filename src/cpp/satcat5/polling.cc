@@ -44,7 +44,7 @@ class poll::OnDemandHelper : public poll::Always
 {
     // Poll each block on the "demand" list, resetting the state of each
     // item just before we process it.  (This allows reentrant follow-up.)
-    void poll() override {
+    void poll_always() override {
         poll::OnDemand *item, *next;
 
         // Atomically claim the current global list, and create
@@ -64,7 +64,7 @@ class poll::OnDemandHelper : public poll::Always
                 item->m_next = 0;
             }
             // Notify that item's callback.
-            item->poll();
+            item->poll_demand();
             item = next;
         }
     }
@@ -76,7 +76,7 @@ void poll::service()
     // (This includes the on_demand_helper defined above.)
     poll::Always* item = g_list_always;
     while (item) {
-        item->poll();
+        item->poll_always();
         item = item->m_next;
     }
 }
@@ -153,7 +153,7 @@ unsigned poll::OnDemand::count()
     return ListCore::len(g_list_demand);
 }
 
-void poll::Timekeeper::poll()
+void poll::Timekeeper::poll_demand()
 {
     // Check on each of the registered Timer objects.
     poll::Timer* item = g_list_timer;
@@ -239,7 +239,7 @@ satcat5::irq::VirtualTimer::VirtualTimer(
     // Nothing else to do at this time.
 }
 
-void satcat5::irq::VirtualTimer::poll()
+void satcat5::irq::VirtualTimer::poll_always()
 {
     if (m_timer->elapsed_test(m_tref, m_interval))
         m_target->request_poll();

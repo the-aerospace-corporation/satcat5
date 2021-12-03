@@ -26,6 +26,7 @@
 #include <satcat5/cfgbus_led.h>
 #include <satcat5/cfgbus_stats.h>
 #include <satcat5/cfgbus_timer.h>
+#include <satcat5/eth_chat.h>
 #include <satcat5/eth_dispatch.h>
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/log.h>
@@ -113,6 +114,21 @@ satcat5::udp::Dispatch      net_udp(&net_ip);
 // UDP echo service.
 satcat5::udp::ProtoEcho     udp_echo(&net_udp);
 
+// Chat message service with echo, bound to a specific VLAN ID.
+// (The chat-echo service only responds to requests from this VID.)
+const satcat5::eth::VlanTag VTAG_ECHO = {42};
+satcat5::eth::ChatProto     chat_proto(&net_eth, "Arty", VTAG_ECHO);
+satcat5::eth::ChatEcho      chat_echo(&chat_proto);
+
+// Per-port VLAN configuration for the "toggling VID" example.
+// (This is not a realistic network configuration, but works for a demo.)
+static const u32 MAILMAP_MODE   = satcat5::eth::vlan_portcfg(
+    PORT_IDX_MAILMAP, satcat5::eth::VTAG_MANDATORY);        // Always specify VID
+static const u32 RMII_ECHO_ON   = satcat5::eth::vlan_portcfg(
+    PORT_IDX_RMII, satcat5::eth::VTAG_ADMIT_ALL, {42});     // Default VID = 42
+static const u32 RMII_ECHO_OFF  = satcat5::eth::vlan_portcfg(
+    PORT_IDX_RMII, satcat5::eth::VTAG_ADMIT_ALL, {1});      // Default VID = 1
+
 // Connect logging system to the Arty's USB-UART.
 satcat5::log::ToWriteable   log_uart(&uart_usb);
 
@@ -129,6 +145,17 @@ public:
     void timer_event() override {
         // Send something on the UART to show we're still alive.
         Log(satcat5::log::DEBUG, "Heartbeat index").write(m_ctr++);
+        // Every N seconds, toggle the VLAN configuration.
+        static const unsigned VLAN_INTERVAL = 4;    // Must be power of two
+        if (m_ctr % VLAN_INTERVAL == 0) {
+            if (m_ctr & VLAN_INTERVAL) {
+                Log(satcat5::log::INFO, "Chat-echo enabled.");
+                eth_switch.vlan_set_port(RMII_ECHO_ON);
+            } else {
+                Log(satcat5::log::INFO, "Chat-echo disabled.");
+                eth_switch.vlan_set_port(RMII_ECHO_OFF);
+            }
+        }
         // Optionally log key registers from the Ethernet PHY.
         // (Refer to DP83848 datasheet, Section 6.6 for more info.)
         if (DEBUG_MDIO_REG) {
@@ -150,6 +177,16 @@ public:
 // Main loop: Initialize and then poll forever.
 int main()
 {
+    // VLAN setup for the managed Ethernet switch.
+    eth_switch.vlan_reset(true);                // Reset in lockdown mode
+    eth_switch.vlan_set_mask(1,                 // All ports allow VID = 1
+        satcat5::eth::VLAN_CONNECT_ALL);
+    eth_switch.vlan_set_mask(42,                // Some ports allow VID = 42
+        PORT_MASK_MAILMAP | PORT_MASK_RMII);
+    eth_switch.vlan_set_port(RMII_ECHO_ON);     // Configure RMII port
+    eth_switch.vlan_set_port(MAILMAP_MODE);     // Configure uBlaze port
+    net_eth.set_default_vid({1});               // Default outbound VID
+
     // Set up the status LEDs.
     for (unsigned a = 0 ; a < LED_RGB_COUNT ; ++a)
         led_wave.add(led_rgb + a);
@@ -165,7 +202,7 @@ int main()
 
     // Startup message for the UART. Includes some UTF-8 emoji. :)
     {
-    	timer.busywait_usec(1000);
+        timer.busywait_usec(1000);
         Log(satcat5::log::INFO,
             "Welcome to SatCat5: "
             "\xf0\x9f\x9b\xb0\xef\xb8\x8f\xf0\x9f\x90\xb1\xf0\x9f\x95\x94\r\n\t"

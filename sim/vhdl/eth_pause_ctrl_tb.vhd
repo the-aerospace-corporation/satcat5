@@ -34,18 +34,19 @@ use     work.common_functions.all;
 use     work.eth_frame_common.all;
 use     work.switch_types.all;
 
-entity eth_pause_ctrl_tb is
-    -- Testbench has no I/O ports
-end eth_pause_ctrl_tb;
+entity eth_pause_ctrl_tb_helper is
+    generic (IO_BYTES : positive);
+    port (test_done : out std_logic);
+end eth_pause_ctrl_tb_helper;
 
-architecture tb of eth_pause_ctrl_tb is
+architecture helper of eth_pause_ctrl_tb_helper is
 
 -- Clock and reset generation.
 signal clk_100      : std_logic := '0';
 signal reset_p      : std_logic := '1';
 
 -- Input stream generation
-signal in_data      : byte_t := (others => '0');
+signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0');
 signal in_last      : std_logic := '0';
 signal in_write     : std_logic := '0';
 signal in_cmdwr     : std_logic := '0';
@@ -54,7 +55,7 @@ signal in_cmdwr     : std_logic := '0';
 signal pause_ref    : std_logic := '0';
 
 -- Unit under test.
-signal port_rx      : port_rx_m2s;
+signal rx_rate      : port_rate_t;
 signal pause_tx     : std_logic;
 
 -- High-level test control.
@@ -90,6 +91,7 @@ p_input : process(clk_100)
     variable pkt_blen   : integer := 0;
     variable pkt_arg    : std_logic_vector(15 downto 0) := (others => '0');
     variable cmd_next   : std_logic := '0';
+    variable btemp      : byte_t := (others => '0');
 begin
     if rising_edge(clk_100) then
         -- Keep a sticky flag for the start-command strobe.
@@ -98,7 +100,7 @@ begin
         end if;
 
         -- Time to start a new packet?
-        if (pkt_bcount = pkt_blen) then
+        if (pkt_bcount >= pkt_blen) then
             -- Randomize packet length and note type.
             uniform(seed1, seed2, rand);
             pkt_bcount  := 0;
@@ -111,35 +113,40 @@ begin
         -- Flow-control randomization:
         uniform(seed1, seed2, rand);
         if (rand < test_inrate) then
-            -- Generate the next byte...
-            if (pkt_is_cmd = '1') then
-                -- Generate a valid PAUSE command:
-                case pkt_bcount is
-                    -- Packet header:
-                    when 0 =>   in_data <= x"01";   -- DST-MAC
-                    when 1 =>   in_data <= x"80";
-                    when 2 =>   in_data <= x"C2";
-                    when 3 =>   in_data <= x"00";
-                    when 4 =>   in_data <= x"00";
-                    when 5 =>   in_data <= x"01";
-                    when 12 =>  in_data <= x"88";   -- EtherType
-                    when 13 =>  in_data <= x"08";
-                    when 14 =>  in_data <= x"00";   -- Opcode
-                    when 15 =>  in_data <= x"01";
-                    -- Pause time
-                    when 16 =>  in_data <= pkt_arg(15 downto 8);
-                    when 17 =>  in_data <= pkt_arg(7 downto 0);
-                    -- Everything else is don't-care.
-                    when others => in_data <= rand_byte;
-                end case;
-            else
-                -- All other packets are random data.
-                in_data <= rand_byte;
-            end if;
+            for n in 0 to IO_BYTES-1 loop
+                -- Generate the next byte...
+                if (pkt_is_cmd = '1') then
+                    -- Generate a valid PAUSE command:
+                    --???
+                    case pkt_bcount is
+                        -- Packet header:
+                        when 0 =>   btemp := x"01";   -- DST-MAC
+                        when 1 =>   btemp := x"80";
+                        when 2 =>   btemp := x"C2";
+                        when 3 =>   btemp := x"00";
+                        when 4 =>   btemp := x"00";
+                        when 5 =>   btemp := x"01";
+                        when 12 =>  btemp := x"88";   -- EtherType
+                        when 13 =>  btemp := x"08";
+                        when 14 =>  btemp := x"00";   -- Opcode
+                        when 15 =>  btemp := x"01";
+                        -- Pause duration
+                        when 16 =>  btemp := pkt_arg(15 downto 8);
+                        when 17 =>  btemp := pkt_arg(7 downto 0);
+                        -- Everything else is don't-care.
+                        when others => btemp := rand_byte;
+                    end case;
+                else
+                    -- All other packets are random data.
+                    btemp := rand_byte;
+                end if;
+                -- Copy next byte to the input vector.
+                in_data(in_data'left-8*n downto in_data'left-8*n-7) <= btemp;
+                pkt_bcount  := pkt_bcount + 1;
+            end loop;
             -- Increment counters and assert strobes.
-            pkt_bcount  := pkt_bcount + 1;
-            in_last     <= bool2bit(pkt_bcount = pkt_blen);
-            in_cmdwr    <= pkt_is_cmd and bool2bit(pkt_bcount = 17);
+            in_last     <= bool2bit(pkt_bcount >= pkt_blen);
+            in_cmdwr    <= bool2bit(pkt_bcount >= pkt_blen) and pkt_is_cmd;
             in_write    <= '1';
         else
             -- Idle
@@ -174,20 +181,20 @@ begin
 end process;
 
 -- Unit under test.
-port_rx.clk     <= clk_100;
-port_rx.data    <= in_data;
-port_rx.last    <= in_last;
-port_rx.write   <= in_write;
-port_rx.rxerr   <= '0';
-port_rx.rate    <= get_rate_word(test_prate);
-port_rx.status  <= (others => '0');
-port_rx.reset_p <= reset_p;
+rx_rate <= get_rate_word(test_prate);
 
 uut : entity work.eth_pause_ctrl
     generic map(
-    REFCLK_HZ   => 100_000_000)
+    REFCLK_HZ   => 100_000_000,
+    IO_BYTES    => IO_BYTES)
     port map(
-    port_rx     => port_rx,
+    -- Input data stream
+    rx_clk      => clk_100,
+    rx_data     => in_data,
+    rx_last     => in_last,
+    rx_write    => in_write,
+    rx_rate     => rx_rate,
+    rx_reset_p  => reset_p,
     pause_tx    => pause_tx,
     ref_clk     => clk_100,
     reset_p     => reset_p);
@@ -235,6 +242,7 @@ p_test : process
     end procedure;
 begin
     -- Wait for reset to end.
+    test_done   <= '0';
     test_inrate <= 0.0;
     test_pstart <= '0';
     test_plen   <= 0;
@@ -274,8 +282,46 @@ begin
     pause_cmd(0);
     wait for 200 us;
 
-    report "All tests completed!";
+    report "Unit finished: IO_BYTES = " & integer'image(IO_BYTES);
+    test_done <= '1';
     wait;
+end process;
+
+end helper;
+
+---------------------------------------------------------------------
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     work.common_functions.all;
+
+entity eth_pause_ctrl_tb is
+    -- Testbench has no I/O ports
+end eth_pause_ctrl_tb;
+
+architecture tb of eth_pause_ctrl_tb is
+
+signal test_done : std_logic_vector(0 to 2) := (others => '1');
+
+begin
+
+-- Instantiate each test configuration.
+uut0 : entity work.eth_pause_ctrl_tb_helper
+    generic map(IO_BYTES => 1)
+    port map(test_done => test_done(0));
+uut1 : entity work.eth_pause_ctrl_tb_helper
+    generic map(IO_BYTES => 3)
+    port map(test_done => test_done(1));
+uut2 : entity work.eth_pause_ctrl_tb_helper
+    generic map(IO_BYTES => 8)
+    port map(test_done => test_done(2));
+
+-- Print message when all tests are finished.
+p_done : process(test_done)
+begin
+    if (and_reduce(test_done) = '1') then
+        report "All tests completed!";
+    end if;
 end process;
 
 end tb;

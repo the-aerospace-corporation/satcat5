@@ -103,11 +103,15 @@ create_links \
          -hdl_source {../../src/vhdl/common/eth_frame_adjust.vhd} \
          -hdl_source {../../src/vhdl/common/eth_frame_check.vhd} \
          -hdl_source {../../src/vhdl/common/eth_frame_common.vhd} \
+         -hdl_source {../../src/vhdl/common/eth_frame_parcrc.vhd} \
+         -hdl_source {../../src/vhdl/common/eth_frame_vstrip.vhd} \
+         -hdl_source {../../src/vhdl/common/eth_frame_vtag.vhd} \
          -hdl_source {../../src/vhdl/common/eth_pause_ctrl.vhd} \
          -hdl_source {../../src/vhdl/common/eth_preamble_rx.vhd} \
          -hdl_source {../../src/vhdl/common/eth_preamble_tx.vhd} \
          -hdl_source {../../src/vhdl/common/fifo_packet.vhd} \
          -hdl_source {../../src/vhdl/common/fifo_priority.vhd} \
+         -hdl_source {../../src/vhdl/common/fifo_repack.vhd} \
          -hdl_source {../../src/vhdl/common/fifo_smol_async.vhd} \
          -hdl_source {../../src/vhdl/common/fifo_smol_sync.vhd} \
          -hdl_source {../../src/vhdl/common/io_clock_detect.vhd}\
@@ -119,6 +123,7 @@ create_links \
          -hdl_source {../../src/vhdl/common/mac_igmp_simple.vhd} \
          -hdl_source {../../src/vhdl/common/mac_lookup.vhd} \
          -hdl_source {../../src/vhdl/common/mac_priority.vhd} \
+         -hdl_source {../../src/vhdl/common/mac_vlan_mask.vhd} \
          -hdl_source {../../src/vhdl/common/packet_delay.vhd} \
          -hdl_source {../../src/vhdl/common/packet_inject.vhd} \
          -hdl_source {../../src/vhdl/common/packet_round_robin.vhd} \
@@ -130,6 +135,8 @@ create_links \
          -hdl_source {../../src/vhdl/common/slip_encoder.vhd} \
          -hdl_source {../../src/vhdl/common/switch_aux.vhd} \
          -hdl_source {../../src/vhdl/common/switch_core.vhd} \
+         -hdl_source {../../src/vhdl/common/switch_port_rx.vhd} \
+         -hdl_source {../../src/vhdl/common/switch_port_tx.vhd} \
          -hdl_source {../../src/vhdl/common/switch_types.vhd} \
          -hdl_source {../../src/vhdl/common/tcam_cache_nru2.vhd} \
          -hdl_source {../../src/vhdl/common/tcam_cache_plru.vhd} \

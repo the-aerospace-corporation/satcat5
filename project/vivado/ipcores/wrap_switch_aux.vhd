@@ -32,6 +32,7 @@ use     work.switch_types.all;
 entity wrap_switch_aux is
     generic (
     SCRUB_CLK_HZ    : integer := 100_000_000;
+    SCRUB_ENABLE    : boolean := false;
     STARTUP_MSG     : string := "SatCat5 READY!";
     UART_BAUD       : integer := 921600;
     CORE_COUNT      : integer := 1);
@@ -86,6 +87,7 @@ swerr_vec_t <= errvec_00 & errvec_01
 u_wrap : entity work.switch_aux
     generic map(
     SCRUB_CLK_HZ    => SCRUB_CLK_HZ,
+    SCRUB_ENABLE    => SCRUB_ENABLE,
     STARTUP_MSG     => STARTUP_MSG,
     STATUS_LED_LIT  => '1',     -- Unused / don't-care
     UART_BAUD       => UART_BAUD,
@@ -103,7 +105,7 @@ u_wrap : entity work.switch_aux
     reset_p         => reset_p);
 
 -- LCD controller
-u_lcd : entity work.lcd_control
+u_lcd : entity work.io_text_lcd
     generic map(
     REFCLK_HZ   => SCRUB_CLK_HZ)
     port map(
