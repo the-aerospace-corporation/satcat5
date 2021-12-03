@@ -56,6 +56,7 @@ source $ipcores/create_port_serial_uart_2wire.tcl
 source $ipcores/create_port_serial_uart_4wire.tcl
 source $ipcores/create_port_sgmii_gpio.tcl
 source $ipcores/create_port_sgmii_gtx.tcl
+source $ipcores/create_port_stream.tcl
 source $ipcores/create_reset_hold.tcl
 source $ipcores/create_router_inline.tcl
 source $ipcores/create_switch_aux.tcl

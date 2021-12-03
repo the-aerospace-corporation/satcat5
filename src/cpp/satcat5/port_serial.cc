@@ -24,8 +24,10 @@ namespace port  = satcat5::port;
 namespace util  = satcat5::util;
 
 // Generators for commonly-used command formats:
-inline u32 cmd_uart(u32 ref, u32 baud) {
-    return util::div_round_u32(ref, baud);
+inline u32 cmd_uart(u32 ref, u32 baud, bool ignore_cts) {
+    static const u32 CTS_OVERRIDE = (1u << 31);
+    u32 flags = (ignore_cts ? CTS_OVERRIDE : 0);
+    return util::div_round_u32(ref, baud) | flags;
 }
 inline u32 cmd_i2c_controller(u32 ref, u32 baud, u32 devaddr) {
     u32 clkdiv = util::div_ceil_u32(ref, 4*baud) - 1;
@@ -63,9 +65,9 @@ void port::SerialAuto::config_spi(u8 mode, u8 gfilt) {
     m_ctrl[REGADDR_CTRL0] = cmd_spi_peripheral(mode, gfilt);
 }
 
-void port::SerialAuto::config_uart(unsigned baud) {
+void port::SerialAuto::config_uart(unsigned baud, bool ignore_cts) {
     u32 clk_hz = m_ctrl[REGADDR_CLKREF];
-    m_ctrl[REGADDR_CTRL1] = cmd_uart(clk_hz, baud);
+    m_ctrl[REGADDR_CTRL1] = cmd_uart(clk_hz, baud, ignore_cts);
 }
 
 void port::SerialI2cController::config_i2c(const util::I2cAddr& devaddr, unsigned baud) {
@@ -86,7 +88,7 @@ void port::SerialSpiPeripheral::config_spi(u8 mode, u8 gfilt) {
     m_ctrl[REGADDR_CTRL0] = cmd_spi_peripheral(mode, gfilt);
 }
 
-void port::SerialUart::config_uart(unsigned baud) {
+void port::SerialUart::config_uart(unsigned baud, bool ignore_cts) {
     u32 clk_hz = m_ctrl[REGADDR_CLKREF];
-    m_ctrl[REGADDR_CTRL0] = cmd_uart(clk_hz, baud);
+    m_ctrl[REGADDR_CTRL0] = cmd_uart(clk_hz, baud, ignore_cts);
 }

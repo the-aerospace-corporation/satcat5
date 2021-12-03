@@ -129,6 +129,11 @@ namespace satcat5 {
             template <class T> inline bool read_obj(T& t)
                 {return t.read_from(this);}
 
+            // Copy stream contents to a Writeable object, up to end-of-frame
+            // or buffer limit.  Returns true if this exhausts the input.
+            // (i.e., Caller should read_finalize() and/or write_finalize().)
+            bool copy_to(satcat5::io::Writeable* dst);
+
         protected:
             friend satcat5::io::LimitedRead;
             friend satcat5::io::ReadableRedirect;
@@ -147,7 +152,7 @@ namespace satcat5 {
 
         private:
             // Event handler for on-demand polling.
-            void poll();
+            void poll_demand();
 
             // Pointer to the callback object, or NULL.
             satcat5::io::EventListener* m_callback;

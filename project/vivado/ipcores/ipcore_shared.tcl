@@ -174,7 +174,7 @@ proc ipcore_add_reset { rst_name polarity {mode slave} } {
     return $intf
 }
 
-# Create and associate an Ethernet port.
+# Create and associate a standard Ethernet port.
 proc ipcore_add_ethport { label pname type } {
     global ip
     # Configure the high-level port object.
@@ -194,6 +194,33 @@ proc ipcore_add_ethport { label pname type } {
     set_property physical_name ${pname}_tx_clk      [ipx::add_port_map "tx_clk"     $intf]
     set_property physical_name ${pname}_tx_data     [ipx::add_port_map "tx_data"    $intf]
     set_property physical_name ${pname}_tx_last     [ipx::add_port_map "tx_last"    $intf]
+    set_property physical_name ${pname}_tx_valid    [ipx::add_port_map "tx_valid"   $intf]
+    set_property physical_name ${pname}_tx_ready    [ipx::add_port_map "tx_ready"   $intf]
+    set_property physical_name ${pname}_tx_error    [ipx::add_port_map "tx_error"   $intf]
+    set_property physical_name ${pname}_tx_reset    [ipx::add_port_map "tx_reset"   $intf]
+    return $intf
+}
+
+# Create and associate a 10-gigabit Ethernet port.
+proc ipcore_add_xgeport { label pname type } {
+    global ip
+    # Configure the high-level port object.
+    set intf [ipx::add_bus_interface $label $ip]
+    set_property abstraction_type_vlnv aero.org:satcat5:EthPortX_rtl:1.0 $intf
+    set_property bus_type_vlnv aero.org:satcat5:EthPortX:1.0 $intf
+    set_property interface_mode $type $intf
+    # Associate individual signals.
+    set_property physical_name ${pname}_rx_clk      [ipx::add_port_map "rx_clk"     $intf]
+    set_property physical_name ${pname}_rx_data     [ipx::add_port_map "rx_data"    $intf]
+    set_property physical_name ${pname}_rx_nlast    [ipx::add_port_map "rx_nlast"   $intf]
+    set_property physical_name ${pname}_rx_write    [ipx::add_port_map "rx_write"   $intf]
+    set_property physical_name ${pname}_rx_error    [ipx::add_port_map "rx_error"   $intf]
+    set_property physical_name ${pname}_rx_rate     [ipx::add_port_map "rx_rate"    $intf]
+    set_property physical_name ${pname}_rx_status   [ipx::add_port_map "rx_status"  $intf]
+    set_property physical_name ${pname}_rx_reset    [ipx::add_port_map "rx_reset"   $intf]
+    set_property physical_name ${pname}_tx_clk      [ipx::add_port_map "tx_clk"     $intf]
+    set_property physical_name ${pname}_tx_data     [ipx::add_port_map "tx_data"    $intf]
+    set_property physical_name ${pname}_tx_nlast    [ipx::add_port_map "tx_nlast"   $intf]
     set_property physical_name ${pname}_tx_valid    [ipx::add_port_map "tx_valid"   $intf]
     set_property physical_name ${pname}_tx_ready    [ipx::add_port_map "tx_ready"   $intf]
     set_property physical_name ${pname}_tx_error    [ipx::add_port_map "tx_error"   $intf]

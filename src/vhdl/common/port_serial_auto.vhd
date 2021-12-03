@@ -45,7 +45,8 @@
 --  REGADDR = 1: Reference clock rate (read-only)
 --      Bits 31-00: Report reference clock rate, in Hz. (i.e., CLFREF_HZ)
 --  REGADDR = 2: UART baud-rate control (read-write)
---      Bits 31-16: Reserved (zeros)
+--      Bit     31: Ignore external flow-control (CTS)
+--      Bits 30-16: Reserved (zeros)
 --      Bits 15-00: Clock divider ratio = round(CLKREF_HZ / baud_hz)
 --  REGADDR = 3: SPI mode and glitch-filter control (read-write)
 --      Bits 31-08: Reserved (zeros)
@@ -133,6 +134,7 @@ constant SPI_CFG_DEFAULT    : cfgbus_word :=
 -- ConfigBus interface.
 signal cfg_acks     : cfgbus_ack_array(0 to 3);
 signal cfg_u_word   : cfgbus_word := UART_RATE_DEFAULT;
+signal cfg_u_ovr    : std_logic;
 signal cfg_u_rate   : unsigned(15 downto 0);
 signal cfg_s_word   : cfgbus_word := SPI_CFG_DEFAULT;
 signal cfg_s_mode   : integer range 0 to 3;
@@ -218,6 +220,7 @@ u_rsync : sync_reset
 -- Optional ConfigBus interface.
 -- If disabled, each setting reduces to the designated constant.
 cfg_ack     <= cfgbus_merge(cfg_acks);
+cfg_u_ovr   <= cfg_u_word(31);                      -- Ignore CTS?
 cfg_u_rate  <= unsigned(cfg_u_word(15 downto 0));   -- UART_RATE_DEFAULT
 cfg_s_mode  <= u2i(cfg_s_word(9 downto 8));         -- SPI_MODE
 cfg_s_gdly  <= unsigned(cfg_s_word(7 downto 0));    -- SPI_GDLY
@@ -246,7 +249,7 @@ u_cfg_reg2 : cfgbus_register_sync
     DEVADDR     => DEVADDR,
     REGADDR     => 2,   -- Reg2 = UART control
     WR_ATOMIC   => true,
-    WR_MASK     => cfgbus_mask_lsb(16),
+    WR_MASK     => x"8000FFFF",
     RSTVAL      => UART_RATE_DEFAULT)
     port map(
     cfg_cmd     => cfg_cmd,
@@ -428,7 +431,8 @@ end process;
 -- (Block any outgoing data until we determine port type,
 --  and respect flow-control flags for outgoing UART data.)
 spi_tx_valid <= enc_valid and bool2bit(det_mode = MODE_SPI);
-uart0_ctsb   <= uart1_ctsb when (det_mode = MODE_UART1)
+uart0_ctsb   <= '0' when (cfg_u_ovr = '1')
+           else uart1_ctsb when (det_mode = MODE_UART1)
            else uart2_ctsb when (det_mode = MODE_UART2) else '1';
 uart0_valid  <= enc_valid and not uart0_ctsb;
 enc_ready    <= spi_tx_ready when (det_mode = MODE_SPI)

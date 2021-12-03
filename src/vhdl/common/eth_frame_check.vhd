@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -52,15 +52,17 @@ entity eth_frame_check is
     ALLOW_MCTRL : boolean := false;     -- Allow frames to MAC-control address?
     ALLOW_RUNT  : boolean := false;     -- Allow frames below standard length?
     STRIP_FCS   : boolean := false;     -- Remove FCS from output?
-    OUTPUT_REG  : boolean := true);     -- Extra register at output?
+    IO_BYTES    : positive := 1);       -- Width of input/output datapath?
     port (
-    -- Input data stream (with strobe for final byte)
-    in_data     : in  std_logic_vector(7 downto 0);
-    in_last     : in  std_logic;
+    -- Input data stream (with strobe or NLAST for final byte)
+    in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
+    in_nlast    : in  integer range 0 to IO_BYTES := 0;
+    in_last     : in  std_logic := '0'; -- Ignored if IO_BYTES > 1
     in_write    : in  std_logic;
 
     -- Output data stream (with pass/fail on last byte)
-    out_data    : out std_logic_vector(7 downto 0);
+    out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
+    out_nlast   : out integer range 0 to IO_BYTES := 0;
     out_write   : out std_logic;
     out_commit  : out std_logic;
     out_revert  : out std_logic;
@@ -71,221 +73,321 @@ entity eth_frame_check is
     reset_p     : in  std_logic);
 end eth_frame_check;
 
-architecture rtl of eth_frame_check is
+architecture eth_frame_check of eth_frame_check is
 
 -- Minimum frame size depends on ALLOW_RUNT parameter.
 -- (Returned size includes header, user data, and CRC.)
-function MIN_FRAME_BYTES_LOCAL return integer is
+function MIN_USER_BYTES_LOCAL return integer is
 begin
     if (ALLOW_RUNT) then
-        return MIN_RUNT_BYTES;  -- Min user = 0 bytes
+        return 0;
     else
-        return MIN_FRAME_BYTES; -- Min user = 46 bytes
+        return MIN_FRAME_BYTES - HEADER_CRC_BYTES;
     end if;
 end function;
 
 -- Maximum frame size depends on the ALLOW_JUMBO parameter.
 -- (Returned size includes header, user data, and CRC.)
-function MAX_FRAME_BYTES_LOCAL return integer is
+function MAX_USER_BYTES_LOCAL return integer is
 begin
     if (ALLOW_JUMBO) then
-        return MAX_JUMBO_BYTES;
+        return MAX_JUMBO_BYTES - HEADER_CRC_BYTES;
     else
-        return MAX_FRAME_BYTES;
+        return MAX_FRAME_BYTES - HEADER_CRC_BYTES;
     end if;
 end function;
 
 -- Maximum "length" field is always 1530, even if jumbo frames are allowed.
-constant MAX_USERLEN_BYTES  : integer := 1530;
+constant MAX_USERLEN_BYTES : integer := 1530;
 
 -- Local type definitions:
-constant COUNT_WIDTH : integer := log2_ceil(MAX_FRAME_BYTES_LOCAL+2);
-subtype ethertype_len  is unsigned(COUNT_WIDTH-1 downto 0);
-subtype ethertype_full is unsigned(15 downto 0);
-subtype byte_t is std_logic_vector(7 downto 0);
-subtype crc_word_t is std_logic_vector(31 downto 0);
-constant COUNT_MAX : ethertype_len := (others => '1');
+subtype data_t is std_logic_vector(8*IO_BYTES-1 downto 0);
+subtype last_t is integer range 0 to IO_BYTES;
 
--- Single-cycle delay for the input stream.
-signal reg_data         : byte_t := (others => '0');
-signal reg_last         : std_logic := '0';
-signal reg_write        : std_logic := '0';
-signal reg_commit       : std_logic := '0';
-signal reg_revert       : std_logic := '0';
-signal reg_error        : std_logic := '0';
+type result_t is record
+    commit  : std_logic;
+    revert  : std_logic;
+    error   : std_logic;
+end record;
 
--- Buffered output signals (optional, for better timing)
-signal buf_data         : byte_t := (others => '0');
-signal buf_write        : std_logic := '0';
-signal buf_commit       : std_logic := '0';
-signal buf_revert       : std_logic := '0';
-signal buf_error        : std_logic := '0';
+-- Counter initializes to a negative number, so that the total
+-- represents only the user data (i.e., no header/footer).
+constant COUNT_INIT : signed(15 downto 0) := to_signed(-HEADER_CRC_BYTES, 16);
+
+-- Format conversion for input.
+signal in_nlast_mod : last_t;
+
+-- Data stream aligned one cycle before "reg_data".
+signal dly_data     : data_t;
+signal dly_nlast    : last_t;
+signal dly_write    : std_logic;
+
+-- CRC calculation and matched-delay data.
+signal crc_result   : crc_word_t := CRC_INIT;
+signal crc_data     : data_t := (others => '0');
+signal crc_nlast    : last_t := 0;
+signal crc_write    : std_logic := '0';
+
+-- All other frame-checking logic (sync'd to crc_*).
+signal chk_mctrl    : std_logic_vector(5 downto 0) := (others => '0');
+signal chk_badsrc   : std_logic_vector(5 downto 0) := (others => '0');
+signal chk_etype    : unsigned(15 downto 0) := (others => '0');
+signal chk_count    : signed(15 downto 0) := COUNT_INIT;
+signal frm_ok       : std_logic := '0';
+signal frm_keep     : std_logic := '0';
+signal frm_result   : result_t;
+
+-- Buffered output signals
+signal buf_data     : data_t := (others => '0');
+signal buf_nlast    : last_t := 0;
+signal buf_write    : std_logic := '0';
+signal buf_result   : result_t := (others => '0');
 
 -- Modified output signals with no FCS (optional)
-signal trim_data        : byte_t := (others => '0');
-signal trim_write       : std_logic := '0';
-signal trim_commit      : std_logic := '0';
-signal trim_revert      : std_logic := '0';
-signal trim_error       : std_logic := '0';
-
--- Frame-check state machine:
-signal byte_first       : std_logic := '1';
-signal len_count        : ethertype_len := (others => '0');
-signal len_field_etype  : std_logic := '0';
-signal len_field_cmp    : ethertype_len := (others => '0');
-signal len_field_full   : ethertype_full := (others => '0');
-signal src_bcast        : std_logic := '0';
-signal dst_mctrl        : std_logic := '0';
-signal crc_sreg         : crc_word_t := CRC_INIT;
-signal frame_ok         : std_logic := '0';
-signal frame_keep       : std_logic := '0';
+signal trim_data    : data_t := (others => '0');
+signal trim_nlast   : last_t := 0;
+signal trim_write   : std_logic := '0';
+signal trim_result  : result_t := (others => '0');
 
 begin
 
--- Frame-checking state machine:
+-- Legacy compatibility for combining "in_last" and "in_nlast":
+-- (i.e., Overrides "in_nlast" only if IO_BYTES = 1.)
+in_nlast_mod <= 0 when (in_write = '0')
+           else 1 when (IO_BYTES = 1 and in_last = '1')
+           else in_nlast;
+
+-- CRC calculation using simple or parallel algorithm.
+gen_single : if IO_BYTES = 1 generate
+    -- No delay necessary for other check logic.
+    dly_data    <= in_data;
+    dly_nlast   <= in_nlast_mod;
+    dly_write   <= in_write;
+
+    -- Byte-at-a-time CRC calculation.
+    p_crc : process(clk)
+        variable first_byte : std_logic := '1';
+    begin
+        if rising_edge(clk) then
+            -- Matched-delay buffer.
+            crc_data  <= in_data;
+            crc_write <= in_write;
+            crc_nlast <= in_nlast_mod;
+
+            -- Update CRC whenever we receive new data.
+            if (in_write = '1') then
+                if (first_byte = '1') then
+                    crc_result <= crc_next(CRC_INIT, in_data);
+                else
+                    crc_result <= crc_next(crc_result, in_data);
+                end if;
+            end if;
+
+            -- Set the "first-byte" flag after reset or end-of-frame.
+            if (reset_p = '1') then
+                first_byte := '1';
+            elsif (in_write = '1') then
+                first_byte := bool2bit(in_nlast_mod > 0);
+            end if;
+        end if;
+    end process;
+end generate;
+
+gen_parallel : if IO_BYTES > 1 generate
+    -- Pipelined multi-byte CRC calculation.
+    u_crc : entity work.eth_frame_parcrc
+        generic map(IO_BYTES => IO_BYTES)
+        port map(
+        in_data     => in_data,
+        in_nlast    => in_nlast_mod,
+        in_write    => in_write,
+        dly_data    => dly_data,
+        dly_nlast   => dly_nlast,
+        dly_write   => dly_write,
+        out_data    => crc_data,
+        out_res     => crc_result,
+        out_nlast   => crc_nlast,
+        out_write   => crc_write,
+        clk         => clk,
+        reset_p     => reset_p);
+end generate;
+
+-- Other frame-checking parameters:
 p_frame : process(clk)
+    -- Define special-case MAC addresses:
+    constant MAC_MCTRL : mac_addr_t := x"0180C2000001";
+    -- Count words for frame parsing using strm_byte_xx functions.
+    constant WCOUNT_MAX : integer := 1 + div_floor(ETH_HDR_DATA, IO_BYTES);
+    variable wcount : integer range 0 to WCOUNT_MAX := 0;
+    -- Temporary variables (combinational logic only)
+    variable incr   : integer range 1 to IO_BYTES;
+    variable btmp, bref : byte_t;
 begin
     if rising_edge(clk) then
-        -- Single-cycle delay for the input stream.
-        reg_data  <= in_data;
-        reg_write <= in_write;
-        reg_last  <= in_write and in_last;
+        if (dly_write = '1') then
+            -- Is the destination-MAC the control address? (Bytes 0-5)
+            for n in 0 to 5 loop
+                if (strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+n, wcount)) then
+                    bref := strm_byte_value(n, MAC_MCTRL);
+                    btmp := strm_byte_value(ETH_HDR_SRCMAC+n, dly_data);
+                    chk_mctrl(n) <= bool2bit(bref = btmp);
+                end if;
+            end loop;
 
-        -- Set the "first-byte" flag after reset or end-of-frame.
-        if (reset_p = '1') then
-            byte_first <= '1';
-        elsif (in_write = '1') then
-            byte_first <= in_last;
+            -- Is the source-MAC the broadcast address? (Bytes 6-11 = 0xFF)
+            for n in 0 to 5 loop
+                if (strm_byte_present(IO_BYTES, ETH_HDR_SRCMAC+n, wcount)) then
+                    btmp := strm_byte_value(ETH_HDR_SRCMAC+n, dly_data);
+                    chk_badsrc(n) <= bool2bit(btmp = x"FF");
+                end if;
+            end loop;
+
+            -- Store the Ethertype / Length field (12th + 13th bytes).
+            if (strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+0, wcount)) then
+                btmp := strm_byte_value(ETH_HDR_ETYPE+0, dly_data);
+                chk_etype(15 downto 8) <= unsigned(btmp);
+            end if;
+            if (strm_byte_present(IO_BYTES, ETH_HDR_ETYPE+1, wcount)) then
+                btmp := strm_byte_value(ETH_HDR_ETYPE+1, dly_data);
+                chk_etype(7 downto 0) <= unsigned(btmp);
+            end if;
+
+            -- How many new bytes in this word?
+            if (dly_nlast = 0) then
+                incr := IO_BYTES;
+            else
+                incr := dly_nlast;
+            end if;
+
+            -- Count user bytes in each frame, with overflow check.
+            -- (Upper bound is a nice power of two, well above jumbo
+            --  frame limit but trivial to check with bitwise logic.)
+            if (wcount = 0) then
+                chk_count <= COUNT_INIT + incr; -- First word in frame
+            elsif (chk_count < 16384) then
+                chk_count <= chk_count + incr;  -- All subsequent words
+            end if;
         end if;
 
-        -- Precalculate comparisons on the EtherType / length field.
-        -- Note: Only need LSBs for comparison to len_count.
-        len_field_cmp   <= len_field_full(COUNT_WIDTH-1 downto 0) + HEADER_CRC_BYTES;
-        len_field_etype <= bool2bit(len_field_full > MAX_USERLEN_BYTES);
-
-        -- Update all other state variables whenever we receive new data...
-        if (in_write = '1') then
-            -- Store the Ethertype / Length field (12th + 13th bytes).
-            if (len_count = 12) then
-                len_field_full(15 downto 8) <= unsigned(in_data);    -- MSB first
-            elsif (len_count = 13) then
-                len_field_full(7 downto 0) <= unsigned(in_data);
-            end if;
-
-            -- Is the source-MAC the broadcast address? (Bytes 6-11)
-            if (byte_first = '1') then
-                src_bcast <= '1';
-            elsif (6 <= len_count and len_count < 12) then
-                src_bcast <= src_bcast and bool2bit(in_data = x"FF");
-            end if;
-
-            -- Is the destination-MAC the control address? (Bytes 0-5)
-            if (byte_first = '1') then
-                dst_mctrl <= bool2bit(in_data = x"01");
-            elsif (len_count = 1) then
-                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"80");
-            elsif (len_count = 2) then
-                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"C2");
-            elsif (len_count = 3) then
-                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"00");
-            elsif (len_count = 4) then
-                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"00");
-            elsif (len_count = 5) then
-                dst_mctrl <= dst_mctrl and bool2bit(in_data = x"01");
-            end if;
-
-            -- Update length counter.
-            if (byte_first = '1') then
-                len_count <= to_unsigned(1, len_count'length);
-            elsif (len_count /= COUNT_MAX) then
-                len_count <= len_count + 1;
-            end if;
-
-            -- Update CRC:
-            if (byte_first = '1') then
-                crc_sreg <= crc_next(CRC_INIT, in_data);
-            else
-                crc_sreg <= crc_next(crc_sreg, in_data);
-            end if;
+        -- Count words for frame parsing.
+        if (reset_p = '1') then
+            wcount := 0;
+        elsif (dly_write = '1' and dly_nlast > 0) then
+            wcount := 0;
+        elsif (dly_write = '1' and wcount < WCOUNT_MAX) then
+            wcount := wcount + 1;
         end if;
     end if;
 end process;
 
 -- Check all frame validity requirements.
-frame_ok <= bool2bit(
-    (crc_sreg = CRC_RESIDUE) and
-    (src_bcast = '0') and
-    (len_count >= MIN_FRAME_BYTES_LOCAL) and
-    (len_count <= MAX_FRAME_BYTES_LOCAL) and
-    (len_field_etype = '1' or len_count = len_field_cmp));
+frm_ok <= bool2bit(
+    (crc_result = CRC_RESIDUE) and
+    (and_reduce(chk_badsrc) = '0') and
+    (chk_count >= MIN_USER_BYTES_LOCAL) and
+    (chk_count <= MAX_USER_BYTES_LOCAL) and
+    (chk_etype > MAX_USERLEN_BYTES or chk_etype = unsigned(chk_count)));
 
-frame_keep <= frame_ok and bool2bit(ALLOW_MCTRL or dst_mctrl = '0');
+-- Ignore frames to the special control address?
+frm_keep <= frm_ok and bool2bit(ALLOW_MCTRL or and_reduce(chk_mctrl) = '0');
 
-reg_commit <= reg_last and frame_keep;
-reg_revert <= reg_last and not frame_keep;
-reg_error  <= reg_last and not frame_ok;
+-- Fire the commit/revert/error strobes at end of frame.
+frm_result.commit <= bool2bit(crc_nlast > 0) and frm_keep;
+frm_result.revert <= bool2bit(crc_nlast > 0) and not frm_keep;
+frm_result.error  <= bool2bit(crc_nlast > 0) and not frm_ok;
 
--- Optionally instantiate additional output logic:
-gen_buffer : if OUTPUT_REG generate
-    -- Simple buffered output, for better timing.
-    p_out_reg : process(clk)
-    begin
-        if rising_edge(clk) then
-            buf_data    <= reg_data;
-            buf_write   <= reg_write;
-            buf_commit  <= reg_commit;
-            buf_revert  <= reg_revert;
-            buf_error   <= reg_error;
-        end if;
-    end process;
-end generate;
+-- Simple buffered output.
+p_out_reg : process(clk)
+begin
+    if rising_edge(clk) then
+        buf_data    <= crc_data;
+        buf_nlast   <= crc_nlast;
+        buf_write   <= crc_write;
+        buf_result  <= frm_result;
+    end if;
+end process;
 
+-- Instantiate state machine to remove FCS from the end of each packet?
 gen_strip : if STRIP_FCS generate
-    -- Instantiate state machine to remove FCS from the end of each packet.
-    p_out_strip : process(clk)
-        constant DELAY_MAX : integer := 4;
-        type sreg_t is array(0 to DELAY_MAX) of byte_t;
+    p_strip : process(clk)
+        -- Set delay to ensure we have at least four bytes in buffer.
+        constant DELAY_MAX : integer := div_ceil(FCS_BYTES, IO_BYTES);
+        type sreg_t is array(0 to DELAY_MAX) of data_t;
         variable sreg : sreg_t := (others => (others => '0'));
+        -- Maximum "overflow" size if IO_BYTES doesn't divide evenly.
+        function OVR_MAX return integer is
+            constant dly : integer := DELAY_MAX * IO_BYTES;
+        begin
+            if (dly >= FCS_BYTES) then
+                return dly - FCS_BYTES;
+            else
+                return dly;
+            end if;
+        end function;
+        constant OVR_THR : integer := IO_BYTES - OVR_MAX;
+        variable ovr_ct  : integer range 0 to OVR_MAX := 0;
+        -- Countdown to detect when we've received at least four bytes.
         variable count : integer range 0 to DELAY_MAX := DELAY_MAX;
     begin
         if rising_edge(clk) then
-            -- Four-byte delay using a shift register.
-            if (reg_write = '1') then
-                sreg := reg_data & sreg(0 to DELAY_MAX-1);
+            -- Delay input using a shift register.
+            if (crc_write = '1' or ovr_ct > 0) then
+                sreg := crc_data & sreg(0 to DELAY_MAX-1);
             end if;
             trim_data <= sreg(DELAY_MAX);
 
-            -- Drive the output strobes.
-            trim_write  <= bool2bit(count = 0) and reg_write;
-            trim_commit <= bool2bit(count = 0) and reg_commit;
-            trim_revert <= bool2bit(count = 0) and reg_revert;
-            trim_error  <= bool2bit(count = 0) and reg_error;
+            -- Once the initial delay has elapsed, forward valid/nlast.
+            if (ovr_ct > 0) then
+                trim_write <= '1';      -- Extra trailing word
+                trim_nlast <= ovr_ct;
+            elsif (count = 0 and crc_nlast > 0) then
+                trim_write <= '1';      -- End of input frame
+                if (crc_nlast > OVR_THR) then
+                    trim_nlast <= 0;    -- Overflow required
+                else
+                    trim_nlast <= crc_nlast + OVR_MAX;
+                end if;
+            else
+                trim_write <= crc_write and bool2bit(count = 0);
+                trim_nlast <= 0;        -- Forward delayed data
+            end if;
+
+            -- Drive the commit/revert/error strobes.
+            if (ovr_ct > 0) then
+                trim_result <= buf_result;      -- Delayed output
+            elsif (count > 0 or crc_nlast > OVR_THR) then
+                trim_result <= (others => '0'); -- Suppress output
+            else
+                trim_result <= frm_result;      -- Prompt output
+            end if;
+
+            -- Drive the overflow counter, if enabled.
+            if (reset_p = '1' or OVR_MAX = 0) then
+                ovr_ct := 0;
+            elsif (crc_write = '1' and count < 2 and crc_nlast > OVR_THR) then
+                ovr_ct := crc_nlast - OVR_THR;
+            else
+                ovr_ct := 0;
+            end if;
 
             -- Counter suppresses the first four bytes in each frame.
-            if (reset_p = '1' or reg_last = '1') then
-                count := DELAY_MAX;
-            elsif (reg_write = '1' and count > 0) then
-                count := count - 1;
+            if (reset_p = '1') then
+                count := DELAY_MAX; -- General reset
+            elsif (crc_write = '1' and crc_nlast > 0) then
+                count := DELAY_MAX; -- End of packet
+            elsif (crc_write = '1' and count > 0) then
+                count := count - 1; -- Countdown to zero
             end if;
         end if;
     end process;
 end generate;
 
 -- Select final output signal based on configuration.
-out_data   <= trim_data when STRIP_FCS
-         else buf_data when OUTPUT_REG
-         else reg_data;
-out_write  <= trim_write when STRIP_FCS
-         else buf_write when OUTPUT_REG
-         else reg_write;
-out_commit <= trim_commit when STRIP_FCS
-         else buf_commit when OUTPUT_REG
-         else reg_commit;
-out_revert <= trim_revert when STRIP_FCS
-         else buf_revert when OUTPUT_REG
-         else reg_revert;
-out_error  <= trim_error when STRIP_FCS
-         else buf_error when OUTPUT_REG
-         else reg_error;
+out_data    <= trim_data            when STRIP_FCS else buf_data;
+out_nlast   <= trim_nlast           when STRIP_FCS else buf_nlast;
+out_write   <= trim_write           when STRIP_FCS else buf_write;
+out_commit  <= trim_result.commit   when STRIP_FCS else buf_result.commit;
+out_revert  <= trim_result.revert   when STRIP_FCS else buf_result.revert;
+out_error   <= trim_result.error    when STRIP_FCS else buf_result.error;
 
-end rtl;
+end eth_frame_check;

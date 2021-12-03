@@ -43,13 +43,26 @@ namespace satcat5 {
             // Variants for reply (required) and any address (optional)
             satcat5::io::Writeable* open_reply(
                 const satcat5::net::Type& type, unsigned len) override;
+            #if SATCAT5_VLAN_ENABLE
+            satcat5::io::Writeable* open_write(
+                const satcat5::eth::MacAddr& dst,
+                const satcat5::eth::MacType& type,
+                satcat5::eth::VlanTag vtag = satcat5::eth::VTAG_NONE);
+            #else
             satcat5::io::Writeable* open_write(
                 const satcat5::eth::MacAddr& dst,
                 const satcat5::eth::MacType& type);
+            #endif
 
             // Other accessors:
             inline satcat5::eth::MacAddr reply_mac() const
                 {return m_reply_macaddr;}
+            #if SATCAT5_VLAN_ENABLE
+            inline satcat5::eth::VlanTag reply_vtag() const
+                {return m_reply_vtag;}
+            inline void set_default_vid(const satcat5::eth::VlanTag& vtag)
+                {m_default_vid.value = vtag.vid();}
+            #endif
 
             // MAC address for this interface.
             satcat5::eth::MacAddr const m_addr;
@@ -62,8 +75,12 @@ namespace satcat5 {
             satcat5::io::Writeable* const m_dst;
             satcat5::io::Readable* const m_src;
 
-            // The current reply address.
-            satcat5::eth::MacAddr m_reply_macaddr;
+            // Other internal state:
+            satcat5::eth::MacAddr m_reply_macaddr;  // Reply address
+            #if SATCAT5_VLAN_ENABLE
+            satcat5::eth::VlanTag m_reply_vtag;     // Reply VLAN
+            satcat5::eth::VlanTag m_default_vid;    // Default VID (optional)
+            #endif
         };
     }
 }

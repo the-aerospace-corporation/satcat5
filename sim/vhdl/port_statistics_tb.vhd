@@ -51,9 +51,9 @@ signal clk_100  : std_logic := '0';
 signal reset_p  : std_logic := '1';
 
 -- Tx and Rx data streams.
-signal rx_data      : port_rx_m2s;
-signal tx_data      : port_tx_s2m;
-signal tx_ctrl      : port_tx_m2s;
+signal rx_data      : port_rx_m2s := RX_M2S_IDLE;
+signal tx_data      : port_tx_s2m := TX_S2M_IDLE;
+signal tx_ctrl      : port_tx_m2s := TX_M2S_IDLE;
 
 -- Test and reference counters.
 signal uut_rx_byte  : counter_t := (others => '0');
@@ -174,7 +174,7 @@ begin
 end process;
 
 -- Drive remaining port signals.
-rx_data.clk     <= clk_100;
+rx_data.clk     <= clk_100 after 1 ns;
 rx_data.data    <= (others => '0');
 rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1000);
@@ -182,7 +182,7 @@ rx_data.status  <= ref_status;
 rx_data.reset_p <= reset_p;
 
 tx_data.data    <= (others => '0');
-tx_ctrl.clk     <= clk_100;
+tx_ctrl.clk     <= clk_100 after 1 ns;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= reset_p;
 

@@ -112,13 +112,17 @@ simulate_all()
     simulate_one config_port_test_tb 4ms
     simulate_one config_send_status_tb 1ms
     simulate_one eth_all8b10b_tb 2ms
-    simulate_one eth_frame_adjust_tb 8ms
+    simulate_one eth_frame_adjust_tb 3ms
     simulate_one eth_frame_check_tb 10ms
+    simulate_one eth_frame_parcrc_tb 1ms
+    simulate_one eth_frame_vstrip_tb 1ms
+    simulate_one eth_frame_vtag_tb 1ms
     simulate_one eth_pause_ctrl_tb 3ms
     simulate_one eth_preamble_tb 2ms
     simulate_one fifo_large_sync_tb 10ms
     simulate_one fifo_packet_tb 10ms
     simulate_one fifo_priority_tb 7ms
+    simulate_one fifo_repack_tb 1ms
     simulate_one fifo_smol_async_tb 5ms
     simulate_one fifo_smol_resize_tb 1ms
     simulate_one fifo_smol_sync_tb 10ms
@@ -126,11 +130,12 @@ simulate_all()
     simulate_one io_i2c_tb 1ms
     simulate_one io_mdio_readwrite_tb 3ms
     simulate_one io_spi_tb 1ms
-    simulate_one lcd_control_tb 250ms
+    simulate_one io_text_lcd_tb 250ms
     simulate_one mac_counter_tb 1ms
     simulate_one mac_igmp_simple_tb 4ms
     simulate_one mac_lookup_tb 2ms
     simulate_one mac_priority_tb 1ms
+    simulate_one mac_vlan_mask_tb 2ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_inject_tb 15ms
     simulate_one packet_round_robin_tb 20ms

@@ -68,10 +68,11 @@ namespace satcat5 {
         class Always {
         public:
             // Child class MUST override this method.
-            virtual void poll() = 0;
+            virtual void poll_always() = 0;
 
             // Count active objects of this type.
             static unsigned count();
+
         protected:
             // Register this pollable object.
             // (Only children should create or destroy the base class.)
@@ -93,6 +94,7 @@ namespace satcat5 {
 
             // Count queued objects of this type (i.e., non-idle).
             static unsigned count();
+
         protected:
             // Register this pollable object.
             // (Only children should create or destroy the base class.)
@@ -101,7 +103,7 @@ namespace satcat5 {
 
             // Deferred event handler, called after request().
             // Child class MUST override this method.
-            virtual void poll() = 0;
+            virtual void poll_demand() = 0;
 
         private:
             friend satcat5::util::ListCore;
@@ -114,7 +116,7 @@ namespace satcat5 {
         // once-per-millisecond notifications (e.g., from cfg::Timer)
         class Timekeeper : public satcat5::poll::OnDemand {
         protected:
-            void poll() override;
+            void poll_demand() override;
         };
 
         // There is a single global instance of the Timekeeper class.
@@ -176,7 +178,7 @@ namespace satcat5 {
                 unsigned usec = 1000);
 
         protected:
-            void poll() override;
+            void poll_always() override;
 
             satcat5::poll::OnDemand* const m_target;
             satcat5::util::GenericTimer* const m_timer;

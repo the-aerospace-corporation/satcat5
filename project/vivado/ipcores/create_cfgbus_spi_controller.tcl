@@ -37,7 +37,10 @@ ipcore_add_file $src_dir/common     cfgbus_multiserial.vhd
 ipcore_add_file $src_dir/common     cfgbus_spi_controller.vhd
 ipcore_add_file $src_dir/common     common_primitives.vhd
 ipcore_add_file $src_dir/common     common_functions.vhd
+ipcore_add_file $src_dir/common     eth_frame_common.vhd
+ipcore_add_file $src_dir/common     fifo_smol_async.vhd
 ipcore_add_file $src_dir/common     io_spi_controller.vhd
+ipcore_add_mem  $src_dir/xilinx     $part_family
 ipcore_add_sync $src_dir/xilinx     $part_family
 ipcore_add_top  $ip_root            wrap_cfgbus_spi_controller
 

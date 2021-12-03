@@ -29,6 +29,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
+use     work.eth_frame_common.all;
 use     work.switch_types.all;
 
 entity eth_traffic_sim is
@@ -43,6 +44,7 @@ entity eth_traffic_sim is
     pkt_start   : in  std_logic := '0';     -- Manual packet start strobe
     pkt_len     : in  integer := -1;        -- Override packet length (bytes)
     pkt_etype   : in  boolean := false;     -- If specified, use Ethertype
+    pkt_vlan    : in  vlan_hdr_t := VHDR_NONE;  -- Enable VLAN tags?
     mac_dst     : in  unsigned(7 downto 0); -- Destination address (repeat 6x)
     mac_src     : in  unsigned(7 downto 0); -- Source address (repeat 6x)
     out_rate    : in  real := 1.0;          -- Average flow-control rate
@@ -267,10 +269,15 @@ begin
                     rand * real(MAX_FRAME_BYTES - MIN_FRAME_BYTES)));
             else
                 -- Use user-specified length.
+                -- (Note: This applies to the inner frame, if VLAN enabled.)
                 pkt_rem := pkt_len;
             end if;
             -- Header is 18 bytes --> calculate payload/user field size.
             pkt_usr := pkt_rem - 18;
+            -- Add room for VLAN tags?
+            if (pkt_vlan /= VHDR_NONE) then
+                pkt_rem := pkt_rem + 4;
+            end if;
         end if;
 
         -- Generate new data this clock cycle?
@@ -284,16 +291,38 @@ begin
             elsif (pkt_bidx < 12) then
                 -- Source MAC address (repeat 6x).
                 pkt_next := mac_src;
-            elsif (pkt_bidx = 12) then
-                -- MSB of length / Ethertype.
-                if (pkt_etype) then
+            elsif (pkt_vlan = VHDR_NONE and pkt_bidx < 14) then
+                -- Normal packet without 802.1Q tag.
+                if (pkt_bidx = 12 and pkt_etype) then
+                    -- MSB of Ethertype.
                     pkt_next := x"EE";
-                else
+                elsif (pkt_bidx = 12) then
+                    -- MSB of length.
                     pkt_next := to_unsigned(pkt_usr / 256, 8);
+                else
+                    -- LSB of length / EtherType
+                    pkt_next := to_unsigned(pkt_usr mod 256, 8);
                 end if;
-            elsif (pkt_bidx = 13) then
-                -- LSB of length / Ethertype.
-                pkt_next := to_unsigned(pkt_usr mod 256, 8);
+            elsif (pkt_vlan /= VHDR_NONE and pkt_bidx < 18) then
+                -- Extended header for 802.1Q tag:
+                --  * Outer EtherType (aka VID, 2 bytes)
+                --  * Tag header (aka TCI, 2 bytes)
+                --  * Inner EtherType or Length (2 bytes)
+                if (pkt_bidx = 12) then
+                    pkt_next := x"81";
+                elsif (pkt_bidx = 13) then
+                    pkt_next := x"00";
+                elsif (pkt_bidx = 14) then
+                    pkt_next := unsigned(pkt_vlan(15 downto 8));
+                elsif (pkt_bidx = 15) then
+                    pkt_next := unsigned(pkt_vlan(7 downto 0));
+                elsif (pkt_bidx = 16 and pkt_etype) then
+                    pkt_next := x"EE";  -- Should match logic above
+                elsif (pkt_bidx = 16) then
+                    pkt_next := to_unsigned(pkt_usr / 256, 8);
+                else
+                    pkt_next := to_unsigned(pkt_usr mod 256, 8);
+                end if;
             elsif (pkt_rem <= 4) then
                 -- Send the frame-check, most significant byte first.
                 -- Note: Each byte is LSB-first, so need to reverse the order.

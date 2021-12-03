@@ -30,52 +30,59 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.switch_types.all;
 
 entity packet_delay is
     generic (
-    INPUT_BYTES     : positive;         -- Width of input port
-    DELAY_COUNT     : natural);         -- Fixed delay, in clocks
+    IO_BYTES    : positive;         -- Width of input port
+    DELAY_COUNT : natural);         -- Fixed delay, in clocks
     port (
     -- Input port (no flow control).
-    in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
-    in_nlast        : in  integer range 0 to INPUT_BYTES;
-    in_write        : in  std_logic;
+    in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
+    in_meta     : in  switch_meta_t;
+    in_nlast    : in  integer range 0 to IO_BYTES;
+    in_write    : in  std_logic;
 
     -- Output port (no flow control).
-    out_data        : out std_logic_vector(8*INPUT_BYTES-1 downto 0);
-    out_nlast       : out integer range 0 to INPUT_BYTES;
-    out_write       : out std_logic;
+    out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
+    out_meta    : out switch_meta_t;
+    out_nlast   : out integer range 0 to IO_BYTES;
+    out_write   : out std_logic;
 
     -- System clock and optional reset.
-    io_clk          : in  std_logic;
-    reset_p         : in  std_logic := '0');
+    io_clk      : in  std_logic;
+    reset_p     : in  std_logic := '0');
 end packet_delay;
 
 architecture packet_delay of packet_delay is
 
 constant ADDR_MAX : integer := int_max(0, DELAY_COUNT-2);
 subtype addr_t is integer range 0 to ADDR_MAX;
-subtype word_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
-subtype nlast_t is integer range 0 to INPUT_BYTES;
+subtype word_t is std_logic_vector(8*IO_BYTES-1 downto 0);
+subtype nlast_t is integer range 0 to IO_BYTES;
 type word_array is array(natural range <>) of word_t;
+type meta_array is array(natural range <>) of switch_meta_t;
 type count_array is array(natural range <>) of nlast_t;
 
 signal rw_addr      : addr_t := 0;
 signal out_en       : std_logic := '0';
 signal tmp_data     : word_t := (others => '0');
-signal tmp_nlast    : nlast_t := INPUT_BYTES;
+signal tmp_meta     : switch_meta_t := SWITCH_META_NULL;
+signal tmp_nlast    : nlast_t := IO_BYTES;
 signal tmp_write    : std_logic := '0';
 
 begin
 
 -- Drive the final output signals.
 out_data    <= tmp_data;
+out_meta    <= tmp_meta;
 out_nlast   <= tmp_nlast;
 out_write   <= tmp_write;
 
 -- Special case if delay is zero:
 gen_null : if (DELAY_COUNT = 0) generate
     tmp_data    <= in_data;
+    tmp_meta    <= in_meta;
     tmp_nlast   <= in_nlast;
     tmp_write   <= in_write;
 end generate;
@@ -98,13 +105,16 @@ gen_sreg : if (1 <= DELAY_COUNT and DELAY_COUNT < 16) generate
 
     p_other : process(io_clk)
         variable sreg_data  : word_array(DELAY_COUNT downto 1) := (others => (others => '0'));
-        variable sreg_count : count_array(DELAY_COUNT downto 1) := (others => INPUT_BYTES);
+        variable sreg_meta  : meta_array(DELAY_COUNT downto 1) := (others => SWITCH_META_NULL);
+        variable sreg_count : count_array(DELAY_COUNT downto 1) := (others => IO_BYTES);
     begin
         if rising_edge(io_clk) then
             sreg_data  := sreg_data (DELAY_COUNT-1 downto 1) & in_data;
+            sreg_meta  := sreg_meta (DELAY_COUNT-1 downto 1) & in_meta;
             sreg_count := sreg_count(DELAY_COUNT-1 downto 1) & in_nlast;
 
             tmp_data   <= sreg_data (DELAY_COUNT);
+            tmp_meta   <= sreg_meta (DELAY_COUNT);
             tmp_nlast  <= sreg_count(DELAY_COUNT);
         end if;
     end process;
@@ -135,16 +145,19 @@ gen_bram : if (DELAY_COUNT >= 16) generate
     -- Inferred block-RAM or distributed RAM:
     p_bram : process(io_clk)
         variable ram_data   : word_array(0 to ADDR_MAX) := (others => (others => '0'));
-        variable ram_nlast  : count_array(0 to ADDR_MAX) := (others => INPUT_BYTES);
+        variable ram_meta   : meta_array(0 to ADDR_MAX) := (others => SWITCH_META_NULL);
+        variable ram_nlast  : count_array(0 to ADDR_MAX) := (others => IO_BYTES);
         variable ram_write  : std_logic_vector(0 to ADDR_MAX) := (others => '0');
     begin
         if rising_edge(io_clk) then
             -- Read before write.
             tmp_data    <= ram_data(rw_addr);
+            tmp_meta    <= ram_meta(rw_addr);
             tmp_nlast   <= ram_nlast(rw_addr);
             tmp_write   <= ram_write(rw_addr) and out_en;
 
             ram_data(rw_addr)   := in_data;
+            ram_meta(rw_addr)   := in_meta;
             ram_nlast(rw_addr)  := in_nlast;
             ram_write(rw_addr)  := in_write;
         end if;

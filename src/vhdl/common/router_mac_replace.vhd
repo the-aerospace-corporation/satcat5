@@ -204,8 +204,8 @@ gen_inject : if (RETRY_KBYTES > 0) generate
         APPEND_FCS      => false,
         RULE_PRI_CONTIG => false)
         port map(
-        in_data(0)      => in_data,
-        in_data(1)      => fb_data,
+        in0_data        => in_data,
+        in1_data        => fb_data,
         in_last(0)      => in_last,
         in_last(1)      => fb_last,
         in_valid(0)     => in_valid,

@@ -47,6 +47,12 @@ static const unsigned PORT_IDX_PMOD2    = 2;
 static const unsigned PORT_IDX_PMOD3    = 3;
 static const unsigned PORT_IDX_PMOD4    = 4;
 static const unsigned PORT_IDX_RMII     = 5;
+static const u32 PORT_MASK_MAILMAP      = (1u << PORT_IDX_MAILMAP);
+static const u32 PORT_MASK_PMOD1        = (1u << PORT_IDX_PMOD1);
+static const u32 PORT_MASK_PMOD2        = (1u << PORT_IDX_PMOD2);
+static const u32 PORT_MASK_PMOD3        = (1u << PORT_IDX_PMOD3);
+static const u32 PORT_MASK_PMOD4        = (1u << PORT_IDX_PMOD4);
+static const u32 PORT_MASK_RMII         = (1u << PORT_IDX_RMII);
 
 // LED animation parameters.
 static const unsigned LED_BLU0          = 0;

@@ -42,17 +42,20 @@ SocketCore::SocketCore(
     // No other initialization required.
 }
 
-void SocketCore::bind(const satcat5::eth::MacType& lcltype)
+void SocketCore::bind(
+    const satcat5::eth::MacType& lcltype,
+    const satcat5::eth::VlanTag& vtag)
 {
-    m_addr.close();                     // Unbind Tx
-    m_filter = Type(lcltype.value);     // Rebind Rx
+    m_addr.close();                                 // Unbind Tx
+    m_filter = Type(vtag.vid(), lcltype.value);     // Rebind Rx
 }
 
 void SocketCore::connect(
     const satcat5::eth::MacAddr& dstmac,
     const satcat5::eth::MacType& dsttype,
-    const satcat5::eth::MacType& lcltype)
+    const satcat5::eth::MacType& lcltype,
+    const satcat5::eth::VlanTag& vtag)
 {
-    m_addr.connect(dstmac, dsttype);    // Rebind Tx
-    m_filter = Type(lcltype.value);     // Rebind Rx
+    m_addr.connect(dstmac, dsttype);                // Rebind Tx
+    m_filter = Type(vtag.vid(), lcltype.value);     // Rebind Rx
 }

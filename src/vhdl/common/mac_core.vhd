@@ -35,23 +35,8 @@
 -- the device-address to CFGBUS_ADDR_NONE and leave the cfg_cmd port
 -- disconnected (i.e., CFGBUS_CMD_NULL).
 --
--- If enabled, the configuration register map is as follows
---  * REGADDR = 0:  Number of ports (read-only)
---  * REGADDR = 1:  Datapath width, in bits (read-only)
---  * REGADDR = 2:  Core clock frequency, in Hz (read-only)
---  * REGADDR = 3:  MAC-address table size (read-only)
---  * REGADDR = 4:  Promisicuous port mask (read-write)
---      Ports in this mode attempt to receive almost all network packets,
---      regardless of destination.  Writing a bit-mask enables this mode
---      for the designated ports. (LSB = Port #0, MSB = Port #31, etc.)
---  * REGADDR = 5:  Packet prioritization by EtherType (read-write, optional)
---      This register is enabled only if PRI_TABLE_SIZE > 0.
---      Refer to "mac_priority" for details.
---  * REGADDR = 6:  Packet-counting for diagnostics (read-write)
---      Refer to "mac_counter" for details.
---  * REGADDR = 7:  Packet size limits
---      Bits 31-16: Maximum frame size (in bytes)
---      Bits 15-00: Minimum frame size (in bytes)
+-- If enabled, the configuration register map follows the definitions
+-- from "switch_types.vhd".
 --
 -- Unit-test coverage for this block is provided by "switch_core_tb".
 --
@@ -62,18 +47,20 @@ use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.switch_types.all;
 use     work.tcam_constants.all;
 
 entity mac_core is
     generic (
     DEV_ADDR        : integer;          -- Device address for all registers
-    INPUT_BYTES     : positive;         -- Width of main data port
+    IO_BYTES        : positive;         -- Width of main data ports
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     CORE_CLK_HZ     : positive;         -- Core clock frequency (Hz)
     MIN_FRM_BYTES   : positive;         -- Minimum frame size
     MAX_FRM_BYTES   : positive;         -- Maximum frame size
     MAC_TABLE_SIZE  : positive;         -- Max stored MAC addresses
     PRI_TABLE_SIZE  : natural;          -- Max high-priority EtherTypes (0 = disable)
+    SUPPORT_VLAN    : boolean;          -- Support virtual-LAN?
     MISS_BCAST      : std_logic := '1'; -- Broadcast or drop unknown MAC?
     IGMP_TIMEOUT    : positive := 63;   -- IGMP timeout (0 = disable)
     CACHE_POLICY    : repl_policy := TCAM_REPL_PLRU);
@@ -81,13 +68,15 @@ entity mac_core is
     -- Main input
     -- PSRC is the input port-index and must be held for the full frame.
     in_psrc         : in  integer range 0 to PORT_COUNT-1;
-    in_nlast        : in  integer range 0 to INPUT_BYTES;
-    in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
+    in_data         : in  std_logic_vector(8*IO_BYTES-1 downto 0);
+    in_meta         : in  switch_meta_t;
+    in_nlast        : in  integer range 0 to IO_BYTES;
     in_write        : in  std_logic;
 
     -- Main output, with end-of-frame strobes for each port.
-    out_data        : out std_logic_vector(8*INPUT_BYTES-1 downto 0);
-    out_nlast       : out integer range 0 to INPUT_BYTES;
+    out_data        : out std_logic_vector(8*IO_BYTES-1 downto 0);
+    out_meta        : out switch_meta_t;
+    out_nlast       : out integer range 0 to IO_BYTES;
     out_write       : out std_logic;
     out_priority    : out std_logic;
     out_keep        : out std_logic_vector(PORT_COUNT-1 downto 0);
@@ -107,29 +96,21 @@ end mac_core;
 
 architecture mac_core of mac_core is
 
--- Define register addresses:
-constant REGADDR_PORT_COUNT     : cfgbus_regaddr := 0;
-constant REGADDR_DATA_WIDTH     : cfgbus_regaddr := 1;
-constant REGADDR_CORE_CLOCK     : cfgbus_regaddr := 2;
-constant REGADDR_TABLE_SIZE     : cfgbus_regaddr := 3;
-constant REGADDR_PROMISCUOUS    : cfgbus_regaddr := 4;
-constant REGADDR_PRIORITY       : cfgbus_regaddr := 5;
-constant REGADDR_PKT_COUNT      : cfgbus_regaddr := 6;
-constant REGADDR_FRAME_SIZE     : cfgbus_regaddr := 7;
-
 -- Convenience types:
-subtype data_word is std_logic_vector(8*INPUT_BYTES-1 downto 0);
+subtype data_word is std_logic_vector(8*IO_BYTES-1 downto 0);
 subtype port_mask is std_logic_vector(PORT_COUNT-1 downto 0);
 
 -- Main datapath
 signal buf_psrc     : integer range 0 to PORT_COUNT-1 := 0;
-signal buf_nlast    : integer range 0 to INPUT_BYTES := INPUT_BYTES;
 signal buf_data     : data_word := (others => '0');
+signal buf_meta     : switch_meta_t := SWITCH_META_NULL;
+signal buf_nlast    : integer range 0 to IO_BYTES := IO_BYTES;
 signal buf_last     : std_logic := '0';
 signal buf_write    : std_logic := '0';
-signal buf_wcount   : mac_bcount_t := 0; 
-signal out_nlast_i  : integer range 0 to INPUT_BYTES;
-signal out_write_i  : std_logic;
+signal buf_wcount   : mac_bcount_t := 0;
+signal dly_meta     : switch_meta_t;
+signal dly_nlast    : integer range 0 to IO_BYTES;
+signal dly_write    : std_logic;
 signal packet_done  : std_logic;
 
 -- MAC-address lookup
@@ -146,19 +127,25 @@ signal igmp_mask    : port_mask := (others => '1');
 signal igmp_valid   : std_logic := '1';
 signal igmp_error   : std_logic := '0';
 
+-- VLAN lookup (optional)
+signal vlan_mask    : port_mask := (others => '1');
+signal vlan_vtag    : vlan_hdr_t := (others => '0');
+signal vlan_hipri   : std_logic := '0';
+signal vlan_valid   : std_logic := '1';
+
 -- Promiscuous-port mode (optional)
 signal cfg_prword   : cfgbus_word := (others => '0');
 signal cfg_prmask   : port_mask := (others => '0');
 
 -- ConfigBus combining.
-signal cfg_acks     : cfgbus_ack_array(0 to 7) := (others => cfgbus_idle);
+signal cfg_acks     : cfgbus_ack_array(0 to 8) := (others => cfgbus_idle);
 
 begin
 
 -- General-purpose ConfigBus registers:
 gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     -- Read-only configuration reporting.
-    -- See top comment for complete register map.
+    -- See "switch_types" for complete register map.
     u_portcount : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
@@ -174,7 +161,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
         port map(
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(1),
-        reg_val     => i2s(8*INPUT_BYTES, CFGBUS_WORD_SIZE));
+        reg_val     => i2s(8*IO_BYTES, CFGBUS_WORD_SIZE));
     u_coreclock : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
@@ -206,7 +193,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
         generic map(
         DEV_ADDR    => DEV_ADDR,
         REG_ADDR    => REGADDR_PKT_COUNT,
-        INPUT_BYTES => INPUT_BYTES)
+        IO_BYTES    => IO_BYTES)
         port map(
         in_wcount   => buf_wcount,
         in_data     => buf_data,
@@ -237,13 +224,14 @@ end generate;
 
 -- Buffer incoming data for better routing and timing.
 p_buff : process(clk)
-    constant WCOUNT_MAX : mac_bcount_t := mac_wcount_max(INPUT_BYTES);
+    constant WCOUNT_MAX : mac_bcount_t := mac_wcount_max(IO_BYTES);
 begin
     if rising_edge(clk) then
         -- Buffer incoming data.
         buf_psrc    <= in_psrc;
-        buf_nlast   <= in_nlast;
         buf_data    <= in_data;
+        buf_meta    <= in_meta;
+        buf_nlast   <= in_nlast;
         buf_last    <= bool2bit(in_nlast > 0);
         buf_write   <= in_write and not reset_p;
 
@@ -262,30 +250,34 @@ end process;
 -- (Must exceed the worst-case pipeline delay for each other unit.)
 u_delay : entity work.packet_delay
     generic map(
-    INPUT_BYTES     => INPUT_BYTES,
-    DELAY_COUNT     => 15)
+    IO_BYTES    => IO_BYTES,
+    DELAY_COUNT => 15)
     port map(
-    in_data         => buf_data,
-    in_nlast        => buf_nlast,
-    in_write        => buf_write,
-    out_data        => out_data,
-    out_nlast       => out_nlast_i,
-    out_write       => out_write_i,
-    io_clk          => clk,
-    reset_p         => reset_p);
+    in_data     => buf_data,
+    in_meta     => buf_meta,
+    in_nlast    => buf_nlast,
+    in_write    => buf_write,
+    out_data    => out_data,
+    out_meta    => dly_meta,
+    out_nlast   => dly_nlast,
+    out_write   => dly_write,
+    io_clk      => clk,
+    reset_p     => reset_p);
 
 -- Final "KEEP" flag is the bitwise-AND of all port masks.
-out_write       <= out_write_i;
-out_nlast       <= out_nlast_i;
-out_priority    <= pri_hipri;
-out_keep        <= lookup_mask and igmp_mask;
+out_meta.tstamp <= dly_meta.tstamp;
+out_meta.vtag   <= vlan_vtag;
+out_write       <= dly_write;
+out_nlast       <= dly_nlast;
+out_priority    <= pri_hipri or vlan_hipri;
+out_keep        <= lookup_mask and igmp_mask and vlan_mask;
 error_other     <= igmp_error or pri_error;
-packet_done     <= out_write_i and bool2bit(out_nlast_i > 0);
+packet_done     <= dly_write and bool2bit(dly_nlast > 0);
 
 -- MAC-address lookup
 u_lookup : entity work.mac_lookup
     generic map(
-    INPUT_BYTES     => INPUT_BYTES,
+    IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => MAC_TABLE_SIZE,
     MISS_BCAST      => MISS_BCAST,
@@ -310,7 +302,7 @@ u_lookup : entity work.mac_lookup
 gen_igmp : if (IGMP_TIMEOUT > 0) generate
     u_igmp : entity work.mac_igmp_simple
         generic map(
-        INPUT_BYTES     => INPUT_BYTES,
+        IO_BYTES        => IO_BYTES,
         PORT_COUNT      => PORT_COUNT,
         IGMP_TIMEOUT    => IGMP_TIMEOUT)
         port map(
@@ -336,7 +328,7 @@ gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
         generic map(
         DEVADDR     => DEV_ADDR,
         REGADDR     => REGADDR_PRIORITY,
-        INPUT_BYTES => INPUT_BYTES,
+        IO_BYTES    => IO_BYTES,
         TABLE_SIZE  => PRI_TABLE_SIZE)
         port map(
         in_wcount   => buf_wcount,
@@ -349,6 +341,30 @@ gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
         out_error   => pri_error,
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(7),
+        clk         => clk,
+        reset_p     => reset_p);
+end generate;
+
+-- Virtual-LAN lookup (optional)
+gen_vlan : if SUPPORT_VLAN generate
+    u_vlan : entity work.mac_vlan_mask
+        generic map(
+        DEV_ADDR    => DEV_ADDR,
+        REG_ADDR_V  => REGADDR_VLAN_VID,
+        REG_ADDR_M  => REGADDR_VLAN_MASK,
+        PORT_COUNT  => PORT_COUNT)
+        port map(
+        in_psrc     => buf_psrc,
+        in_vtag     => buf_meta.vtag,
+        in_last     => buf_last,
+        in_write    => buf_write,
+        out_vtag    => vlan_vtag,
+        out_pmask   => vlan_mask,
+        out_hipri   => vlan_hipri,
+        out_valid   => vlan_valid,
+        out_ready   => packet_done,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(8),
         clk         => clk,
         reset_p     => reset_p);
 end generate;
@@ -367,6 +383,8 @@ begin
                 report "LATE IGMP" severity error;
             assert (pri_valid = '1')
                 report "LATE Priority" severity error;
+            assert (vlan_valid = '1')
+                report "LATE VLAN" severity error;
         end if;
     end if;
 end process;

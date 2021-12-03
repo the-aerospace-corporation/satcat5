@@ -21,6 +21,12 @@
 #include <satcat5/io_core.h>
 #include <satcat5/utils.h>
 
+// Set batch size for copy_to()
+#ifndef SATCAT5_BUFFCOPY_BATCH
+#define SATCAT5_BUFFCOPY_BATCH  32
+#endif
+
+using satcat5::util::min_unsigned;
 using satcat5::util::reinterpret;
 
 void satcat5::io::Writeable::write_u8(u8 data)
@@ -233,7 +239,25 @@ bool satcat5::io::Readable::read_consume(unsigned nbytes)
     }
 }
 
-void satcat5::io::Readable::poll()
+bool satcat5::io::Readable::copy_to(satcat5::io::Writeable* dst)
+{
+    // Temporary buffer sets our maximum batch size.
+    u8 buff[SATCAT5_BUFFCOPY_BATCH];
+    while (1) {
+        // How much data could we copy from source to sink?
+        unsigned max_rd = get_read_ready();
+        unsigned max_wr = min_unsigned(max_rd, dst->get_write_space());
+        if (max_wr == 0) return false;
+        // Copy up to that limit or batch size, whichever is smaller.
+        unsigned batch = min_unsigned(max_wr, SATCAT5_BUFFCOPY_BATCH);
+        read_bytes(batch, buff);
+        dst->write_bytes(batch, buff);
+        // Did we just finish a frame?
+        if (batch == max_rd) return true;
+    }
+}
+
+void satcat5::io::Readable::poll_demand()
 {
     // If we have any data waiting, deliver it.
     // If we STILL have data afterward, try again later.

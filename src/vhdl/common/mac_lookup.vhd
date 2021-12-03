@@ -39,7 +39,7 @@ use     work.tcam_constants.all;
 
 entity mac_lookup is
     generic (
-    INPUT_BYTES     : positive;         -- Width of main data port
+    IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Max stored MAC addresses
     MISS_BCAST      : std_logic;        -- Broadcast or drop unknown MAC?
@@ -49,7 +49,7 @@ entity mac_lookup is
     -- PSRC is the input port-index and must be held for the full frame.
     in_psrc         : in  integer range 0 to PORT_COUNT-1;
     in_wcount       : in  mac_bcount_t;
-    in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
+    in_data         : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_last         : in  std_logic;
     in_write        : in  std_logic;
 
@@ -152,25 +152,25 @@ begin
         -- Confirm each field as it passes through on the main stream.
         -- (Depending on bus width, these might happen in sequence or all at once.)
         for n in 0 to 5 loop
-            if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_DSTMAC+n, in_wcount)) then
-                temp := strm_byte_value(INPUT_BYTES, ETH_HDR_DSTMAC+n, in_data);
+            if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+n, in_wcount)) then
+                temp := strm_byte_value(IO_BYTES, ETH_HDR_DSTMAC+n, in_data);
                 pkt_dst_mac(47-8*n downto 40-8*n) <= temp;  -- MSB-first
             end if;
-            if (in_write = '1' and strm_byte_present(INPUT_BYTES, ETH_HDR_SRCMAC+n, in_wcount)) then
-                temp := strm_byte_value(INPUT_BYTES, ETH_HDR_SRCMAC+n, in_data);
+            if (in_write = '1' and strm_byte_present(IO_BYTES, ETH_HDR_SRCMAC+n, in_wcount)) then
+                temp := strm_byte_value(IO_BYTES, ETH_HDR_SRCMAC+n, in_data);
                 pkt_src_mac(47-8*n downto 40-8*n) <= temp;  -- MSB-first
             end if;
         end loop;
 
         -- Ready strobes asserted on the last byte in each field.
         pkt_psrc    <= i2s(in_psrc, PIDX_WIDTH);
-        pkt_dst_rdy <= in_write and bool2bit(strm_byte_present(INPUT_BYTES, ETH_HDR_DSTMAC+5, in_wcount));
-        pkt_src_rdy <= in_write and bool2bit(strm_byte_present(INPUT_BYTES, ETH_HDR_SRCMAC+5, in_wcount));
+        pkt_dst_rdy <= in_write and bool2bit(strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+5, in_wcount));
+        pkt_src_rdy <= in_write and bool2bit(strm_byte_present(IO_BYTES, ETH_HDR_SRCMAC+5, in_wcount));
     end if;
 end process;
 
 -- Instantiate either one or two TCAM units.
-gen_tcam1 : if (INPUT_BYTES < 12) generate
+gen_tcam1 : if (IO_BYTES < 12) generate
     local : block
         signal pkt_addr     : mac_addr_t;
         signal pkt_rdy      : std_logic;
@@ -247,7 +247,7 @@ gen_tcam1 : if (INPUT_BYTES < 12) generate
     end block;
 end generate;
 
-gen_tcam2 : if (INPUT_BYTES >= 12) generate
+gen_tcam2 : if (IO_BYTES >= 12) generate
     local : block
         signal tsrc_err     : std_logic;
         signal tdst_err     : std_logic;

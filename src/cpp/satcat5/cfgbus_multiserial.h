@@ -87,7 +87,7 @@ namespace satcat5 {
             // Internal event handlers
             void data_rcvd();           // Received data in queue
             void irq_event();           // ConfigBus interrupt
-            void poll();                // Deferred interrupt
+            void poll_demand();         // Deferred interrupt
 
             // Internal state, not accessible to children.
             unsigned const m_cmd_max;   // Max queued commands

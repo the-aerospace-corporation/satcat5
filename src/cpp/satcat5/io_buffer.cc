@@ -22,11 +22,6 @@
 
 using satcat5::util::min_unsigned;
 
-// Set batch size for BufferedCopy
-#ifndef SATCAT5_BUFFCOPY_BATCH
-#define SATCAT5_BUFFCOPY_BATCH  32
-#endif
-
 satcat5::io::BufferedIO::BufferedIO(
         u8* txbuff, unsigned txbytes, unsigned txpkt,
         u8* rxbuff, unsigned rxbytes, unsigned rxpkt)
@@ -57,27 +52,9 @@ satcat5::io::BufferedCopy::~BufferedCopy()
 
 void satcat5::io::BufferedCopy::data_rcvd()
 {
-    // Temporary buffer sets our maximum batch size.
-    u8 buff[SATCAT5_BUFFCOPY_BATCH];
-    while (1) {
-        // How much data could we copy from source to sink?
-        unsigned max_rd = m_src->get_read_ready();
-        unsigned max_wr = m_dst->get_write_space();
-        unsigned max_rw = min_unsigned(max_rd, max_wr);
-        if (max_rw) {
-            // Copy up to that limit or batch size, whichever is smaller.
-            unsigned batch = min_unsigned(max_rw, SATCAT5_BUFFCOPY_BATCH);
-            m_src->read_bytes(batch, buff);
-            m_dst->write_bytes(batch, buff);
-            // Did we just finish a frame?
-            if (batch == max_rd) {
-                m_src->read_finalize();
-                m_dst->write_finalize();
-            }
-        } else {
-            // Source empty or sink full; stop for now.
-            break;
-        }
+    if (m_src->copy_to(m_dst)) {
+        m_src->read_finalize();
+        m_dst->write_finalize();
     }
 }
 

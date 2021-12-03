@@ -58,6 +58,12 @@ namespace satcat5 {
             inline u16 as_u16() const {return (u16)m_value;}
             inline u32 as_u32() const {return (u32)m_value;}
 
+            inline void as_u8(u8& a) const {a = as_u8();}
+            inline void as_u16(u16& a) const {a = as_u16();}
+            inline void as_u32(u32& a) const {a = as_u32();}
+            inline void as_pair(u16& a, u16& b) const
+                {a = (u16)(m_value >> 16); b = (u16)(m_value & 0xFFFF);}
+
             inline bool bound() const {return (m_value != 0);}
 
         private:

@@ -55,16 +55,20 @@ use     work.switch_types.all;
 
 entity cfgbus_port_stats is
     generic (
-    PORT_COUNT  : natural;              -- Number of attached ports
+    PORT_COUNT  : natural := 0;         -- Number of standard ports
+    PORTX_COUNT : natural := 0;         -- Number of 10-gigabit ports
     CFG_DEVADDR : integer;              -- ConfigBus peripheral address (-1 = any)
     COUNT_WIDTH : positive := 32;       -- Internal counter width (16-32 bits)
     SAFE_COUNT  : boolean := true);     -- Safe counters (no overflow)
     port (
     -- Generic internal port interface (monitor only)
-    rx_data     : in  array_rx_m2s(PORT_COUNT-1 downto 0);
-    tx_data     : in  array_tx_s2m(PORT_COUNT-1 downto 0);
-    tx_ctrl     : in  array_tx_m2s(PORT_COUNT-1 downto 0);
-    err_ports   : in  array_port_error(PORT_COUNT-1 downto 0) := (others => PORT_ERROR_NONE);
+    rx_data     : in  array_rx_m2s(PORT_COUNT-1 downto 0) := (others => RX_M2S_IDLE);
+    tx_data     : in  array_tx_s2m(PORT_COUNT-1 downto 0) := (others => TX_S2M_IDLE);
+    tx_ctrl     : in  array_tx_m2s(PORT_COUNT-1 downto 0) := (others => TX_M2S_IDLE);
+    xrx_data    : in  array_rx_m2sx(PORTX_COUNT-1 downto 0) := (others => RX_M2SX_IDLE);
+    xtx_data    : in  array_tx_s2mx(PORTX_COUNT-1 downto 0) := (others => TX_S2MX_IDLE);
+    xtx_ctrl    : in  array_tx_m2sx(PORTX_COUNT-1 downto 0) := (others => TX_M2SX_IDLE);
+    err_ports   : in  array_port_error(PORT_COUNT+PORTX_COUNT-1 downto 0) := (others => PORT_ERROR_NONE);
 
     -- ConfigBus interface
     cfg_cmd     : in  cfgbus_cmd;
@@ -73,8 +77,9 @@ end cfgbus_port_stats;
 
 architecture cfgbus_port_stats of cfgbus_port_stats is
 
+constant PORT_TOTAL : natural := PORT_COUNT + PORTX_COUNT;
 constant WORD_MULT  : natural := 8;
-constant WORD_COUNT : natural := WORD_MULT * PORT_COUNT;
+constant WORD_COUNT : natural := WORD_MULT * PORT_TOTAL;
 subtype stat_word is unsigned(COUNT_WIDTH-1 downto 0);
 type stats_array_t is array(WORD_COUNT-1 downto 0) of cfgbus_word;
 
@@ -94,9 +99,10 @@ begin
 -- Drive top-level outputs.
 cfg_ack <= cfg_ack_i;
 
--- Statistics module for each port.
+-- Statistics module for each standard port.
 gen_stats : for n in 0 to PORT_COUNT-1 generate
     blk_stats : block
+        constant BASEADDR : natural := WORD_MULT * n;
         signal bcst_bytes   : stat_word;
         signal bcst_frames  : stat_word;
         signal rcvd_bytes   : stat_word;
@@ -109,7 +115,7 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
         signal errct_pkt    : byte_u;
         signal status       : cfgbus_word;
     begin
-        -- Words 0-5 come directly from the statistics block.
+        -- Instantiate the statistics module.
         u_stats : entity work.port_statistics
             generic map(
             COUNT_WIDTH => COUNT_WIDTH,
@@ -134,15 +140,68 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
             tx_ctrl     => tx_ctrl(n));
 
         -- Map each counter into the memory-mapped array.
-        stats_array(WORD_MULT*n+0) <= count2word(bcst_bytes);
-        stats_array(WORD_MULT*n+1) <= count2word(bcst_frames);
-        stats_array(WORD_MULT*n+2) <= count2word(rcvd_bytes);
-        stats_array(WORD_MULT*n+3) <= count2word(rcvd_frames);
-        stats_array(WORD_MULT*n+4) <= count2word(sent_bytes);
-        stats_array(WORD_MULT*n+5) <= count2word(sent_frames);
-        stats_array(WORD_MULT*n+6) <= std_logic_vector(
+        stats_array(BASEADDR+0) <= count2word(bcst_bytes);
+        stats_array(BASEADDR+1) <= count2word(bcst_frames);
+        stats_array(BASEADDR+2) <= count2word(rcvd_bytes);
+        stats_array(BASEADDR+3) <= count2word(rcvd_frames);
+        stats_array(BASEADDR+4) <= count2word(sent_bytes);
+        stats_array(BASEADDR+5) <= count2word(sent_frames);
+        stats_array(BASEADDR+6) <= std_logic_vector(
             errct_mii & errct_ovr_tx & errct_ovr_rx & errct_pkt);
-        stats_array(WORD_MULT*n+7) <= status;
+        stats_array(BASEADDR+7) <= status;
+    end block;
+end generate;
+
+-- Statistics module for each 10-GbE port.
+gen_xstats : for n in 0 to PORTX_COUNT-1 generate
+    blk_stats : block
+        constant BASEADDR : natural := WORD_MULT * (PORT_COUNT + n);
+        signal bcst_bytes   : stat_word;
+        signal bcst_frames  : stat_word;
+        signal rcvd_bytes   : stat_word;
+        signal rcvd_frames  : stat_word;
+        signal sent_bytes   : stat_word;
+        signal sent_frames  : stat_word;
+        signal errct_mii    : byte_u;
+        signal errct_ovr_tx : byte_u;
+        signal errct_ovr_rx : byte_u;
+        signal errct_pkt    : byte_u;
+        signal status       : cfgbus_word;
+    begin
+        -- Instantiate the statistics module.
+        u_stats : entity work.portx_statistics
+            generic map(
+            COUNT_WIDTH => COUNT_WIDTH,
+            SAFE_COUNT  => SAFE_COUNT)
+            port map(
+            stats_req_t => stats_req_t,
+            bcst_bytes  => bcst_bytes,
+            bcst_frames => bcst_frames,
+            rcvd_bytes  => rcvd_bytes,
+            rcvd_frames => rcvd_frames,
+            sent_bytes  => sent_bytes,
+            sent_frames => sent_frames,
+            status_clk  => cfg_cmd.clk,
+            status_word => status,
+            err_port    => err_ports(PORT_COUNT+n),
+            err_mii     => errct_mii,
+            err_ovr_tx  => errct_ovr_tx,
+            err_ovr_rx  => errct_ovr_rx,
+            err_pkt     => errct_pkt,
+            rx_data     => xrx_data(n),
+            tx_data     => xtx_data(n),
+            tx_ctrl     => xtx_ctrl(n));
+
+        -- Map each counter into the memory-mapped array.
+        stats_array(BASEADDR+0) <= count2word(bcst_bytes);
+        stats_array(BASEADDR+1) <= count2word(bcst_frames);
+        stats_array(BASEADDR+2) <= count2word(rcvd_bytes);
+        stats_array(BASEADDR+3) <= count2word(rcvd_frames);
+        stats_array(BASEADDR+4) <= count2word(sent_bytes);
+        stats_array(BASEADDR+5) <= count2word(sent_frames);
+        stats_array(BASEADDR+6) <= std_logic_vector(
+            errct_mii & errct_ovr_tx & errct_ovr_rx & errct_pkt);
+        stats_array(BASEADDR+7) <= status;
     end block;
 end generate;
 

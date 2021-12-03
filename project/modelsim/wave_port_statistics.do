@@ -1,4 +1,4 @@
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2021 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -38,10 +38,17 @@ add wave -noupdate -radix unsigned /port_statistics_tb/uut_rx_frm
 add wave -noupdate -radix unsigned /port_statistics_tb/uut_tx_byte
 add wave -noupdate -radix unsigned /port_statistics_tb/uut_tx_frm
 add wave -noupdate -divider {UUT Internals}
-add wave -noupdate -radix unsigned /port_statistics_tb/uut/wrk_rcvd_bytes
-add wave -noupdate -radix unsigned /port_statistics_tb/uut/wrk_rcvd_frames
-add wave -noupdate -radix unsigned /port_statistics_tb/uut/wrk_sent_bytes
-add wave -noupdate -radix unsigned /port_statistics_tb/uut/wrk_sent_frames
+add wave -noupdate /port_statistics_tb/uut/u_stats/rx_isff
+add wave -noupdate /port_statistics_tb/uut/u_stats/rx_eof
+add wave -noupdate /port_statistics_tb/uut/u_stats/rx_last
+add wave -noupdate /port_statistics_tb/uut/u_stats/p_stats_rx/frm_wcount
+add wave -noupdate -radix unsigned /port_statistics_tb/uut/u_stats/p_stats_rx/frm_bytes
+add wave -noupdate /port_statistics_tb/uut/u_stats/p_stats_rx/is_bcast
+add wave -noupdate -radix unsigned /port_statistics_tb/uut/u_stats/rx_incr
+add wave -noupdate /port_statistics_tb/uut/u_stats/tx_eof
+add wave -noupdate /port_statistics_tb/uut/u_stats/tx_last
+add wave -noupdate -radix unsigned /port_statistics_tb/uut/u_stats/tx_incr
+add wave -noupdate -radix unsigned /port_statistics_tb/uut/u_stats/p_stats_tx/frm_bytes
 TreeUpdate [SetDefaultTree]
 WaveRestoreCursors {{Cursor 1} {27800064 ps} 0}
 configure wave -namecolwidth 230

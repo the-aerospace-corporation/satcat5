@@ -63,7 +63,7 @@ cfg::Mdio::Mdio(
     // No other initialization at this time.
 }
 
-void cfg::Mdio::poll()
+void cfg::Mdio::poll_always()
 {
     // Read status until FIFO is empty.
     while (hw_rd_status() & HWSTATUS_RVALID) {}

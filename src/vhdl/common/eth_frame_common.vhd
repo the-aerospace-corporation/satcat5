@@ -77,13 +77,28 @@ package eth_frame_common is
     subtype mac_bcount_t is integer range 0 to MAC_BCOUNT_MAX;
     function mac_wcount_max(bwidth : positive) return mac_bcount_t;
 
+    -- Internal 10 GbE data streams send up to 8 bytes per clock.  Byte order
+    -- in all cases is big-endian (i.e., most significant byte first.)  Each
+    -- word except the last must be completely filled; the last word of each
+    -- frame is indicated when NLAST > 0.  The final word may contain 1-8
+    -- bytes and must be left-justified (i.e., data in MSBs, padding in LSBs).
+    -- For additional information, refer to "fifo_packet.vhd".
+    subtype xword_t is std_logic_vector(63 downto 0);   -- Data word (SLV)
+    subtype xword_u is std_logic_vector(63 downto 0);   -- Data word (Unsigned)
+    subtype xlast_i is integer range 0 to 8;            -- NLAST indicator
+    subtype xlast_v is std_logic_vector(3 downto 0);    -- Alternate form
+
+    function xlast_v2i(x : xlast_v) return xlast_i;
+    function xlast_i2v(x : xlast_i) return xlast_v;
+
     -- Local type definitions for Frame Check Sequence (FCS):
     subtype crc_word_t is std_logic_vector(31 downto 0);
     type byte_array_t is array(natural range <>) of byte_t;
     constant CRC_INIT    : crc_word_t := (others => '1');
     constant CRC_RESIDUE : crc_word_t := x"C704DD7B";
+    constant FCS_BYTES   : integer := 4;
 
-    -- Type definitions for common Ethernet header fields.:
+    -- Type definitions for common Ethernet header fields:
     constant MAC_ADDR_WIDTH : integer := 48;
     constant MAC_TYPE_WIDTH : integer := 16;
     subtype mac_addr_t is std_logic_vector(MAC_ADDR_WIDTH-1 downto 0);
@@ -95,6 +110,38 @@ package eth_frame_common is
     function mac_is_l2multicast(mac : mac_addr_t) return boolean;
     function mac_is_l3multicast(mac : mac_addr_t) return boolean;
     function mac_is_broadcast(mac : mac_addr_t) return boolean;
+
+    -- Type definitions for 802.1Q tags:
+    constant VLAN_HDR_WIDTH : integer := 16;
+    subtype vlan_hdr_t is std_logic_vector(15 downto 0);
+    subtype vlan_pcp_t is unsigned(2 downto 0);     -- Priority code point (PCP)
+    subtype vlan_dei_t is std_logic;                -- Drop-eligible indicator (DEI)
+    subtype vlan_vid_t is unsigned(11 downto 0);    -- VLAN identifier (VID)
+    constant ETYPE_VLAN : mac_type_t := x"8100";    -- EtherType for C-VLAN tags
+    constant ETYPE_VSVC : mac_type_t := x"88A8";    -- EtherType for S-VLAN tags
+    constant PCP_NONE   : vlan_pcp_t := "000";      -- Default priority (zero)
+    constant DEI_NONE   : vlan_dei_t := '0';        -- Default DEI (not set)
+    constant VID_NONE   : vlan_vid_t := x"000";     -- Null or unspecified VID
+    constant VID_RSVD   : vlan_vid_t := x"FFF";     -- Reserved VID (illegal)
+    constant VHDR_NONE  : vlan_hdr_t := x"0000";    -- Null or unspecified tag
+
+    -- Extract fields from the VLAN header (Tag Control Information = TCI)
+    function vlan_get_pcp(hdr : vlan_hdr_t) return vlan_pcp_t;
+    function vlan_get_dei(hdr : vlan_hdr_t) return vlan_dei_t;
+    function vlan_get_vid(hdr : vlan_hdr_t) return vlan_vid_t;
+    function vlan_get_hdr(
+        pcp: vlan_pcp_t;
+        dei: vlan_dei_t;
+        vid: vlan_vid_t)
+        return vlan_hdr_t;
+
+    -- Type definitions for setting per-port VLAN tag policy.
+    -- (These correspond to the modes defined in 802.1Q Section 6.9.)
+    subtype tag_policy_t is std_logic_vector(1 downto 0);
+    constant VTAG_ADMIT_ALL : tag_policy_t := "00"; -- Admit all frames (default)
+    constant VTAG_PRIORITY  : tag_policy_t := "01"; -- Admit only untagged and priority-tagged frames
+    constant VTAG_MANDATORY : tag_policy_t := "10"; -- Admit only VLAN-tagged frames
+    constant VTAG_RESERVED  : tag_policy_t := "11"; -- Reserved / undefined
 
     -- Ethernet preamble definitions.
     constant ETH_AMBLE_PRE  : byte_t := x"55";  -- 7-byte preamble
@@ -118,9 +165,18 @@ package eth_frame_common is
         bidx    : natural;          -- Byte index of interest
         data    : std_logic_vector) -- Input vector (width = 8*bwidth)
         return byte_t;
+    function strm_byte_value(
+        bidx    : natural;          -- Byte index of interest
+        data    : std_logic_vector) -- Input vector (width = arbitrary)
+        return byte_t;
 
-    -- Flip bit-order of the given byte.
+    -- Flip bit-order of the given byte, or each byte in a word.
     function flip_byte(data : byte_t) return byte_t;
+    function flip_word(data : crc_word_t) return crc_word_t;
+    function flip_bits_each_byte(data : crc_word_t) return crc_word_t;
+
+    -- Flip byte-order of the given word (little-endian <-> big-endian).
+    function endian_swap(data : crc_word_t) return crc_word_t;
 
     -- Byte-at-a-time CRC32 update function for polynomial 0x04C11DB7
     -- Derived from general-purpose CRC32 by Michael Cheung, 2014 June.
@@ -169,6 +225,51 @@ begin
     return 1 + (IP_HDR_MAX / bwidth);
 end function;
 
+function xlast_v2i(x : xlast_v) return xlast_i is
+    constant XMAX : integer := 8;
+    variable xi : integer range 0 to 15 := to_integer(unsigned(x));
+begin
+    if (xi < XMAX) then
+        return xi;
+    else
+        return XMAX;
+    end if;
+end function;
+
+function xlast_i2v(x : xlast_i) return xlast_v is
+begin
+    return std_logic_vector(to_unsigned(x, 4));
+end function;
+
+function vlan_get_pcp(hdr : vlan_hdr_t) return vlan_pcp_t is
+    variable pcp : vlan_pcp_t := unsigned(hdr(15 downto 13));
+begin
+    return pcp;     -- Priority Code Point = Bits 15-13
+end function;
+
+function vlan_get_dei(hdr : vlan_hdr_t) return vlan_dei_t is
+begin
+    return hdr(12); -- Drop Eligible Indicator = Bit 12
+end function;
+
+function vlan_get_vid(hdr : vlan_hdr_t) return vlan_vid_t is
+    variable vid : vlan_vid_t := unsigned(hdr(11 downto 0));
+begin
+    return vid;     -- Virtual LAN Identifier = Bits 11-0
+end function;
+
+function vlan_get_hdr(
+    pcp: vlan_pcp_t;
+    dei: vlan_dei_t;
+    vid: vlan_vid_t)
+    return vlan_hdr_t
+is
+    variable hdr : vlan_hdr_t :=
+        std_logic_vector(pcp) & dei & std_logic_vector(vid);
+begin
+    return hdr;
+end function;
+
 function strm_byte_present(
     bwidth  : positive;
     bidx    : natural;
@@ -186,7 +287,20 @@ function strm_byte_value(
     data    : std_logic_vector)
     return byte_t
 is
-    constant bleft : positive := data'left - 8 * (bidx mod bwidth);
+    constant bleft  : positive := data'left - 8 * (bidx mod bwidth);
+    variable result : byte_t := data(bleft downto bleft-7);
+begin
+    assert (data'length = 8 * bwidth);
+    return result;
+end function;
+
+function strm_byte_value(
+    bidx    : natural;
+    data    : std_logic_vector)
+    return byte_t
+is
+    constant bwidth : positive := data'length / 8;
+    constant bleft  : positive := data'left - 8 * (bidx mod bwidth);
     variable result : byte_t := data(bleft downto bleft-7);
 begin
     assert (data'length = 8 * bwidth);
@@ -199,6 +313,32 @@ begin
     for i in drev'range loop
         drev(i) := data(7-i);
     end loop;
+    return drev;
+end function;
+
+function flip_word(data : crc_word_t) return crc_word_t is
+    variable drev : crc_word_t;
+begin
+    for i in drev'range loop
+        drev(i) := data(31-i);
+    end loop;
+    return drev;
+end function;
+
+function flip_bits_each_byte(data : crc_word_t) return crc_word_t is
+    constant drev : crc_word_t :=
+        flip_byte(data(31 downto 24)) &
+        flip_byte(data(23 downto 16)) &
+        flip_byte(data(15 downto 8)) &
+        flip_byte(data(7 downto 0));
+begin
+    return drev;
+end function;
+
+function endian_swap(data : crc_word_t) return crc_word_t is
+    constant drev : crc_word_t :=
+        data(7 downto 0) & data(15 downto 8) & data(23 downto 16) & data(31 downto 24);
+begin
     return drev;
 end function;
 

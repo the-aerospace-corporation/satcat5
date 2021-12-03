@@ -236,6 +236,26 @@ package common_primitives is
         out_reset_p : out std_logic;
         out_clk     : in  std_logic := '0');
     end component;
+
+    ---------------------------------------------------------------------
+    -- Other primitives
+    ---------------------------------------------------------------------
+
+    -- The "scrubber" block scans for radiation-induced errors (e.g., SEU)
+    -- and may attempt to correct them.  The platform-specific implementation
+    -- typically wraps IP provided by the FPGA vendor for this purpose.  That
+    -- wrapper should assert the error strobe whenever an error is detected.
+    --
+    -- Some platforms require that the input clock must be a "raw" clock
+    -- with no intervening clock-gating or clock-synthesis logic.
+    --
+    -- For an example, refer to "src/xilinx/scrub_xilinx.vhd".
+    component scrub_generic is
+        port (
+        clk_raw : in  std_logic;        -- System clock (always-on)
+        err_out : out std_logic);       -- Strobe on scrub error
+    end component;
+
 end common_primitives;
 
 ---------------------------------------------------------------------

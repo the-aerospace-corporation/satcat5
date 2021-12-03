@@ -178,6 +178,23 @@ uut_tx : entity work.eth_preamble_tx
     rep_rate    => in_rep_rate,
     rep_read    => in_rep_read);
 
+-- Measure inter-packet gap.
+p_gap : process(clk_100)
+    variable gap : natural := 0;
+begin
+    if rising_edge(clk_100) and (mid_cken = '1') then
+        if (mid_dv = '1') then
+            -- New or continued frame
+            assert (gap = 0 or gap >= 12)
+                report "Invalid inter-packet gap." severity error;
+            gap := 0;
+        else
+            -- Gap between frames
+            gap := gap + 1;
+        end if;
+    end if;
+end process;
+
 -- Unit under test: Preamble removal
 uut_rx : entity work.eth_preamble_rx
     generic map(

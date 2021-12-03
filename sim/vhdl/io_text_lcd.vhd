@@ -17,7 +17,7 @@
 -- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 --------------------------------------------------------------------------
 --
--- Simple testbench for lcd_control
+-- Simple testbench for io_text_lcd
 --
 -- This module doesn't emulate the S162D display logic, but it
 -- does echo each nybble or byte as it is written.
@@ -31,11 +31,11 @@ use     ieee.numeric_std.all;
 use     std.textio.all;
 use     work.common_functions.all;
 
-entity lcd_control_tb is
+entity io_text_lcd_tb is
     -- Testbench.  No I/O pads
-end lcd_control_tb;
+end io_text_lcd_tb;
 
-architecture testbench of lcd_control_tb is
+architecture testbench of io_text_lcd_tb is
 
 function hstr(slv: std_logic_vector) return string is
     variable hexlen     : integer;
@@ -139,7 +139,7 @@ begin
 end process;
 
 -- Unit under test.
-uut : entity work.lcd_control
+uut : entity work.io_text_lcd
     generic map(
     REFCLK_HZ   => 100000000,
     MSG_WAIT    => 50)

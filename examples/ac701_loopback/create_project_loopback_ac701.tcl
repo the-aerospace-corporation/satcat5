@@ -37,29 +37,9 @@ set constr_impl "loopback_ac701_impl.xdc"
 
 # List HDL source files, grouped by type.
 set files_main [list \
- "[file normalize "../../src/vhdl/common/common_functions.vhd"]"\
- "[file normalize "../../src/vhdl/common/common_primitives.vhd"]"\
- "[file normalize "../../src/vhdl/common/config_port_test.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_dec8b10b.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_enc8b10b.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_enc8b10b_table.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_frame_adjust.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_frame_check.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_frame_common.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_preamble_rx.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_preamble_tx.vhd"]"\
- "[file normalize "../../src/vhdl/common/eth_traffic_src.vhd"]"\
- "[file normalize "../../src/vhdl/common/fifo_smol_sync.vhd"]"\
- "[file normalize "../../src/vhdl/common/io_leds.vhd"]"\
- "[file normalize "../../src/vhdl/common/io_uart.vhd"]"\
- "[file normalize "../../src/vhdl/common/port_sgmii_common.vhd"]"\
- "[file normalize "../../src/vhdl/common/slip_encoder.vhd"]"\
- "[file normalize "../../src/vhdl/common/switch_types.vhd"]"\
+ "[file normalize "../../src/vhdl/common/*.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/clkgen_sgmii.vhd"]"\
- "[file normalize "../../src/vhdl/xilinx/7series_io.vhd"]"\
- "[file normalize "../../src/vhdl/xilinx/7series_mem.vhd"]"\
- "[file normalize "../../src/vhdl/xilinx/7series_sync.vhd"]"\
- "[file normalize "../../src/vhdl/xilinx/lcd_control.vhd"]"\
+ "[file normalize "../../src/vhdl/xilinx/7series_*.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/port_sgmii_gpio.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/sgmii_data_slip.vhd"]"\
  "[file normalize "../../src/vhdl/xilinx/sgmii_data_sync.vhd"]"\

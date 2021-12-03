@@ -176,8 +176,8 @@ eg_inject : if SEND_EGRESS generate
         APPEND_FCS      => false,
         RULE_PRI_CONTIG => false)
         port map(
-        in_data(0)      => eg_main_in.data,
-        in_data(1)      => eg_status.data,
+        in0_data        => eg_main_in.data,
+        in1_data        => eg_status.data,
         in_last(0)      => eg_main_in.last,
         in_last(1)      => eg_status.last,
         in_valid(0)     => eg_main_in.valid,
@@ -197,11 +197,12 @@ end generate;
 -- Ingress datapath (or bypass):
 ig_bypass : if not SEND_INGRESS generate
     ig_status           <= AXI_STREAM8_IDLE;
-    ig_main_out.data    <= ig_main_in.data;
-    ig_main_out.last    <= ig_main_in.last;
-    ig_main_out.valid   <= ig_main_in.valid;
+    ig_main_out.data    <= ig_in_data;
+    ig_main_out.last    <= ig_in_last;
+    ig_main_out.valid   <= ig_in_write;
     ig_main_in.ready    <= ig_main_out.ready;
 end generate;
+
 
 ig_inject : if SEND_INGRESS generate
     -- Small FIFO for buffering received data.
@@ -248,8 +249,8 @@ ig_inject : if SEND_INGRESS generate
         APPEND_FCS      => false,
         RULE_PRI_CONTIG => false)
         port map(
-        in_data(0)      => ig_main_in.data,
-        in_data(1)      => ig_status.data,
+        in0_data        => ig_main_in.data,
+        in1_data        => ig_status.data,
         in_last(0)      => ig_main_in.last,
         in_last(1)      => ig_status.last,
         in_valid(0)     => ig_main_in.valid,

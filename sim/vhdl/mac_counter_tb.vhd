@@ -38,7 +38,7 @@ use     work.router_sim_tools.all;
 
 entity mac_counter_tb_single is
     generic (
-    INPUT_BYTES : positive := 1);   -- Set pipeline width
+    IO_BYTES : positive := 1);   -- Set pipeline width
     -- Testbench has no top-level I/O.
 end mac_counter_tb_single;
 
@@ -50,7 +50,7 @@ signal reset_p      : std_logic := '1';
 
 -- Input stream.
 signal in_wcount    : mac_bcount_t := 0;
-signal in_data      : std_logic_vector(8*INPUT_BYTES-1 downto 0) := (others => '0');
+signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0');
 signal in_last      : std_logic := '0';
 signal in_write     : std_logic := '0';
 signal in_busy      : std_logic := '0';
@@ -91,12 +91,12 @@ begin
         -- Flow control and output-data randomization
         if (bcount < blen and rand_bit(test_rate) = '1') then
             -- Drive the "last" and "write" strobes.
-            in_last  <= bool2bit(bcount + INPUT_BYTES >= blen);
+            in_last  <= bool2bit(bcount + IO_BYTES >= blen);
             in_write <= '1';
             -- Word-counter for packet parsing.
-            in_wcount <= int_min(bcount / INPUT_BYTES, IP_HDR_MAX);
+            in_wcount <= int_min(bcount / IO_BYTES, IP_HDR_MAX);
             -- Relay each byte.
-            for b in INPUT_BYTES-1 downto 0 loop
+            for b in IO_BYTES-1 downto 0 loop
                 if (bcount < blen) then
                     btmp := 8 * (blen - bcount);
                     temp := test_frame.all(btmp-1 downto btmp-8);
@@ -121,7 +121,7 @@ uut : entity work.mac_counter
     generic map(
     DEV_ADDR    => CFGBUS_ADDR_ANY,
     REG_ADDR    => CFGBUS_ADDR_ANY,
-    INPUT_BYTES => INPUT_BYTES)
+    IO_BYTES    => IO_BYTES)
     port map(
     in_wcount   => in_wcount,
     in_data     => in_data,
@@ -216,7 +216,7 @@ begin
         counter_query(x"0000", 5);  -- Restart / Check previous
     end loop;
 
-    report "All tests completed, B = " & integer'image(INPUT_BYTES);
+    report "All tests completed, B = " & integer'image(IO_BYTES);
     wait;
 end process;
 
@@ -231,7 +231,7 @@ end mac_counter_tb;
 architecture tb of mac_counter_tb is
 begin
     uut1 : entity work.mac_counter_tb_single
-        generic map(INPUT_BYTES => 1);
+        generic map(IO_BYTES => 1);
     uut8 : entity work.mac_counter_tb_single
-        generic map(INPUT_BYTES => 8);
+        generic map(IO_BYTES => 8);
 end tb;

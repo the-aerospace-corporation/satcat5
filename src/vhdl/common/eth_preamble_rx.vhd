@@ -80,7 +80,6 @@ type state_t is (
 signal out_data     : byte_t := (others => '0');
 signal out_write    : std_logic := '0';
 signal out_last     : std_logic := '0';
-signal out_error    : std_logic := '0';
 
 signal reg_st       : state_t := STATE_IDLE;
 signal reg_data     : byte_t := (others => '0');
@@ -100,7 +99,7 @@ rx_data.reset_p <= not raw_lock;
 rx_data.data    <= out_data;
 rx_data.write   <= out_write;
 rx_data.last    <= out_last;
-rx_data.rxerr   <= out_error;
+rx_data.rxerr   <= bool2bit(err_dlyct > 0);
 rx_data.rate    <= rate_word;
 rx_data.status  <= status;
 rep_rate        <= reg_rpt;

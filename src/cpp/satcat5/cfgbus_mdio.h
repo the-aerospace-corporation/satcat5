@@ -67,7 +67,7 @@ namespace satcat5 {
 
         protected:
             // Poll hardware status.
-            void poll();
+            void poll_always();
 
             // Internal accessors.
             u32 hw_rd_status();

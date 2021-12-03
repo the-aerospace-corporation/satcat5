@@ -30,6 +30,8 @@ package COMMON_FUNCTIONS is
     function U2I(a: std_logic_vector) return natural;
     -- Convert a standard logic (bit) to an integer: '0'->0, '1'->1
     function U2I(a: std_logic) return natural;
+    -- Convert a boolean value to an integer: false->0, true->1
+    function U2I(a: boolean) return natural;
     -- Convert an integer to a L-bit standard logic vector
     function I2S(a: natural; l: natural) return std_logic_vector;
     -- Convert a boolean to a bit, false->'0', true->'1'
@@ -45,11 +47,17 @@ package COMMON_FUNCTIONS is
     function saturate_add(a, b: unsigned; nbits: natural) return unsigned;
 
     -- Perform an XOR reduction
+    -- (i.e., Return '1' if an odd number of input bits are '1')
     function xor_reduce(a: std_logic_vector) return std_logic;
     -- Return '1' if any of the bits in the input are '1'
     function or_reduce(a: std_logic_vector) return std_logic;
     -- Return '1' if all the bits in the input are '1'
     function and_reduce(a: std_logic_vector) return std_logic;
+
+    -- X / Y, rounded up, down, or to the nearest integer.
+    function div_ceil(a: natural; b: positive) return natural;
+    function div_floor(a: natural; b: positive) return natural;
+    function div_round(a: natural; b: positive) return natural;
 
     -- Log2(x), rounded up or down.
     function log2_ceil(a: natural) return integer;
@@ -61,6 +69,14 @@ package COMMON_FUNCTIONS is
     function int_min(a,b: integer) return integer;
     -- Return the least common multiple of two inputs
     function int_lcm(a,b: positive) return positive;
+
+    -- Bit-shift functions for std_logic_vector, using rules for unsigned.
+    function shift_left(x: std_logic_vector; b: integer) return std_logic_vector;
+    function shift_right(x: std_logic_vector; b: integer) return std_logic_vector;
+
+    -- Count the number of '0' or '1' bits in the input.
+    function count_zeros(x : std_logic_vector) return natural;
+    function count_ones(x : std_logic_vector) return natural;
 
     -- Given a bit-mask with exactly one set bit, return its index.
     function one_hot_decode(x: std_logic_vector; w: positive) return unsigned;
@@ -101,10 +117,14 @@ package body COMMON_FUNCTIONS is
     begin
         return TO_INTEGER(UNSIGNED(to_01_vec(a)));
     end;
-    function U2I(a: std_logic)        return natural is
+    function U2I(a: std_logic) return natural is
     begin
         if a = '0' then return 0; else return 1; end if;
     end;
+    function U2I(a: boolean) return natural is
+    begin
+        if a then return 1; else return 0; end if;
+    end function;
 
     function I2S(a: natural; l: natural) return std_logic_vector is
     begin
@@ -163,6 +183,21 @@ package body COMMON_FUNCTIONS is
         return z;
     end;
 
+    function div_ceil(a: natural; b: positive) return natural is
+    begin
+        return (a + b - 1) / b;
+    end function;
+
+    function div_floor(a: natural; b: positive) return natural is
+    begin
+        return a / b;
+    end function;
+
+    function div_round(a: natural; b: positive) return natural is
+    begin
+        return (a + b / 2) / b;
+    end function;
+
     function log2_ceil(a: natural) return integer is
     begin
         return log2_floor(2*a-1);
@@ -210,6 +245,38 @@ package body COMMON_FUNCTIONS is
         end loop;
         return accum_a;
     end;
+
+    function shift_left(x: std_logic_vector; b: integer) return std_logic_vector is
+    begin
+        return std_logic_vector(shift_left(unsigned(x), b));
+    end function;
+
+    function shift_right(x: std_logic_vector; b: integer) return std_logic_vector is
+    begin
+        return std_logic_vector(shift_right(unsigned(x), b));
+    end function;
+
+    function count_zeros(x : std_logic_vector) return natural is
+        variable tmp : integer range 0 to x'length := 0;
+    begin
+        for n in x'range loop
+            if (x(n) = '0') then
+                tmp := tmp + 1;
+            end if;
+        end loop;
+        return tmp;
+    end function;
+
+    function count_ones(x : std_logic_vector) return natural is
+        variable tmp : integer range 0 to x'length := 0;
+    begin
+        for n in x'range loop
+            if (x(n) = '1') then
+                tmp := tmp + 1;
+            end if;
+        end loop;
+        return tmp;
+    end function;
 
     function one_hot_decode(x: std_logic_vector; w: positive) return unsigned is
         variable tmp : unsigned(w-1 downto 0) := (others => '0');
@@ -282,15 +349,12 @@ package body COMMON_FUNCTIONS is
         clkref_hz   : positive;
         baud_hz     : positive;
         round_up    : boolean := true)
-        return positive
-    is
-        constant div_rd_up   : natural := (clkref_hz + baud_hz - 1) / baud_hz;
-        constant div_rd_near : natural := (clkref_hz + baud_hz / 2) / baud_hz;
+        return positive is
     begin
         if (round_up) then
-            return int_max(1, div_rd_up);
+            return int_max(1, div_ceil(clkref_hz, baud_hz));
         else
-            return int_max(1, div_rd_near);
+            return int_max(1, div_round(clkref_hz, baud_hz));
         end if;
     end function;
 

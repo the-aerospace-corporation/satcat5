@@ -40,6 +40,7 @@ static const I2cAddr I2C_DEVADDR1   = I2cAddr::addr7(21);   // 8-bit = 0x42
 static const I2cAddr I2C_DEVADDR2   = I2cAddr::addr7(22);   // 8-bit = 0x44
 static const u32 I2C_CFGADDR1       = I2C_DEVADDR1.m_addr << 16;
 static const u32 I2C_CFGADDR2       = I2C_DEVADDR2.m_addr << 16;
+static const u32 CTS_OVERRIDE       = (1u << 31);
 
 // Hardware configuration to achieve specified baud-rate.
 // (Refer to io_i2c_controller.vhd, io_spi_controller.vhd, and io_uart.vhd)
@@ -47,8 +48,10 @@ u32 clkdiv_i2c(unsigned baud)
     {return satcat5::util::div_ceil_u32(CLKREF, 4*baud) - 1;}
 u32 clkdiv_spi(unsigned baud)
     {return satcat5::util::div_ceil_u32(CLKREF, 2*baud);}
-u32 clkdiv_uart(unsigned baud)
-    {return satcat5::util::div_round_u32(CLKREF, baud);}
+u32 clkdiv_uart(unsigned baud, bool cts_ovr = false) {
+    return (cts_ovr ? CTS_OVERRIDE : 0)
+         | satcat5::util::div_round_u32(CLKREF, baud);
+}
 
 class MockSerial : public satcat5::test::MockConfigBusMmap {
 public:
@@ -85,6 +88,8 @@ TEST_CASE("port_serial") {
         CHECK(mock.ctrl0() == 0x0203);
         uut.config_uart(921600);    // Set UART baud rate
         CHECK(mock.ctrl1() == clkdiv_uart(921600));
+        uut.config_uart(115200, true);  // UART baud rate + CTS override
+        CHECK(mock.ctrl1() == clkdiv_uart(115200, true));
     }
 
     SECTION("SerialI2cController") {
@@ -123,7 +128,7 @@ TEST_CASE("port_serial") {
         satcat5::port::SerialUart uut(&mock, CFG_DEVADDR);
         uut.config_uart(921600);
         CHECK(mock.ctrl0() == clkdiv_uart(921600));
-        uut.config_uart(115200);
-        CHECK(mock.ctrl0() == clkdiv_uart(115200));
+        uut.config_uart(115200, true);
+        CHECK(mock.ctrl0() == clkdiv_uart(115200, true));
     }
 }

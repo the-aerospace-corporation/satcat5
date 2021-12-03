@@ -29,15 +29,11 @@ set ip_desc "Error-reporting for SatCat5 switches and FPGA configuration scrubbi
 set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
-# Enable the configuration-scrubbing IP-core?
-if {[info exists satcat5_enable_sem] && $satcat5_enable_sem} {
-    source $ip_root/../generate_sem.tcl
-    generate_sem sem_0
-    ipcore_add_xci sem_0
-    ipcore_add_file $src_dir/xilinx scrub_xilinx.vhd
-} else {
-    ipcore_add_file $src_dir/common scrub_placeholder.vhd
-}
+# Generate IP for the configuration-scrubbing IP-core.
+# (Instantiation is optional, controlled by build-time generic.)
+source $ip_root/../generate_sem.tcl
+generate_sem sem_0
+ipcore_add_xci sem_0
 
 # Add all required source files:
 #               Path                Filename/Part Family
@@ -48,10 +44,11 @@ ipcore_add_file $src_dir/common     fifo_smol_async.vhd
 ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
 ipcore_add_file $src_dir/common     io_error_reporting.vhd
 ipcore_add_file $src_dir/common     io_leds.vhd
+ipcore_add_file $src_dir/common     io_text_lcd.vhd
 ipcore_add_file $src_dir/common     io_uart.vhd
 ipcore_add_file $src_dir/common     switch_aux.vhd
 ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_file $src_dir/xilinx     lcd_control.vhd
+ipcore_add_file $src_dir/xilinx     scrub_xilinx.vhd
 ipcore_add_sync $src_dir/xilinx     $part_family
 ipcore_add_top  $ip_root            wrap_switch_aux
 
@@ -73,6 +70,7 @@ set_property physical_name text_lcd_rs  [ipx::add_port_map "lcd_rs" $intf]
 
 # Set parameters
 ipcore_add_param SCRUB_CLK_HZ long 100000000
+ipcore_add_param SCRUB_ENABLE bool false
 ipcore_add_param STARTUP_MSG string "SatCat5 READY!"
 ipcore_add_param UART_BAUD long 921600
 set ccount [ipcore_add_param CORE_COUNT long 1]

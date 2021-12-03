@@ -401,9 +401,9 @@ u_ig_out : entity work.packet_inject
     MIN_OUT_BYTES   => LCL_FRAME_BYTES_MIN,
     APPEND_FCS      => true)
     port map(
-    in_data(0)      => ig_proxy.data,
-    in_data(1)      => aux_eg_gate.data,
-    in_data(2)      => aux_eg_proxy.data,
+    in0_data        => ig_proxy.data,
+    in1_data        => aux_eg_gate.data,
+    in2_data        => aux_eg_proxy.data,
     in_last(0)      => ig_proxy.last,
     in_last(1)      => aux_eg_gate.last,
     in_last(2)      => aux_eg_proxy.last,
@@ -545,9 +545,9 @@ u_eg_out : entity work.packet_inject
     MIN_OUT_BYTES   => NET_FRAME_BYTES_MIN,
     APPEND_FCS      => true)
     port map(
-    in_data(0)      => eg_proxy.data,
-    in_data(1)      => aux_ig_gate.data,
-    in_data(2)      => aux_ig_proxy.data,
+    in0_data        => eg_proxy.data,
+    in1_data        => aux_ig_gate.data,
+    in2_data        => aux_ig_proxy.data,
     in_last(0)      => eg_proxy.last,
     in_last(1)      => aux_ig_gate.last,
     in_last(2)      => aux_ig_proxy.last,

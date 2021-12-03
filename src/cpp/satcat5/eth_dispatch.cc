@@ -36,6 +36,10 @@ Dispatch::Dispatch(
     , m_dst(dst)    // Destination pipe (Writeable)
     , m_src(src)    // Source pipe (Readable)
     , m_reply_macaddr(eth::MACADDR_BROADCAST)
+    #if SATCAT5_VLAN_ENABLE
+    , m_reply_vtag(eth::VTAG_NONE)
+    , m_default_vid(eth::VTAG_NONE)
+    #endif
 {
     m_src->set_callback(this);
 }
@@ -49,16 +53,40 @@ Dispatch::~Dispatch()
 
 satcat5::io::Writeable* Dispatch::open_reply(const Type& type, unsigned len)
 {
-    if (DEBUG_VERBOSE > 1)
-        log::Log(log::DEBUG, "EthDispatch: open_reply").write(type.as_u16());
+    eth::MacType etype;
+    eth::VlanTag vtag;
 
-    eth::MacType etype = {type.as_u16()};       // Convert to EtherType
-    return open_write(m_reply_macaddr, etype);  // Open reply frame...
+    if (DEBUG_VERBOSE > 1) {
+        if (SATCAT5_VLAN_ENABLE) {
+            log::Log(log::DEBUG, "EthDispatch: open_reply").write(type.as_u32());
+        } else {
+            log::Log(log::DEBUG, "EthDispatch: open_reply").write(type.as_u16());
+        }
+    }
+
+    if (SATCAT5_VLAN_ENABLE) {
+        // VLAN support: Pull EtherType and VLAN tag from "type" parameter.
+        type.as_pair(vtag.value, etype.value);
+        // Use specified VID if present; otherwise use the stored reply VID.
+        if (vtag.vid() == 0) vtag.value |= m_reply_vtag.value;
+        return open_write(m_reply_macaddr, etype, vtag);
+    } else {
+        // No VLAN support, EtherType is the only parameter.
+        type.as_u16(etype.value);
+        return open_write(m_reply_macaddr, etype);
+    }
 }
 
+#if SATCAT5_VLAN_ENABLE
+satcat5::io::Writeable* Dispatch::open_write(
+    const eth::MacAddr& dst,
+    const eth::MacType& type,
+    eth::VlanTag vtag)
+#else
 satcat5::io::Writeable* Dispatch::open_write(
     const eth::MacAddr& dst,
     const eth::MacType& type)
+#endif
 {
     if (DEBUG_VERBOSE > 0)
         log::Log(log::DEBUG, "EthDispatch: open_write").write(type.value);
@@ -73,10 +101,22 @@ satcat5::io::Writeable* Dispatch::open_write(
     // Sanity check: Is there room for the frame header?
     if (m_dst->get_write_space() < 14) return 0;
 
+    // Override outgoing VID, if none is specified.
+    // (Useful for ports where VLAN tags are mandatory.)
+    #if SATCAT5_VLAN_ENABLE
+    if (vtag.vid() == 0) vtag.value |= m_default_vid.value;
+    #endif
+
     // Write out the Ethernet frame header:
-    m_dst->write_obj(dst);      // Destination
-    m_dst->write_obj(m_addr);   // Source
-    m_dst->write_obj(type);     // EtherType
+    m_dst->write_obj(dst);          // Destination
+    m_dst->write_obj(m_addr);       // Source
+    #if SATCAT5_VLAN_ENABLE
+    if (vtag.value) {
+        m_dst->write_obj(satcat5::eth::ETYPE_VTAG);
+        m_dst->write_obj(vtag);     // VLAN tag (optional)
+    }
+    #endif
+    m_dst->write_obj(type);         // EtherType
 
     // Ready to start writing frame contents.
     return m_dst;
@@ -86,18 +126,34 @@ void Dispatch::data_rcvd()
 {
     // Attempt to read the Ethernet frame header.
     eth::Header hdr;
-    bool ok = m_src->read_obj(hdr);
+    bool pending = m_src->read_obj(hdr);
 
-    // Store reply address and scan for a matching Protocol.
-    if (ok) {
-        if (DEBUG_VERBOSE > 0)
-            log::Log(log::DEBUG, "EthDispatch: data_rcvd").write(hdr.type.value);
-        m_reply_macaddr = hdr.src;
-        deliver(Type(hdr.type.value), m_src, m_src->get_read_ready());
-    } else if (DEBUG_VERBOSE > 0) {
-        log::Log(log::DEBUG, "EthDispatch: data_rcvd (error)");
+    if (DEBUG_VERBOSE > 0)
+        log::Log(log::DEBUG, "EthDispatch: data_rcvd").write(pending ? "OK" : "Error");
+
+    // Store reply address.
+    m_reply_macaddr = hdr.src;
+
+    // Attempt delivery using specific VLAN tag, if applicable (VID > 0)
+    // (This allows VLAN-specific handlers to take priority over generic ones.)
+    #if SATCAT5_VLAN_ENABLE
+    m_reply_vtag.value = hdr.vtag.vid();    // Store VID field only (LSBs)
+    if (pending && hdr.vtag.vid()) {
+        Type typ_vlan(hdr.vtag.vid(), hdr.type.value);
+        pending = !deliver(typ_vlan, m_src, m_src->get_read_ready());
+    }
+    #endif
+
+    // Attempt delivery using EtherType only (basic service or catch-all).
+    if (pending) {
+        Type typ_basic(hdr.type.value);
+        pending = !deliver(typ_basic, m_src, m_src->get_read_ready());
     }
 
-    // Cleanup.
+    // If we reach this point, all delivery attempts failed.
+    if (pending && DEBUG_VERBOSE > 1)
+        log::Log(log::DEBUG, "EthDispatch: Unsupported EtherType").write(hdr.type.value);
+
+    // Clean-up rest of packet, if applicable.
     m_src->read_finalize();
 }

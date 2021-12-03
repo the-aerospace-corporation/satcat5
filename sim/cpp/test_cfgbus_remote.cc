@@ -45,7 +45,7 @@ public:
     DelayedRead(cfg::ConfigBus* cfg)
         : m_cfg(cfg) {}
 
-    void poll() {
+    void poll_always() override {
         u32 tmp;
         CHECK(m_cfg->read(42, tmp) == cfg::IOSTATUS_CMDERROR);
     }
@@ -69,8 +69,18 @@ TEST_CASE("cfgbus-remote-eth") {
     eth::Dispatch net_peripheral(MAC_PERIPHERAL, &p2c, &c2p);
 
     // Basic network headers.
-    const eth::Header HDR_CMD = {MAC_PERIPHERAL, MAC_CONTROLLER, eth::ETYPE_CFGBUS_CMD};
-    const eth::Header HDR_ACK = {MAC_CONTROLLER, MAC_PERIPHERAL, eth::ETYPE_CFGBUS_ACK};
+    const eth::Header HDR_CMD = {
+        MAC_PERIPHERAL,
+        MAC_CONTROLLER,
+        eth::ETYPE_CFGBUS_CMD,
+        eth::VTAG_NONE,
+    };
+    const eth::Header HDR_ACK = {
+        MAC_CONTROLLER,
+        MAC_PERIPHERAL,
+        eth::ETYPE_CFGBUS_ACK,
+        eth::VTAG_NONE,
+    };
 
     // Unit under test.
     eth::ConfigBus uut_controller(&net_controller, &timer);
@@ -309,8 +319,18 @@ TEST_CASE("cfgbus-remote-udp") {
     udp::Dispatch udp_peripheral(&ip_peripheral);
 
     // Basic network headers.
-    const eth::Header HDR_CMD = {MAC_PERIPHERAL, MAC_CONTROLLER, eth::ETYPE_CFGBUS_CMD};
-    const eth::Header HDR_ACK = {MAC_CONTROLLER, MAC_PERIPHERAL, eth::ETYPE_CFGBUS_ACK};
+    const eth::Header HDR_CMD = {
+        MAC_PERIPHERAL,
+        MAC_CONTROLLER,
+        eth::ETYPE_CFGBUS_CMD,
+        eth::VTAG_NONE,
+    };
+    const eth::Header HDR_ACK = {
+        MAC_CONTROLLER,
+        MAC_PERIPHERAL,
+        eth::ETYPE_CFGBUS_ACK,
+        eth::VTAG_NONE,
+    };
 
     // Unit under test.
     udp::ConfigBus uut_controller(&udp_controller);

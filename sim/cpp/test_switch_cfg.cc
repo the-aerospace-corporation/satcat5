@@ -23,7 +23,7 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/switch_cfg.h>
 
-// Constants relating to the unit under test:
+// Address constants:
 static const unsigned CFG_DEVADDR   = 42;
 static const unsigned REG_PORTCOUNT = 0;    // Number of ports (read-only)
 static const unsigned REG_DATAPATH  = 1;    // Datapath width, in bits (read-only)
@@ -33,6 +33,12 @@ static const unsigned REG_PROMISC   = 4;    // Promisicuous port mask (read-writ
 static const unsigned REG_PRIORITY  = 5;    // Packet prioritization (read-write, optional)
 static const unsigned REG_PKTCOUNT  = 6;    // Packet-counting w/ filter (read-write)
 static const unsigned REG_FRAMESIZE = 7;    // Min/max frame size limits (read-only)
+static const unsigned REG_VLAN_PORT = 8;    // VLAN port configuration
+static const unsigned REG_VLAN_VID  = 9;    // VLAN connections (VID)
+static const unsigned REG_VLAN_MASK = 10;   // VLAN connections (port-mask)
+
+// Other configuration constants:
+static const unsigned PORT_COUNT    = 5;    // Number of ports on this switch
 static const unsigned TBL_PRIORITY  = 4;    // Max number of high-priority EtherTypes
 
 TEST_CASE("switch_cfg") {
@@ -42,7 +48,7 @@ TEST_CASE("switch_cfg") {
 
     // Configure simulated register-map.
     satcat5::test::CfgDevice regs;
-    regs[REG_PORTCOUNT].read_default(5);            // 5-port switch
+    regs[REG_PORTCOUNT].read_default(PORT_COUNT);   // N-port switch
     regs[REG_DATAPATH].read_default(24);            // 24-bit datapath
     regs[REG_CORECLOCK].read_default(100e6);        // 100 MHz clock
     regs[REG_MACCOUNT].read_default(32);            // Up to 32 MAC-addresses
@@ -50,6 +56,9 @@ TEST_CASE("switch_cfg") {
     regs[REG_PRIORITY].read_default(TBL_PRIORITY);  // Max priority filters
     regs[REG_PKTCOUNT].read_default_none();         // Packet-counting filter
     regs[REG_FRAMESIZE].read_default(0x05F20040);   // Default: Max = 1522, Min = 64
+    regs[REG_VLAN_PORT].read_default_none();        // Port-config = write-only
+    regs[REG_VLAN_VID].read_default_none();         // VID register = write-only
+    regs[REG_VLAN_MASK].read_default_echo();        // Mask register = echo
 
     // Unit under test.
     satcat5::eth::SwitchConfig uut(&regs, CFG_DEVADDR);
@@ -128,5 +137,36 @@ TEST_CASE("switch_cfg") {
     SECTION("log_info") {
         log.disable();                                  // Suppress test message
         uut.log_info("Test");
+    }
+
+    SECTION("port_count") {
+        CHECK(uut.port_count() == PORT_COUNT);
+    }
+
+    SECTION("vlan_reset") {
+        uut.vlan_reset(false);                          // Reset in normal mode
+        CHECK(uut.vlan_get_mask(123) == satcat5::eth::VLAN_CONNECT_ALL);
+        CHECK(uut.vlan_get_mask(456) == satcat5::eth::VLAN_CONNECT_ALL);
+        uut.vlan_reset(true);                           // Reset in lockdown mode
+        CHECK(uut.vlan_get_mask(123) == satcat5::eth::VLAN_CONNECT_NONE);
+        CHECK(uut.vlan_get_mask(456) == satcat5::eth::VLAN_CONNECT_NONE);
+    }
+
+    SECTION("vlan_masks") {
+        uut.vlan_set_mask(789, 0x2345);                 // Set port mask for VID = 789
+        CHECK(regs[REG_VLAN_VID].write_pop() == 789);
+        CHECK(regs[REG_VLAN_MASK].write_pop() == 0x2345);
+        CHECK(uut.vlan_get_mask(789) == 0x02345);       // Confirm new setting
+        uut.vlan_join(789, 16);                         // Port 16 joins VID = 789
+        CHECK(uut.vlan_get_mask(789) == 0x12345);       // Confirm new setting
+        uut.vlan_leave(789, 0);                         // Port 0 leaves VID = 789
+        CHECK(uut.vlan_get_mask(789) == 0x12344);       // Confirm new setting
+    }
+
+    SECTION("vlan_ports") {
+        for (u32 a = 0 ; a < 5 ; ++a) {
+            uut.vlan_set_port(a);
+            CHECK(regs[REG_VLAN_PORT].write_pop() == a);
+        }
     }
 }

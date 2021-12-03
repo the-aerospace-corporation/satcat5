@@ -33,6 +33,11 @@
 #include <satcat5/io_core.h>
 #include <satcat5/net_core.h>
 
+// Enable 802.1Q VLAN tagging?
+#ifndef SATCAT5_VLAN_ENABLE
+#define SATCAT5_VLAN_ENABLE 1
+#endif
+
 namespace satcat5 {
     namespace eth {
         // An Ethernet MAC address (with serializable interface).
@@ -62,12 +67,30 @@ namespace satcat5 {
                 {value = rd->read_u16(); return true;}
         };
 
+        // Header contents for an 802.1Q Virtual-LAN tag.
+        // See also: https://en.wikipedia.org/wiki/IEEE_802.1Q
+        struct VlanTag {
+            u16 value;
+
+            inline u16 vid() const {return ((value >> 0)  & 0xFFF);}
+            inline u16 dei() const {return ((value >> 12) & 0x1);}
+            inline u16 pcp() const {return ((value >> 13) & 0x7);}
+
+            inline void write_to(satcat5::io::Writeable* wr) const
+                {wr->write_u16(value);}
+            inline bool read_from(satcat5::io::Readable* rd)
+                {value = rd->read_u16(); return true;}
+        };
+
         // An Ethernet header (destination, source, and EtherType)
         // See also: https://en.wikipedia.org/wiki/Ethernet_frame
         struct Header {
             satcat5::eth::MacAddr dst;
             satcat5::eth::MacAddr src;
             satcat5::eth::MacType type;
+            #if SATCAT5_VLAN_ENABLE
+            satcat5::eth::VlanTag vtag;
+            #endif
 
             // Write Ethernet header to the designated stream.
             void write_to(satcat5::io::Writeable* wr) const;
@@ -89,17 +112,42 @@ namespace satcat5 {
             ETYPE_ARP           = {0x0806},
             ETYPE_CFGBUS_CMD    = {0x5C01},
             ETYPE_CFGBUS_ACK    = {0x5C02},
+            ETYPE_VTAG          = {0x8100},
             ETYPE_FLOWCTRL      = {0x8808},
             ETYPE_PTP           = {0x88F7};
+
+        constexpr satcat5::eth::VlanTag
+            VTAG_NONE           = {0x0000},     // Untagged frame
+            VTAG_DEFAULT        = {0x0001},     // Default ports use VID = 1
+            VTAG_PRIORITY1      = {0x2000},     // Set priority only (1-7)
+            VTAG_PRIORITY2      = {0x4000},
+            VTAG_PRIORITY3      = {0x6000},
+            VTAG_PRIORITY4      = {0x8000},
+            VTAG_PRIORITY5      = {0xA000},
+            VTAG_PRIORITY6      = {0xC000},
+            VTAG_PRIORITY7      = {0xE000};
+
+        // Min/max range for VLAN identifier (VID)
+        constexpr u16 VID_NONE  = 0;    // Default / placeholder
+        constexpr u16 VID_MIN   = 1;    // Start of user VID range
+        constexpr u16 VID_MAX   = 4094; // End of user VID range
+        constexpr u16 VID_RSVD  = 4095; // Reserved
 
         // Implementation of "net::Address" for Ethernet Dispatch.
         class Address : public satcat5::net::Address {
         public:
             explicit Address(satcat5::eth::Dispatch* iface);
 
+            #if SATCAT5_VLAN_ENABLE
+            void connect(
+                const satcat5::eth::MacAddr& addr,
+                const satcat5::eth::MacType& type,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
+            #else
             void connect(
                 const satcat5::eth::MacAddr& addr,
                 const satcat5::eth::MacType& type);
+            #endif
 
             satcat5::net::Dispatch* iface() const override;
             satcat5::io::Writeable* open_write(unsigned len) const override;
@@ -110,6 +158,9 @@ namespace satcat5 {
             satcat5::eth::Dispatch* const m_iface;
             satcat5::eth::MacAddr m_addr;
             satcat5::eth::MacType m_type;
+            #if SATCAT5_VLAN_ENABLE
+            satcat5::eth::VlanTag m_vtag;
+            #endif
         };
 
         // Simple wrapper for Address class, provided to allow control of
@@ -130,6 +181,12 @@ namespace satcat5 {
             Protocol(
                 satcat5::eth::Dispatch* dispatch,
                 const satcat5::eth::MacType& ethertype);
+            #if SATCAT5_VLAN_ENABLE
+            Protocol(
+                satcat5::eth::Dispatch* dispatch,
+                const satcat5::eth::MacType& ethertype,
+                const satcat5::eth::VlanTag& vtag);
+            #endif
             ~Protocol() SATCAT5_OPTIONAL_DTOR;
 
             // Note: Child MUST override frame_rcvd(...)

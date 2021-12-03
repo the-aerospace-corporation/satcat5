@@ -58,7 +58,7 @@ namespace satcat5 {
         public:
             using SerialGeneric::SerialGeneric;
             void config_spi(u8 mode, u8 gfilt=1);
-            void config_uart(unsigned baud);
+            void config_uart(unsigned baud, bool ignore_cts=false);
         };
 
         class SerialI2cController : public SerialGeneric {
@@ -89,7 +89,7 @@ namespace satcat5 {
         public:
             // Note: This class configures both 2-wire and 4-wire UARTs.
             using SerialGeneric::SerialGeneric;
-            void config_uart(unsigned baud);
+            void config_uart(unsigned baud, bool ignore_cts=false);
         };
     }
 }
