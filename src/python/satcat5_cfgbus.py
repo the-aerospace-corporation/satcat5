@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
