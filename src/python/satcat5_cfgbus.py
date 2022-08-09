@@ -65,7 +65,7 @@ class ConfigBus:
         self.ethhdr = mac_addr + if_obj.mac + self.etype_cmd
         # Register callback if this is a readable interface.
         if readable:
-            self.ifobj.set_callback(self)
+            self.ifobj.set_callback(self._msg_rcvd)
 
     def _msg_send(self, cmd):
         """Internal helper function for sending commands."""
@@ -80,13 +80,13 @@ class ConfigBus:
             (frm[13] != self.etype_ack[1])): return
         # Otherwise, store the reply and wake up any waiting threads.
         with self.cv:
-            reply = frm[14:]
+            self.reply = frm[14:]
             self.cv.notify()
 
     def _msg_wait(self, timeout):
         """Internal function that waits for reply from ConfigBus host."""
         with self.cv:
-            if reply is None:
+            if self.reply is None:
                 self.cv.wait(timeout)
             tmp = self.reply
             self.reply = None
@@ -123,7 +123,7 @@ class ConfigBus:
         # If this is a readable port, wait for reply.
         if self.read:
             reply = self._msg_wait(timeout)
-            return len(reply) > 0           # Success?
+            return reply is not None           # Success?
         else:
             return True                     # Assume succes
 
@@ -152,7 +152,8 @@ class ConfigBus:
         # If this is a readable port, wait for reply.
         if self.read:
             reply = self._msg_wait(timeout)
-            if len(reply) < 13: return None # Timeout
+            if reply is None or len(reply) < 13:
+                return None                 # Timeout
             (word, status) = unpack('>LB', reply[8:13])
             if status: return None          # Missing-ACK
             else: return word               # Success
