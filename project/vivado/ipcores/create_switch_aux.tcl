@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -29,51 +29,38 @@ set ip_desc "Error-reporting for SatCat5 switches and FPGA configuration scrubbi
 set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
-# Generate IP for the configuration-scrubbing IP-core.
+# Generate IP for the configuration-scrubbing IP-core, 7-series only.
 # (Instantiation is optional, controlled by build-time generic.)
-source $ip_root/../generate_sem.tcl
-generate_sem sem_0
-ipcore_add_xci sem_0
+if {$part_family == "7series"} {
+    source $ip_root/../generate_sem.tcl
+    generate_sem sem_0
+    ipcore_add_xci sem_0
+}
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     fifo_smol_async.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     io_error_reporting.vhd
-ipcore_add_file $src_dir/common     io_leds.vhd
-ipcore_add_file $src_dir/common     io_text_lcd.vhd
-ipcore_add_file $src_dir/common     io_uart.vhd
-ipcore_add_file $src_dir/common     switch_aux.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_file $src_dir/xilinx     scrub_xilinx.vhd
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_switch_aux
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_file $src_dir/xilinx/scrub_xilinx.vhd
+ipcore_add_top  $ip_root/wrap_switch_aux.vhd
 
-# Connect all the basic I/O ports
+# Connect I/O ports
 ipcore_add_clock scrub_clk {}
 ipcore_add_reset reset_p ACTIVE_HIGH
 ipcore_add_gpio scrub_req_t
 ipcore_add_gpio status_uart
-
-# Connec the Text-LCD control port
-set intf [ipx::add_bus_interface text_lcd $ip]
-set_property abstraction_type_vlnv aero.org:satcat5:TextLCD_rtl:1.0 $intf
-set_property bus_type_vlnv aero.org:satcat5:TextLCD:1.0 $intf
-set_property interface_mode master $intf
-set_property physical_name text_lcd_db  [ipx::add_port_map "lcd_db" $intf]
-set_property physical_name text_lcd_e   [ipx::add_port_map "lcd_e"  $intf]
-set_property physical_name text_lcd_rw  [ipx::add_port_map "lcd_rw" $intf]
-set_property physical_name text_lcd_rs  [ipx::add_port_map "lcd_rs" $intf]
+ipcore_add_textlcd text_lcd text
 
 # Set parameters
-ipcore_add_param SCRUB_CLK_HZ long 100000000
-ipcore_add_param SCRUB_ENABLE bool false
-ipcore_add_param STARTUP_MSG string "SatCat5 READY!"
-ipcore_add_param UART_BAUD long 921600
-set ccount [ipcore_add_param CORE_COUNT long 1]
+ipcore_add_param SCRUB_CLK_HZ long 100000000\
+    {Frequency of "scrub_clk" in Hz}
+ipcore_add_param SCRUB_ENABLE bool false\
+    {Enable Soft Error Mitigation core? (7-series only)}\
+    [expr {$part_family == "7series"}]
+ipcore_add_param STARTUP_MSG string "SatCat5 READY!"\
+    {Startup message for LCD and UART}
+ipcore_add_param UART_BAUD long 921600\
+    {Baud rate for status UART (Hz)}
+set ccount [ipcore_add_param CORE_COUNT long 1\
+    {Number of attached "switch_core" blocks}]
 
 # Set min/max range on the CORE_COUNT parameter.
 set CORE_COUNT_MAX 12
@@ -92,3 +79,6 @@ for {set idx 0} {$idx < $CORE_COUNT_MAX} {incr idx} {
 
 # Package the IP-core.
 ipcore_finished
+
+# Disable spurious warnings in the parent project.
+set_msg_config -id {[Common 17-55]} -new_severity INFO -string "dont_touch.xdc"

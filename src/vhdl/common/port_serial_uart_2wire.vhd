@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -55,6 +55,7 @@ use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.common_primitives.sync_reset;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_serial_uart_2wire is
@@ -123,9 +124,11 @@ begin
 rx_data.clk     <= refclk;
 rx_data.rate    <= get_rate_word(RATE_MBPS);
 rx_data.status  <= status_word(7 downto 0);
+rx_data.tsof    <= TSTAMP_DISABLED;
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= wdog_rst_p;
+tx_ctrl.tnow    <= TSTAMP_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No error states
 
 -- Upstream status reporting.

@@ -1,4 +1,4 @@
-# Copyright 2020 The Aerospace Corporation
+# Copyright 2020, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -50,3 +50,7 @@ set_clock_groups -asynchronous \
     -group [get_clocks clk_eth1     -include_generated_clocks] \
     -group [get_clocks clk_eth2     -include_generated_clocks] \
     -group [get_clocks $clk_sys     -include_generated_clocks]
+
+# Explicit delay constraints on clock-crossing signals.
+set_max_delay -datapath_only 5.0 -from [get_cells -hier -filter {satcat5_cross_clock_src > 0}]
+set_max_delay -datapath_only 5.0 -to   [get_cells -hier -filter {satcat5_cross_clock_dst > 0}]

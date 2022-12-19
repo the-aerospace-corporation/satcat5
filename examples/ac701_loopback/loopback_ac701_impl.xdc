@@ -1,4 +1,4 @@
-# Copyright 2020 The Aerospace Corporation
+# Copyright 2020, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -50,6 +50,9 @@ set_clock_groups -asynchronous \
     -group [get_clocks synth_625a   -include_generated_clocks] \
     -group [get_clocks synth_625b   -include_generated_clocks]
 
-# Max-delay constraint on specific cross-clock paths.
+# Explicit delay constraints on clock-crossing signals.
+set_max_delay -datapath_only 5.0 -from [get_cells -hier -filter {satcat5_cross_clock_src > 0}]
+set_max_delay -datapath_only 5.0 -to   [get_cells -hier -filter {satcat5_cross_clock_dst > 0}]
 set_max_delay 1.5 -from synth_625a -to synth_125  -datapath_only
 set_max_delay 1.5 -from synth_125  -to synth_625a -datapath_only
+

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -32,6 +32,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
+use     work.ptp_types.all;
 
 entity sgmii_data_slip_tb is
     -- Unit testbench top level, no I/O ports
@@ -49,10 +50,13 @@ signal reset_p      : std_logic := '1';
 
 -- Input, output, and reference streams.
 signal in_data      : io_vector := (others => '0');
+signal in_tsof      : tstamp_t := (others => '0');
 signal in_next      : std_logic := '0';
 signal out_data     : io_vector;
+signal out_tsof     : tstamp_t;
 signal out_next     : std_logic;
 signal ref_data     : io_unsigned := (others => '0');
+signal ref_tsof     : tstamp_t := (others => '0');
 
 -- Sample-point commanding.
 signal slip_early   : std_logic := '0';
@@ -128,19 +132,29 @@ begin
                 end if;
             end loop;
         end if;
+
+        -- Generate a baseline timestamp that increments by a fixed amount.
+        if (reset_p = '1') then
+            in_tsof <= (others => '0');
+        elsif (in_next = '1') then
+            in_tsof <= in_tsof + to_unsigned(IO_WIDTH, TSTAMP_WIDTH);
+        end if;
     end if;
 end process;
 
 -- Unit under test
 uut : entity work.sgmii_data_slip
     generic map(
+    DLY_STEP    => to_unsigned(1, TSTAMP_WIDTH),
     IN_WIDTH    => IO_WIDTH,
     OUT_WIDTH   => IO_WIDTH)
     port map(
     in_data     => in_data,
     in_next     => in_next,
+    in_tsof     => in_tsof,
     out_data    => out_data,
     out_next    => out_next,
+    out_tsof    => out_tsof,
     slip_early  => slip_early,
     slip_late   => slip_late,
     slip_ready  => slip_ready,
@@ -149,7 +163,11 @@ uut : entity work.sgmii_data_slip
 
 -- Check the output stream.
 p_check : process(clk_100)
-    variable ignore_ct : integer := 0;
+    constant DIFF_MIN   : tstamp_t := to_unsigned(IO_WIDTH-1, TSTAMP_WIDTH);
+    constant DIFF_MAX   : tstamp_t := to_unsigned(IO_WIDTH+1, TSTAMP_WIDTH);
+    variable ignore_ct  : integer := 0;
+    variable tsof_incr  : integer := 0;
+    variable tsof_prev  : tstamp_t := (others => '0');
 begin
     if rising_edge(clk_100) then
         -- Generate simple counter for the reference stream.
@@ -159,6 +177,26 @@ begin
             ref_data <= ref_data + 1;
         end if;
 
+        -- Timestamp reference is also incremented by slip amount.
+        tsof_incr := 0;
+        if (out_next = '1') then
+            tsof_incr := tsof_incr + IO_WIDTH;
+        end if;
+        if (slip_early = '1') then
+            tsof_incr := tsof_incr - 1;
+        end if;
+        if (slip_late = '1') then
+            tsof_incr := tsof_incr + 1;
+        end if;
+
+        if (reset_p = '1') then
+            ref_tsof <= to_unsigned(IO_WIDTH-1, TSTAMP_WIDTH);
+        elsif (tsof_incr < 0) then
+            ref_tsof <= ref_tsof - to_unsigned(abs(tsof_incr), TSTAMP_WIDTH);
+        else
+            ref_tsof <= ref_tsof + to_unsigned(abs(tsof_incr), TSTAMP_WIDTH);
+        end if;
+
         -- Check outputs, ignoring a few after each slip event.
         -- Note: Most commands are applied immediately, but some cannot be
         --       applied until there's a gap in the input stream.  Use the
@@ -166,13 +204,25 @@ begin
         if (reset_p = '1') then
             ignore_ct := 0;
         elsif (slip_early = '1' or slip_late = '1') then
-          ignore_ct := 3;
+            ignore_ct := 3;
         elsif (slip_ready = '1' and out_next = '1') then
             if (ignore_ct > 0) then
                 ignore_ct := ignore_ct - 1;
             elsif (out_data /= std_logic_vector(ref_data)) then
                 report "Data mismatch" severity error;
+            elsif (out_tsof /= ref_tsof) then
+                report "Timestamp mismatch" severity error;
             end if;
+        end if;
+
+        -- A separate check confirms that timestamps are roughly correct,
+        -- even during transitional periods ignored by the above.
+        if (reset_p = '1') then
+            tsof_prev := (others => '0');
+        elsif (out_next = '1') then
+            assert (tsof_prev + DIFF_MIN <= out_tsof and out_tsof <= tsof_prev + DIFF_MAX)
+                report "Timestamp out of range" severity error;
+            tsof_prev := out_tsof;
         end if;
     end if;
 end process;

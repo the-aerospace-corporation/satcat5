@@ -253,7 +253,7 @@ u_lcd : entity work.io_text_lcd
 -- Drive the three status LEDs.
 u_led_g : breathe_led
     generic map(
-    RATE    => 3_906_250,
+    RATE    => breathe_led_rate(125_000_000),
     LED_LIT => '1')
     port map(
     led     => stat_led_g,

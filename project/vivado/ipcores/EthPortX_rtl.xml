@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-Copyright 2021 The Aerospace Corporation
+Copyright 2021, 2022 The Aerospace Corporation
 
 This file is part of SatCat5.
 
@@ -133,6 +133,20 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
       </spirit:wire>
     </spirit:port>
     <spirit:port>
+      <spirit:logicalName>rx_tsof</spirit:logicalName>
+      <spirit:description>Start-of-frame timestamp</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:width>48</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>48</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
       <spirit:logicalName>rx_reset</spirit:logicalName>
       <spirit:description>Ingress reset</spirit:description>
       <spirit:wire>
@@ -240,6 +254,24 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
         <spirit:onSlave>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>tx_tnow</spirit:logicalName>
+      <spirit:description>Current system timestamp</spirit:description>
+      <spirit:wire>
+        <spirit:qualifier>
+          <spirit:isData>true</spirit:isData>
+        </spirit:qualifier>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>48</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>48</spirit:width>
           <spirit:direction>in</spirit:direction>
         </spirit:onSlave>
       </spirit:wire>

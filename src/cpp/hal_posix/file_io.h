@@ -47,7 +47,6 @@ namespace satcat5 {
             const bool m_close_on_finalize;
             FILE* m_file;       // Current file object
             std::string m_name; // Filename of m_file
-            
         };
 
         class FileReader : public satcat5::io::Readable {

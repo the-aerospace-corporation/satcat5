@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -32,6 +32,7 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_inline_status_tb is
@@ -66,7 +67,9 @@ signal clk_102          : std_logic := '0';
 signal reset_p          : std_logic := '1';
 
 -- Unit under test
-signal lcl_tx_rate      : port_rate_t;
+signal lcl_tx_temp      : port_rx_m2s;
+signal lcl_tx_valid     : std_logic;
+signal lcl_tx_ready     : std_logic;
 signal lcl_rx_data      : port_rx_m2s;  -- Ingress data out
 signal lcl_tx_data      : port_tx_s2m;  -- Egress data in
 signal lcl_tx_ctrl      : port_tx_m2s;
@@ -75,8 +78,6 @@ signal net_tx_data      : port_tx_s2m;  -- Egress data out
 signal net_tx_ctrl      : port_tx_m2s;
 
 -- Frame-check sequence
-signal lcl_tx_write     : std_logic;
-signal lcl_tx_status    : port_status_t;
 signal net_tx_write     : std_logic;
 signal out_eg_data      : byte_t;
 signal out_eg_write     : std_logic;
@@ -115,17 +116,10 @@ u_gen_eg : entity work.eth_traffic_sim
     mac_dst             => x"AA",   -- Destination (repeat 6x)
     mac_src             => x"BB",   -- Source (repeat 6x)
     out_rate            => test_rate_in,
-    out_port.clk        => net_tx_ctrl.clk,
-    out_port.data       => lcl_tx_data.data,
-    out_port.last       => lcl_tx_data.last,
-    out_port.write      => lcl_tx_write,    -- Unused but cannot be "open"
-    out_port.rate       => lcl_tx_rate,     -- Unused but cannot be "open"
-    out_port.status     => lcl_tx_status,   -- Unused but cannot be "open"
-    out_port.rxerr      => net_tx_ctrl.txerr,
-    out_port.reset_p    => net_tx_ctrl.reset_p,
+    out_port            => lcl_tx_temp,
     out_bcount          => open,
-    out_valid           => lcl_tx_data.valid,
-    out_ready           => lcl_tx_ctrl.ready);
+    out_valid           => lcl_tx_valid,
+    out_ready           => lcl_tx_ready);
 
 u_gen_ig : entity work.eth_traffic_sim
     generic map(
@@ -142,6 +136,17 @@ u_gen_ig : entity work.eth_traffic_sim
     out_bcount          => open,
     out_valid           => open,
     out_ready           => open);
+
+-- Format conversion for "lcl_rx_temp"
+-- (Some care required to avoid clock-to-data simulation artifacts.)
+net_tx_ctrl.clk     <= lcl_tx_temp.clk;
+lcl_tx_data.data    <= lcl_tx_temp.data;
+lcl_tx_data.last    <= lcl_tx_temp.last;
+lcl_tx_data.valid   <= lcl_tx_valid;
+lcl_tx_ready        <= lcl_tx_ctrl.ready;
+net_tx_ctrl.tnow    <= lcl_tx_temp.tsof;
+net_tx_ctrl.txerr   <= lcl_tx_temp.rxerr;
+net_tx_ctrl.reset_p <= lcl_tx_temp.reset_p;
 
 -- Unit under test
 uut : entity work.port_inline_status

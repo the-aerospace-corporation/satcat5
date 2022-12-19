@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -80,6 +80,7 @@ signal in_valid     : std_logic := '0';
 signal in_ready     : std_logic := '0';
 signal in_write     : std_logic;
 signal in_overflow  : std_logic;
+signal in_hfull     : std_logic;
 
 -- Transfer from first FIFO to second FIFO.
 signal mid_xfer     : natural := 0; -- Cumulative byte-index
@@ -104,6 +105,7 @@ signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
 signal out_pause    : std_logic := '0';
 signal out_overflow : std_logic;
+signal out_hfull    : std_logic;
 
 -- Overall test control
 constant revert_rate : real := 0.1;
@@ -293,6 +295,7 @@ uut1 : entity work.fifo_packet
     in_last_revert  => in_last_rev,
     in_write        => in_write,
     in_overflow     => in_overflow,
+    in_hfull        => in_hfull,
     out_clk         => inner_clk,
     out_data        => mid_data,
     out_nlast       => mid_nlast,
@@ -354,6 +357,7 @@ uut2 : entity work.fifo_packet
     out_ready       => out_ready,
     out_pause       => out_pause,
     out_overflow    => out_overflow,
+    out_hfull       => out_hfull,
     reset_p         => reset_p);
 
 -- Output checking.
@@ -462,6 +466,7 @@ p_test : process
         variable bps_in  : real := ri * real(OUTER_BYTES * OUTER_CLOCK_MHZ);
         variable bps_mid : real := rm * real(INNER_BYTES * INNER_CLOCK_MHZ);
         variable bps_out : real := ro * real(OUTER_BYTES * OUTER_CLOCK_MHZ);
+        variable bps_net : real := realmin(bps_in, bps_mid);
     begin
         -- Set test conditions.
         report "Starting test #" & integer'image(test_idx+1);
@@ -472,7 +477,7 @@ p_test : process
 
         -- Check if we expect overflows at these rates.
         in_ovr_ok  <= bool2bit(bps_in > 0.85 * bps_mid);
-        mid_ovr_ok <= bool2bit(bps_mid > 0.85 * bps_out);
+        mid_ovr_ok <= bool2bit(bps_net > 0.85 * bps_out);
 
         -- Clear FIFO contents.
         reset_p <= '1';
@@ -485,6 +490,23 @@ p_test : process
         -- Sanity check: Must receive at least a few packets.
         assert (out_total > 0)
             report "No data at output." severity error;
+
+        -- Sanity check: "Half-full" indicators for each FIFO.
+        if (bps_in > 1.25 * bps_mid) then
+            assert (in_hfull = '1')
+                report "Missing input half-full." severity error;
+        elsif (bps_in < 0.75 * bps_mid) then
+            assert (in_hfull = '0')
+                report "Unexpected input half-full." severity error;
+        end if;
+
+        if (bps_net > 1.25 * bps_out) then
+            assert (out_hfull = '1')
+                report "Missing output half-full." severity error;
+        elsif (bps_net < 0.75 * bps_out) then
+            assert (out_hfull = '0')
+                report "Unexpected output half-full." severity error;
+        end if;
     end procedure;
 begin
     -- Cover various corner cases.

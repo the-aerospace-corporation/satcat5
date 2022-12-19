@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -42,7 +42,7 @@
 //      PacketBuffer pkt_buffer(raw_buffer, sizeof(raw_buffer), 16);
 //
 // In typical usage, a user calls write_xx methods to construct a packet
-// field by field, then calls write_overflow.  In the event of an overflow
+// field by field, then calls write_finalize().  In the event of an overflow
 // in the middle of this process, the incomplete partial frame is discarded.
 // The user can also trigger this manually by calling write_abort().
 //
@@ -72,16 +72,16 @@ namespace satcat5 {
             // Packet-oriented writes.  (See also: "Writeable" class in io_buffer.h)
             // Note: PacketBuffer defines several additional methods.
             u8 get_percent_full() const;        // Overall occupancy (0-100%)
-            unsigned get_write_space() const;   // Max bytes safe to write
+            unsigned get_write_space() const override;  // Max bytes safe to write
             unsigned get_write_partial() const; // Bytes in partial packet (or -1 on overflow)
-            void write_bytes(unsigned nbytes, const void* src);
+            void write_bytes(unsigned nbytes, const void* src) override;
             void write_abort() override;        // Revert partially written packet
             bool write_finalize() override;     // Returns true if successful, false on overflow
 
             // Zero-copy write mode is required for UART interface.
             // * Create an AtomicLock object to ensure thread safety (MANDATORY).
             // * Call zcw_maxlen() to find maximum contiguous write length.
-            // * Call zcq_start() to get a pointer to that contiguous buffer.
+            // * Call zcw_start() to get a pointer to that contiguous buffer.
             // * Call zcw_write(N) once those bytes have been written.
             unsigned zcw_maxlen() const;
             u8* zcw_start();

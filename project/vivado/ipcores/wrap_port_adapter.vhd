@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -27,6 +27,8 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity wrap_port_adapter is
@@ -39,6 +41,7 @@ entity wrap_port_adapter is
     sw_rx_error     : out std_logic;
     sw_rx_rate      : out std_logic_vector(15 downto 0);
     sw_rx_status    : out std_logic_vector(7 downto 0);
+    sw_rx_tsof      : out std_logic_vector(47 downto 0);
     sw_rx_reset     : out std_logic;
     sw_tx_clk       : out std_logic;
     sw_tx_data      : in  std_logic_vector(7 downto 0);
@@ -46,6 +49,7 @@ entity wrap_port_adapter is
     sw_tx_valid     : in  std_logic;
     sw_tx_ready     : out std_logic;
     sw_tx_error     : out std_logic;
+    sw_tx_tnow      : out std_logic_vector(47 downto 0);
     sw_tx_reset     : out std_logic;
 
     -- MAC-facing port
@@ -56,6 +60,7 @@ entity wrap_port_adapter is
     mac_rx_error    : in  std_logic;
     mac_rx_rate     : in  std_logic_vector(15 downto 0);
     mac_rx_status   : in  std_logic_vector(7 downto 0);
+    mac_rx_tsof     : in  std_logic_vector(47 downto 0);
     mac_rx_reset    : in  std_logic;
     mac_tx_clk      : in  std_logic;
     mac_tx_data     : out std_logic_vector(7 downto 0);
@@ -63,6 +68,7 @@ entity wrap_port_adapter is
     mac_tx_valid    : out std_logic;
     mac_tx_ready    : in  std_logic;
     mac_tx_error    : in  std_logic;
+    mac_tx_tnow     : in  std_logic_vector(47 downto 0);
     mac_tx_reset    : in  std_logic);
 end wrap_port_adapter;
 
@@ -81,10 +87,12 @@ sw_rx_last      <= sw_rxd.last;
 sw_rx_write     <= sw_rxd.write;
 sw_rx_error     <= sw_rxd.rxerr;
 sw_rx_rate      <= sw_rxd.rate;
+sw_rx_tsof      <= std_logic_vector(sw_rxd.tsof);
 sw_rx_status    <= sw_rxd.status;
 sw_rx_reset     <= sw_rxd.reset_p;
 sw_tx_clk       <= sw_txc.clk;
 sw_tx_ready     <= sw_txc.ready;
+sw_tx_tnow      <= std_logic_vector(sw_txc.tnow);
 sw_tx_error     <= sw_txc.txerr;
 sw_tx_reset     <= sw_txc.reset_p;
 sw_txd.data     <= sw_tx_data;
@@ -97,10 +105,12 @@ mac_rxd.last    <= mac_rx_last;
 mac_rxd.write   <= mac_rx_write;
 mac_rxd.rxerr   <= mac_rx_error;
 mac_rxd.rate    <= mac_rx_rate;
+mac_rxd.tsof    <= unsigned(mac_rx_tsof);
 mac_rxd.status  <= mac_rx_status;
 mac_rxd.reset_p <= mac_rx_reset;
 mac_txc.clk     <= mac_tx_clk;
 mac_txc.ready   <= mac_tx_ready;
+mac_txc.tnow    <= unsigned(mac_tx_tnow);
 mac_txc.txerr   <= mac_tx_error;
 mac_txc.reset_p <= mac_tx_reset;
 mac_tx_data     <= mac_txd.data;

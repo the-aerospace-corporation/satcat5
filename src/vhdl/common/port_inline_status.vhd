@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -30,9 +30,11 @@
 
 library ieee;
 use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.common_primitives.sync_toggle2pulse;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_inline_status is
@@ -63,6 +65,8 @@ end port_inline_status;
 
 architecture port_inline_status of port_inline_status is
 
+subtype tstamp_v is std_logic_vector(TSTAMP_WIDTH-1 downto 0);
+
 -- Calculate required ingress FIFO size:
 -- (+3 is minimum safe margin for packet_inject block.)
 constant IG_FRM_SIZE    : integer := int_max(
@@ -74,8 +78,8 @@ signal eg_clk       : std_logic;
 signal eg_reset_p   : std_logic;
 signal eg_wr_status : std_logic;
 signal eg_status    : axi_stream8;
-signal eg_main_in   : axi_stream8;
-signal eg_main_out  : axi_stream8;
+signal eg_in_strm   : axi_stream8;
+signal eg_out_strm  : axi_stream8;
 signal eg_err_inj   : std_logic := '0';
 
 -- Ingress datapath
@@ -83,11 +87,14 @@ signal ig_clk       : std_logic;
 signal ig_reset_p   : std_logic;
 signal ig_wr_status : std_logic;
 signal ig_status    : axi_stream8;
-signal ig_in_data   : std_logic_vector(7 downto 0);
+signal ig_in_data   : byte_t;
 signal ig_in_last   : std_logic;
 signal ig_in_write  : std_logic;
-signal ig_main_in   : axi_stream8;
-signal ig_main_out  : axi_stream8;
+signal ig_in_tsof   : tstamp_v;
+signal ig_mid_strm  : axi_stream8;
+signal ig_mid_tsof  : tstamp_v;
+signal ig_out_strm  : axi_stream8;
+signal ig_out_tsof  : tstamp_v;
 signal ig_err_fifo  : std_logic := '0';
 signal ig_err_inj   : std_logic := '0';
 
@@ -95,35 +102,38 @@ begin
 
 -- Break out the port signals:
 lcl_rx_data.clk     <= ig_clk;
-lcl_rx_data.data    <= ig_main_out.data;
-lcl_rx_data.last    <= ig_main_out.last;
-lcl_rx_data.write   <= ig_main_out.valid;
+lcl_rx_data.data    <= ig_out_strm.data;
+lcl_rx_data.last    <= ig_out_strm.last;
+lcl_rx_data.write   <= ig_out_strm.valid;
+ig_out_strm.ready   <= '1';
+lcl_rx_data.tsof    <= unsigned(ig_out_tsof);
 lcl_rx_data.rxerr   <= net_rx_data.rxerr or ig_err_fifo or ig_err_inj;
 lcl_rx_data.rate    <= net_rx_data.rate;
 lcl_rx_data.status  <= net_rx_data.status;
 lcl_rx_data.reset_p <= ig_reset_p;
-ig_main_out.ready   <= '1';
 
 lcl_tx_ctrl.clk     <= eg_clk;
+lcl_tx_ctrl.tnow    <= net_tx_ctrl.tnow;
 lcl_tx_ctrl.txerr   <= net_tx_ctrl.txerr or eg_err_inj;
 lcl_tx_ctrl.reset_p <= eg_reset_p;
-lcl_tx_ctrl.ready   <= eg_main_in.ready;
-eg_main_in.data     <= lcl_tx_data.data;
-eg_main_in.last     <= lcl_tx_data.last;
-eg_main_in.valid    <= lcl_tx_data.valid;
+eg_in_strm.data     <= lcl_tx_data.data;
+eg_in_strm.last     <= lcl_tx_data.last;
+eg_in_strm.valid    <= lcl_tx_data.valid;
+lcl_tx_ctrl.ready   <= eg_in_strm.ready;
 
 ig_clk              <= net_rx_data.clk;
 ig_reset_p          <= net_rx_data.reset_p;
+ig_in_tsof          <= std_logic_vector(net_rx_data.tsof);
 ig_in_data          <= net_rx_data.data;
 ig_in_last          <= net_rx_data.last;
 ig_in_write         <= net_rx_data.write;
 
 eg_clk              <= net_tx_ctrl.clk;
 eg_reset_p          <= net_tx_ctrl.reset_p;
-net_tx_data.data    <= eg_main_out.data;
-net_tx_data.last    <= eg_main_out.last;
-net_tx_data.valid   <= eg_main_out.valid;
-eg_main_out.ready   <= net_tx_ctrl.ready;
+net_tx_data.data    <= eg_out_strm.data;
+net_tx_data.last    <= eg_out_strm.last;
+net_tx_data.valid   <= eg_out_strm.valid;
+eg_out_strm.ready   <= net_tx_ctrl.ready;
 
 -- Clock-domain transition for the status-write toggle.
 u_sync_eg : sync_toggle2pulse
@@ -143,10 +153,10 @@ u_sync_ig : sync_toggle2pulse
 -- Egress datapath (or bypass):
 eg_bypass : if not SEND_EGRESS generate
     eg_status           <= AXI_STREAM8_IDLE;
-    eg_main_out.data    <= eg_main_in.data;
-    eg_main_out.last    <= eg_main_in.last;
-    eg_main_out.valid   <= eg_main_in.valid;
-    eg_main_in.ready    <= eg_main_out.ready;
+    eg_out_strm.data    <= eg_in_strm.data;
+    eg_out_strm.last    <= eg_in_strm.last;
+    eg_out_strm.valid   <= eg_in_strm.valid;
+    eg_in_strm.ready    <= eg_out_strm.ready;
 end generate;
 
 eg_inject : if SEND_EGRESS generate
@@ -176,19 +186,19 @@ eg_inject : if SEND_EGRESS generate
         APPEND_FCS      => false,
         RULE_PRI_CONTIG => false)
         port map(
-        in0_data        => eg_main_in.data,
+        in0_data        => eg_in_strm.data,
         in1_data        => eg_status.data,
-        in_last(0)      => eg_main_in.last,
+        in_last(0)      => eg_in_strm.last,
         in_last(1)      => eg_status.last,
-        in_valid(0)     => eg_main_in.valid,
+        in_valid(0)     => eg_in_strm.valid,
         in_valid(1)     => eg_status.valid,
-        in_ready(0)     => eg_main_in.ready,
+        in_ready(0)     => eg_in_strm.ready,
         in_ready(1)     => eg_status.ready,
         in_error        => eg_err_inj,
-        out_data        => eg_main_out.data,
-        out_last        => eg_main_out.last,
-        out_valid       => eg_main_out.valid,
-        out_ready       => eg_main_out.ready,
+        out_data        => eg_out_strm.data,
+        out_last        => eg_out_strm.last,
+        out_valid       => eg_out_strm.valid,
+        out_ready       => eg_out_strm.ready,
         out_aux         => open,
         clk             => eg_clk,
         reset_p         => eg_reset_p);
@@ -197,29 +207,31 @@ end generate;
 -- Ingress datapath (or bypass):
 ig_bypass : if not SEND_INGRESS generate
     ig_status           <= AXI_STREAM8_IDLE;
-    ig_main_out.data    <= ig_in_data;
-    ig_main_out.last    <= ig_in_last;
-    ig_main_out.valid   <= ig_in_write;
-    ig_main_in.ready    <= ig_main_out.ready;
+    ig_out_tsof         <= ig_in_tsof;
+    ig_out_strm.data    <= ig_in_data;
+    ig_out_strm.last    <= ig_in_last;
+    ig_out_strm.valid   <= ig_in_write;
 end generate;
-
 
 ig_inject : if SEND_INGRESS generate
     -- Small FIFO for buffering received data.
     -- (No flow control back-pressure on the ingress input.)
     u_fifo : entity work.fifo_large_sync
         generic map(
+        META_WIDTH      => TSTAMP_WIDTH,
         FIFO_WIDTH      => 8,
         FIFO_DEPTH      => IG_FIFO_DEPTH)
         port map(
+        in_meta         => ig_in_tsof,
         in_data         => ig_in_data,
         in_last         => ig_in_last,
         in_write        => ig_in_write,
         in_error        => ig_err_fifo,
-        out_data        => ig_main_in.data,
-        out_last        => ig_main_in.last,
-        out_valid       => ig_main_in.valid,
-        out_ready       => ig_main_in.ready,
+        out_meta        => ig_mid_tsof,
+        out_data        => ig_mid_strm.data,
+        out_last        => ig_mid_strm.last,
+        out_valid       => ig_mid_strm.valid,
+        out_ready       => ig_mid_strm.ready,
         clk             => ig_clk,
         reset_p         => ig_reset_p);
 
@@ -246,22 +258,26 @@ ig_inject : if SEND_INGRESS generate
     u_inject : entity work.packet_inject
         generic map(
         INPUT_COUNT     => 2,
+        META_WIDTH      => TSTAMP_WIDTH,
         APPEND_FCS      => false,
         RULE_PRI_CONTIG => false)
         port map(
-        in0_data        => ig_main_in.data,
+        in0_meta        => ig_mid_tsof,
+        in1_meta        => (others => '0'),
+        in0_data        => ig_mid_strm.data,
         in1_data        => ig_status.data,
-        in_last(0)      => ig_main_in.last,
+        in_last(0)      => ig_mid_strm.last,
         in_last(1)      => ig_status.last,
-        in_valid(0)     => ig_main_in.valid,
+        in_valid(0)     => ig_mid_strm.valid,
         in_valid(1)     => ig_status.valid,
-        in_ready(0)     => ig_main_in.ready,
+        in_ready(0)     => ig_mid_strm.ready,
         in_ready(1)     => ig_status.ready,
         in_error        => ig_err_inj,
-        out_data        => ig_main_out.data,
-        out_last        => ig_main_out.last,
-        out_valid       => ig_main_out.valid,
-        out_ready       => ig_main_out.ready,
+        out_meta        => ig_out_tsof,
+        out_data        => ig_out_strm.data,
+        out_last        => ig_out_strm.last,
+        out_valid       => ig_out_strm.valid,
+        out_ready       => ig_out_strm.ready,
         out_aux         => open,
         clk             => ig_clk,
         reset_p         => ig_reset_p);

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -27,7 +27,9 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_cfgbus is
@@ -60,8 +62,10 @@ rx_data.clk     <= sys_clk;
 rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1);
 rx_data.status  <= (others => '0');
+rx_data.tsof    <= TSTAMP_DISABLED;
 rx_data.reset_p <= reset_p;
 tx_ctrl.clk     <= sys_clk;
+tx_ctrl.tnow    <= TSTAMP_DISABLED;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= reset_p;
 

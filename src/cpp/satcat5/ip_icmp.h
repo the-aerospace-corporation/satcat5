@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -26,6 +26,7 @@
 
 #include <satcat5/net_core.h>
 #include <satcat5/ip_core.h>
+#include <satcat5/list.h>
 
 namespace satcat5 {
     namespace ip {
@@ -70,6 +71,19 @@ namespace satcat5 {
         // Bytes required for ICMP error messages.
         constexpr unsigned ICMP_ECHO_BYTES   = 8;
 
+        // Callback object for handling "ping" reponses.
+        class PingListener {
+        public:
+            // Child class MUST override this method.
+            virtual void ping_event(
+                const satcat5::ip::Addr& from, u32 elapsed_usec) = 0;
+
+        private:
+            // Linked list to the next listener object.
+            friend satcat5::util::ListCore;
+            satcat5::ip::PingListener* m_next;
+        };
+
         // Protocol handler for ICMP messages.
         class ProtoIcmp final : public satcat5::net::Protocol
         {
@@ -94,6 +108,12 @@ namespace satcat5 {
             // Returns true if frame sent successfully, false otherwise.
             bool send_timereq(const satcat5::ip::Address& dst);
 
+            // Add/remove callback handlers for Ping responses.
+            inline void add(satcat5::ip::PingListener* cb)
+                {m_listeners.add(cb);}
+            inline void remove(satcat5::ip::PingListener* cb)
+                {m_listeners.remove(cb);}
+
         protected:
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
             bool write_icmp(
@@ -101,6 +121,7 @@ namespace satcat5 {
                 unsigned wcount, u16* data);
 
             satcat5::ip::Dispatch* const m_iface;
+            satcat5::util::List<satcat5::ip::PingListener> m_listeners;
         };
     }
 }

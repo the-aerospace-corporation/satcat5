@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,19 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     io_spi_controller.vhd
-ipcore_add_file $src_dir/common     port_serial_spi_controller.vhd
-ipcore_add_file $src_dir/common     slip_decoder.vhd
-ipcore_add_file $src_dir/common     slip_encoder.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_io   $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_serial_spi_controller
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_port_serial_spi_controller.vhd
 
 # Connect I/O ports
 ipcore_add_gpio ext_pads
@@ -52,9 +41,12 @@ ipcore_add_reset reset_p ACTIVE_HIGH
 ipcore_add_cfgopt Cfg cfg
 
 # Set parameters
-ipcore_add_param CLKREF_HZ long 100000000
-ipcore_add_param SPI_BAUD long 10000000
-ipcore_add_param SPI_MODE long 3
+ipcore_add_param CLKREF_HZ long 100000000 \
+    {Frequency of "refclk" signal (Hz)}
+ipcore_add_param SPI_BAUD long 10000000 \
+    {SPI baud rate (Hz)}
+ipcore_add_param SPI_MODE long 3 \
+    {SPI clock phase and polarity (Mode = 0-3)}
 
 # Package the IP-core.
 ipcore_finished

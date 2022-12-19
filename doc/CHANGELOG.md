@@ -67,9 +67,20 @@ This log will be updated for each new release, but may not reflect the latest de
 * Defined API for 10-gigabit Ethernet ports.
 * Bug-fixes for eth_preamble_rx and port_inline_status.
 
+## v2.2.0
+
+* Added Vernier-PLL system for timestamps with sub-nanosecond precision.
+* Defined API for ingress and egress timestamps and integrated with all SatCat5 port types.
+* More formatting options for the "satcat5::log" API, including signed decimal numbers.
+* New all-in-one IP/UDP network stack for simplified software networking.
+* New "log_viewer" diagnostic tool for display of messages from the "satcat5::log" API.
+* Reworked TCAM and MAC-lookup blocks to allow runtime read/write of MAC-address tables.
+* Tooltips for all IP-core configuration parameters.
+* Bug-fixes for router_inline and MDIO device-driver.
+
 # Copyright Notice
 
-Copyright 2019, 2020, 2021 The Aerospace Corporation
+Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 
 This file is part of SatCat5.
 

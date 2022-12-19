@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -18,24 +18,20 @@
 # ------------------------------------------------------------------------
 #
 # This script checks if the SatCat5 IP-cores are already installed
-# at "./ipcores".  If not, it creates them.
+# in the project search path.  If not, it creates them.
 
 puts {Running shared_ipcores.tcl}
 
-# Set $script_dir if it doesn't already exist.
-if {![info exists script_dir]} {
-    set script_dir [file normalize [file dirname [info script]]]
-}
-
-# Add the folder where the SatCat5 cores should be installed.
-set_property ip_repo_paths [file normalize $script_dir/ipcores] [current_project]
-update_ip_catalog
-
-# If the cores don't already exist, create them now.
-set ipcount [llength [get_ipdefs *satcat5*]]
+# Count IP-cores with "satcat5" in the name.
+update_ip_catalog -quiet
+variable ipcount [llength [get_ipdefs *satcat5*]]
 if {$ipcount eq 0} {
+    # No cores detected, run the installation script.
     puts "Installing SatCat5 IP-cores."
+    variable script_dir [file normalize [file dirname [info script]]]
     source $script_dir/create_all_ipcores.tcl
-} else {
-    puts "Found $ipcount SatCat5 IP-cores."
+    # Refresh the count after installation.
+    update_ip_catalog
+    set ipcount [llength [get_ipdefs *satcat5*]]
 }
+puts "Found $ipcount SatCat5 IP-cores."

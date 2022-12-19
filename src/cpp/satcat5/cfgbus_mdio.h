@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -49,20 +49,29 @@ namespace satcat5 {
             void mdio_done(u16 regaddr, u16 regval) override;
         };
 
-        class Mdio : public satcat5::poll::Always
+        // Interface object for a "cfgbus_mdio" block (direct registers only).
+        class Mdio final : public satcat5::poll::Always
         {
         public:
-            // Constructor
+            // Constructor and destructor.
             Mdio(satcat5::cfg::ConfigBus* cfg, unsigned devaddr,
                 unsigned regaddr = satcat5::cfg::REGADDR_ANY);
+            ~Mdio() {}
 
-            // Write to designated MDIO register.
+            // Is there space in the callback queue?
+            // (Note: Reads may still fail if hardware queue is full.)
+            inline bool can_read() const
+                {return m_addr_rdcount < SATCAT5_MDIO_BUFFSIZE;}
+
+            // Direct write to designated MDIO register.
             // (Returns true if successful.)
-            bool write(unsigned phy, unsigned reg, unsigned data);
+            bool direct_write(unsigned phy, unsigned reg, unsigned data);
 
-            // Read from designated MDIO register.
-            // (Returns true if successful. Result sent to callback.)
-            bool read(unsigned phy, unsigned reg,
+            // Direct read from designated MDIO register.
+            // The "ref" argument is echoed to the callback's "regaddr", to
+            // handle indirect read sequences.  See also: "MdioGenericMmd"
+            // (Returns true if successful.)
+            bool direct_read(unsigned phy, unsigned reg, unsigned ref,
                     satcat5::cfg::MdioEventListener* callback);
 
         protected:
@@ -77,10 +86,49 @@ namespace satcat5 {
             satcat5::cfg::Register m_ctrl_reg;
 
             // Queue for read callbacks and associated metadata.
+            unsigned m_addr_rdcount;
             unsigned m_addr_rdidx;
-            unsigned m_addr_wridx;
             u16 m_addr_buff[SATCAT5_MDIO_BUFFSIZE];
             satcat5::cfg::MdioEventListener* m_callback[SATCAT5_MDIO_BUFFSIZE];
+        };
+
+        // Thin wrapper that attaches to an MDIO interface object.
+        // The wrapper is an ephemeral objects with no persistent state.
+        class MdioWrapper {
+        public:
+            // Public constructor so we can inherit cleanly.
+            MdioWrapper(satcat5::cfg::Mdio* mdio, unsigned phyaddr)
+                : m_mdio(mdio), m_phy(phyaddr) {}
+
+            // Read and write methods allow indirect access.
+            virtual bool write(unsigned reg, unsigned data) = 0;
+            virtual bool read(unsigned reg, satcat5::cfg::MdioEventListener* callback) = 0;
+
+        protected:
+            // Restricted access avoids need for virtual destructor.
+            ~MdioWrapper() {}
+
+            // Parameters for the wrapped interface.
+            satcat5::cfg::Mdio* const m_mdio;
+            const unsigned m_phy;
+        };
+
+        // Thin wrappers for indirect register access on specific devices.
+        // (Unfortunately, this is widely needed but unevenly standardized.)
+        class MdioGenericMmd final : public satcat5::cfg::MdioWrapper {
+        public:
+            // MMD standard (e.g., Atheros AR8031, Texas Instruments DP83867)
+            using satcat5::cfg::MdioWrapper::MdioWrapper;
+            bool write(unsigned reg, unsigned data) override;
+            bool read(unsigned reg, satcat5::cfg::MdioEventListener* callback) override;
+        };
+
+        class MdioMarvell final : public satcat5::cfg::MdioWrapper {
+        public:
+            // Marvell Alaska 88E1111 or 88E151x
+            using satcat5::cfg::MdioWrapper::MdioWrapper;
+            bool write(unsigned reg, unsigned data) override;
+            bool read(unsigned reg, satcat5::cfg::MdioEventListener* callback) override;
         };
     }
 }

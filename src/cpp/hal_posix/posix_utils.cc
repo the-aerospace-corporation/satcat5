@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -18,11 +18,39 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "posix_utils.h"
+#include <satcat5/ethernet.h>
+#include <satcat5/ip_core.h>
+#include <satcat5/polling.h>
 #include <satcat5/utils.h>
 #include <cstdio>
 #include <ctime>
+#include <iomanip>
+#include <sstream>
 
-std::string satcat5::io::read_str(satcat5::io::Readable* src)
+#if SATCAT5_WIN32
+    #include <conio.h>      // For kbhit(), getch()
+    #include <windows.h>    // All-in-one for Win32 API
+    #undef ERROR            // Deconflict Windows "ERROR" macro
+#else
+    #include <sys/ioctl.h>  // For ioctl()
+    #include <termios.h>    // For getchar(), tcgetattr(), etc
+    #include <unistd.h>     // For usleep()
+#endif
+
+using satcat5::io::BufferedWriter;
+using satcat5::io::BufferedWriterHeap;
+using satcat5::io::KeyboardStream;
+using satcat5::io::PacketBuffer;
+using satcat5::io::PacketBufferHeap;
+using satcat5::io::Readable;
+using satcat5::io::Writeable;
+using satcat5::log::ToConsole;
+using satcat5::poll::timekeeper;
+using satcat5::util::PosixTimer;
+using satcat5::util::PosixTimekeeper;
+using satcat5::util::write_be_u32;
+
+std::string satcat5::io::read_str(Readable* src)
 {
     std::string tmp;
     while (src->get_read_ready())
@@ -31,37 +59,86 @@ std::string satcat5::io::read_str(satcat5::io::Readable* src)
     return tmp;
 }
 
-satcat5::io::BufferedWriterHeap::BufferedWriterHeap(
-    satcat5::io::Writeable* dst, unsigned nbytes)
-    : satcat5::io::BufferedWriter(dst, new u8[nbytes], nbytes, nbytes/64)
+BufferedWriterHeap::BufferedWriterHeap(Writeable* dst, unsigned nbytes)
+    : BufferedWriter(dst, new u8[nbytes], nbytes, nbytes/64)
 {
     // Nothing else to initialize.
 }
 
-satcat5::io::BufferedWriterHeap::~BufferedWriterHeap()
+BufferedWriterHeap::~BufferedWriterHeap()
 {
     delete[] m_buff.get_buff_dtor();
 }
 
-satcat5::log::ToConsole::ToConsole(s8 threshold)
+KeyboardStream::KeyboardStream(Writeable* dst)
+    : m_dst(dst)
+{
+#ifdef _WIN32
+    // No initial setup for Windows (yet).
+#else
+    // Initial setup for POSIX:
+    tcflush(0, TCIFLUSH);
+    termios term;
+    tcgetattr(0, &term);
+    term.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(0, TCSANOW, &term);
+#endif
+}
+
+KeyboardStream::~KeyboardStream()
+{
+#ifdef _WIN32
+    // No cleanup for Windows (yet).
+#else
+    // Cleanup for POSIX:
+    tcflush(0, TCIFLUSH);
+    termios term;
+    tcgetattr(0, &term);
+    term.c_lflag |= ICANON | ECHO;
+    tcsetattr(0, TCSANOW, &term);
+#endif
+}
+
+void KeyboardStream::poll_always()
+{
+    // If there's any characters in the queue, copy them.
+#ifdef _WIN32
+    while (_kbhit()) {
+        write_key(_getch());
+    }
+#else
+    int byteswaiting;
+    while (1) {
+        ioctl(0, FIONREAD, &byteswaiting);
+        if (byteswaiting < 1) break;
+        write_key(getchar());
+    }
+#endif
+}
+
+void KeyboardStream::write_key(int ch)
+{
+    if (ch == '\r' || ch == '\n') {
+        m_dst->write_finalize();    // EOL flushes input
+    } else if (0 < ch && ch < 128) {
+        m_dst->write_u8(ch);        // Forward "normal" keys
+    }
+}
+
+ToConsole::ToConsole(s8 threshold)
     : m_threshold(threshold)
     , m_last_msg()
     , m_tref(m_timer.now())
 {
-    satcat5::log::start(this);
+    // Nothing else to initialize.
 }
 
-satcat5::log::ToConsole::~ToConsole()
-{
-    satcat5::log::start(0);
-}
-
-bool satcat5::log::ToConsole::contains(const char* msg)
+bool ToConsole::contains(const char* msg)
 {
     return (m_last_msg.find(msg) != std::string::npos);
 }
 
-void satcat5::log::ToConsole::log_event(s8 priority, unsigned nbytes, const char* msg)
+void ToConsole::log_event(s8 priority, unsigned nbytes, const char* msg)
 {
     // Always store the most recent log-message.
     m_last_msg = std::string(msg, msg+nbytes);
@@ -84,24 +161,24 @@ void satcat5::log::ToConsole::log_event(s8 priority, unsigned nbytes, const char
     }
 }
 
-satcat5::io::PacketBufferHeap::PacketBufferHeap(unsigned nbytes)
-    : satcat5::io::PacketBuffer(new u8[nbytes], nbytes, nbytes/64)
+PacketBufferHeap::PacketBufferHeap(unsigned nbytes)
+    : PacketBuffer(new u8[nbytes], nbytes, nbytes/64)
 {
     // Nothing else to initialize
 }
 
-satcat5::io::PacketBufferHeap::~PacketBufferHeap()
+PacketBufferHeap::~PacketBufferHeap()
 {
     delete[] get_buff_dtor();
 }
 
-satcat5::util::PosixTimer::PosixTimer()
+PosixTimer::PosixTimer()
     : satcat5::util::GenericTimer(1)    // 1 tick = 1 usec
 {
     // Nothing else to initialize.
 }
 
-u32 satcat5::util::PosixTimer::now() {
+u32 PosixTimer::now() {
     struct timespec tv;
     int errcode = clock_gettime(CLOCK_MONOTONIC, &tv);
     if (errcode) {
@@ -114,4 +191,52 @@ u32 satcat5::util::PosixTimer::now() {
         u32 usec2 = (u32)(tv.tv_nsec / 1000);
         return usec1 + usec2;
     }
+}
+
+PosixTimekeeper::PosixTimekeeper()
+    : m_timer()
+    , m_adapter(&timekeeper, &m_timer)
+{
+    timekeeper.set_clock(&m_timer);
+}
+
+PosixTimekeeper::~PosixTimekeeper()
+{
+    timekeeper.set_clock(0);
+}
+
+void satcat5::util::sleep_msec(unsigned msec)
+{
+#ifdef _WIN32
+    Sleep(msec);
+#else
+    usleep(msec * 1000);
+#endif
+}
+
+std::string satcat5::log::format(const satcat5::eth::MacAddr& addr)
+{
+    std::stringstream tmp;
+    tmp << std::hex << std::setfill('0') << std::setw(2)
+        << (unsigned)addr.addr[0] << ":"
+        << (unsigned)addr.addr[1] << ":"
+        << (unsigned)addr.addr[2] << ":"
+        << (unsigned)addr.addr[3] << ":"
+        << (unsigned)addr.addr[4] << ":"
+        << (unsigned)addr.addr[5];
+    return tmp.str();
+}
+
+std::string satcat5::log::format(const satcat5::ip::Addr& addr)
+{
+    // Extract individual byte fields from IPv4 address.
+    u8 addr_bytes[4];
+    write_be_u32(addr_bytes, addr.value);
+    // Format using conventional format (e.g., "127.0.0.1")
+    std::stringstream tmp;
+    tmp << (unsigned)addr_bytes[0] << "."
+        << (unsigned)addr_bytes[1] << "."
+        << (unsigned)addr_bytes[2] << "."
+        << (unsigned)addr_bytes[3];
+    return tmp.str();
 }

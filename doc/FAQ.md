@@ -69,7 +69,7 @@ They need that power to cross building-scale distances up to 100m, but not every
 
 Instead, we can leverage the various
 [Media-Independent Interfaces](https://en.wikipedia.org/wiki/Media-independent_interface)
-that have become de-facto standards. 
+that have become de-facto standards.
 These are typically used to allow a device (the MAC) to communicate with
 a specialized physical-layer transceiver (the PHY).
 
@@ -91,8 +91,9 @@ Take a look at the [example design](../test/proto_pcb).
 
 We include an [MDIO interface](../src/vhdl/common/io_mdio_readwrite.vhd)
 if the PHY needs configuration.  We also include I2C, SPI, and UART interfaces.
-These configuration interfaces can be controlled by a ROM or an attached microcontroller.
-Multi-platform C++ software drivers are provided for each I/O interface.
+These configuration interfaces are operated using [ConfigBus](CONFIGBUS.md),
+commands from ROM or an attached microcontroller.
+[Multi-platform C++ software drivers](SOFTWARE.md) are provided for each I/O interface.
 
 ## FPGAs
 
@@ -163,6 +164,7 @@ Beyond that scale, a more complex crossbar or shared-memory topology is typicall
 
 The core of SatCat5 is a Layer-2 Ethernet switch.
 The switch can be built in managed or unmanaged configurations.
+Managed switches are configured using the [ConfigBus interface](CONFIGBUS.md).
 
 The switch directs packets based on destination MAC address.
 The MAC-address(es) associated with each port are learned automatically
@@ -180,7 +182,7 @@ but will limit multicast traffic to ports that are IGMP-aware.
 [Virtual local-area networks (VLAN / IEEE 802.1Q)](https://en.wikipedia.org/wiki/IEEE_802.1Q)
 are supported, but disabled by default to save FPGA resources.
 
-[Precision time protocol (PTP / IEEE 1588-2008](https://en.wikipedia.org/wiki/Precision_Time_Protocol)
+[Precision time protocol (PTP / IEEE 1588-2008)](https://en.wikipedia.org/wiki/Precision_Time_Protocol)
 may be supported in a future release.
 
 [Spanning Tree Protocol](https://en.wikipedia.org/wiki/Spanning_Tree_Protocol)
@@ -352,87 +354,6 @@ Reference clocks of 100 MHz or higher also help to reduce PLL clock-jitter.
 
 This is a topic for future development, and we hope to make improvements to improve reference jitter tolerance.
 
-## ConfigBus
-
-### What is ConfigBus?
-
-[ConfigBus](../src/vhdl/common/cfgbus_common.vhd) is a simple
-memory-mapped interface for configuration registers.  This interface
-is used for configuring a variety of SatCat5 building blocks.
-
-The design is optimized for simplicity over throughput.  A single "host"
-issues commands on a shared bus with up to 256 peripherals.  Responses
-from all attached peripherals are OR'd together to minimize required
-FPGA resources.
-
-Each peripheral may have up to 1024 registers of 32-bits each.
-(This size matches 4 kiB cache-line sizes on many common processors,
-and it's large enough to memory-map a complete Ethernet frame.)
-
-### How do I use ConfigBus?
-
-ConfigBus can be controlled through several interfaces, using the
-provided HDL adapter blocks.
-
-AXI4 is a memory-mapped interface that is ubiquitous in ARM microprocessors,
-as well as soft-core microcontrollers like the Xilinx Microblaze.
-Use an [AXI4 adapter](../src/vhdl/common/cfgbus_host_axi.vhd] if your system is directly attached to the SatCat5 FPGA.
-
-ConfigBus can also be attached directly to a [virtual Ethernet port](../src/vhdl/common/port_cfgbus.vhd).
-Use this type of adapter if control of your system should be through a
-trusted Ethernet LAN.  Send an frame to the designated MAC address to execute
-read or write commands; refer to comments in the HDL for further details.
-[Software drivers](../src/cpp/satcat5/cfgbus_remote.h) for this protocol are provided.
-
-The same command set can also be [sent over UART](../src/vhdl/common/cfgbus_host_uart.vhd).
-
-### What are MailBox and MailMap?
-
-These are virtual Ethernet ports that allow an embedded soft-core CPU
-to send and receive Ethernet frames.  They are typically attached to
-one port of an Ethernet switch on the same FPGA that hosts the CPU.
-
-They are accessed over ConfigBus.  "MailBox" is slower but requires
-fewer FPGA resources; data is read or written one byte at a time.
-"MailMap" allows the entire frame to be memory-mapped into the CPU's
-address space, so that it can be accessed like any other array.
-
-We recommend using MailMap for most designs.
-
-## SatCat5 Software
-
-### What software is provided?
-
-SatCat5 includes [C++ software libraries](../src/cpp/README.md) for:
-
-* Sending and receiving Ethernet frames over nearly any interface.
-* Sending and receiving ARP, ICMP, IP, and UDP messages.
-* Configuring a managed SatCat5 Ethernet switch.
-* Configuring various SatCat5 I/O peripherals (e.g., I2C, MDIO, SPI, or UART).
-
-SatCat5 also includes [Python software libraries](../src/python) for some of these functions.
-
-### How do I use the C++ software?
-
-The [core functions](../src/cpp/satcat5) are as generic as possible,
-designed for use on bare-metal microcontrollers, FreeRTOS, Linux, or Windows.
-We provide hardware abstraction layers for several of these platforms.
-
-Since many of these platforms are extremely constrained (64 kiB RAM or less),
-the design has minimal dependencies (even printf is too large) and all objects
-can be statically allocated.  Heap allocation is not used in the core, but
-is an option in hardware abstraction layers intended for desktop platforms.
-
-For more information, [refer to the README](../src/cpp/README.md).
-
-### Why do you have a UDP network stack?
-
-SatCat5 is intended for use on tiny microcontroller and unconventional
-interfaces, like SPI and UART.  Very few operating systems allow the
-required level of customization, so we built a simple stack from scratch.
-
-SatCat5 does not currently support TCP/IP, but may add lwIP support in a future release.
-
 ## Pi-Wire
 
 ### What is "Pi-Wire"?
@@ -579,12 +500,10 @@ We felt that a Contribtor License Agreement (CLA) is less invasive than a full c
 The CLA protects the rights of The Aerospace Corporation, our customers, and you as the contributor.
 [You can find our CLA and related information here](https://aerospace.org/cla).
 
-### What parts of SatCat5 are patent pending?
+### What parts of SatCat5 are patented?
 
-We currently have one relevant USPTO application, number 16/708,306,
+We currently hold one relevant US patent, number US11055254B2,
 titled "Mixed Media Ethernet Switch".
-
-This section will be updated if and when that application is granted.
 
 In accordance with SatCat5's LGPL license agreement,
 we grant a royalty-free license for use of this technology.
@@ -592,7 +511,7 @@ Refer to section 11 of the GPLv3 license for details.
 
 # Copyright Notice
 
-Copyright 2019, 2020, 2021 The Aerospace Corporation
+Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 
 This file is part of SatCat5.
 

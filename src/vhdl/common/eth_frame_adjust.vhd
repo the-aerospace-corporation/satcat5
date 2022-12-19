@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -36,6 +36,12 @@
 -- then "in_last" is ignored, data should be left-packed, and "in_nlast"
 -- indicates end-of-frame (see "fifo_packet" for details).
 --
+-- The optional "in_error" strobe can be used to invalidate the output frame.
+-- If APPEND_FCS is true, then asserting this flag at any point during the
+-- input frame will cause the recalculated FCS to be inverted.  This allows
+-- downstream processing to ignore the invalid frame contents.  The strobe
+-- has no effect if APPEND_FCS is false.
+--
 -- Note: This block uses AXI-style flow control, with additional guarantees.
 -- If input data is supplied immediately on request, then the output will have
 -- the same property.  This allows use with port_adjust and other blocks that
@@ -59,6 +65,7 @@ entity eth_frame_adjust is
     -- Input data stream (with or without FCS, AXI flow control).
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
+    in_error    : in  std_logic := '0';     -- Invalidates generated FCS
     in_nlast    : in  integer range 0 to IO_BYTES := 0;
     in_last     : in  std_logic := '0';     -- Ignored if IO_BYTES > 1
     in_valid    : in  std_logic;
@@ -86,11 +93,17 @@ subtype last_t is integer range 0 to IO_BYTES;
 -- Legacy compatibility.
 signal in_nlast_mod : last_t;
 
+-- Sticky error flag.
+signal in_first     : std_logic := '1';
+signal in_error_i   : std_logic;
+signal in_error_d   : std_logic := '0';
+
 -- FCS removal (optional)
 signal in_ready_i   : std_logic;
 signal in_write     : std_logic := '0';
 signal frm_data     : data_t := (others => '0');
 signal frm_meta     : meta_t := (others => '0');
+signal frm_error    : std_logic := '0';
 signal frm_nlast    : last_t := 0;
 signal frm_valid    : std_logic := '0';
 signal frm_ready    : std_logic := '0';
@@ -99,6 +112,7 @@ signal frm_ovr      : std_logic := '0';
 -- Zero-padding of runt frames
 signal pad_data     : data_t := (others => '0');
 signal pad_meta     : meta_t := (others => '0');
+signal pad_error    : std_logic := '0';
 signal pad_nlast    : last_t := 0;
 signal pad_valid    : std_logic := '0';
 signal pad_ready    : std_logic := '0';
@@ -118,6 +132,23 @@ begin
 -- This signal overrides "in_nlast" if IO_BYTES = 1.
 in_nlast_mod <= 1 when (IO_BYTES = 1 and in_last = '1') else in_nlast;
 
+-- Sticky per-frame error flag.
+in_write    <= in_valid and in_ready_i;
+in_error_i  <= in_error or in_error_d;
+
+p_error_flag : process(clk)
+begin
+    if rising_edge(clk) then
+        if (reset_p = '1') then
+            in_error_d <= '0';
+        elsif (in_write = '1' and in_nlast_mod > 0) then
+            in_error_d <= '0';
+        elsif (in_write = '1' and in_error = '1') then
+            in_error_d <= '1';
+        end if;
+    end if;
+end process;
+
 ---------------------------------------------------------------------
 -- Frame Check Sequence Removal (STRIP_FCS) -------------------------
 ---------------------------------------------------------------------
@@ -127,19 +158,18 @@ gen_nostrip : if not STRIP_FCS generate
     -- Input has already had FCS removed, no need to modify.
     frm_data    <= in_data;
     frm_meta    <= in_meta;
+    frm_error   <= in_error_i;
     frm_nlast   <= in_nlast_mod;
     frm_valid   <= in_valid;
     in_ready    <= frm_ready;
-    in_write    <= '0'; -- Unused
 end generate;
 
 gen_strip : if STRIP_FCS generate
     -- Upstream flow control.
-    in_write    <= in_valid and in_ready_i;
     in_ready    <= in_ready_i;
     in_ready_i  <= frm_ready or not (frm_valid or frm_ovr);
 
-    -- Remove last four bytes of each packet.
+    -- Remove the last four bytes of each packet.
     p_out_strip : process(clk)
         -- Set delay to ensure we have at least four bytes in buffer.
         constant DELAY_MAX : integer := div_ceil(FCS_BYTES, IO_BYTES);
@@ -159,12 +189,13 @@ gen_strip : if STRIP_FCS generate
         end function;
         constant OVR_THR : integer := IO_BYTES - OVR_MAX;
         variable ovr_ct  : integer range 0 to OVR_MAX := 0;
+        variable ovr_err : std_logic := '0';
         -- Countdown to detect when we've received at least four bytes.
         variable count : integer range 0 to DELAY_MAX := DELAY_MAX;
     begin
         if rising_edge(clk) then
             -- Delay input using a shift register.
-            if (in_write = '1' or (ovr_ct > 0 and frm_ready = '1')) then
+            if (in_write = '1' or (frm_ovr = '1' and frm_ready = '1')) then
                 sreg_data := in_data & sreg_data(0 to DELAY_MAX-1);
                 if (META_WIDTH > 0) then
                     sreg_meta := in_meta & sreg_meta(0 to DELAY_MAX-1);
@@ -179,11 +210,14 @@ gen_strip : if STRIP_FCS generate
             if (reset_p = '1') then
                 frm_valid <= '0';   -- Global reset
                 frm_nlast <= 0;
-            elsif (ovr_ct > 0 and frm_ready = '1') then
+                frm_error <= '0';
+            elsif (frm_ovr = '1' and frm_ready = '1') then
                 frm_valid <= '1';   -- Extra trailing word
                 frm_nlast <= ovr_ct;
+                frm_error <= ovr_err;
             elsif (in_write = '1' and count = 0 and in_nlast_mod > 0) then
                 frm_valid <= '1';   -- End of input frame
+                frm_error <= in_error_i;
                 if (in_nlast_mod > OVR_THR) then
                     frm_nlast <= 0; -- Overflow required
                 else
@@ -192,18 +226,23 @@ gen_strip : if STRIP_FCS generate
             elsif (in_write = '1' and count = 0) then
                 frm_valid <= '1';   -- Forward delayed data
                 frm_nlast <= 0;
+                frm_error <= in_error_i;
             elsif (in_write = '1' or frm_ready = '1') then
                 frm_valid <= '0';   -- Previous output consumed
                 frm_nlast <= 0;
+                frm_error <= '0';
             end if;
 
-            -- Drive the overflow counter, if enabled.
+            -- Drive the overflow counter and error flag, if enabled.
             if (reset_p = '1' or OVR_MAX = 0) then
-                ovr_ct := 0;
+                ovr_ct  := 0;
+                ovr_err := '0';
             elsif (in_write = '1' and count < 2 and in_nlast_mod > OVR_THR) then
-                ovr_ct := in_nlast_mod - OVR_THR;
+                ovr_ct  := in_nlast_mod - OVR_THR;
+                ovr_err := in_error_i;
             elsif (frm_ready = '1') then
-                ovr_ct := 0;
+                ovr_ct  := 0;
+                ovr_err := '0';
             end if;
             frm_ovr <= bool2bit(ovr_ct > 0);
 
@@ -252,6 +291,7 @@ begin
             -- Pass along input data.
             pad_data  <= frm_data and frm_mask;
             pad_meta  <= frm_meta;
+            pad_error <= frm_error;
         elsif (pad_ready = '1' and pad_ovr = '1') then
             -- Zero-padding mode.
             pad_data  <= (others => '0');
@@ -334,9 +374,13 @@ gen_append_single : if APPEND_FCS and IO_BYTES = 1 generate
     p_crc : process(clk)
         variable bcount : integer range 0 to 3 := 0;
         variable crc32  : crc_word_t := CRC_INIT;
+        variable emask  : byte_t := (others => '0');
+        variable error  : std_logic := '0';
+        variable first  : std_logic := '1';
     begin
         if rising_edge(clk) then
             -- Relay data until end-of-frame, then append FCS.
+            emask := (others => error);
             if (pad_valid = '1' and pad_ready = '1') then
                 -- Relay normal data until end of frame.
                 fcs_data  <= pad_data;
@@ -344,7 +388,7 @@ gen_append_single : if APPEND_FCS and IO_BYTES = 1 generate
             elsif (fcs_ovr = '1' and fcs_ready = '1') then
                 -- Append each FCS byte, flipping polarity and bit order.
                 -- (CRC is MSB-first, but Ethernet convention is LSB-first.)
-                fcs_data  <= not flip_byte(crc32(31 downto 24));
+                fcs_data  <= emask xnor flip_byte(crc32(31 downto 24));
             end if;
 
             -- Override flag is asserted while we write FCS.
@@ -370,6 +414,15 @@ gen_append_single : if APPEND_FCS and IO_BYTES = 1 generate
                 -- Mark previous byte as consumed.
                 fcs_valid <= '0';
                 fcs_nlast <= 0;
+            end if;
+
+            -- Sticky "error" flag persists over each frame.
+            if (reset_p = '1') then
+                error := '0';
+                first := '1';
+            elsif (pad_valid = '1' and pad_ready = '1') then
+                error := pad_error or (error and not first);
+                first := bool2bit(pad_nlast > 0);
             end if;
 
             -- Update the CRC word and output byte counter.
@@ -403,6 +456,7 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
         signal pad_write    : std_logic;
         signal dly_data     : data_t;
         signal dly_crc      : crc_word_t;
+        signal dly_error    : std_logic;
         signal dly_nlast    : last_t;
         signal dly_write    : std_logic;
         signal fifo_data    : data_t := (others => '0');
@@ -422,9 +476,11 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
             port map(
             in_data     => pad_data,
             in_nlast    => pad_nlast,
+            in_error    => pad_error,
             in_write    => pad_write,
             out_data    => dly_data,
             out_crc     => dly_crc,
+            out_error   => dly_error,
             out_nlast   => dly_nlast,
             out_write   => dly_write,
             clk         => clk,
@@ -433,9 +489,11 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
         -- Append calculated CRC onto each frame.
         p_append : process(clk)
             variable crc_delay : crc_word_t := (others => '0');
+            variable crc_error : std_logic := '0';
             variable crc_idx   : integer range 0 to FCS_BYTES := 0;
             variable crc_shift : data_t := (others => '0');
             variable tmp_crc   : byte_t;
+            variable tmp_err   : byte_t;
             variable tmp_idx   : integer range 7 to crc_shift'left;
             variable pre_bytes : integer range 0 to FCS_BYTES := 0;
             variable ovr_bytes : integer range 0 to FCS_BYTES := 0;
@@ -464,15 +522,18 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
                     if (b < ovr_bytes) then
                         crc_idx := ovr_bytes - b;
                         tmp_crc := crc_delay(8*crc_idx-1 downto 8*crc_idx-8);
+                        tmp_err := (others => crc_error);
                     elsif (dly_nlast > 0 and b >= dly_nlast and b < dly_nlast + FCS_BYTES) then
                         crc_idx := dly_nlast + FCS_BYTES - b;
                         tmp_crc := dly_crc(8*crc_idx-1 downto 8*crc_idx-8);
+                        tmp_err := (others => dly_error);
                     else
                         crc_idx := 0;   -- No selection
                         tmp_crc := (others => '0');
+                        tmp_err := (others => '0');
                     end if;
                     tmp_idx := crc_shift'left - 8*b;
-                    crc_shift(tmp_idx downto tmp_idx-7) := tmp_crc;
+                    crc_shift(tmp_idx downto tmp_idx-7) := tmp_crc xor tmp_err;
                 end loop;
 
                 -- Modify the primary output stream.
@@ -511,9 +572,10 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
                     ovr_bytes := int_max(0, ovr_bytes - IO_BYTES);
                 end if;
 
-                -- Latch CRC for later use.
+                -- Latch CRC and error flag for later use.
                 if (dly_write = '1' and dly_nlast > 0) then
                     crc_delay := dly_crc;
+                    crc_error := dly_error;
                 end if;
             end if;
         end process;

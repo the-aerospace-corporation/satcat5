@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -47,6 +47,7 @@ use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 use     work.tcam_constants.all;
 
@@ -58,11 +59,14 @@ entity mac_core is
     CORE_CLK_HZ     : positive;         -- Core clock frequency (Hz)
     MIN_FRM_BYTES   : positive;         -- Minimum frame size
     MAX_FRM_BYTES   : positive;         -- Maximum frame size
-    MAC_TABLE_SIZE  : positive;         -- Max stored MAC addresses
+    MAC_TABLE_EDIT  : boolean;          -- Manual read/write of MAC table?
+    MAC_TABLE_SIZE  : positive;         -- Max cached MAC addresses
     PRI_TABLE_SIZE  : natural;          -- Max high-priority EtherTypes (0 = disable)
+    SUPPORT_PTP     : boolean;          -- Support Precision Time Protocol?
     SUPPORT_VLAN    : boolean;          -- Support virtual-LAN?
     MISS_BCAST      : std_logic := '1'; -- Broadcast or drop unknown MAC?
     IGMP_TIMEOUT    : positive := 63;   -- IGMP timeout (0 = disable)
+    PTP_MIXED_STEP  : boolean := true;  -- Support PTP format conversion?
     CACHE_POLICY    : repl_policy := TCAM_REPL_PLRU);
     port (
     -- Main input
@@ -71,7 +75,8 @@ entity mac_core is
     in_data         : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_meta         : in  switch_meta_t;
     in_nlast        : in  integer range 0 to IO_BYTES;
-    in_write        : in  std_logic;
+    in_valid        : in  std_logic;
+    in_ready        : out std_logic;
 
     -- Main output, with end-of-frame strobes for each port.
     out_data        : out std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -84,6 +89,7 @@ entity mac_core is
     -- Configuration interface
     cfg_cmd         : in  cfgbus_cmd := CFGBUS_CMD_NULL;
     cfg_ack         : out cfgbus_ack;   -- Optional ConfigBus interface
+    port_2step      : out std_logic_vector(PORT_COUNT-1 downto 0);
     scrub_req       : in  std_logic;    -- Timekeeping strobe (~1 Hz)
     error_change    : out std_logic;    -- MAC address changed ports
     error_other     : out std_logic;    -- Other internal error
@@ -99,16 +105,21 @@ architecture mac_core of mac_core is
 -- Convenience types:
 subtype data_word is std_logic_vector(8*IO_BYTES-1 downto 0);
 subtype port_mask is std_logic_vector(PORT_COUNT-1 downto 0);
+subtype port_idx_t is integer range 0 to PORT_COUNT-1;
 
 -- Main datapath
-signal buf_psrc     : integer range 0 to PORT_COUNT-1 := 0;
+signal ptp_psrc     : port_idx_t := 0;
+signal ptp_data     : data_word := (others => '0');
+signal ptp_meta     : switch_meta_t := SWITCH_META_NULL;
+signal ptp_nlast    : integer range 0 to IO_BYTES := IO_BYTES;
+signal ptp_write    : std_logic := '0';
+signal buf_psrc     : port_idx_t := 0;
 signal buf_data     : data_word := (others => '0');
 signal buf_meta     : switch_meta_t := SWITCH_META_NULL;
 signal buf_nlast    : integer range 0 to IO_BYTES := IO_BYTES;
 signal buf_last     : std_logic := '0';
 signal buf_write    : std_logic := '0';
 signal buf_wcount   : mac_bcount_t := 0;
-signal dly_meta     : switch_meta_t;
 signal dly_nlast    : integer range 0 to IO_BYTES;
 signal dly_write    : std_logic;
 signal packet_done  : std_logic;
@@ -116,6 +127,17 @@ signal packet_done  : std_logic;
 -- MAC-address lookup
 signal lookup_mask  : port_mask;
 signal lookup_valid : std_logic;
+signal tbl_clear    : std_logic := '0';
+signal tbl_learn    : std_logic := '1';
+signal tbl_rd_index : integer range 0 to MAC_TABLE_SIZE-1 := 0;
+signal tbl_rd_valid : std_logic := '0';
+signal tbl_rd_ready : std_logic;
+signal tbl_rd_addr  : mac_addr_t;
+signal tbl_rd_psrc  : port_idx_t;
+signal tbl_wr_addr  : mac_addr_t := (others => '0');
+signal tbl_wr_psrc  : port_idx_t := 0;
+signal tbl_wr_valid : std_logic := '0';
+signal tbl_wr_ready : std_logic;
 
 -- Packet-priority lookup (optional)
 signal pri_hipri    : std_logic := '0';
@@ -127,18 +149,30 @@ signal igmp_mask    : port_mask := (others => '1');
 signal igmp_valid   : std_logic := '1';
 signal igmp_error   : std_logic := '0';
 
+-- PTP routing and timestamps (optional)
+signal ptpf_mask    : port_mask := (others => '1');
+signal ptpf_pmode   : ptp_mode_t := PTP_MODE_NONE;
+signal ptpf_tstamp  : tstamp_t := TSTAMP_DISABLED;
+signal ptpf_valid   : std_logic := '1';
+
 -- VLAN lookup (optional)
 signal vlan_mask    : port_mask := (others => '1');
 signal vlan_vtag    : vlan_hdr_t := (others => '0');
 signal vlan_hipri   : std_logic := '0';
 signal vlan_valid   : std_logic := '1';
 
--- Promiscuous-port mode (optional)
+-- Per-port configuration masks.
+-- MB = Miss-as-broadcast, PR = Promiscuous, STP = PTP-2step
+-- (Each one is effectively a constant if ConfigBus is disabled.)
+signal cfg_mbword   : cfgbus_word := (others => MISS_BCAST);
+signal cfg_mbmask   : port_mask := (others => MISS_BCAST);
 signal cfg_prword   : cfgbus_word := (others => '0');
 signal cfg_prmask   : port_mask := (others => '0');
+signal cfg_stpword  : cfgbus_word := (others => '0');
+signal cfg_stpmask  : port_mask := (others => '0');
 
 -- ConfigBus combining.
-signal cfg_acks     : cfgbus_ack_array(0 to 8) := (others => cfgbus_idle);
+signal cfg_acks     : cfgbus_ack_array(0 to 11) := (others => cfgbus_idle);
 
 begin
 
@@ -204,8 +238,22 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
         clk         => clk,
         reset_p     => reset_p);
 
+    -- Miss-as-broadcast configuration register
+    u_mbword : cfgbus_register_sync
+        generic map(
+        DEVADDR     => DEV_ADDR,
+        REGADDR     => REGADDR_MISS_BCAST,
+        RSTVAL      => (others => MISS_BCAST),
+        WR_ATOMIC   => true,
+        WR_MASK     => cfgbus_mask_lsb(PORT_COUNT))
+        port map(
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(6),
+        sync_clk    => clk,
+        sync_val    => cfg_mbword);
+
     -- Promiscuous-port configuration register
-    u_register : cfgbus_register_sync
+    u_prword : cfgbus_register_sync
         generic map(
         DEVADDR     => DEV_ADDR,
         REGADDR     => REGADDR_PROMISCUOUS,
@@ -213,14 +261,95 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
         WR_MASK     => cfgbus_mask_lsb(PORT_COUNT))
         port map(
         cfg_cmd     => cfg_cmd,
-        cfg_ack     => cfg_acks(6),
+        cfg_ack     => cfg_acks(7),
         sync_clk    => clk,
         sync_val    => cfg_prword);
 
-    -- Zero-pad or truncate the CPU register as needed.
+    -- Zero-pad or truncate CPU registers as needed.
+    cfg_mbmask <= resize(cfg_mbword, PORT_COUNT);
     cfg_prmask <= resize(cfg_prword, PORT_COUNT);
 end generate;
 
+-- Optional: Manual read/write of the MAC-address table?
+gen_query : if (DEV_ADDR > CFGBUS_ADDR_NONE and MAC_TABLE_EDIT) generate
+    u_query : entity work.mac_query
+        generic map(
+        DEV_ADDR    => DEV_ADDR,
+        PORT_COUNT  => PORT_COUNT,
+        TABLE_SIZE  => MAC_TABLE_SIZE)
+        port map(
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(8),
+        mac_clk     => clk,
+        mac_clear   => tbl_clear,
+        mac_learn   => tbl_learn,
+        read_index  => tbl_rd_index,
+        read_valid  => tbl_rd_valid,
+        read_ready  => tbl_rd_ready,
+        read_addr   => tbl_rd_addr,
+        read_psrc   => tbl_rd_psrc,
+        write_addr  => tbl_wr_addr,
+        write_psrc  => tbl_wr_psrc,
+        write_valid => tbl_wr_valid,
+        write_ready => tbl_wr_ready);
+end generate;
+
+-- Optional: Two-step register for PTP format conversion.
+gen_2step : if (DEV_ADDR > CFGBUS_ADDR_NONE and SUPPORT_PTP and PTP_MIXED_STEP) generate
+    u_register : cfgbus_register
+        generic map(
+        DEVADDR     => DEV_ADDR,
+        REGADDR     => REGADDR_PTP_2STEP,
+        WR_ATOMIC   => true,
+        WR_MASK     => cfgbus_mask_lsb(PORT_COUNT))
+        port map(
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(9),
+        reg_val     => cfg_stpword);
+
+    cfg_stpmask <= resize(cfg_stpword, PORT_COUNT);
+end generate;
+
+-- Optional pre-processing for PTP.
+-- (This step comes before the others, since it generates new frames
+--  that must be processed by the rest of the MAC pipeline.)
+gen_ptp1 : if SUPPORT_PTP generate
+    u_ptp : entity work.ptp_adjust
+        generic map(
+        IO_BYTES    => IO_BYTES,
+        PORT_COUNT  => PORT_COUNT,
+        MIXED_STEP  => PTP_MIXED_STEP)
+        port map(
+        in_meta     => in_meta,
+        in_psrc     => in_psrc,
+        in_data     => in_data,
+        in_nlast    => in_nlast,
+        in_valid    => in_valid,
+        in_ready    => in_ready,
+        out_meta    => ptp_meta,
+        out_psrc    => ptp_psrc,
+        out_data    => ptp_data,
+        out_nlast   => ptp_nlast,
+        out_valid   => ptp_write,
+        out_ready   => '1',
+        cfg_2step   => cfg_stpmask,
+        frm_pmask   => ptpf_mask,
+        frm_pmode   => ptpf_pmode,
+        frm_tstamp  => ptpf_tstamp,
+        frm_valid   => ptpf_valid,
+        frm_ready   => packet_done,
+        clk         => clk,
+        reset_p     => reset_p);
+end generate;
+
+gen_ptp0 : if not SUPPORT_PTP generate
+    ptp_psrc    <= in_psrc;
+    ptp_data    <= in_data;
+    ptp_meta    <= in_meta;
+    ptp_nlast   <= in_nlast;
+    ptp_write   <= in_valid;
+    in_ready    <= '1';
+end generate;
 
 -- Buffer incoming data for better routing and timing.
 p_buff : process(clk)
@@ -228,12 +357,12 @@ p_buff : process(clk)
 begin
     if rising_edge(clk) then
         -- Buffer incoming data.
-        buf_psrc    <= in_psrc;
-        buf_data    <= in_data;
-        buf_meta    <= in_meta;
-        buf_nlast   <= in_nlast;
-        buf_last    <= bool2bit(in_nlast > 0);
-        buf_write   <= in_write and not reset_p;
+        buf_psrc    <= ptp_psrc;
+        buf_data    <= ptp_data;
+        buf_meta    <= ptp_meta;
+        buf_nlast   <= ptp_nlast;
+        buf_last    <= bool2bit(ptp_nlast > 0);
+        buf_write   <= ptp_write and not reset_p;
 
         -- Word-counter for later packet parsing.
         if (reset_p = '1') then
@@ -254,25 +383,25 @@ u_delay : entity work.packet_delay
     DELAY_COUNT => 15)
     port map(
     in_data     => buf_data,
-    in_meta     => buf_meta,
     in_nlast    => buf_nlast,
     in_write    => buf_write,
     out_data    => out_data,
-    out_meta    => dly_meta,
     out_nlast   => dly_nlast,
     out_write   => dly_write,
     io_clk      => clk,
     reset_p     => reset_p);
 
 -- Final "KEEP" flag is the bitwise-AND of all port masks.
-out_meta.tstamp <= dly_meta.tstamp;
+out_meta.pmode  <= ptpf_pmode;
+out_meta.tstamp <= ptpf_tstamp;
 out_meta.vtag   <= vlan_vtag;
 out_write       <= dly_write;
 out_nlast       <= dly_nlast;
 out_priority    <= pri_hipri or vlan_hipri;
-out_keep        <= lookup_mask and igmp_mask and vlan_mask;
+out_keep        <= lookup_mask and igmp_mask and ptpf_mask and vlan_mask;
 error_other     <= igmp_error or pri_error;
 packet_done     <= dly_write and bool2bit(dly_nlast > 0);
+port_2step      <= cfg_stpmask;
 
 -- MAC-address lookup
 u_lookup : entity work.mac_lookup
@@ -280,7 +409,6 @@ u_lookup : entity work.mac_lookup
     IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => MAC_TABLE_SIZE,
-    MISS_BCAST      => MISS_BCAST,
     CACHE_POLICY    => CACHE_POLICY)
     port map(
     in_psrc         => buf_psrc,
@@ -292,9 +420,22 @@ u_lookup : entity work.mac_lookup
     out_pmask       => lookup_mask,
     out_valid       => lookup_valid,
     out_ready       => packet_done,
+    cfg_clear       => tbl_clear,
+    cfg_learn       => tbl_learn,
+    cfg_mbmask      => cfg_mbmask,
     cfg_prmask      => cfg_prmask,
     error_change    => error_change,
     error_table     => error_table,
+    read_index      => tbl_rd_index,
+    read_valid      => tbl_rd_valid,
+    read_ready      => tbl_rd_ready,
+    read_addr       => tbl_rd_addr,
+    read_psrc       => tbl_rd_psrc,
+    read_found      => open,
+    write_addr      => tbl_wr_addr,
+    write_psrc      => tbl_wr_psrc,
+    write_valid     => tbl_wr_valid,
+    write_ready     => tbl_wr_ready,
     clk             => clk,
     reset_p         => reset_p);
 
@@ -340,7 +481,7 @@ gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
         out_ready   => packet_done,
         out_error   => pri_error,
         cfg_cmd     => cfg_cmd,
-        cfg_ack     => cfg_acks(7),
+        cfg_ack     => cfg_acks(10),
         clk         => clk,
         reset_p     => reset_p);
 end generate;
@@ -364,7 +505,7 @@ gen_vlan : if SUPPORT_VLAN generate
         out_valid   => vlan_valid,
         out_ready   => packet_done,
         cfg_cmd     => cfg_cmd,
-        cfg_ack     => cfg_acks(8),
+        cfg_ack     => cfg_acks(11),
         clk         => clk,
         reset_p     => reset_p);
 end generate;
@@ -383,6 +524,8 @@ begin
                 report "LATE IGMP" severity error;
             assert (pri_valid = '1')
                 report "LATE Priority" severity error;
+            assert (ptpf_valid = '1')
+                report "LATE PTPF" severity error;
             assert (vlan_valid = '1')
                 report "LATE VLAN" severity error;
         end if;

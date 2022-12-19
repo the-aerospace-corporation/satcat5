@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2019, 2021 The Aerospace Corporation
+# Copyright 2019, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -467,13 +467,11 @@ class ChatClient(qtw.QMainWindow):
         Keyword arguments:
         msg -- The message string to be sent.
         '''
-        # Sanity-check length and add newline if missing.
+        # Sanity-check length.
         if len(msg) < 1:
             return
         if len(msg) > 1000:
             msg = msg[:1000]
-        if not msg.endswith('\n'):
-            msg += '\n'
         # Construct and send packet.
         mac_dst = satcat5_eth.str2mac(self.cbo_sendto.currentText())
         mac_src = self.port.mac

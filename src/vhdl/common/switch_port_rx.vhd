@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -35,6 +35,7 @@ use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity switch_port_rx is
@@ -60,6 +61,7 @@ entity switch_port_rx is
     rx_write        : in  std_logic;
     rx_macerr       : in  std_logic;
     rx_rate         : in  port_rate_t;
+    rx_tsof         : in  tstamp_t;
     rx_reset_p      : in  std_logic;
 
     -- Output to shared pipeline, referenced to core_clk.
@@ -79,7 +81,8 @@ entity switch_port_rx is
     err_overflow    : out std_logic;
 
     -- Configuration interface (required for PTP/VLAN)
-    cfg_cmd         : in  cfgbus_cmd := CFGBUS_CMD_NULL;
+    cfg_cmd         : in  cfgbus_cmd;
+    cfg_ack         : out cfgbus_ack;
 
     -- System interface.
     core_clk        : in  std_logic;    -- Core datapath clock
@@ -98,55 +101,9 @@ begin
     end if;
 end function;
 
--- Required metadata size?
--- (Retain a single bit if empty, to avoid problems with some tools.)
-function get_meta_width return positive is
-    variable tmp : natural := 0;
-begin
-    if SUPPORT_PTP then
-        tmp := tmp + TSTAMP_WIDTH;
-    end if;
-    if SUPPORT_VLAN then
-        tmp := tmp + VLAN_HDR_WIDTH;
-    end if;
-    return int_max(1, tmp);
-end function;
-
 -- Convenience types
 subtype data_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
-subtype meta_t is std_logic_vector(get_meta_width-1 downto 0);
 subtype last_t is integer range 0 to INPUT_BYTES;
-
--- Convert metadata to vector and vice-versa.
-function meta2vec(x : switch_meta_t) return meta_t is
-    variable meta : meta_t := (others => '0');
-    variable temp : meta_t := (others => '0');
-begin
-    if SUPPORT_PTP then
-        temp := std_logic_vector(resize(x.tstamp, get_meta_width));
-        meta := shift_left(meta, TSTAMP_WIDTH) or temp;
-    end if;
-    if SUPPORT_VLAN then
-        temp := resize(x.vtag, get_meta_width);
-        meta := shift_left(meta, VLAN_HDR_WIDTH) or temp;
-    end if;
-    return meta;
-end function;
-
-function vec2meta(x : meta_t) return switch_meta_t is
-    variable meta : switch_meta_t := SWITCH_META_NULL;
-    variable temp : meta_t := x;
-begin
-    if SUPPORT_VLAN then
-        meta.vtag := temp(VLAN_HDR_WIDTH-1 downto 0);
-        temp := shift_right(temp, VLAN_HDR_WIDTH);
-    end if;
-    if SUPPORT_PTP then
-        meta.tstamp := unsigned(temp(TSTAMP_WIDTH-1 downto 0));
-        temp := shift_right(temp, TSTAMP_WIDTH);
-    end if;
-    return meta;
-end function;
 
 -- Input format conversion
 signal rx_reset_i   : std_logic;
@@ -170,9 +127,12 @@ signal vlan_error   : std_logic;
 
 -- Output FIFO and metadata format conversion.
 signal rx_meta      : switch_meta_t := SWITCH_META_NULL;
-signal mvec_in      : meta_t := (others => '0');
-signal mvec_out     : meta_t;
+signal mvec_in      : switch_meta_v := (others => '0');
+signal mvec_out     : switch_meta_v;
 signal pkt_final    : std_logic;
+
+-- ConfigBus combining.
+signal cfg_acks     : cfgbus_ack_array(0 to 0) := (others => cfgbus_idle);
 
 begin
 
@@ -203,8 +163,22 @@ end generate;
 
 -- If PTP is enabled, small FIFO for timestamps from MAC/PHY.
 gen_ptp1 : if SUPPORT_PTP generate
-    -- TODO: Connect this once the PTP design is complete.
-    -- TODO: PTP block should have a small FIFO connected to pkt_final.
+    u_tsof : entity work.ptp_timestamp
+        generic map(
+        IO_BYTES    => INPUT_BYTES,
+        DEVADDR     => DEV_ADDR,
+        REGADDR     => REGADDR_PORT_BASE(PORT_INDEX) + REGOFFSET_PORT_PTP_RX)
+        port map(
+        in_tnow     => rx_tsof,
+        in_nlast    => rx_nlast_adj,
+        in_write    => rx_write,
+        out_tstamp  => rx_meta.tstamp,
+        out_valid   => open,
+        out_ready   => pkt_final,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(0),
+        clk         => rx_clk,
+        reset_p     => rx_reset_i);
 end generate;
 
 -- Check each frame and drive the commit / revert strobes.
@@ -266,10 +240,9 @@ end generate;
 pkt_final <= vlan_write and (vlan_commit or vlan_revert or vlan_error);
 
 -- Metadata format conversion.
-out_meta <= vec2meta(mvec_out);
-gen_meta : if get_meta_width > 1 generate
-    mvec_in <= meta2vec(rx_meta);
-end generate;
+-- Note: Relying on synthesis tools to trim unused metadata fields.
+out_meta <= switch_v2m(mvec_out);
+mvec_in  <= switch_m2v(rx_meta);
 
 -- Instantiate this port's input FIFO.
 u_fifo : entity work.fifo_packet
@@ -277,7 +250,7 @@ u_fifo : entity work.fifo_packet
     INPUT_BYTES     => INPUT_BYTES,
     OUTPUT_BYTES    => OUTPUT_BYTES,
     BUFFER_KBYTES   => IBUF_KBYTES,
-    META_WIDTH      => get_meta_width,
+    META_WIDTH      => SWITCH_META_WIDTH,
     MAX_PACKETS     => IBUF_PACKETS,
     MAX_PKT_BYTES   => get_max_frame)
     port map(
@@ -313,5 +286,8 @@ u_pkt : sync_pulse2pulse
     in_clk      => rx_clk,
     out_strobe  => err_badfrm,
     out_clk     => core_clk);
+
+-- Combine ConfigBus replies.
+cfg_ack <= cfgbus_merge(cfg_acks);
 
 end switch_port_rx;

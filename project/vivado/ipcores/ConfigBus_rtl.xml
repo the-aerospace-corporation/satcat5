@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-Copyright 2021 The Aerospace Corporation
+Copyright 2021, 2022 The Aerospace Corporation
 
 This file is part of SatCat5.
 
@@ -172,11 +172,11 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
         <spirit:onMaster>
           <spirit:presence>required</spirit:presence>
           <spirit:width>32</spirit:width>
+          <spirit:direction>in</spirit:direction>
         </spirit:onMaster>
         <spirit:onSlave>
           <spirit:presence>required</spirit:presence>
           <spirit:width>32</spirit:width>
-          <spirit:direction>out</spirit:direction>
         </spirit:onSlave>
       </spirit:wire>
     </spirit:port>
@@ -187,11 +187,11 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
         <spirit:onMaster>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
         </spirit:onMaster>
         <spirit:onSlave>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
-          <spirit:direction>out</spirit:direction>
         </spirit:onSlave>
       </spirit:wire>
     </spirit:port>
@@ -202,11 +202,11 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
         <spirit:onMaster>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
         </spirit:onMaster>
         <spirit:onSlave>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
-          <spirit:direction>out</spirit:direction>
         </spirit:onSlave>
       </spirit:wire>
     </spirit:port>
@@ -217,11 +217,11 @@ along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
         <spirit:onMaster>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
+          <spirit:direction>in</spirit:direction>
         </spirit:onMaster>
         <spirit:onSlave>
           <spirit:presence>required</spirit:presence>
           <spirit:width>1</spirit:width>
-          <spirit:direction>out</spirit:direction>
         </spirit:onSlave>
       </spirit:wire>
     </spirit:port>

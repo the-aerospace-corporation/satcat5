@@ -26,6 +26,7 @@ See also: cfgbus_host_uart.vhd, cfgbus_peripherals.vhd
 from struct import pack, unpack
 from threading import Condition
 from time import sleep
+import threading
 
 class ConfigBus:
     # Define command opcodes.
@@ -34,8 +35,10 @@ class ConfigBus:
     OPCODE_RD_RPT   = 0x40
     OPCODE_RD_INC   = 0x50
 
+    lock = threading.Lock()
+
     """Ethernet interface controller linked to a specific ConfigBus."""
-    def __init__(self, if_obj, mac_addr, ethertype=0x5C01, readable=True):
+    def __init__(self, if_obj, mac_addr, ethertype=0x5C01, fastwrite=False, readable=True):
         """
         Create object connected to a specific ConfigBus interface.
 
@@ -49,6 +52,10 @@ class ConfigBus:
                 EtherType for this ConfigBus host (default 0x5C01).
                 Replies have EtherType N+1 (i.e., default 0x5C02).
                 Must be in range 0x0600 to 0xFFFF.
+            fastwrite (bool):
+                Should writes wait for a response (default)? Or use fast mode?
+                Fast mode requires the ConfigBus host to implement sequence
+                counter echo mode (new in v2.2) to distinguish replies.
             readable (bool):
                 Is this interface readable? (Default) Or write-only?
                 Write-only ports can still send read commands, which often
@@ -57,8 +64,10 @@ class ConfigBus:
         # Store basic parameters for later.
         self.cv     = Condition()   # For thread-sync
         self.ifobj  = if_obj
+        self.fastwr = fastwrite or not readable
         self.read   = readable
-        self.reply  = None
+        self.reply  = None          # Received reply
+        self.seq    = 0             # Sequence counter
         # Fixed Ethernet header: Destination, Source, EtherType
         self.etype_cmd = pack('>H', ethertype)
         self.etype_ack = pack('>H', ethertype + 1)
@@ -69,19 +78,27 @@ class ConfigBus:
 
     def _msg_send(self, cmd):
         """Internal helper function for sending commands."""
-        self.reply  = None
+        self.reply = None
         self.ifobj.msg_send(self.ethhdr + cmd, blocking=True)
+
 
     def _msg_rcvd(self, frm):
         """Internal callback for received replies."""
         # Ignore anything that doesn't have the right EtherType.
         if ((len(frm) < 20) or
             (frm[12] != self.etype_ack[0]) or
-            (frm[13] != self.etype_ack[1])): return
-        # Otherwise, store the reply and wake up any waiting threads.
+            (frm[13] != self.etype_ack[1])): 
+            return
+        # In fast-write mode, also filter by sequence count.
+        # Store valid replies and wake up any waiting threads.
         with self.cv:
+            if self.fastwr and self.seq != frm[16]: return
             self.reply = frm[14:]
             self.cv.notify()
+
+    def _msg_skip(self):
+        """Internal function called to skip the next reply."""
+        with self.cv: self.seq = (self.seq + 1) % 256
 
     def _msg_wait(self, timeout):
         """Internal function that waits for reply from ConfigBus host."""
@@ -90,14 +107,10 @@ class ConfigBus:
                 self.cv.wait(timeout)
             tmp = self.reply
             self.reply = None
+            self.seq = (self.seq + 1) % 256
         return tmp
 
-    def _len_word(self, wcount, flags=0):
-        """Internal function that constructs length parameter from word-count."""
-        return 256 * (wcount-1) + flags
-
     def write_reg(self, devaddr, regaddr, val, timeout=0.1):
-        # TODO: Support multi-word writes?
         """
         Send a ConfigBus register-write command.
 
@@ -115,20 +128,56 @@ class ConfigBus:
             bool: True if operation is succesful.
         """
         # Construct and send the command.
-        cmd = self.OPCODE_WR_RPT            # Write command (no-increment)
-        flg = self._len_word(1)             # Single-word write
-        adr = 1024 * devaddr + regaddr      # Combined address
-        frm = pack('>BBHLL', cmd, flg, 0, adr, val)
-        self._msg_send(frm)
-        # If this is a readable port, wait for reply.
-        if self.read:
-            reply = self._msg_wait(timeout)
-            return reply is not None           # Success?
-        else:
-            return True                     # Assume succes
+        with self.lock:
+            cmd = self.OPCODE_WR_RPT            # Write command (no-increment)
+            flg = 0                             # Single-word write (flg = number of words - 1)
+            adr = 1024 * devaddr + regaddr      # Combined address
+            frm = pack('>BBBBLL', cmd, flg, self.seq, 0, adr, val)
+            self._msg_send(frm)
+            # Wait for reply unless in "fast-write" mode.
+            if self.fastwr:
+                self._msg_skip()                # Ignore reply
+                return True                     # Assume success
+            else:
+                reply = self._msg_wait(timeout) # Wait for reply or timeout
+                return reply is not None        # Success?
+
+    def multi_write(self, devaddr, regaddr, vals, timeout=0.1, increment=False):
+        """
+        Send a ConfigBus register-write command containing multiple words.
+
+        Args:
+            devaddr (int):
+                ConfigBus device-address (0-255)
+            regaddr (int):
+                ConfigBus register-address (0-1023)
+            vals (list of int):
+                Values to be written (Each value fits in uint32_t)
+                Array size should be in range 2 to 8
+                For single writes use write_reg()
+            timeout (float):
+                Timeout for reply, in seconds. (Default = 0.1)
+            increment (bool):
+                Register auto-increment. (Default = False)
+
+        Returns:
+            bool: True if operation is succesful.
+        """
+        with self.lock:
+            cmd = self.OPCODE_WR_INC if increment else self.OPCODE_WR_RPT
+            flg = len(vals) - 1                 # Number of words - 1
+            adr = 1024 * devaddr + regaddr      # Combined address
+            frm = pack(f'>BBBBL{len(vals)}L', cmd, flg, self.seq, 0, adr, *vals)
+            self._msg_send(frm)
+            # Wait for reply?
+            if self.fastwr:
+                self._msg_skip()                # Ignore reply
+                return True                     # Assume success
+            else:
+                reply = self._msg_wait(timeout) # Wait for reply or timeout
+                return reply is not None        # Success?
 
     def read_reg(self, devaddr, regaddr, timeout=0.1):
-        # TODO: Support multi-word reads?
         """
         Send a ConfigBus register-read command.
 
@@ -143,22 +192,63 @@ class ConfigBus:
         Returns:
             int: Read register value if successful, None otherwise.
         """
-        # Construct and send the command.
-        cmd = self.OPCODE_RD_RPT            # Read command (no-increment)
-        flg = self._len_word(1)             # Single-word read
-        adr = 1024 * devaddr + regaddr      # Combined address
-        frm = pack('>BBHL', cmd, flg, 0, adr)
-        self._msg_send(frm)
-        # If this is a readable port, wait for reply.
-        if self.read:
-            reply = self._msg_wait(timeout)
-            if reply is None or len(reply) < 13:
-                return None                 # Timeout
-            (word, status) = unpack('>LB', reply[8:13])
-            if status: return None          # Missing-ACK
-            else: return word               # Success
-        else:
-            return None                     # Not readable
+        with self.lock:
+            # Construct and send the command.
+            cmd = self.OPCODE_RD_RPT            # Read command (no-increment)
+            flg = 0                             # Single-word read (flg = number of words - 1)
+            adr = 1024 * devaddr + regaddr      # Combined address
+            frm = pack('>BBBBL', cmd, flg, self.seq, 0, adr)
+            self._msg_send(frm)
+            # If this is a readable port, wait for reply.
+            if self.read:
+                reply = self._msg_wait(timeout) # Wait for reply or timeout
+                if reply is None or len(reply) < 13: 
+                    return None                 # Timeout
+                (word, status) = unpack('>LB', reply[8:13])
+                if status: return None          # Missing-ACK
+                else: return word               # Success
+            else:
+                self._msg_skip()                # Ignore reply
+                return None                     # Not readable
+
+    def multi_read(self, devaddr, regaddr, nwords, timeout=0.1, increment=False):
+        """
+        Send a ConfigBus multiple word register-read command.
+
+        Args:
+            devaddr (int):
+                ConfigBus device-address (0-255)
+            regaddr (int):
+                ConfigBus register-address (0-1023)
+            nwords (int):
+                Number of words to read (2-8)
+            timeout (float):
+                Timeout for reply, in seconds. (Default = 0.1)
+            increment (bool):
+                Register auto-increment. (Default = False)
+
+        Returns:
+            int: Read register value if successful, None otherwise.
+        """
+        with self.lock:
+            # Construct and send the command.
+            cmd = self.OPCODE_RD_INC if increment else self.OPCODE_RD_RPT
+            flg = nwords - 1
+            adr = 1024 * devaddr + regaddr      # Combined address
+            frm = pack('>BBBBL', cmd, flg, self.seq, 0, adr)
+            self._msg_send(frm)
+            # If this is a readable port, wait for reply.
+            if self.read:
+                reply = self._msg_wait(timeout) # Wait for reply or timeout
+                if reply is None or len(reply) < 13:
+                    return None                 # Timeout
+                words = list(unpack(f'>{nwords}L', reply[8:12 + 4*flg]))
+                status = reply[12 + 4*flg]
+                if status: return None          # Missing-ACK
+                else: return words              # Success
+            else:
+                self._msg_skip()                # Ignore reply
+                return None                     # Not readable
 
 class ConfigGPO:
     """

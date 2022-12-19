@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
+-- Copyright 2019, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -47,9 +47,11 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.ptp_types.all;
 
 entity eth_dec8b10b is
     generic (
+    IN_RATE_HZ  : natural := 0;         -- Baud rate in Hz (for timestamps)
     ERR_STRICT  : boolean := false);    -- Report every decode error
     port (
     -- Input stream
@@ -57,6 +59,7 @@ entity eth_dec8b10b is
     in_lock     : in  std_logic;        -- Clock detect OK
     in_cken     : in  std_logic;        -- Clock-enable
     in_data     : in  std_logic_vector(9 downto 0);
+    in_tsof     : in  tstamp_t := (others => '0');
 
     -- Output stream (to eth_preamble_rx)
     out_lock    : out std_logic;        -- Token align OK
@@ -64,6 +67,7 @@ entity eth_dec8b10b is
     out_dv      : out std_logic;        -- Data valid
     out_err     : out std_logic;        -- Error flag
     out_data    : out std_logic_vector(7 downto 0);
+    out_tsof    : out tstamp_t;
 
     -- Link configuration state machine.
     cfg_rcvd    : out std_logic;
@@ -76,6 +80,7 @@ architecture rtl of eth_dec8b10b is
 signal align_sreg_d : std_logic_vector(18 downto 0) := (others => '0');
 signal align_sreg_q : std_logic_vector(8 downto 0) := (others => '0');
 signal align_data   : std_logic_vector(9 downto 0) := (others => '0');
+signal align_tsof   : tstamp_t := (others => '0');
 signal align_cken   : std_logic := '0';
 signal align_error  : std_logic := '0';
 signal align_lock   : std_logic := '0';
@@ -86,6 +91,7 @@ signal align_6b     : std_logic_vector(5 downto 0) := (others => '0');
 signal align_4b     : std_logic_vector(3 downto 0) := (others => '0');
 signal lookup_cken  : std_logic := '0';
 signal lookup_ctrl  : std_logic := '0';
+signal lookup_tsof  : tstamp_t := (others => '0');
 signal lookup_5b    : std_logic_vector(4 downto 0) := (others => '0');
 signal lookup_3b    : std_logic_vector(2 downto 0) := (others => '0');
 signal lookup_err   : std_logic := '0';
@@ -96,6 +102,7 @@ signal err_strobe   : std_logic := '0';
 
 -- Packet encapsulation and configuration metadata.
 signal pkt_active   : std_logic := '0';
+signal pkt_tsof     : tstamp_t := (others => '0');
 signal cfg_rcvd_i   : std_logic := '0';
 signal cfg_word_i   : std_logic_vector(15 downto 0) := (others => '0');
 
@@ -114,16 +121,19 @@ p_align : process(io_clk)
     --       with all tested PHYs but still tolerates transient glitches.
     constant WINDOW_THRESH  : positive := 31;   -- Minimum matches to lock
     constant WINDOW_PENALTY : positive := 2;    -- Weight for misaligned commas
+    constant SLIP_DELAY     : tstamp_t := get_tstamp_incr(IN_RATE_HZ);
     variable comma_temp     : std_logic_vector(6 downto 0) := (others => '0');
     variable comma_detect   : std_logic_vector(9 downto 0) := (others => '0');
     variable comma_error    : std_logic_vector(9 downto 0) := (others => '0');
     variable align_count    : integer range 0 to WINDOW_THRESH := 0;
+    variable align_incr     : tstamp_t := (others => '0');
 begin
     if rising_edge(io_clk) then
         -- Update shift register and drive output (MSB-first)
         if (in_cken = '1') then
             align_sreg_q <= align_sreg_d(8 downto 0);
             align_data   <= align_sreg_d(align_bit+9 downto align_bit);
+            align_tsof   <= in_tsof + align_incr;
         end if;
         align_cken <= in_cken;
 
@@ -135,6 +145,7 @@ begin
             align_lock  <= '0';
             align_bit   <= 0;
             align_count := 0;
+            align_incr  := (others => '0');
         elsif (or_reduce(comma_error) = '1') then
             -- Misaligned comma, unlock if score reaches zero.
             if (align_count > WINDOW_PENALTY) then
@@ -147,9 +158,11 @@ begin
                 align_lock  <= '0';
                 align_count := 0;
                 if (align_bit = 9) then
-                    align_bit <= 0;
+                    align_bit   <= 0;
+                    align_incr  := (others => '0');
                 else
-                    align_bit <= align_bit + 1;
+                    align_bit   <= align_bit + 1;
+                    align_incr  := align_incr + SLIP_DELAY;
                 end if;
             end if;
         elsif (or_reduce(comma_detect) = '1') then
@@ -187,6 +200,7 @@ begin
     if rising_edge(io_clk) then
         -- Simple delay for clock-enable signal.
         lookup_cken <= align_cken;
+        lookup_tsof <= align_tsof;
 
         -- Explicit detection for all twelve control codes.
         if (align_6b = "001111" or align_6b = "110000"                  -- K28.x
@@ -301,11 +315,13 @@ begin
         -- Detect packet start/end/error tokens.
         if (align_lock = '0') then
             -- No upstream lock, clear flag.
-            pkt_active <= '0';
+            pkt_active  <= '0';
+            pkt_tsof    <= (others => '0');
         elsif (lookup_cken = '1' and lookup_ctrl = '1') then
             -- Start of packet = K.27.7 (See Table 36-3).  Treat any
             -- other control token (end, error, etc.) as end of frame.
-            pkt_active <= lookup_sof;
+            pkt_active  <= lookup_sof;      -- Start of frame?
+            pkt_tsof    <= lookup_tsof;     -- Latch timestamp
         end if;
 
         -- Receive link-configuration word (C1 or C2, see Table 36-3)
@@ -374,6 +390,7 @@ out_cken    <= lookup_cken;
 out_dv      <= pkt_active and not lookup_ctrl;
 out_err     <= err_strobe;
 out_data    <= lookup_3b & lookup_5b;
+out_tsof    <= pkt_tsof;
 cfg_rcvd    <= cfg_rcvd_i;
 cfg_word    <= cfg_word_i;
 

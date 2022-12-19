@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -38,8 +38,10 @@ entity wrap_router_inline is
     STATIC_IPADDR       : std_logic_vector(31 downto 0);    -- Static IP address
     STATIC_SUBADDR      : std_logic_vector(31 downto 0);    -- Static subnet addr
     STATIC_SUBMASK      : std_logic_vector(31 downto 0);    -- Static subnet mask
-    STATIC_NOIP_DMAC_EG : std_logic_vector(47 downto 0);    -- MAC address for this router
-    STATIC_NOIP_DMAC_IG : std_logic_vector(47 downto 0);    -- MAC address for this router
+    STATIC_IPV4_DMAC_EG : std_logic_vector(47 downto 0);    -- Destination address (IPv4)
+    STATIC_IPV4_DMAC_IG : std_logic_vector(47 downto 0);    -- Destination address (IPv4)
+    STATIC_NOIP_DMAC_EG : std_logic_vector(47 downto 0);    -- Destination address (Non-IP)
+    STATIC_NOIP_DMAC_IG : std_logic_vector(47 downto 0);    -- Destination address (Non-IP)
     ROUTER_MACADDR      : std_logic_vector(47 downto 0);    -- MAC address for this router
     ROUTER_REFCLK_HZ    : natural := 125_000_000; -- Operating clock frequency (net_tx_clk)
     SUBNET_IS_LCL_PORT  : boolean := false; -- Which port has the local subnet?
@@ -69,6 +71,7 @@ entity wrap_router_inline is
     lcl_rx_error    : out std_logic;
     lcl_rx_rate     : out std_logic_vector(15 downto 0);
     lcl_rx_status   : out std_logic_vector(7 downto 0);
+    lcl_rx_tsof     : out std_logic_vector(47 downto 0);
     lcl_rx_reset    : out std_logic;
     lcl_tx_clk      : out std_logic;
     lcl_tx_data     : in  std_logic_vector(7 downto 0);
@@ -76,6 +79,7 @@ entity wrap_router_inline is
     lcl_tx_valid    : in  std_logic;
     lcl_tx_ready    : out std_logic;
     lcl_tx_error    : out std_logic;
+    lcl_tx_tnow     : out std_logic_vector(47 downto 0);
     lcl_tx_reset    : out std_logic;
 
     -- Remote network port.
@@ -86,6 +90,7 @@ entity wrap_router_inline is
     net_rx_error    : in  std_logic;
     net_rx_rate     : in  std_logic_vector(15 downto 0);
     net_rx_status   : in  std_logic_vector(7 downto 0);
+    net_rx_tsof     : in  std_logic_vector(47 downto 0);
     net_rx_reset    : in  std_logic;
     net_tx_clk      : in  std_logic;
     net_tx_data     : out std_logic_vector(7 downto 0);
@@ -93,6 +98,7 @@ entity wrap_router_inline is
     net_tx_valid    : out std_logic;
     net_tx_ready    : in  std_logic;
     net_tx_error    : in  std_logic;
+    net_tx_tnow     : in  std_logic_vector(47 downto 0);
     net_tx_reset    : in  std_logic;
 
     -- External reset (static mode only)
@@ -130,6 +136,8 @@ signal cfg_ip_addr      : ip_addr_t;
 signal cfg_sub_addr     : ip_addr_t;
 signal cfg_sub_mask     : ip_addr_t;
 signal cfg_reset_p      : std_logic;
+signal ipv4_dmac_eg     : mac_addr_t;
+signal ipv4_dmac_ig     : mac_addr_t;
 signal noip_dmac_eg     : mac_addr_t;
 signal noip_dmac_ig     : mac_addr_t;
 signal rtr_clk          : std_logic;
@@ -146,9 +154,11 @@ lcl_rx_write    <= lcl_rxd.write;
 lcl_rx_error    <= lcl_rxd.rxerr;
 lcl_rx_rate     <= lcl_rxd.rate;
 lcl_rx_status   <= lcl_rxd.status;
+lcl_rx_tsof     <= std_logic_vector(lcl_rxd.tsof);
 lcl_rx_reset    <= lcl_rxd.reset_p;
 lcl_tx_clk      <= lcl_txc.clk;
 lcl_tx_ready    <= lcl_txc.ready;
+lcl_tx_tnow     <= std_logic_vector(lcl_txc.tnow);
 lcl_tx_error    <= lcl_txc.txerr;
 lcl_tx_reset    <= lcl_txc.reset_p;
 lcl_txd.data    <= lcl_tx_data;
@@ -162,9 +172,11 @@ net_rxd.write   <= net_rx_write;
 net_rxd.rxerr   <= net_rx_error;
 net_rxd.rate    <= net_rx_rate;
 net_rxd.status  <= net_rx_status;
+net_rxd.tsof    <= unsigned(net_rx_tsof);
 net_rxd.reset_p <= net_rx_reset;
 net_txc.clk     <= net_tx_clk;
 net_txc.ready   <= net_tx_ready;
+net_txc.tnow    <= unsigned(net_tx_tnow);
 net_txc.txerr   <= net_tx_error;
 net_txc.reset_p <= net_tx_reset;
 net_tx_data     <= net_txd.data;
@@ -180,6 +192,8 @@ gen_static : if STATIC_CONFIG generate
         R_IP_ADDR       => STATIC_IPADDR,
         R_SUB_ADDR      => STATIC_SUBADDR,
         R_SUB_MASK      => STATIC_SUBMASK,
+        R_IPV4_DMAC_EG  => STATIC_IPV4_DMAC_EG,
+        R_IPV4_DMAC_IG  => STATIC_IPV4_DMAC_IG,
         R_NOIP_DMAC_EG  => STATIC_NOIP_DMAC_EG,
         R_NOIP_DMAC_IG  => STATIC_NOIP_DMAC_IG)
         port map(
@@ -187,6 +201,8 @@ gen_static : if STATIC_CONFIG generate
         cfg_sub_addr    => cfg_sub_addr,
         cfg_sub_mask    => cfg_sub_mask,
         cfg_reset_p     => cfg_reset_p,
+        ipv4_dmac_eg    => ipv4_dmac_eg,
+        ipv4_dmac_ig    => ipv4_dmac_ig,
         noip_dmac_eg    => noip_dmac_eg,
         noip_dmac_ig    => noip_dmac_ig,
         rtr_clk         => rtr_clk,
@@ -209,6 +225,7 @@ gen_dynamic : if not STATIC_CONFIG generate
     u_config : entity work.router_config_axi
         generic map(
         CLKREF_HZ       => ROUTER_REFCLK_HZ,
+        IPV4_REG_EN     => IPV4_DMAC_REPLACE and not (PROXY_EN_EGRESS and PROXY_EN_INGRESS),
         NOIP_REG_EN     => NOIP_DMAC_REPLACE and not NOIP_BLOCK_ALL,
         ADDR_WIDTH      => AXI_ADDR_WIDTH)
         port map(
@@ -216,6 +233,8 @@ gen_dynamic : if not STATIC_CONFIG generate
         cfg_sub_addr    => cfg_sub_addr,
         cfg_sub_mask    => cfg_sub_mask,
         cfg_reset_p     => cfg_reset_p,
+        ipv4_dmac_eg    => ipv4_dmac_eg,
+        ipv4_dmac_ig    => ipv4_dmac_ig,
         noip_dmac_eg    => noip_dmac_eg,
         noip_dmac_ig    => noip_dmac_ig,
         rtr_clk         => rtr_clk,
@@ -275,6 +294,8 @@ u_router : entity work.router_inline_top
     router_sub_addr     => cfg_sub_addr,
     router_sub_mask     => cfg_sub_mask,
     router_time_msec    => rtr_time_msec,
+    ipv4_dmac_egress    => ipv4_dmac_eg,
+    ipv4_dmac_ingress   => ipv4_dmac_ig,
     noip_dmac_egress    => noip_dmac_eg,
     noip_dmac_ingress   => noip_dmac_ig,
     router_drop_clk     => rtr_clk,

@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -32,30 +32,24 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     cfgbus_host_axi.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     port_mailmap.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_mem  $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_axi_mailmap
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_port_axi_mailmap.vhd
 
 # Connect I/O ports
 ipcore_add_axilite CtrlAxi axi_clk axi_aresetn axi
 ipcore_add_ethport Eth sw master
+ipcore_add_refopt PtpRef tref
 ipcore_add_irq irq_out
 
 # Set parameters
-ipcore_add_param ADDR_WIDTH long 32
-ipcore_add_param MIN_FRAME long 64
-ipcore_add_param APPEND_FCS bool true
-ipcore_add_param STRIP_FCS bool true
+ipcore_add_param ADDR_WIDTH long 32 \
+    {Bits in AXI address word}
+ipcore_add_param MIN_FRAME long 64 \
+    {Minimum outgoing frame length. (Total bytes including actual or implied FCS.) Shorter frames will be zero-padded as needed.}
+ipcore_add_param APPEND_FCS bool true \
+    {Append frame check sequence (FCS / CRC32) to outgoing packets? (Recommended)}
+ipcore_add_param STRIP_FCS bool true \
+    {Remove frame check sequence (FCS / CRC32) from incoming packets? (Recommended)}
 
 # Package the IP-core.
 ipcore_finished

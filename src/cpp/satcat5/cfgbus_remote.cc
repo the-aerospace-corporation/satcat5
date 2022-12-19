@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -92,6 +92,7 @@ ConfigBusRemote::ConfigBusRemote(
     , m_timeout_rd(100000)  // Default = 100 msec
     , m_timeout_wr(0)       // Default = Non-blocking
     , m_status(0)
+    , m_sequence(0)
     , m_response_opcode(0)
     , m_response_ptr(0)
     , m_response_len(0)
@@ -170,7 +171,7 @@ void ConfigBusRemote::frame_rcvd(satcat5::io::LimitedRead& src)
 
     // Read and discard the rest of the reply header.
     // TODO: Is there any point in error-checking this?
-    src.read_consume(7);    // Len, Rsvd, Addr
+    src.read_consume(7);    // Len, Seq, Rsvd, Addr
 
     // If applicable, store the read-response.
     unsigned rdbytes = 4 * m_response_len + 1;
@@ -247,7 +248,8 @@ bool ConfigBusRemote::send_command(
     m_response_len      = len;
     dst->write_u8(opcode);          // Opcode
     dst->write_u8(len-1);           // Length
-    dst->write_u16(0);              // Reserved
+    dst->write_u8(++m_sequence);    // Sequence counter
+    dst->write_u8(0);               // Reserved
     dst->write_u32(addr);           // Combined address
     if ((opcode == OPCODE_WRITE0) || (opcode == OPCODE_WRITE1)) {
         for (unsigned a = 0 ; a < len ; ++a)

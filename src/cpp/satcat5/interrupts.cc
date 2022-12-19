@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -100,7 +100,7 @@ void irq::Controller::init(util::GenericTimer* timer)
     irq::Handler* irq = g_irq_list;
     while (irq) {
         irq_register(irq);
-        irq = irq->m_next;
+        irq = util::ListCore::next(irq);
     }
 
     // Linking timer now resolves a chicken-and-egg problem if timer
@@ -170,6 +170,20 @@ void irq::Controller::interrupt_static(irq::Handler* obj)
 
     // Restore original lock-count.
     g_lock_count -= INTERRUPT_CONTEXT;
+}
+
+irq::ControllerNull::ControllerNull(util::GenericTimer* timer)
+{
+    init(timer);
+}
+
+void irq::ControllerNull::service_all()
+{
+    irq::Handler* irq = g_irq_list;
+    while (irq) {
+        service_one(irq);
+        irq = util::ListCore::next(irq);
+    }
 }
 
 irq::Handler::Handler(const char* lbl, int irq)

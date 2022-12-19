@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -33,7 +33,7 @@ void satcat5::io::Writeable::write_u8(u8 data)
 {
     if (get_write_space() >= 1) {
         write_next(data);
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void satcat5::io::Writeable::write_u16(u16 data)
@@ -41,7 +41,7 @@ void satcat5::io::Writeable::write_u16(u16 data)
     if (get_write_space() >= 2) {
         write_next((u8)(data >> 8));   // Big-endian
         write_next((u8)(data >> 0));
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void satcat5::io::Writeable::write_u32(u32 data)
@@ -51,7 +51,7 @@ void satcat5::io::Writeable::write_u32(u32 data)
         write_next((u8)(data >> 16));
         write_next((u8)(data >> 8));
         write_next((u8)(data >> 0));
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void satcat5::io::Writeable::write_u64(u64 data)
@@ -65,7 +65,7 @@ void satcat5::io::Writeable::write_u64(u64 data)
         write_next((u8)(data >> 16));
         write_next((u8)(data >> 8));
         write_next((u8)(data >> 0));
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void satcat5::io::Writeable::write_s8(s8 data)
@@ -106,7 +106,7 @@ void satcat5::io::Writeable::write_bytes(unsigned nbytes, const void* src)
             write_next(*src8);
             src8++; nbytes--;
         }
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void satcat5::io::Writeable::write_str(const char* str)

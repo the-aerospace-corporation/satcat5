@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,36 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_check.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     fifo_large_sync.vhd
-ipcore_add_file $src_dir/common     fifo_packet.vhd
-ipcore_add_file $src_dir/common     fifo_smol_async.vhd
-ipcore_add_file $src_dir/common     fifo_smol_resize.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     packet_inject.vhd
-ipcore_add_file $src_dir/common     router_arp_cache.vhd
-ipcore_add_file $src_dir/common     router_arp_parse.vhd
-ipcore_add_file $src_dir/common     router_arp_proxy.vhd
-ipcore_add_file $src_dir/common     router_arp_request.vhd
-ipcore_add_file $src_dir/common     router_arp_update.vhd
-ipcore_add_file $src_dir/common     router_arp_wrapper.vhd
-ipcore_add_file $src_dir/common     router_config_axi.vhd
-ipcore_add_file $src_dir/common     router_config_static.vhd
-ipcore_add_file $src_dir/common     router_common.vhd
-ipcore_add_file $src_dir/common     router_icmp_send.vhd
-ipcore_add_file $src_dir/common     router_inline_top.vhd
-ipcore_add_file $src_dir/common     router_ip_gateway.vhd
-ipcore_add_file $src_dir/common     router_mac_replace.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_mem  $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_router_inline
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_router_inline.vhd
 
 # Connect I/O ports
 ipcore_add_ethport LocalPort lcl master
@@ -68,32 +40,62 @@ ipcore_add_axilite CtrlAxi axi_clk axi_aresetn axi
 ipcore_add_reset reset_p ACTIVE_HIGH
 
 # Set parameters
-ipcore_add_param STATIC_CONFIG          bool false
-ipcore_add_param STATIC_IPADDR          hexstring {C0A80101}
-ipcore_add_param STATIC_SUBADDR         hexstring {C0A80100}
-ipcore_add_param STATIC_SUBMASK         hexstring {FFFFFF00}
-ipcore_add_param STATIC_NOIP_DMAC_EG    hexstring {FFFFFFFFFFFF}
-ipcore_add_param STATIC_NOIP_DMAC_IG    hexstring {FFFFFFFFFFFF}
-ipcore_add_param AXI_ADDR_WIDTH         long 32
-ipcore_add_param ROUTER_MACADDR         hexstring {5A5ADEADBEEF}
-ipcore_add_param ROUTER_REFCLK_HZ       long 125000000
-ipcore_add_param SUBNET_IS_LCL_PORT     bool false
-ipcore_add_param PROXY_EN_EGRESS        bool true
-ipcore_add_param PROXY_EN_INGRESS       bool true
-ipcore_add_param PROXY_RETRY_KBYTES     long 4
-ipcore_add_param PROXY_CACHE_SIZE       long 32
-ipcore_add_param IPV4_BLOCK_MCAST       bool true
-ipcore_add_param IPV4_BLOCK_FRAGMENT    bool true
-ipcore_add_param IPV4_DMAC_FILTER       bool true
-ipcore_add_param IPV4_DMAC_REPLACE      bool true
-ipcore_add_param IPV4_SMAC_REPLACE      bool true
-ipcore_add_param NOIP_BLOCK_ALL         bool true
-ipcore_add_param NOIP_BLOCK_ARP         bool true
-ipcore_add_param NOIP_BLOCK_BCAST       bool true
-ipcore_add_param NOIP_DMAC_REPLACE      bool true
-ipcore_add_param NOIP_SMAC_REPLACE      bool true
-ipcore_add_param LCL_FRAME_BYTES_MIN    long 64
-ipcore_add_param NET_FRAME_BYTES_MIN    long 64
+ipcore_add_param STATIC_CONFIG          bool false \
+    {Configuration set at build-time?}
+ipcore_add_param STATIC_IPADDR          hexstring {C0A80101} \
+    {Router IP-address (hex)}
+ipcore_add_param STATIC_SUBADDR         hexstring {C0A80100} \
+    {Subnet base address (hex)}
+ipcore_add_param STATIC_SUBMASK         hexstring {FFFFFF00} \
+    {Subnet mask (hex)}
+ipcore_add_param STATIC_IPV4_DMAC_EG    hexstring {DEADBEEFCAFE} \
+    {Forwarding address for IPv4 frames on NetPort (Do not use broadcast)}
+ipcore_add_param STATIC_IPV4_DMAC_IG    hexstring {DEADBEEFCAFE} \
+    {Forwarding address for IPv4 frames on LocalPort (Do not use broadcast)}
+ipcore_add_param STATIC_NOIP_DMAC_EG    hexstring {FFFFFFFFFFFF} \
+    {Forwarding address for non-IP frames on NetPort}
+ipcore_add_param STATIC_NOIP_DMAC_IG    hexstring {FFFFFFFFFFFF} \
+    {Forwarding address for non-IP frames on LocalPort}
+ipcore_add_param AXI_ADDR_WIDTH         long 32 \
+    {Bits in AXI address word}
+ipcore_add_param ROUTER_MACADDR         hexstring {5A5ADEADBEEF} \
+    {Router MAC address (hex)}
+ipcore_add_param ROUTER_REFCLK_HZ       long 125000000 \
+    {Frequency of NetPort transmit clock (Hz)}
+ipcore_add_param SUBNET_IS_LCL_PORT     bool false \
+    {Is the narrow subnet on LocalPort (true) or NetPort (false)?}
+ipcore_add_param PROXY_EN_EGRESS        bool true \
+    {Enable Proxy-ARP on LocalPort? (i.e., Emulating responses for devices on NetPort.)}
+ipcore_add_param PROXY_EN_INGRESS       bool true \
+    {Enable Proxy-ARP on NetPort? (i.e., Emulating responses for devices on LocalPort.)}
+ipcore_add_param PROXY_RETRY_KBYTES     long 4 \
+    {Buffer size for IP frames with uncached MAC address}
+ipcore_add_param PROXY_CACHE_SIZE       long 32 \
+    {Size of ARP cache}
+ipcore_add_param IPV4_BLOCK_MCAST       bool true \
+    {Block multicast IPv4 packets?}
+ipcore_add_param IPV4_BLOCK_FRAGMENT    bool true \
+    {Block fragmented IPv4 packets?}
+ipcore_add_param IPV4_DMAC_FILTER       bool true \
+    {Block IPv4 packets sent to a MAC address that is not the router?}
+ipcore_add_param IPV4_DMAC_REPLACE      bool true \
+    {Replace destination MAC of IPv4 packets?}
+ipcore_add_param IPV4_SMAC_REPLACE      bool true \
+    {Replace source MAC of IPv4 packets? (Recommended)}
+ipcore_add_param NOIP_BLOCK_ALL         bool true \
+    {Block all non-IPv4 frames?}
+ipcore_add_param NOIP_BLOCK_ARP         bool true \
+    {Block Address Resolution Protocol (ARP) frames?}
+ipcore_add_param NOIP_BLOCK_BCAST       bool true \
+    {Block non-IPv4 frames with a broadcast destination address?}
+ipcore_add_param NOIP_DMAC_REPLACE      bool true \
+    {Replace destination MAC of non-IPv4 frames?}
+ipcore_add_param NOIP_SMAC_REPLACE      bool true \
+    {Replace source MAC of non-IPv4 frames? (Recommended)}
+ipcore_add_param LCL_FRAME_BYTES_MIN    long 64 \
+    {Minimum length of Ethernet frames on LocalPort (total bytes including FCS)}
+ipcore_add_param NET_FRAME_BYTES_MIN    long 64 \
+    {Minimum length of Ethernet frames on NetPort (total bytes including FCS)}
 
 # Enable ports and parameters depending on configuration.
 set_property enablement_dependency {!$STATIC_CONFIG} [ipx::get_bus_interfaces CtrlAxi -of_objects $ip]
@@ -104,6 +106,8 @@ set_property enablement_tcl_expr {!$STATIC_CONFIG} [ipx::get_user_parameters AXI
 set_property enablement_tcl_expr {$STATIC_CONFIG} [ipx::get_user_parameters STATIC_IPADDR -of_objects $ip]
 set_property enablement_tcl_expr {$STATIC_CONFIG} [ipx::get_user_parameters STATIC_SUBADDR -of_objects $ip]
 set_property enablement_tcl_expr {$STATIC_CONFIG} [ipx::get_user_parameters STATIC_SUBMASK -of_objects $ip]
+set_property enablement_tcl_expr {$STATIC_CONFIG && $IPV4_DMAC_REPLACE && !$PROXY_EN_INGRESS} [ipx::get_user_parameters STATIC_NOIP_DMAC_EG -of_objects $ip]
+set_property enablement_tcl_expr {$STATIC_CONFIG && $IPV4_DMAC_REPLACE && !$PROXY_EN_EGRESS} [ipx::get_user_parameters STATIC_NOIP_DMAC_IG -of_objects $ip]
 set_property enablement_tcl_expr {$STATIC_CONFIG && $NOIP_DMAC_REPLACE && !$NOIP_BLOCK_ALL} [ipx::get_user_parameters STATIC_NOIP_DMAC_EG -of_objects $ip]
 set_property enablement_tcl_expr {$STATIC_CONFIG && $NOIP_DMAC_REPLACE && !$NOIP_BLOCK_ALL} [ipx::get_user_parameters STATIC_NOIP_DMAC_IG -of_objects $ip]
 

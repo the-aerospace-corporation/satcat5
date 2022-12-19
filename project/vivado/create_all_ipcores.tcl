@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -35,6 +35,7 @@ source $ipcores/create_cfgbus_led.tcl
 source $ipcores/create_cfgbus_mdio.tcl
 source $ipcores/create_cfgbus_spi_controller.tcl
 source $ipcores/create_cfgbus_split.tcl
+source $ipcores/create_cfgbus_text_lcd.tcl
 source $ipcores/create_cfgbus_timer.tcl
 source $ipcores/create_cfgbus_uart.tcl
 source $ipcores/create_port_adapter.tcl
@@ -57,6 +58,8 @@ source $ipcores/create_port_serial_uart_4wire.tcl
 source $ipcores/create_port_sgmii_gpio.tcl
 source $ipcores/create_port_sgmii_gtx.tcl
 source $ipcores/create_port_stream.tcl
+source $ipcores/create_ptp_freqsynth.tcl
+source $ipcores/create_ptp_reference.tcl
 source $ipcores/create_reset_hold.tcl
 source $ipcores/create_router_inline.tcl
 source $ipcores/create_switch_aux.tcl

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -45,6 +45,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.tcam_constants.all;
 
 entity tcam_maxlen is
     generic (
@@ -54,14 +55,12 @@ entity tcam_maxlen is
     port (
     -- Mask to be priority-ranked.
     in_mask     : in  std_logic_vector(TABLE_SIZE-1 downto 0);
-    in_type     : in  std_logic;
-    in_rdy      : in  std_logic;
+    in_type     : in  search_type;
 
     -- Final output selection.
     out_index   : out integer range 0 to TABLE_SIZE-1;
     out_found   : out std_logic;
-    out_type    : out std_logic;
-    out_rdy     : out std_logic;
+    out_type    : out search_type;
     out_error   : out std_logic;
 
     -- Matched delay data and metadata.
@@ -71,6 +70,7 @@ entity tcam_maxlen is
     out_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
 
     -- Set priority for each table entry.
+    cfg_clear   : in  std_logic;
     cfg_index   : in  integer range 0 to TABLE_SIZE-1;
     cfg_plen    : in  integer range 1 to INPUT_WIDTH;
     cfg_write   : in  std_logic;
@@ -105,6 +105,7 @@ type plen_array is array(natural range <>) of plen_t;
 type ridx_array is array(natural range <>) of ridx_t;
 type data_array is array(natural range <>) of data_t;
 type meta_array is array(natural range <>) of meta_t;
+type type_array is array(natural range <>) of search_type;
 
 -- Store the prefix-length for each table entry.
 signal store_plen   : plen_array(TABLE_SIZE-1 downto 0) := (others => 0);
@@ -115,8 +116,7 @@ signal tree_ridx    : ridx_array(TSIZE-1 downto 0) := (others => 0);
 signal tree_error   : std_logic_vector(TSIZE-1 downto 0) := (others => '0');
 signal dly_data     : data_array(TLAYERS-1 downto 0) := (others => (others => '0'));
 signal dly_meta     : meta_array(TLAYERS-1 downto 0) := (others => (others => '0'));
-signal dly_type     : std_logic_vector(TLAYERS-1 downto 0) := (others => '0');
-signal dly_rdy      : std_logic_vector(TLAYERS-1 downto 0) := (others => '0');
+signal dly_type     : type_array(TLAYERS-1 downto 0) := (others => TCAM_SEARCH_NONE);
 
 begin
 
@@ -126,7 +126,6 @@ out_found   <= bool2bit(tree_plen(0) > 0);
 out_data    <= dly_data(0);
 out_meta    <= dly_meta(0);
 out_type    <= dly_type(0);
-out_rdy     <= dly_rdy(0);
 out_error   <= or_reduce(tree_error);
 
 -- Store the prefix-length for each table entry.
@@ -134,7 +133,7 @@ p_ref : process(clk)
 begin
     if rising_edge(clk) then
         for n in 0 to TABLE_SIZE-1 loop
-            if (reset_p = '1') then
+            if (reset_p = '1' or cfg_clear = '1') then
                 store_plen(n) <= 0;
             elsif (cfg_write = '1' and cfg_index = n) then
                 store_plen(n) <= cfg_plen;
@@ -213,13 +212,11 @@ begin
         if (reset_p = '1') then
             dly_data    <= (others => (others => '0'));
             dly_meta    <= (others => (others => '0'));
-            dly_type    <= (others => '0');
-            dly_rdy     <= (others => '0');
+            dly_type    <= (others => TCAM_SEARCH_NONE);
         else
             dly_data    <= in_data & dly_data(TLAYERS-1 downto 1);
             dly_meta    <= in_meta & dly_meta(TLAYERS-1 downto 1);
             dly_type    <= in_type & dly_type(TLAYERS-1 downto 1);
-            dly_rdy     <= in_rdy  & dly_rdy (TLAYERS-1 downto 1);
         end if;
     end if;
 end process;

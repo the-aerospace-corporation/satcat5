@@ -56,7 +56,7 @@ namespace satcat5 {
             bool read_bytes(unsigned nbytes, void* dst) override;
             void read_finalize() override;
 
-        private:
+        protected:
             // Internal event-handlers.
             void write_next(u8 data) override;
             void write_overflow() override;

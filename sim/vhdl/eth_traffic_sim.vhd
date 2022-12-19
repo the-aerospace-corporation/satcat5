@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -103,6 +103,7 @@ out_port.clk        <= clk after CLK_DELAY;
 out_port.reset_p    <= reset_p;
 out_port.rate       <= get_rate_word(1000);
 out_port.status     <= (others => '0');
+out_port.tsof       <= (others => '0');
 out_port.rxerr      <= '0';
 out_port.data       <= out_data;
 out_port.write      <= out_valid_i and out_ready;

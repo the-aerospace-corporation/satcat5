@@ -116,7 +116,7 @@ void PacketBuffer::write_bytes(unsigned nbytes, const void* src)
             memcpy(m_buff + wridx, src_u8, nbytes);
         }
         m_next_wrlen += nbytes;
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void PacketBuffer::write_abort()

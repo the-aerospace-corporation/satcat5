@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -24,10 +24,17 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/cfgbus_mdio.h>
 
+using satcat5::cfg::Mdio;
+using satcat5::cfg::MdioEventListener;
+using satcat5::cfg::MdioGenericMmd;
+using satcat5::cfg::MdioLogger;
+using satcat5::cfg::MdioMarvell;
+
 // Constants relating to the unit under test:
 static const unsigned CFG_DEVADDR = 42;
 static const unsigned CFG_REGADDR = 0;
 static const u32 RD_VALID = (1u << 30);
+static const u32 WR_FULL  = (1u << 31);
 
 // Helper function for making MDIO register commands.
 u32 make_cmd(bool rd, unsigned phy, unsigned reg, unsigned data=0)
@@ -40,7 +47,7 @@ u32 make_cmd(bool rd, unsigned phy, unsigned reg, unsigned data=0)
 }
 
 // Helper object for checking read response.
-class MdioEventCheck final : public satcat5::cfg::MdioEventListener {
+class MdioEventCheck final : public MdioEventListener {
 public:
     MdioEventCheck(u16 regaddr, u16 regval)
         : m_regaddr(regaddr), m_regval(regval), m_count(0) {}
@@ -59,6 +66,17 @@ private:
     unsigned m_count;
 };
 
+// Helper function for queueing up read commands.
+MdioEventCheck* attempt_read(Mdio& mdio, unsigned n) {
+    MdioEventCheck* evt = new MdioEventCheck(n, n);
+    if (mdio.direct_read(n % 8, n % 32, n, evt)) {;
+        return evt;     // Command accepted.
+    } else {
+        delete evt;     // Cleanup (abort)
+        return 0;       // Queue is full.
+    }
+}
+
 TEST_CASE("cfgbus_mdio") {
     // Print any SatCat5 messages to console.
     satcat5::log::ToConsole log;
@@ -66,13 +84,13 @@ TEST_CASE("cfgbus_mdio") {
     // Instantiate emulator and the unit under test.
     satcat5::test::CfgRegister cfg;
     cfg.read_default(0);
-    satcat5::cfg::Mdio uut(&cfg, CFG_DEVADDR, CFG_REGADDR);
+    Mdio uut(&cfg, CFG_DEVADDR, CFG_REGADDR);
 
     SECTION("write-simple") {
         // Execute a few writes...
         static const unsigned NWRITE = 20;
         for (unsigned a = 0 ; a < NWRITE ; ++a) {
-            REQUIRE(uut.write(a, a, a));
+            REQUIRE(uut.direct_write(a, a, a));
         }
         // Confirm the resulting command sequence.
         REQUIRE(cfg.write_count() == NWRITE);
@@ -84,45 +102,65 @@ TEST_CASE("cfgbus_mdio") {
 
     SECTION("write-indirect") {
         // Execute a single indirect write.
-        REQUIRE(uut.write(7, 42, 43));
+        MdioGenericMmd mmd(&uut, 7);
+        REQUIRE(mmd.write(24, 25));             // Direct (address < 32)
+        REQUIRE(mmd.write(42, 43));             // Indirect (address >= 32)
         // Confirm the resulting command sequence.
-        REQUIRE(cfg.write_count() == 4);
+        REQUIRE(cfg.write_count() == 5);
+        CHECK(cfg.write_pop() == make_cmd(false, 7, 24, 25));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0D, 0x001F));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0E, 42));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0D, 0x401F));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0E, 43));
     }
 
-    SECTION("write-full") {
-        cfg.read_default(1u << 31);     // Status register = full
-        CHECK(!uut.write(9, 9, 9));     // Should overflow.
+    SECTION("write-hwfull") {
+        cfg.read_default(WR_FULL);              // Status register = full
+        CHECK(!uut.direct_write(9, 9, 9));      // Should overflow.
+        cfg.read_default(0);                    // Status register = ready
+        CHECK(uut.direct_write(9, 9, 9));       // Should succeed.
     }
 
-    SECTION("read-simple") {
+    SECTION("read-hwfull") {
+        cfg.read_default(WR_FULL);              // Status register = full
+        CHECK(!uut.direct_read(9, 9, 9, 0));    // Should overflow.
+        cfg.read_default(0);                    // Status register = ready
+        CHECK(uut.direct_read(9, 9, 9, 0));     // Should succeed.
+    }
+
+    SECTION("read-swfull") {
         // Queue up as many reads as possible...
         std::vector<MdioEventCheck*> reads;
-        for (unsigned a = 0 ; 1 ; ++a) {
-            MdioEventCheck* evt = new MdioEventCheck(a, a);
-            if (uut.read(a, a, evt)) {;
-                reads.push_back(evt);   // Command accepted.
-            } else {
-                delete evt;             // Cleanup (abort)
-                break;                  // Queue is full.
-            }
+        unsigned rdidx = 0;
+        MdioEventCheck* evt = 0;
+        while (evt = attempt_read(uut, reads.size())) {
+            reads.push_back(evt);
         }
+        CHECK(reads.size() >= SATCAT5_MDIO_BUFFSIZE);
         // Poll once (emulated hardware is still busy)
         satcat5::poll::service();
         // Reads are ready after a short delay.
-        for (unsigned a = 0 ; a < reads.size() ; ++a) {
-            cfg.read_push(RD_VALID | a);
+        while (rdidx < reads.size()) {
+            cfg.read_push(RD_VALID | rdidx++);
         }
         // Poll again (emulated hardware now "done")
         satcat5::poll::service();
-        // Confirm the resulting command sequence.
-        REQUIRE(reads.size() >= 7);
+        // Queue up an additional batch of reads.
+        while (evt = attempt_read(uut, reads.size())) {
+            reads.push_back(evt);
+        }
+        CHECK(reads.size() >= 2*SATCAT5_MDIO_BUFFSIZE);
+        // Another round of poll / ready / poll.
+        satcat5::poll::service();
+        while (rdidx < reads.size()) {
+            cfg.read_push(RD_VALID | rdidx++);
+        }
+        satcat5::poll::service();
+        // Confirm the resulting command/response sequence.
+        REQUIRE(rdidx == reads.size());
         REQUIRE(cfg.write_count() == reads.size());
         for (unsigned a = 0 ; a < reads.size() ; ++a) {
-            u32 ref = make_cmd(true, a, a);
+            u32 ref = make_cmd(true, a % 8, a % 32);
             CHECK(cfg.write_pop() == ref);
             CHECK(reads[a]->events() == 1);
             delete reads[a];            // Cleanup (success)
@@ -130,9 +168,9 @@ TEST_CASE("cfgbus_mdio") {
     }
 
     SECTION("read-log") {
-        satcat5::cfg::MdioLogger mlog;          // Unit under test
+        MdioLogger mlog;                        // Unit under test
         log.disable();                          // Suppress printout
-        uut.read(9, 9, &mlog);                  // Read command
+        uut.direct_read(9, 9, 9, &mlog);        // Read command
         cfg.read_push(RD_VALID | 0x1234);       // Load hardware register
         satcat5::poll::service();               // Should post log event...
         CHECK(log.contains("0x1234"));
@@ -141,7 +179,7 @@ TEST_CASE("cfgbus_mdio") {
     SECTION("read-safety") {
         // Queue up a single read.
         MdioEventCheck evt(4, 42);
-        REQUIRE(uut.read(0, 4, &evt));
+        REQUIRE(uut.direct_read(0, 4, 4, &evt));
         // Poll once (emulated hardware is still busy)
         satcat5::poll::service();
         // Simulate unexpected-read anomaly, two reads instead of one.
@@ -158,17 +196,43 @@ TEST_CASE("cfgbus_mdio") {
 
     SECTION("read-indirect") {
         // Execute a single indirect read.
-        MdioEventCheck evt(42, 43);
-        REQUIRE(uut.read(7, 42, &evt));
+        MdioEventCheck evt0(24, 25);
+        MdioEventCheck evt1(42, 43);
+        MdioGenericMmd mmd(&uut, 7);
+        REQUIRE(mmd.read(24, &evt0));   // Direct (address < 32)
+        REQUIRE(mmd.read(42, &evt1));   // Indirect (address >= 32)
         // Activate polling loop once.
-        cfg.read_push(RD_VALID | 43);
+        cfg.read_push(RD_VALID | 25);   // Direct read response
+        cfg.read_push(RD_VALID | 43);   // Indirect read response
         satcat5::poll::service();
         // Confirm the resulting command sequence.
-        REQUIRE(cfg.write_count() == 4);
+        REQUIRE(cfg.write_count() == 5);
+        CHECK(cfg.write_pop() == make_cmd(true, 7, 24));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0D, 0x001F));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0E, 42));
         CHECK(cfg.write_pop() == make_cmd(false, 7, 0x0D, 0x401F));
         CHECK(cfg.write_pop() == make_cmd(true, 7, 0x0E));
+        CHECK(evt0.events() == 1);
+        CHECK(evt1.events() == 1);
+    }
+
+    SECTION("read-write-marvell") {
+        // Issue a write command and a read command.
+        MdioMarvell mmd(&uut, 7);
+        MdioEventCheck evt(0x203, 0x456);
+        REQUIRE(mmd.write(0x102, 0x789));   // Write register 1.2
+        REQUIRE(mmd.read(0x203, &evt));     // Read register 2.3
+        // Confirm the resulting command sequence.
+        REQUIRE(cfg.write_count() == 4);
+        CHECK(cfg.write_pop() == make_cmd(false, 7, 0x16, 0x0001));
+        CHECK(cfg.write_pop() == make_cmd(false, 7, 0x02, 0x0789));
+        CHECK(cfg.write_pop() == make_cmd(false, 7, 0x16, 0x0002));
+        CHECK(cfg.write_pop() == make_cmd(true, 7, 0x03));
+        // Confirm read result.
+        satcat5::poll::service();
+        CHECK(evt.events() == 0);
+        cfg.read_push(RD_VALID | 0x456);
+        satcat5::poll::service();
         CHECK(evt.events() == 1);
     }
 }

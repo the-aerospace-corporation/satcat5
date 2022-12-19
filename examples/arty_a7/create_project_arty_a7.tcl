@@ -50,6 +50,7 @@ if {[string equal $BOARD_OPTION "100t"]} {
 set target_top "switch_top_arty_a7_rmii"
 set constr_synth "switch_arty_a7_synth.xdc"
 set constr_impl "switch_arty_a7_impl.xdc"
+set bin_config [list SPIx4, 16]
 
 # List HDL source files, grouped by type.
 set files_main [list \

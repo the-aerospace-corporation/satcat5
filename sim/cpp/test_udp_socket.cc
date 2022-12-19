@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -20,10 +20,7 @@
 
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
-#include <satcat5/eth_dispatch.h>
-#include <satcat5/ip_address.h>
-#include <satcat5/ip_dispatch.h>
-#include <satcat5/udp_dispatch.h>
+#include <satcat5/ip_stack.h>
 #include <satcat5/udp_socket.h>
 #include <vector>
 
@@ -42,17 +39,16 @@ TEST_CASE("UDP-socket") {
     const satcat5::ip::Addr IP_PERIPHERAL(192, 168, 1, 74);
     const satcat5::ip::Addr IP_MULTICAST(224, 0, 0, 123);
     const satcat5::ip::Addr IP_BROADCAST(255, 255, 255, 255);
+
     satcat5::io::PacketBufferHeap c2p, p2c;
-    satcat5::eth::Dispatch eth_controller(MAC_CONTROLLER, &c2p, &p2c);
-    satcat5::eth::Dispatch eth_peripheral(MAC_PERIPHERAL, &p2c, &c2p);
-    satcat5::ip::Dispatch ip_controller(IP_CONTROLLER, &eth_controller, &timer);
-    satcat5::ip::Dispatch ip_peripheral(IP_PERIPHERAL, &eth_peripheral, &timer);
-    satcat5::udp::Dispatch udp_controller(&ip_controller);
-    satcat5::udp::Dispatch udp_peripheral(&ip_peripheral);
+    satcat5::ip::Stack net_controller(
+        MAC_CONTROLLER, IP_CONTROLLER, &c2p, &p2c, &timer);
+    satcat5::ip::Stack net_peripheral(
+        MAC_PERIPHERAL, IP_PERIPHERAL, &p2c, &c2p, &timer);
 
     // Socket at each end of network link.
-    satcat5::udp::Socket uut_controller(&udp_controller);
-    satcat5::udp::Socket uut_peripheral(&udp_peripheral);
+    satcat5::udp::Socket uut_controller(&net_controller.m_udp);
+    satcat5::udp::Socket uut_peripheral(&net_peripheral.m_udp);
 
     // From idle state, neither Socket should be ready to communicate.
     CHECK_FALSE(uut_controller.ready_tx());
@@ -91,7 +87,7 @@ TEST_CASE("UDP-socket") {
         // (Dynamic allocation = 0xC000 - 0xFFFF = 16,384 sockets!)
         std::vector<satcat5::udp::Socket*> bigvec(16384, 0);
         for (auto a = bigvec.begin() ; a != bigvec.end() ; ++a) {
-            *a = new satcat5::udp::Socket(&udp_controller);
+            *a = new satcat5::udp::Socket(&net_controller.m_udp);
             (*a)->connect(IP_PERIPHERAL, MAC_PERIPHERAL, PORT_CFGBUS_CMD);
             CHECK((*a)->ready_rx());        // Bound to next free local port
             CHECK((*a)->ready_tx());        // Ready to transmit (no ARP)
@@ -212,6 +208,22 @@ TEST_CASE("UDP-socket") {
         CHECK(uut_controller.write_finalize());
         satcat5::poll::service_all();
         CHECK(log.contains("Destination port unreachable"));
+    }
+
+    SECTION("lost-arp") {
+        // Tamper with the first ARP response during link setup.
+        p2c.write_str("BadHeader");
+        uut_controller.connect(
+            IP_PERIPHERAL, IP_PERIPHERAL, PORT_CFGBUS_CMD);
+        // Attempt to execute ARP handshake.
+        satcat5::poll::service_all();
+        CHECK_FALSE(uut_controller.ready_tx());
+        CHECK(uut_controller.ready_rx());
+        // Second ARP handshake should succeed.
+        uut_controller.reconnect();
+        satcat5::poll::service_all();
+        CHECK(uut_controller.ready_tx());
+        CHECK(uut_controller.ready_rx());
     }
 
     SECTION("macaddr") {

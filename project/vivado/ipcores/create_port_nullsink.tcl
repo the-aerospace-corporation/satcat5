@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -24,17 +24,14 @@
 set ip_name "port_nullsink"
 set ip_vers "1.0"
 set ip_disp "SatCat5 Null-sink Port"
-set ip_desc "SatCat5 adapter for capped-off or empty."
+set ip_desc "SatCat5 adapter for capped-off or empty ports."
 
 set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     port_nullsink.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_top  $ip_root            wrap_port_nullsink
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_port_nullsink.vhd
 
 # Connect everything except the RGMII port.
 ipcore_add_ethport Eth sw master

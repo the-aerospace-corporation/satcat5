@@ -1,6 +1,6 @@
 #!/bin/bash
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -39,7 +39,13 @@ fi
 # Set default Docker Registry (hostname:port), if not already set.
 # (Note: Users outside of The Aerospace Corporation will need to change this.)
 if [[ -z "${DOCKER_REG}" ]]; then
-    export DOCKER_REG="dcid.aero.org:5000"
+    export DOCKER_REG="e3-devops.aero.org"
+fi
+
+# Set license server for Microchip and Vivado tools.
+# (Note: Users outside of The Aerospace Corporation will need to change this.)
+if [[ -z "${XILINXD_LICENSE_FILE}" ]]; then
+    export XILINXD_LICENSE_FILE="2100@dcid-licenses00.aero.org:2100@dcid-licenses01.aero.org:2100@dcid-licenses02.aero.org"
 fi
 
 # Name of Docker image is the first argument, if there is one.
@@ -48,7 +54,7 @@ if [[ $# -ne 0 ]]; then
     IMAGE=$DOCKER_REG/$1
     shift
 else
-    IMAGE=$DOCKER_REG/vivado:${VIVADO_VERSION}
+    IMAGE=$DOCKER_REG/csaps/vivado:${VIVADO_VERSION}_latest
 fi
 
 # Fetch current user-ID
@@ -80,7 +86,10 @@ else
         -v ${HOME}:/home/${USER} \
         -v /etc/passwd:/etc/passwd:ro \
         -e DISPLAY=${DISPLAY} \
+        -e PARALLEL_PHASE=${PARALLEL_PHASE} \
+        -e PARALLEL_SIMS=${PARALLEL_SIMS} \
         -e VIVADO_VERSION=${VIVADO_VERSION} \
+        -e XILINXD_LICENSE_FILE=${XILINXD_LICENSE_FILE} \
         -w /home/${USER}/hdl"
 fi
 

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -19,6 +19,7 @@
 
 #include <satcat5/cfgbus_core.h>
 #include <satcat5/cfgbus_mdio.h>
+#include <satcat5/interrupts.h>
 #include <satcat5/log.h>
 #include <satcat5/utils.h>
 
@@ -39,16 +40,6 @@ inline u32 HW_DIR_WRITE(unsigned p, unsigned r, unsigned d)
 inline u32 HW_DIR_READ(unsigned p, unsigned r)
     {return HWREG_OPRD | HWREG_PADDR(p) | HWREG_RADDR(r);}
 
-// Shortcuts for indirect register access (REGCR, ADDAR)
-inline u32 HW_IND_ADDR(unsigned p)
-    {return HW_DIR_WRITE(p, 0x0D, 0x001F);}
-inline u32 HW_IND_DATA(unsigned p)
-    {return HW_DIR_WRITE(p, 0x0D, 0x401F);}
-inline u32 HW_IND_WR(unsigned p, unsigned d)
-    {return HW_DIR_WRITE(p, 0x0E, d);}
-inline u32 HW_IND_RD(unsigned p)
-    {return HW_DIR_READ(p, 0x0E);}
-
 // Bit masks for the status register:
 static const u32 HWSTATUS_WRFULL    = (1u << 31);
 static const u32 HWSTATUS_RVALID    = (1u << 30);
@@ -57,8 +48,8 @@ static const u32 HWSTATUS_RDATA     = (0xFFFF);
 cfg::Mdio::Mdio(
         cfg::ConfigBus* cfg, unsigned devaddr, unsigned regaddr)
     : m_ctrl_reg(cfg->get_register(devaddr, regaddr))
+    , m_addr_rdcount(0)
     , m_addr_rdidx(0)
-    , m_addr_wridx(0)
 {
     // No other initialization at this time.
 }
@@ -69,50 +60,28 @@ void cfg::Mdio::poll_always()
     while (hw_rd_status() & HWSTATUS_RVALID) {}
 }
 
-bool cfg::Mdio::write(unsigned phy, unsigned reg, unsigned data)
+bool cfg::Mdio::direct_write(unsigned phy, unsigned reg, unsigned data)
 {
-    // Construct and attempt to queue write command(s).
-    if (reg < 0x20) {
-        // Direct write
-        return hw_wr_command(HW_DIR_WRITE(phy, reg, data));
-    } else {
-        // Indirect write
-        return hw_wr_command(HW_IND_ADDR(phy))
-            && hw_wr_command(HW_IND_WR(phy, reg))
-            && hw_wr_command(HW_IND_DATA(phy))
-            && hw_wr_command(HW_IND_WR(phy, data));
-    }
+    // Construct and attempt to queue write the command.
+    return hw_wr_command(HW_DIR_WRITE(phy, reg, data));
 }
 
-bool cfg::Mdio::read(unsigned phy, unsigned reg,
+bool cfg::Mdio::direct_read(unsigned phy, unsigned reg, unsigned ref,
         cfg::MdioEventListener* callback)
 {
-    // Make sure we have room in the software queue...
-    u32 wr_next = util::modulo_add_uns(m_addr_wridx + 1, SATCAT5_MDIO_BUFFSIZE);
-    if (wr_next == m_addr_rdidx) return false;
-
-    // Set callback parameters first.
-    // (They may get called during the polling process, since reading
-    //  the status register may potentially pull the next reply word.)
-    m_callback[m_addr_wridx] = callback;
-    m_addr_buff[m_addr_wridx] = reg;
-
-    // Attempt to add this read to in the hardware queue.
-    bool ok;
-    if (reg < 0x20) {
-        // Direct read
-        ok = hw_wr_command(HW_DIR_READ(phy, reg));
+    // Attempt to add this command to he hardware queue...
+    if (can_read() && hw_wr_command(HW_DIR_READ(phy, reg))) {
+        // Store new callback parameters.
+        satcat5::irq::AtomicLock lock("MDIO");
+        unsigned wridx = util::modulo_add_uns(
+            m_addr_rdidx + m_addr_rdcount, SATCAT5_MDIO_BUFFSIZE);
+        m_callback[wridx] = callback;
+        m_addr_buff[wridx] = (u16)ref;
+        ++m_addr_rdcount;   // Increment pending read counter
+        return true;        // Success (accept metadata)
     } else {
-        // Indirect read
-        ok = hw_wr_command(HW_IND_ADDR(phy))
-          && hw_wr_command(HW_IND_WR(phy, reg))
-          && hw_wr_command(HW_IND_DATA(phy))
-          && hw_wr_command(HW_IND_RD(phy));
+        return false;       // Failure (discard metadata)
     }
-
-    // If successful, increment the write pointer.
-    if (ok) m_addr_wridx = wr_next;
-    return ok;
 }
 
 // Always use this method to read status register.
@@ -122,20 +91,20 @@ u32 cfg::Mdio::hw_rd_status()
     // Read the status register.
     u32 status = *m_ctrl_reg;
 
-    // Sanity check: Are we expecting a read?
-    if (m_addr_rdidx == m_addr_wridx) return status;
-
     // Handle received messages.
-    if (status & HWSTATUS_RVALID) {
-        // Pop register address off the queue.
-        cfg::MdioEventListener* callback = m_callback[m_addr_rdidx];
-        u16 regaddr = m_addr_buff[m_addr_rdidx];
+    u16 regaddr = 0, regval = (u16)(status & HWSTATUS_RDATA);
+    cfg::MdioEventListener* callback = 0;
+    if ((m_addr_rdcount > 0) && (status & HWSTATUS_RVALID)) {
+        // Pop register address and callback off the queue.
+        satcat5::irq::AtomicLock lock("MDIO");
+        regaddr = m_addr_buff[m_addr_rdidx];
+        callback = m_callback[m_addr_rdidx];
         m_addr_rdidx = util::modulo_add_uns(m_addr_rdidx + 1, SATCAT5_MDIO_BUFFSIZE);
-        // Log address + received value.
-        u16 regval = (u16)(status & HWSTATUS_RDATA);
-        // Notify callback object.
-        if (callback) callback->mdio_done(regaddr, regval);
+        --m_addr_rdcount;
     }
+
+    // Notify callback object, if applicable.
+    if (callback) callback->mdio_done(regaddr, regval);
 
     return status;
 }
@@ -150,10 +119,53 @@ bool cfg::Mdio::hw_wr_command(u32 cmd)
         *m_ctrl_reg = cmd;
         return true;    // Success!
     }
-    return true;
 }
 
 void cfg::MdioLogger::mdio_done(u16 regaddr, u16 regval)
 {
     log::Log(log::INFO, "MDIO read").write(regaddr).write(regval);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Thin wrappers for indirect register access on a specific PHY device.
+//////////////////////////////////////////////////////////////////////////
+
+bool cfg::MdioGenericMmd::write(unsigned reg, unsigned data)
+{
+    if (reg < 0x20) {               // Direct write
+        return m_mdio->direct_write(m_phy, reg, data);
+    } else {                        // Indirect write
+        return m_mdio->direct_write(m_phy, 0x0D, 0x001F)
+            && m_mdio->direct_write(m_phy, 0x0E, reg)
+            && m_mdio->direct_write(m_phy, 0x0D, 0x401F)
+            && m_mdio->direct_write(m_phy, 0x0E, data);
+    }
+}
+
+bool cfg::MdioGenericMmd::read(unsigned reg, satcat5::cfg::MdioEventListener* callback)
+{
+    if (reg < 0x20) {               // Direct read
+        return m_mdio->direct_read(m_phy, reg, reg, callback);
+    } else {                        // Indirect read
+        return m_mdio->can_read()   // Check before we queue writes
+            && m_mdio->direct_write(m_phy, 0x0D, 0x001F)
+            && m_mdio->direct_write(m_phy, 0x0E, reg)
+            && m_mdio->direct_write(m_phy, 0x0D, 0x401F)
+            && m_mdio->direct_read (m_phy, 0x0E, reg, callback);
+    }
+}
+
+bool cfg::MdioMarvell::write(unsigned reg, unsigned data)
+{
+    unsigned page = (reg >> 8);
+    return m_mdio->direct_write(m_phy, 0x16, page)
+        && m_mdio->direct_write(m_phy, reg, data);
+}
+
+bool cfg::MdioMarvell::read(unsigned reg, satcat5::cfg::MdioEventListener* callback)
+{
+    unsigned page = (reg >> 8);
+    return m_mdio->can_read()       // Check before we queue writes
+        && m_mdio->direct_write(m_phy, 0x16, page)
+        && m_mdio->direct_read (m_phy, reg, reg, callback);
 }

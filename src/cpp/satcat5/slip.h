@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -55,13 +55,13 @@ namespace satcat5 {
             explicit SlipEncoder(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
-            unsigned get_write_space() const;
+            unsigned get_write_space() const override;
             bool write_finalize() override;
             void write_overflow() override;
 
         private:
             // Implement required API from Writeable:
-            void write_next(u8 data);
+            void write_next(u8 data) override;
 
             // Internal state:
             satcat5::io::Writeable* const m_dst;    // Output object
@@ -76,11 +76,11 @@ namespace satcat5 {
             explicit SlipDecoder(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
-            unsigned get_write_space() const;
+            unsigned get_write_space() const override;
 
         private:
             // Implement required API from Writeable:
-            void write_next(u8 data);
+            void write_next(u8 data) override;
 
             // Internal state:
             enum decode_state {DECODE_RDY, DECODE_ESC, DECODE_EOF, DECODE_ERR};

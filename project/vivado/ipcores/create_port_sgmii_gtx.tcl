@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -28,50 +28,66 @@ if ![info exists gtx_loc] {
     set gtx_loc X0Y0
 }
 
+# Default GTX reference clock frequency 125MHz, can be overridden
+if ![info exists refclk_freq_mhz] {
+    set refclk_freq_mhz 125
+}
+
 # Create a basic IP-core project.
 set ip_name "port_sgmii_gtx_$gtx_loc"
 set ip_vers "1.0"
-set ip_disp "SatCat5 SGMII PHY (GTX=$gtx_loc)"
+set ip_disp "SatCat5 SGMII PHY (MGT)"
 set ip_desc "SatCat5 SGMII port using GTX-SERDES."
 
 set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
+# Set expected frequency for "independent_clock_bufg".
+if {$part_family == "7series"} {
+    # 7 series parts need IDELAYCTRL clock = 200MHz
+    set bufg_freq_hz 200000000
+} elseif {$part_family == "ultrascale" || $part_family == "ultraplus"} {
+    # Ultrascale/Ultrascale+ parts need DRP clock = 50MHz
+    set bufg_freq_hz 50000000
+} else {
+    error "Unsupported part family: ${part_family}"
+}
+
 # Create the underlying GTX-to-SGMII IP-core.
 source $ip_root/../generate_sgmii_gtx.tcl
-generate_sgmii_gtx $gtx_loc sgmii_gtx0
+generate_sgmii_gtx $gtx_loc sgmii_gtx0 true $refclk_freq_mhz
 ipcore_add_xci sgmii_gtx0
 
-# Add the resulting XCI file to the project.
-set core_xci [get_files *.xci]
-ipcore_add_file [file dirname $core_xci] [file tail $core_xci]
-
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_preamble_rx.vhd
-ipcore_add_file $src_dir/common     eth_preamble_tx.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_file $src_dir/xilinx     port_sgmii_gtx.vhd
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_sgmii_gtx
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_file $src_dir/xilinx/port_sgmii_gtx.vhd
+ipcore_add_top  $ip_root/wrap_port_sgmii_gtx.vhd
 
 # Connect everything except the GTX ports.
 ipcore_add_ethport Eth sw master
-ipcore_add_clock clkin_200 Eth
+ipcore_add_refopt PtpRef tref
+ipcore_add_clock clkin_bufg Eth slave $bufg_freq_hz
 ipcore_add_reset reset_p ACTIVE_HIGH
 
+# Set parameters
+set refclk_freq_hz [expr {round($refclk_freq_mhz * 1000000)}]
+ipcore_add_param AUTONEG_EN bool true\
+    {Enable Auto-Negotiation? Typically enabled with the exception of SFP to RJ45 modules.}
+ipcore_add_param GTX_LOCATION string $gtx_loc\
+    {Transceiver identifier} false
+ipcore_add_param REFCLK_FREQ_HZ string $refclk_freq_hz\
+    {Frequency of GTX reference clock} false
+ipcore_add_param CLKIN_FREQ_HZ string $bufg_freq_hz\
+    {Frequency of logic clock} false
+
 # Connect the GTX reference clock.
-set intf [ipx::add_bus_interface GTREF125 $ip]
+set intf [ipx::add_bus_interface GTREFCLK $ip]
 set_property abstraction_type_vlnv xilinx.com:interface:diff_clock_rtl:1.0 $intf
 set_property bus_type_vlnv xilinx.com:interface:diff_clock:1.0 $intf
 set_property interface_mode slave $intf
-
-set_property physical_name gtref_125p   [ipx::add_port_map CLK_P $intf]
-set_property physical_name gtref_125n   [ipx::add_port_map CLK_N $intf]
+set_property physical_name gtrefclk_p   [ipx::add_port_map CLK_P $intf]
+set_property physical_name gtrefclk_n   [ipx::add_port_map CLK_N $intf]
+set_property value $refclk_freq_hz      [ipx::add_bus_parameter FREQ_HZ $intf]
 
 # Connect the GTX I/O (SGMII) port.
 set intf [ipx::add_bus_interface SGMII $ip]

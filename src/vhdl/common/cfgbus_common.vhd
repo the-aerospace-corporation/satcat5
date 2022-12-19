@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -94,6 +94,7 @@ package cfgbus_common is
     constant CFGBUS_WORD_SIZE : positive := 32;
     subtype cfgbus_word is std_logic_vector(31 downto 0);
     subtype cfgbus_wstrb is std_logic_vector(3 downto 0);
+    constant CFGBUS_WORD_ZERO : cfgbus_word := (others => '0');
 
     -- Bit-mask functions: Set the N LSBs or MSBs
     function cfgbus_mask_lsb(n : natural) return cfgbus_word;
@@ -198,6 +199,9 @@ package cfgbus_common is
     -- Single-cycle delay buffer in each direction.
     -- (Useful when pipelining for better timing, etc.)
     component cfgbus_buffer is
+        generic (
+        DLY_CMD     : boolean := true;
+        DLY_ACK     : boolean := true);
         port (
         -- Interface to host
         host_cmd    : in  cfgbus_cmd;
@@ -267,6 +271,30 @@ package cfgbus_common is
         sync_rd     : out std_logic);   -- Strobe on read
     end component;
 
+    -- Variant of "cfgbus_register_sync" for data wider than 32 bits.
+    -- To use: Write N times, then read once.  Written data must be packed
+    -- MSW-first with leading zeros as needed.  An example with 112 bits:
+    --  1st write: 16 leading zeros + Bit 111..96
+    --  2nd write: Bit 95..64
+    --  3rd write: Bit 63..32
+    --  4th write: Bit 31..00
+    --  Read once to latch the new output value.
+    component cfgbus_register_wide is
+        generic (
+        DWIDTH      : positive;         -- Output word size
+        DEVADDR     : integer;          -- Peripheral address
+        REGADDR     : integer := CFGBUS_ADDR_ANY;
+        RSTVAL      : std_logic_vector := "0");
+        port (
+        -- ConfigBus interface
+        cfg_cmd     : in  cfgbus_cmd;
+        cfg_ack     : out cfgbus_ack;
+        -- Local interface
+        sync_clk    : in  std_logic;    -- I/O reference clock
+        sync_val    : out std_logic_vector(DWIDTH-1 downto 0);
+        sync_wr     : out std_logic);   -- Strobe on update
+    end component;
+
     -- Read-only ConfigBus register (e.g., for status indicators)
     component cfgbus_readonly is
         generic (
@@ -303,6 +331,29 @@ package cfgbus_common is
         sync_val    : in  cfgbus_word;  -- Read-only value
         sync_wr     : out std_logic;    -- Strobe on write
         sync_rd     : out std_logic);   -- Strobe on read
+    end component;
+
+    -- Variant of "cfgbus_readonly_wide" for data wider than 32 bits.
+    -- To use: Write once, then read multiple times.  Data will be packed
+    -- MSW-first with leading zeros as needed.  An example with 112 bits:
+    --  Write once to latch the new input value.
+    --  1st read: 16 leading zeros + Bit 111..96
+    --  2nd read: Bit 95..64
+    --  3rd read: Bit 63..32
+    --  4th read: Bit 31..00
+    component cfgbus_readonly_wide is
+        generic (
+        DWIDTH      : positive;         -- Input word size
+        DEVADDR     : integer;          -- Peripheral address
+        REGADDR     : integer := CFGBUS_ADDR_ANY);
+        port (
+        -- ConfigBus interface
+        cfg_cmd     : in  cfgbus_cmd;
+        cfg_ack     : out cfgbus_ack;
+        -- Local interface
+        sync_clk    : in  std_logic;    -- I/O reference clock
+        sync_val    : in  std_logic_vector(DWIDTH-1 downto 0);
+        sync_rd     : out std_logic);   -- Strobe on update
     end component;
 
     -- Interrupt controller using a single register.
@@ -489,6 +540,9 @@ use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 
 entity cfgbus_buffer is
+    generic (
+    DLY_CMD     : boolean := true;
+    DLY_ACK     : boolean := true);
     port (
     -- Interface to host
     host_cmd    : in  cfgbus_cmd;
@@ -516,20 +570,20 @@ begin
 
 -- Command path
 buff_cmd.clk     <= host_cmd.clk;
-buff_cmd.sysaddr <= sysaddr;
-buff_cmd.devaddr <= devaddr;
-buff_cmd.regaddr <= regaddr;
-buff_cmd.wdata   <= wdata;
-buff_cmd.wstrb   <= wstrb;
-buff_cmd.wrcmd   <= wrcmd;
-buff_cmd.rdcmd   <= rdcmd;
+buff_cmd.sysaddr <= sysaddr when DLY_CMD else host_cmd.sysaddr;
+buff_cmd.devaddr <= devaddr when DLY_CMD else host_cmd.devaddr;
+buff_cmd.regaddr <= regaddr when DLY_CMD else host_cmd.regaddr;
+buff_cmd.wdata   <= wdata   when DLY_CMD else host_cmd.wdata;
+buff_cmd.wstrb   <= wstrb   when DLY_CMD else host_cmd.wstrb;
+buff_cmd.wrcmd   <= wrcmd   when DLY_CMD else host_cmd.wrcmd;
+buff_cmd.rdcmd   <= rdcmd   when DLY_CMD else host_cmd.rdcmd;
 buff_cmd.reset_p <= host_cmd.reset_p;
 
 -- Reply path
-host_ack.rdata   <= rdata;
-host_ack.rdack   <= rdack;
-host_ack.rderr   <= rderr;
-host_ack.irq     <= irq;
+host_ack.rdata   <= rdata   when DLY_ACK else buff_ack.rdata;
+host_ack.rdack   <= rdack   when DLY_ACK else buff_ack.rdack;
+host_ack.rderr   <= rderr   when DLY_ACK else buff_ack.rderr;
+host_ack.irq     <= irq     when DLY_ACK else buff_ack.irq;
 
 -- Buffer signals in each direction.
 p_buff : process(host_cmd.clk)
@@ -760,10 +814,19 @@ signal evt_rd_tog   : std_logic;
 
 -- Local clock domain
 signal sync_rst     : std_logic;
-signal sync_wr_d    : std_logic;
+signal sync_wr_d    : std_logic := '0';
 signal sync_wr_i    : std_logic;
 signal sync_rd_i    : std_logic;
 signal sync_val_i   : cfgbus_word := RSTVAL;
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of reg_val, sync_val_i : signal is true;
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of reg_val : signal is true;
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of sync_val_i : signal is true;
 
 begin
 
@@ -830,6 +893,128 @@ gen1 : if cfgbus_reg_enable(DEVADDR, REGADDR) generate
 end generate;
 
 end cfgbus_register_sync;
+
+--------------------------------------------------------------------------
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
+use     work.common_functions.all;
+use     work.common_primitives.sync_reset;
+use     work.common_primitives.sync_toggle2pulse;
+
+entity cfgbus_register_wide is
+    generic (
+    DWIDTH      : integer;          -- Output word size
+    DEVADDR     : integer;          -- Peripheral address
+    REGADDR     : integer := CFGBUS_ADDR_ANY;
+    RSTVAL      : std_logic_vector := "0");
+    port (
+    -- ConfigBus interface
+    cfg_cmd     : in  cfgbus_cmd;
+    cfg_ack     : out cfgbus_ack;
+    -- Local interface
+    sync_clk    : in  std_logic;    -- I/O reference clock
+    sync_val    : out std_logic_vector(DWIDTH-1 downto 0);
+    sync_wr     : out std_logic);   -- Strobe on update
+end cfgbus_register_wide;
+
+architecture cfgbus_register_wide of cfgbus_register_wide is
+
+constant WORD_COUNT : positive := div_ceil(DWIDTH, CFGBUS_WORD_SIZE);
+subtype sreg_t is std_logic_vector(WORD_COUNT*CFGBUS_WORD_SIZE-1 downto 0);
+subtype user_t is std_logic_vector(DWIDTH-1 downto 0);
+
+-- Some conversion required since RSTVAL must have unconstrained size.
+-- (i.e., Can't use DWIDTH in the same interface where it's defined.)
+constant RSTWORD : user_t := resize(RSTVAL, DWIDTH);
+
+-- ConfigBus clock domain
+signal cfg_sreg     : sreg_t := (others => '0');
+signal cfg_ack_i    : cfgbus_ack := cfgbus_idle;
+signal evt_wr_tog   : std_logic := '0';
+
+-- Local clock domain
+signal sync_rst     : std_logic;
+signal sync_wr_d    : std_logic := '0';
+signal sync_wr_i    : std_logic;
+signal sync_val_i   : user_t := RSTWORD;
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of cfg_sreg, sync_val_i : signal is true;
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of cfg_sreg : signal is true;
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of sync_val_i : signal is true;
+
+begin
+
+assert (RSTWORD'length <= DWIDTH) report "Invalid RSTVAL";
+
+-- If this register is disabled, output is fixed at RSTVAL.
+gen0 : if not cfgbus_reg_enable(DEVADDR, REGADDR) generate
+    cfg_ack     <= cfgbus_idle;
+    sync_val    <= RSTWORD;
+    sync_wr     <= '0';
+end generate;
+
+-- In the normal case...
+gen1 : if cfgbus_reg_enable(DEVADDR, REGADDR) generate
+    -- Drive top-level outputs.
+    cfg_ack     <= cfg_ack_i;
+    sync_val    <= sync_val_i;
+    sync_wr     <= sync_wr_d;
+
+    -- ConfigBus state machine.
+    p_cfg : process(cfg_cmd.clk)
+    begin
+        if rising_edge(cfg_cmd.clk) then
+            -- Writes shift new data into the shift register, MSW-first.
+            if (cfgbus_wrcmd(cfg_cmd, DEVADDR, REGADDR)) then
+                cfg_sreg <= cfg_sreg(cfg_sreg'left-CFGBUS_WORD_SIZE downto 0) & cfg_cmd.wdata;
+            end if;
+
+            -- Reads send an update signal and a placeholder reply.
+            if (cfgbus_rdcmd(cfg_cmd, DEVADDR, REGADDR)) then
+                evt_wr_tog  <= not evt_wr_tog;
+                cfg_ack_i   <= cfgbus_reply(CFGBUS_WORD_ZERO);
+            else
+                cfg_ack_i   <= cfgbus_idle;
+            end if;
+        end if;
+    end process;
+
+    -- Clock-domain crossing for the reset and write strobes.
+    u_rst : sync_reset
+        port map(
+        in_reset_p  => cfg_cmd.reset_p,
+        out_reset_p => sync_rst,
+        out_clk     => sync_clk);
+    u_wr : sync_toggle2pulse
+        port map(
+        in_toggle   => evt_wr_tog,
+        out_strobe  => sync_wr_i,
+        out_clk     => sync_clk);
+
+    -- After each write, latch the updated value.
+    -- (With matched delay for the write strobe.)
+    p_reg : process(sync_clk)
+    begin
+        if rising_edge(sync_clk) then
+            sync_wr_d <= sync_wr_i and not sync_rst;
+            if (sync_rst = '1') then
+                sync_val_i <= RSTWORD;
+            elsif (sync_wr_i = '1') then
+                sync_val_i <= cfg_sreg(DWIDTH-1 downto 0);
+            end if;
+        end if;
+    end process;
+end generate;
+
+end cfgbus_register_wide;
 
 --------------------------------------------------------------------------
 
@@ -946,9 +1131,18 @@ signal sync_wr_i    : std_logic;
 signal sync_rd_i    : std_logic;
 signal sync_evt_t   : std_logic := '0';
 
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of cfg_reg, sync_reg : signal is true;
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of sync_reg : signal is true;
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of cfg_reg : signal is true;
+
 begin
 
--- If this register is disabled, output is fixed at RSTVAL.
+-- If this register is disabled, this block does nothing.
 gen0 : if not cfgbus_reg_enable(DEVADDR, REGADDR) generate
     cfg_ack <= cfgbus_idle;
     sync_wr <= '0';
@@ -1041,6 +1235,130 @@ gen1 : if cfgbus_reg_enable(DEVADDR, REGADDR) generate
 end generate;
 
 end cfgbus_readonly_sync;
+
+--------------------------------------------------------------------------
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
+use     work.common_functions.all;
+use     work.common_primitives.sync_toggle2pulse;
+
+entity cfgbus_readonly_wide is
+    generic (
+    DWIDTH      : positive;         -- Input word size
+    DEVADDR     : integer;          -- Peripheral address
+    REGADDR     : integer := CFGBUS_ADDR_ANY);
+    port (
+    -- ConfigBus interface
+    cfg_cmd     : in  cfgbus_cmd;
+    cfg_ack     : out cfgbus_ack;
+    -- Local interface
+    sync_clk    : in  std_logic;    -- I/O reference clock
+    sync_val    : in  std_logic_vector(DWIDTH-1 downto 0);
+    sync_rd     : out std_logic);   -- Strobe on update
+end cfgbus_readonly_wide;
+
+architecture cfgbus_readonly_wide of cfgbus_readonly_wide is
+
+-- Get the Nth subword from a larger input, with zero-padding.
+function get_subword(x : std_logic_vector; n : natural) return cfgbus_word is
+    variable c : natural := 0;
+    variable y : cfgbus_word := (others => '0');
+begin
+    for b in y'range loop
+        c := CFGBUS_WORD_SIZE * n + b;
+        if c >= x'length then
+            y(b) := '0';
+        else
+            y(b) := x(c);
+        end if;
+    end loop;
+    return y;
+end function;
+
+-- Local clock domain
+signal sync_reg     : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+signal sync_rd_i    : std_logic;
+
+-- ConfigBus clock domain
+constant WORD_MAX   : natural := div_ceil(DWIDTH, CFGBUS_WORD_SIZE) - 1;
+signal cfg_ack_i    : cfgbus_ack := cfgbus_idle;
+signal cfg_widx     : integer range 0 to WORD_MAX := WORD_MAX;
+signal cfg_word     : cfgbus_word := (others => '0');
+signal evt_rd_tog   : std_logic := '0';
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of sync_reg, cfg_word : signal is true;
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of sync_reg : signal is true;
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of cfg_word : signal is true;
+
+begin
+
+-- If this register is disabled, this block does nothing.
+gen0 : if not cfgbus_reg_enable(DEVADDR, REGADDR) generate
+    cfg_ack <= cfgbus_idle;
+    sync_rd <= '0';
+end generate;
+
+-- In the normal case...
+gen1 : if cfgbus_reg_enable(DEVADDR, REGADDR) generate
+    -- Drive top-level outputs.
+    cfg_ack <= cfg_ack_i;
+    sync_rd <= sync_rd_i;
+
+    -- Quasi-static buffer for the raw input.
+    p_reg : process(sync_clk)
+    begin
+        if rising_edge(sync_clk) then
+            if (sync_rd_i = '1') then
+                sync_reg <= sync_val;
+            end if;
+        end if;
+    end process;
+
+    -- Clock-domain crossing for the read strobe.
+    u_rd : sync_toggle2pulse
+        port map(
+        in_toggle   => evt_rd_tog,
+        out_strobe  => sync_rd_i,
+        out_clk     => sync_clk);
+
+    -- MUX selects the Nth subword from the quasi-static buffer.
+    cfg_word <= get_subword(sync_reg, cfg_widx);
+
+    -- ConfigBus state machine.
+    p_cfg : process(cfg_cmd.clk)
+    begin
+        if rising_edge(cfg_cmd.clk) then
+            -- Reset or decrement the subword index.
+            if (cfgbus_wrcmd(cfg_cmd, DEVADDR, REGADDR)) then
+                evt_rd_tog <= not evt_rd_tog;   -- Request update
+                cfg_widx <= WORD_MAX;           -- Start from beginning
+            elsif (cfgbus_rdcmd(cfg_cmd, DEVADDR, REGADDR)) then
+                if (cfg_widx = 0) then
+                    cfg_widx <= WORD_MAX;       -- Wraparound
+                else
+                    cfg_widx <= cfg_widx - 1;   -- Next word
+                end if;
+            end if;
+
+            -- Handle register reads.
+            if (cfgbus_rdcmd(cfg_cmd, DEVADDR, REGADDR)) then
+                cfg_ack_i <= cfgbus_reply(cfg_word);
+            else
+                cfg_ack_i <= cfgbus_idle;
+            end if;
+        end if;
+    end process;
+end generate;
+
+end cfgbus_readonly_wide;
 
 --------------------------------------------------------------------------
 

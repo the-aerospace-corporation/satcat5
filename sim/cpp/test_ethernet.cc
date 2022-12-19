@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -50,6 +50,18 @@ TEST_CASE("ethernet-mac") {
         CHECK(!(MACADDR_C == MACADDR_A));
         CHECK(!(MACADDR_C == MACADDR_B));
         CHECK(MACADDR_C == MACADDR_C);
+    }
+
+    SECTION("not-equal") {
+        CHECK(!(MACADDR_A != MACADDR_A));
+        CHECK(MACADDR_A != MACADDR_B);
+        CHECK(MACADDR_A != MACADDR_C);
+        CHECK(MACADDR_B != MACADDR_A);
+        CHECK(!(MACADDR_B != MACADDR_B));
+        CHECK(MACADDR_B != MACADDR_C);
+        CHECK(MACADDR_C != MACADDR_A);
+        CHECK(MACADDR_C != MACADDR_B);
+        CHECK(!(MACADDR_C != MACADDR_C));
     }
 
     SECTION("compare") {

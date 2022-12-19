@@ -38,6 +38,12 @@ use IEEE.numeric_std.all;
 package body common_primitives is
     -- RAM64X12 supports 6-bit addresses.
     constant PREFER_DPRAM_AWIDTH : positive := 6;
+
+    -- TODO: Add support for Vernier clock generator on this platform.
+    function create_vernier_config(input_hz : natural) return vernier_config is
+    begin
+        return VERNIER_DISABLED;
+    end function;
 end package body;
 
 ---------------------------------------------------------------------
@@ -143,8 +149,14 @@ architecture polarfire of dpram is
 subtype word_t is std_logic_vector(DWIDTH-1 downto 0);
 signal rd_reg, wr_reg : word_t := (others => '0');
 
+function resize_slv(a: std_logic_vector; w: natural) return std_logic_vector is
+begin
+    return std_logic_vector(resize(UNSIGNED(a), w));
+end;
+
 -- small ram signals
-constant RAM12_COUNT : positive := (DWIDTH+11)/12;
+--constant RAM12_COUNT : positive := (DWIDTH+11)/12;
+constant RAM12_COUNT : integer := (DWIDTH+11)/12;
 signal wr_addr_pad : std_logic_vector(5 downto 0) := (others => '0');
 signal rd_addr_pad : std_logic_vector(5 downto 0) := (others => '0');
 signal wr_val_pad  : std_logic_vector(12*RAM12_COUNT-1 downto 0) := (others => '0');
@@ -185,7 +197,7 @@ gen_usram : if (AWIDTH < 7) generate
     wr_addr_pad <= std_logic_vector(resize(wr_addr, 6));
     rd_addr_pad <= std_logic_vector(resize(rd_addr, 6)); 
     -- Zero-pad data if needed to next highest multiple of 12 bits
-    wr_val_pad <= resize(wr_val, 12*RAM12_COUNT);
+    wr_val_pad <= resize_slv(wr_val, 12*RAM12_COUNT);
     rd_reg <= rd_val_pad(DWIDTH-1 downto 0);
 
     gen_bits : for b in 0 to RAM12_COUNT-1 generate

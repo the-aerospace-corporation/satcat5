@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2019, 2021 The Aerospace Corporation
+# Copyright 2019, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -129,7 +129,9 @@ class AsyncSerialPort:
                 Function to be called for each received frame (or None).
                 See "set_callback" for additional details.
             msg_delim (string):
-                Character(s) that mark inter-frame boundaries, default '\n'
+                Character(s) that mark inter-frame boundaries, default '\n'.
+                Use None or empty string for no delimiter and callback will
+                be called with any received bytes.
         """
         self._baudrate = 0
         self._callback = None
@@ -230,10 +232,16 @@ class AsyncSerialPort:
             try:
                 # Attempt to read at least one byte, more if available.
                 # (Wait/timeout keeps us from having to poll at crazy rates.)
-                nbytes = max(1, self._port.inWaiting())
-                rx_buff += self._port.read(nbytes)
-                # Check if we got at least one delimiter...
-                if self._delim in rx_buff:
+                nbytes = max(1, self._port.inWaiting())  # Always try reading at least 1 byte
+                rx_buff += self._port.read(nbytes)  # read will timeout if no bytes, this prevents busy-waiting
+                if not rx_buff:
+                    continue
+                # If no delimiter, issue callback every time we have at least 1 byte.
+                # Otherwise, check if we got at least one delimiter.
+                if not self._delim:  # '' or None
+                    self._callback(rx_buff)
+                    rx_buff = b''
+                elif self._delim in rx_buff:
                     rx_split = rx_buff.split(self._delim)
                     for msg in rx_split[0:-1]:      # Deliver each message
                         if len(msg) > 0:            # (Except empty ones)

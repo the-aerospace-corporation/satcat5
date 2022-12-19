@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,23 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     cfgbus_host_eth.vhd
-ipcore_add_file $src_dir/common     cfgbus_host_uart.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_check.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     fifo_packet.vhd
-ipcore_add_file $src_dir/common     fifo_smol_async.vhd
-ipcore_add_file $src_dir/common     fifo_smol_resize.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     io_uart.vhd
-ipcore_add_file $src_dir/common     slip_decoder.vhd
-ipcore_add_file $src_dir/common     slip_encoder.vhd
-ipcore_add_top  $ip_root            wrap_cfgbus_host_uart
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_cfgbus_host_uart.vhd
 
 # Connect I/O ports
 ipcore_add_gpio uart_txd
@@ -56,11 +41,16 @@ ipcore_add_clock sys_clk {}
 ipcore_add_reset reset_p ACTIVE_HIGH
 
 # Set parameters
-ipcore_add_param CFG_ETYPE      hexstring {5C01}
-ipcore_add_param CFG_MACADDR    hexstring {5A5ADEADBEEF}
-ipcore_add_param CLKREF_HZ      long 100000000
-ipcore_add_param UART_BAUD_HZ   long 921600
-ipcore_add_param RD_TIMEOUT     long 16
+ipcore_add_param CFG_ETYPE      hexstring {5C01} \
+    {EtherType for ConfigBus commands (hex)}
+ipcore_add_param CFG_MACADDR    hexstring {5A5ADEADBEEF} \
+    {Local MAC address (hex)}
+ipcore_add_param CLKREF_HZ      long 100000000 \
+    {Frequency of "sys_clk" in Hz}
+ipcore_add_param UART_BAUD_HZ   long 921600 \
+    {UART baud rate (Hz)}
+ipcore_add_param RD_TIMEOUT     long 16 \
+    {ConfigBus read timeout (clock cycles)}
 
 # Package the IP-core.
 ipcore_finished

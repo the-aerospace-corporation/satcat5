@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -36,9 +36,16 @@ import os
 import time
 import junit_xml
 
-test_cases = []
+# Set working folder for input and output data.
+try:
+    par_phase = int(os.environ.get('PARALLEL_PHASE'))
+except:
+    par_phase = 0   # Default if undefined or empty
+work_folder = f'xsim_tmp_{par_phase}'
 
-sim_logs = glob.glob('xsim_tmp/simulate_*_tb.log')
+# Parse each of the simulation logs.
+sim_logs = glob.glob(f'{work_folder}/simulate_*_tb.log')
+test_cases = []
 for log in sim_logs:
     # Some simulations print a "PASSED" message when done;
     # others do not.  For now, don't expect it to be there.
@@ -88,5 +95,5 @@ for log in sim_logs:
     test_cases.append(case)
 
 test_suite = junit_xml.TestSuite('pico_ethernet', test_cases)
-with open('sim_results.xml','wt') as fh:
+with open(f'{work_folder}/sim_results.xml', 'wt') as fh:
     junit_xml.TestSuite.to_file(fh, [test_suite])

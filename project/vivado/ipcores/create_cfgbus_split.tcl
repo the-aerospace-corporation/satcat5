@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,18 +30,19 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_top  $ip_root            wrap_cfgbus_split
+ipcore_add_file $src_dir/common/cfgbus_common.vhd
+ipcore_add_file $src_dir/common/common_functions.vhd
+ipcore_add_file $src_dir/common/common_primitives.vhd
+ipcore_add_top  $ip_root/wrap_cfgbus_split.vhd
 
 # Add the upstream port.
 ipcore_add_cfgbus Cfg cfg slave
 
 # Set parameters
-set pcount [ipcore_add_param PORT_COUNT long 3]
-ipcore_add_param DLY_BUFFER bool false
+set pcount [ipcore_add_param PORT_COUNT long 3 \
+    {Number of ConfigBus peripherals}]
+ipcore_add_param DLY_BUFFER bool false \
+    {Add a delay buffer for improved timing?}
 
 # Set min/max range on the PORT_COUNT parameter.
 set PORT_COUNT_MAX 16

@@ -1,4 +1,4 @@
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -26,12 +26,22 @@ VIVADO_VERSION ?= 2016.3
 export VIVADO_VERSION := ${VIVADO_VERSION}
 
 # Shortcuts for running Vivado in batch mode.
-# Special case for fake-GUI mode using XVFB (required for SDK)
+# Always set a fake GUI environment with XVFB, for SDK and block-diagram export.
 VIVADO_SETUP := source /opt/Xilinx/Vivado/${VIVADO_VERSION}/settings64.sh
 VIVADO_BATCH := vivado -mode batch -nojournal -nolog -notrace -source
-VIVADO_RUN := ${VIVADO_SETUP} && ${VIVADO_BATCH}
-VIVADO_GUI := ${VIVADO_SETUP} && xvfb-run -a ${VIVADO_BATCH}
+VIVADO_RUN := ${VIVADO_SETUP} && xvfb-run -a ${VIVADO_BATCH}
 VIVADO_BUILD := ${VIVADO_RUN} ../../project/vivado/build_project.tcl -tclargs
+
+# Software analysis parameters
+CPPCHECK_RUN := cppcheck \
+    --std=c++11 --enable=all --xml --xml-version=2 \
+    -DSATCAT5_VLAN_ENABLE=1 \
+    -i src/cpp/hal_ublaze/overrides.cc \
+    --suppress=missingInclude \
+    --suppress=unusedFunction
+CPPLINT_RUN := cpplint \
+    --filter=-build/include_order,-build/include_subdir,-readability/casting,-readability/namespace,-runtime/indentation_namespace,-whitespace,+whitespace/end_of_line \
+    --verbose=3 --recursive --exclude=src/cpp/hal_test/catch.hpp
 
 # Set working folders
 SIMS_DIR := ./sim/vhdl/
@@ -78,17 +88,31 @@ arty_100t:
 
 .PHONY: arty_managed_35t
 arty_managed_35t:
-	@cd examples/arty_managed && ${VIVADO_GUI} create_all.tcl -tclargs 35T
+	@cd examples/arty_managed && ${VIVADO_RUN} create_all.tcl -tclargs 35T
 
 .PHONY: arty_managed_100t
 arty_managed_100t:
-	@cd examples/arty_managed && ${VIVADO_GUI} create_all.tcl -tclargs 100T
+	@cd examples/arty_managed && ${VIVADO_RUN} create_all.tcl -tclargs 100T
 
 # Example router design using AC701.
 .PHONY: ac701_router
 ac701_router:
 	@cd examples/ac701_router && ${VIVADO_RUN} create_project_router_ac701.tcl
 	@cd examples/ac701_router && ${VIVADO_BUILD} router_ac701
+
+# NetFPGA example design
+.PHONY: netfpga
+netfpga:
+	@cd examples/netfpga && ${VIVADO_RUN} create_all.tcl
+
+# VC707 example designs
+.PHONY: vc707_clksynth
+vc707_clksynth:
+	@cd examples/vc707_clksynth && ${VIVADO_RUN} create_vivado.tcl
+
+.PHONY: vc707_managed
+vc707_managed:
+	@cd examples/vc707_managed && ${VIVADO_RUN} create_all.tcl
 
 # Example design for ZedBoard.
 .PHONY: zed_converter
@@ -106,6 +130,16 @@ mpf_splash:
 ice40_rmii_serial:
 	@cd examples/ice40_hx8k && ./yosys_ice40_hx8k.sh switch_top_rmii_serial_adapter
 
+# Build and run the Log-Viewer tool
+.PHONY: log_viewer
+log_viewer:
+	@cd test/log_viewer && make run
+
+# Build each of the C++ example tools.
+.PHONY: sw_tools
+sw_tools:
+	@cd test/log_viewer && make all
+
 # Build and run software tests
 .PHONY: sw_test
 sw_test:
@@ -120,3 +154,20 @@ sw_coverage:
 .PHONY: sw_covertest
 sw_covertest:
 	@cd ${SW_TEST_DIR} && make coverage_test
+
+# Run "cppcheck" static analyzer on C++ software
+.PHONY: sw_cppcheck
+sw_cppcheck:
+	@${CPPCHECK_RUN} src/cpp 2> cppcheck.xml
+
+# Run "cpplint" linter on C++ software
+.PHONY: sw_cpplint
+sw_cpplint:
+	@${CPPLINT_RUN} src/cpp 2> cpplint.log
+
+# Build and run python software tests
+# Note: Run with "sudo" or grant CAP_NET_RAW to the Python executable.
+#   e.g., "sudo setcap cap_net_raw+eip /usr/bin/python3.6".
+.PHONY: sw_python
+sw_python:
+	@cd sim/python && python3 cfgbus_test.py

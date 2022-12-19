@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,13 +30,12 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     cfgbus_host_axi.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_top  $ip_root            wrap_cfgbus_host_axi
+ipcore_add_file $src_dir/common/cfgbus_common.vhd
+ipcore_add_file $src_dir/common/cfgbus_host_axi.vhd
+ipcore_add_file $src_dir/common/common_functions.vhd
+ipcore_add_file $src_dir/common/common_primitives.vhd
+ipcore_add_file $src_dir/common/fifo_smol_sync.vhd
+ipcore_add_top  $ip_root/wrap_cfgbus_host_axi.vhd
 
 # Connect I/O ports
 # Note: Request 256 ConfigBus devices = 1 Mbyte memory-map.
@@ -46,8 +45,10 @@ ipcore_add_cfgbus Cfg cfg master
 ipcore_add_irq irq_out
 
 # Set parameters
-ipcore_add_param ADDR_WIDTH long 32
-ipcore_add_param RD_TIMEOUT long 16
+ipcore_add_param ADDR_WIDTH long 32 \
+    {Bits in AXI address word}
+ipcore_add_param RD_TIMEOUT long 16 \
+    {Timeout for ConfigBus reads (clock cycles)}
 
 # Package the IP-core.
 ipcore_finished

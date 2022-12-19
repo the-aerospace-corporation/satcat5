@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -63,6 +63,7 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_rgmii is
@@ -71,7 +72,8 @@ entity port_rgmii is
     RXCLK_LOCAL : boolean := false;     -- Enable input clock buffer (local)
     RXCLK_GLOBL : boolean := true;      -- Enable input clock buffer (global)
     RXCLK_DELAY : real := 0.0;          -- Input clock delay, in nanoseconds (typ. 0.0 or 2.0)
-    RXDAT_DELAY : real := 0.0);         -- Input data/control delay, in nanoseconds
+    RXDAT_DELAY : real := 0.0;          -- Input data/control delay, in nanoseconds
+    VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
     -- External RGMII interface.
     rgmii_txc   : out std_logic;
@@ -89,6 +91,9 @@ entity port_rgmii is
     -- Test controls (not required for general use)
     force_10m   : in  std_logic := '0';
     force_100m  : in  std_logic := '0';
+
+    -- Global reference for PTP timestamps, if enabled.
+    ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
 
     -- Reference clock and reset.
     clk_125     : in  std_logic;        -- Main reference clock
@@ -109,6 +114,7 @@ constant META_10M   : nybble_t := "1000";
 -- All RX signals are in the "rx_clk" domain.
 signal rx_clk       : std_logic;                    -- Buffered Rx-clock
 signal rx_lock      : std_logic := '0';             -- Rx clock detected?
+signal rx_reset     : std_logic;                    -- Inverse of rx_lock
 signal rx_raw_data  : byte_t := (others => '0');    -- DDR input register
 signal rx_raw_dv    : std_logic := '0';             -- DDR input register
 signal rx_raw_err   : std_logic := '0';             -- DDR input register
@@ -117,6 +123,8 @@ signal rx_out_dv    : std_logic := '0';             -- De-duplicated data
 signal rx_out_err   : std_logic := '0';             -- De-duplicated data
 signal rx_out_cken  : std_logic := '1';             -- Preamble clock-enable
 signal rx_meta      : nybble_t := META_1000M;       -- Received link config
+signal rx_tstamp    : tstamp_t := TSTAMP_DISABLED;  -- Receive clock timestamps
+signal rx_tvalid    : std_logic := '0';             -- Timestamp valid?
 
 -- All TX signals are in the "tx_clk" domain.
 signal tx_clk       : std_logic;                    -- Main Tx-clock
@@ -135,6 +143,8 @@ signal tx_out_clkr  : std_logic := '0';             -- DDR output clock
 signal tx_out_clkf  : std_logic := '0';             -- DDR output clock
 signal tx_rate10    : std_logic := '0';             -- Output rate flag
 signal tx_rate100   : std_logic := '0';             -- Output rate flag
+signal tx_tstamp    : tstamp_t := TSTAMP_DISABLED;  -- Receive clock timestamps
+signal tx_tvalid    : std_logic := '0';             -- Timestamp valid?
 
 -- Upstream status reporting is asynchronous.
 signal rate_word    : port_rate_t;                  -- Link rate (10/100/1000)
@@ -225,7 +235,33 @@ u_detect : entity work.io_clock_detect
     ref_clk     => tx_clk,
     ref_running => tx_lock,
     tst_clk     => rx_clk,
+    tst_halted  => rx_reset,
     tst_running => rx_lock);
+
+-- If enabled, generate timestamps with a Vernier synchronizer.
+gen_tstamp : if VCONFIG.input_hz > 0 generate
+    u_tstamp_rx : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => 125_000_000)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => rx_clk,
+        user_ctr    => rx_tstamp,
+        user_lock   => rx_tvalid,
+        user_rst_p  => rx_reset);
+
+    u_tstamp_tx : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => 125_000_000)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => tx_clk,
+        user_ctr    => tx_tstamp,
+        user_lock   => tx_tvalid,
+        user_rst_p  => tx_reset);
+end generate;
 
 -- Rate detection and incoming data conversion:
 p_rx : process(rx_clk)
@@ -269,6 +305,7 @@ rate_word <= get_rate_word(10)   when (tx_rate10 = '1')
 status_word <= (
     0 => tx_reset,
     1 => rx_lock,
+    2 => rx_tvalid and tx_tvalid,
     4 => rx_meta(0),
     5 => rx_meta(1),
     6 => rx_meta(2),
@@ -287,6 +324,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_err     => rx_out_err,
     raw_cken    => rx_out_cken,
     rate_word   => rate_word,
+    rx_tstamp   => rx_tstamp,
     status      => status_word,
     rx_data     => rx_data);    -- Rx data to switch
 
@@ -312,6 +350,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_pwren    => tx_pwren,    -- Port enabled?
     tx_cken     => tx_pre_cken, -- Clock enable
     tx_pkten    => tx_lock,     -- Link up, ready to send?
+    tx_tstamp   => tx_tstamp,
     tx_idle     => tx_meta,     -- Echo Rx metadata
     tx_data     => tx_data,     -- Tx data from switch
     tx_ctrl     => tx_ctrl);    -- (Associated control)

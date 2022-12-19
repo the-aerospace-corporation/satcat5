@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -59,6 +59,14 @@ package cfgbus_sim_tools is
         signal cfg_ack  : in    cfgbus_ack;
         constant ERR_OK : boolean := false);
 
+    -- Combined read + wait operation.
+    procedure cfgbus_readwait(
+        signal cfg_cmd  : inout cfgbus_cmd;
+        signal cfg_ack  : in    cfgbus_ack;
+        constant dev    : in    cfgbus_devaddr;
+        constant reg    : in    cfgbus_regaddr;
+        constant ERR_OK : boolean := false);
+
     -- Generic clock and reset source.
     -- (User must attach clock and reset signals manually, because each
     --  signal in the the record must be driven by the same entity.)
@@ -78,7 +86,8 @@ package cfgbus_sim_tools is
         port (
         cfg_cmd : in  cfgbus_cmd;
         cfg_ack : in  cfgbus_ack;
-        readval : out cfgbus_word);
+        readval : out cfgbus_word;
+        readerr : out std_logic);
     end component;
 end package;
 
@@ -156,6 +165,17 @@ package body cfgbus_sim_tools is
         assert (ERR_OK or cfg_ack.rderr = '0')
             report "ConfigBus read-error." severity warning;
     end procedure;
+
+    procedure cfgbus_readwait(
+        signal cfg_cmd  : inout cfgbus_cmd;
+        signal cfg_ack  : in    cfgbus_ack;
+        constant dev    : in    cfgbus_devaddr;
+        constant reg    : in    cfgbus_regaddr;
+        constant ERR_OK : boolean := false) is
+    begin
+        cfgbus_read(cfg_cmd, dev, reg);
+        cfgbus_wait(cfg_cmd, cfg_ack, ERR_OK);
+    end procedure;
 end package body;
 
 ---------------------------------------------------------------------
@@ -202,16 +222,21 @@ entity cfgbus_read_latch is
     port (
     cfg_cmd : in  cfgbus_cmd;
     cfg_ack : in  cfgbus_ack;
-    readval : out cfgbus_word);
+    readval : out cfgbus_word;
+    readerr : out std_logic);
 end cfgbus_read_latch;
 
 architecture cfgbus_read_latch of cfgbus_read_latch is
 
+signal reply_now   : std_logic;
 signal reg_readval : cfgbus_word := (others => 'U');
+signal reg_readerr : std_logic := 'U';
 
 begin
 
-readval <= cfg_ack.rdata when (cfg_ack.rdack = '1') else reg_readval;
+reply_now <= cfg_ack.rdack or cfg_ack.rderr;
+readval <= cfg_ack.rdata when (reply_now = '1') else reg_readval;
+readerr <= cfg_ack.rderr when (reply_now = '1') else reg_readerr;
 
 p_reg : process(cfg_cmd.clk)
 begin
@@ -223,10 +248,12 @@ begin
             report "Idle-bus violation." severity error;
 
         -- Latch the new reply value.
-        if (cfg_ack.rdack = '1') then
+        if (reply_now = '1') then
             reg_readval <= cfg_ack.rdata;
+            reg_readerr <= cfg_ack.rderr;
         elsif (cfg_cmd.rdcmd = '1') then
             reg_readval <= (others => 'U');
+            reg_readerr <= 'U';
         end if;
     end if;
 end process;

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -27,6 +27,12 @@
 #include <satcat5/timer.h>
 #include <string>
 
+#ifdef _WIN32
+    #define SATCAT5_WIN32 1
+#else
+    #define SATCAT5_WIN32 0
+#endif
+
 namespace satcat5 {
     namespace io {
         // Read contents of a SatCat5 buffer as a string.
@@ -39,6 +45,18 @@ namespace satcat5 {
                 satcat5::io::Writeable* dst,
                 unsigned nbytes = 4096);
             virtual ~BufferedWriterHeap();
+        };
+
+        // Stream keyboard input to a Writeable interface.
+        class KeyboardStream : public satcat5::poll::Always {
+        public:
+            explicit KeyboardStream(satcat5::io::Writeable* dst);
+            virtual ~KeyboardStream();
+
+        protected:
+            void poll_always() override;
+            void write_key(int ch);
+            satcat5::io::Writeable* const m_dst;
         };
 
         // Packet buffer with heap allocation.
@@ -57,15 +75,32 @@ namespace satcat5 {
             PosixTimer();
             u32 now() override;
         };
+
+        // Link a PosixTimer to the main polling timekeeper.
+        // (Most designs should have a global instance of this object.)
+        class PosixTimekeeper {
+        public:
+            PosixTimekeeper();
+            ~PosixTimekeeper();
+        protected:
+            satcat5::util::PosixTimer m_timer;
+            satcat5::irq::VirtualTimer m_adapter;
+        };
+
+        // Cross-platform wrapper for sleep()/Sleep()/etc.
+        void sleep_msec(unsigned msec);
     }
 
     namespace log {
+        // Human-readable formatting for addresses.
+        std::string format(const satcat5::eth::MacAddr& addr);
+        std::string format(const satcat5::ip::Addr& addr);
+
         // Helper object that prints Log messages to console.
         // (Automatically calls log::start on creation and destruction.)
-        class ToConsole : public satcat5::log::EventHandler {
+        class ToConsole final : public satcat5::log::EventHandler {
         public:
             explicit ToConsole(s8 threshold=satcat5::log::DEBUG);
-            virtual ~ToConsole();
 
             // Disable all output messages until threshold is lowered.
             void disable() {m_threshold = INT8_MAX;}

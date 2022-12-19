@@ -41,7 +41,7 @@ namespace satcat5 {
         // Emulated "cfgbus_multiserial" block.
         class MultiSerial : public satcat5::cfg::ConfigBus {
         public:
-            MultiSerial(unsigned cmd_max = 8);
+            explicit MultiSerial(unsigned cmd_max = 8);
 
             // Load next expected command into queue.
             void load_refcmd(u16 next, u8 flags = 0);

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -59,7 +59,7 @@ entity fifo_packet is
     BUFFER_KBYTES   : positive;             -- Buffer size (kilobytes)
     META_WIDTH      : natural := 0;         -- Packet metadata width (optional)
     FLUSH_TIMEOUT   : natural := 0;         -- Stale data timeout (optional)
-    MAX_PACKETS     : positive := 64;       -- Maximum queued packets
+    MAX_PACKETS     : positive := 32;       -- Maximum queued packets
     MAX_PKT_BYTES   : positive := 1536;     -- Maximum packet size (bytes)
     TEST_MODE       : boolean := false);    -- Enable verification features
     port (
@@ -72,7 +72,8 @@ entity fifo_packet is
     in_last_revert  : in  std_logic;
     in_write        : in  std_logic;
     in_reset        : out std_logic;        -- Syncronized copy of reset_p
-    in_overflow     : out std_logic;        -- Warning strobe (invalid commit)
+    in_overflow     : out std_logic;        -- Overflow strobe (in_clk)
+    in_hfull        : out std_logic;        -- Approximate half-full indicator
 
     -- Output port uses AXI-style flow control.
     out_clk         : in  std_logic;
@@ -83,7 +84,8 @@ entity fifo_packet is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
     out_reset       : out std_logic;        -- Synchronized copy of reset_p
-    out_overflow    : out std_logic;        -- Same warning, in out_clk domain
+    out_overflow    : out std_logic;        -- Overflow strobe (out_clk)
+    out_hfull       : out std_logic;        -- Approximate half-full indicator
     out_pause       : in  std_logic := '0'; -- Optional: Don't start next packet
 
     -- Global asynchronous reset.
@@ -129,6 +131,7 @@ signal reset_o      : std_logic;        -- Global reset (output clock)
 signal wdog_reset   : std_logic := '0'; -- Flag in output clock
 
 -- State synchronized to main input.
+signal half_full    : std_logic := '0';
 signal free_words   : words_i := FIFO_DEPTH;
 signal new_words    : words_i := 1;
 signal in_wcount    : integer range 0 to INPUT_WMAX := 0;
@@ -193,12 +196,19 @@ u_reset_out : sync_reset
 -- Top-level status strobes:
 in_reset    <= reset_i;
 in_overflow <= wr_ovrflow;
+in_hfull    <= half_full;
 
 u_overflow : sync_pulse2pulse
     port map(
     in_strobe   => wr_ovrflow,
     in_clk      => in_clk,
     out_strobe  => out_overflow,
+    out_clk     => out_clk);
+
+u_hfull : sync_buffer
+    port map(
+    in_flag     => half_full,
+    out_flag    => out_hfull,
     out_clk     => out_clk);
 
 -- Optional watchdog timer for undeliverable packets.
@@ -296,6 +306,9 @@ begin
         else
             free_words <= free_words - wr_words;
         end if;
+
+        -- Optional half-full indicator is not used internally.
+        half_full <= bool2bit(free_words < FIFO_DEPTH/2) and not reset_i;
     end if;
 end process;
 

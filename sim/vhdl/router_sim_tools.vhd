@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -84,14 +84,7 @@ package router_sim_tools is
     -- Define various commonly used protocol magic numbers:
     subtype ethertype is std_logic_vector(15 downto 0);
     subtype slv16 is std_logic_vector(15 downto 0);
-    constant ETYPE_IPV4     : ethertype := x"0800";
-    constant ETYPE_ARP      : ethertype := x"0806";
     constant ETYPE_NOIP     : ethertype := x"1234";
-
-    constant IPPROTO_ICMP   : byte_t := i2s( 1, 8);
-    constant IPPROTO_IGMP   : byte_t := i2s( 2, 8);
-    constant IPPROTO_TCP    : byte_t := i2s( 6, 8);
-    constant IPPROTO_UDP    : byte_t := i2s(17, 8);
 
     constant ICMP_TC_ECHORP : slv16 := x"0000";
     constant ICMP_TC_DNU    : slv16 := x"0300";
@@ -184,7 +177,7 @@ package router_sim_tools is
         return eth_packet;  -- Header + Tag Data + FCS
 
     -- Make an IPv4 frame with the given parameters and payload.
-    -- Note: Typically the result is passed to make_pkt_raw().
+    -- Note: Typically the result is passed to make_eth_pkt() or make_eth_fcs().
     function make_ipv4_pkt(
         hdr     : ipv4_header;
         data    : std_logic_vector;
@@ -399,11 +392,11 @@ package body router_sim_tools is
 
     -- Calculate IP-checksum of a given vector.
     function ipv4_checksum(x : std_logic_vector) return slv16 is
-        constant NWORDS : integer := x'length / 16;
+        constant NUM_WORDS : integer := x'length / 16;
         variable chksum : ip_checksum_t := (others => '0');
         variable chktmp : slv16 := (others => '0');
      begin
-        for n in NWORDS-1 downto 0 loop
+        for n in NUM_WORDS-1 downto 0 loop
             chksum := ip_checksum(chksum, get_word_s(x, n));
         end loop;
         chktmp := std_logic_vector(not chksum);
@@ -490,8 +483,6 @@ package body router_sim_tools is
         return make_eth_fcs(tmp);
     end function;
 
-    -- Make an IPv4 frame with the given parameters and payload.
-    -- Note: Typically the result is passed to make_pkt_raw().
     function make_ipv4_pkt(
         hdr     : ipv4_header;
         data    : std_logic_vector;

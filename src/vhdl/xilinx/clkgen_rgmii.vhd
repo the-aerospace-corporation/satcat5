@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -45,12 +45,24 @@ end entity clkgen_rgmii_xilinx;
 
 architecture arch of clkgen_rgmii_xilinx is
 
+constant RESET_HOLD : integer := 31;
+
 signal clkfb                : std_logic;
 signal clkbuf_125_00        : std_logic;
 signal clkbuf_125_90        : std_logic;
 signal clkbuf_200           : std_logic;
 signal mmcm_locked          : std_logic;
+signal rstctr               : integer range 0 to RESET_HOLD := RESET_HOLD;
 signal rstout               : std_logic := '1';
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of mmcm_locked, rstctr, rstout : signal is true;
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of mmcm_locked : signal is true;
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of rstctr, rstout : signal is true;
 
 begin
 
@@ -144,20 +156,18 @@ u_buf2 : BUFG
 -- Hold reset for a few cycles after MMCM is locked.
 rstout_p <= rstout;
 
-p_reset : process(rstin_p, clkin_25)
-    constant RESET_HOLD : integer := 31;
-    variable count : integer range 0 to RESET_HOLD := RESET_HOLD;
+p_reset : process(rstin_p, clkbuf_125_00)
 begin
     if (rstin_p = '1') then
         rstout  <= '1';
-        count   := RESET_HOLD;
-    elsif rising_edge(clkin_25) then
-        rstout  <= bool2bit(count > 0);
+        rstctr  <= RESET_HOLD;
+    elsif rising_edge(clkbuf_125_00) then
+        rstout  <= bool2bit(rstctr > 0);
 
         if (mmcm_locked = '0') then
-            count := RESET_HOLD;
-        elsif (count > 0) then
-            count := count - 1;
+            rstctr <= RESET_HOLD;
+        elsif (rstctr > 0) then
+            rstctr <= rstctr - 1;
         end if;
     end if;
 end process;

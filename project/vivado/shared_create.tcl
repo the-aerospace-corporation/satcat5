@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -25,13 +25,13 @@
 puts {Running shared_create.tcl}
 
 # Create project and set properties.
-set obj [create_project $target_proj ./$target_proj -force]
+variable obj [create_project $target_proj ./$target_proj -force]
 set_property "default_lib" "xil_defaultlib" $obj
 set_property "part" $target_part $obj
 set_property "sim.ip.auto_export_scripts" "1" $obj
 set_property "simulator_language" "Mixed" $obj
 set_property "target_language" "VHDL" $obj
-set proj_dir [get_property directory [current_project]]
+variable proj_dir [get_property directory [current_project]]
 
 # Set board if defined
 if {[info exists target_board]} {
@@ -40,7 +40,9 @@ if {[info exists target_board]} {
 
 # Helper scripts are usually in the current working folder,
 # but certain configurations need to override this setting.
-if {![info exists script_dir]} {
+if {[info exists override_script_dir]} {
+    set script_dir $override_script_dir
+} else {
     set script_dir [file normalize [file dirname [info script]]]
 }
 
@@ -60,14 +62,28 @@ if {![info exists target_lib]} {
 # Make a copy of the dummy "debug" constraints file.
 file copy -force "$script_dir/debug_placeholder.xdc" "./$target_proj/constr_debug.xdc"
 
-# Suppress critical warning about adding files one at a time.
-set_msg_config -suppress -id {Vivado 12-3645}
+# Demote certain warnings that are known to be benign.
+set_msg_config -new_severity INFO -id {[BD 41-1771]};           # Board vs. port name mismatch
+set_msg_config -new_severity INFO -id {[Common 18-540]};        # Ignore empty set_max_delay
+set_msg_config -new_severity INFO -id {[Constraints 18-540]};   # Ignore empty set_max_delay
+set_msg_config -new_severity INFO -id {[Constraints 18-550]};   # Impl constraints during synth
+set_msg_config -new_severity INFO -id {[Opt 31-35]};            # Removing redundant IBUF
+set_msg_config -new_severity INFO -id {[Power 33-332]};         # Inaccurate power estimate
+set_msg_config -new_severity INFO -id {[Synth 8-506]};          # Removed null port
+set_msg_config -new_severity INFO -id {[Synth 8-3301]};         # Unused generic parameter
+set_msg_config -new_severity INFO -id {[Synth 8-3331]};         # Unconnected null port
+set_msg_config -new_severity INFO -id {[Synth 8-3332]};         # Unused sequential element
+set_msg_config -new_severity INFO -id {[Synth 8-3819]};         # Unspecified generic parameter
+set_msg_config -new_severity INFO -id {[Synth 8-3919]};         # Null assignment (width = 0)
+set_msg_config -new_severity INFO -id {[Synth 8-3936]};         # Trim excess bits from register
+set_msg_config -new_severity INFO -id {[Synth 8-6014]};         # Trim unused sequential element
+set_msg_config -suppress          -id {[Vivado 12-3645]};       # Adding one file at a time
 
 # Add each file and set properties.
-set src_files [get_filesets sources_1]
+variable src_files [get_filesets sources_1]
 
 foreach fi $files_main {
-    set file_obj [add_files -norecurse -fileset $src_files [glob $fi]]
+    variable file_obj [add_files -norecurse -fileset $src_files [glob $fi]]
     set_property "file_type" "VHDL" $file_obj
     set_property "library" $target_lib $file_obj
 }
@@ -77,29 +93,27 @@ source "$script_dir/generate_sem.tcl"
 generate_sem sem_0
 
 # Add/Import each constraints file and set properties.
-#create_fileset -constrset constrs_1
-set constr_files [get_filesets constrs_1]
+variable constr_files [get_filesets constrs_1]
 
-set file "[file normalize ./$constr_synth]"
-set file_added [add_files -norecurse -fileset $constr_files $file]
-set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+variable file "[file normalize ./$constr_synth]"
+variable file_added [add_files -norecurse -fileset $constr_files $file]
+variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
 set_property "file_type" "XDC" $file_obj
 
-set file "[file normalize ./$constr_impl]"
-set file_added [add_files -norecurse -fileset $constr_files $file]
-set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+variable file "[file normalize ./$constr_impl]"
+variable file_added [add_files -norecurse -fileset $constr_files $file]
+variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
 set_property "file_type" "XDC" $file_obj
 set_property "used_in" "implementation" $file_obj
 set_property "used_in_synthesis" "0" $file_obj
 
-set file "[file normalize ./$target_proj/constr_debug.xdc]"
-set file_added [add_files -norecurse -fileset $constr_files $file]
-set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+variable file "[file normalize ./$target_proj/constr_debug.xdc]"
+variable file_added [add_files -norecurse -fileset $constr_files $file]
+variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
 set_property "file_type" "XDC" $file_obj
 
 # Set 'sim_1' fileset object
-#create_fileset -simset sim_1
-set sim_files [get_filesets sim_1]
+variable sim_files [get_filesets sim_1]
 set_property "xelab.nosort" "1" $sim_files
 set_property "xelab.unifast" "" $sim_files
 
@@ -116,7 +130,7 @@ if {[string equal [get_runs -quiet synth_1] ""]} {
   set_property strategy "Vivado Synthesis Defaults" [get_runs synth_1]
   set_property flow "Vivado Synthesis 2015" [get_runs synth_1]
 }
-set obj [get_runs synth_1]
+variable obj [get_runs synth_1]
 set_property "needs_refresh" "1" $obj
 set_property "part" $target_part $obj
 set_property "steps.synth_design.tcl.pre" "$script_dir/shared_presynth.tcl" $obj
@@ -130,7 +144,7 @@ if {[string equal [get_runs -quiet impl_1] ""]} {
   set_property strategy "Vivado Implementation Defaults" [get_runs impl_1]
   set_property flow "Vivado Implementation 2015" [get_runs impl_1]
 }
-set obj [get_runs impl_1]
+variable obj [get_runs impl_1]
 set_property "needs_refresh" "1" $obj
 set_property "part" $target_part $obj
 set_property "steps.write_bitstream.args.readback_file" "0" $obj

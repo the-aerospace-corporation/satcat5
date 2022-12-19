@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -50,15 +50,16 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.common_primitives.clk_input;
-use     work.common_primitives.ddr_output;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_rmii is
     generic (
     MODE_CLKOUT : boolean := true;      -- Enable clock output?
-    MODE_CLKDDR : boolean := true);     -- TX* change on falling edge?
+    MODE_CLKDDR : boolean := true;      -- TX* change on falling edge?
+    VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
     -- External RMII interface.
     rmii_txd    : out std_logic_vector(1 downto 0);
@@ -71,6 +72,9 @@ entity port_rmii is
     -- Internal or external clock.
     rmii_clkin  : in  std_logic;        -- 50 MHz reference
     rmii_clkout : out std_logic;        -- Optional clock output
+
+    -- Global reference for PTP timestamps, if enabled.
+    ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
 
     -- Generic internal port interface.
     rx_data     : out port_rx_m2s;
@@ -95,7 +99,12 @@ signal io_rxd       : io_word := (others => '0');
 signal io_rxen      : std_logic := '0';
 signal io_rxer      : std_logic := '0';
 signal io_clk       : std_logic;
+signal io_reset     : std_logic;
 signal io_lock      : std_logic;
+
+-- Precision timestamps.
+signal lcl_tstamp       : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tvalid       : std_logic := '0';
 
 -- Receive datapath
 signal rx_byte      : byte_t := (others => '0');
@@ -157,7 +166,22 @@ u_detect : entity work.io_clock_detect
     ref_reset_p => reset_p,
     ref_clk     => lock_refclk,
     tst_clk     => io_clk,
+    tst_halted  => io_reset,
     tst_running => io_lock);
+
+-- If enabled, generate timestamps with a Vernier synchronizer.
+gen_ptp : if VCONFIG.input_hz > 0 generate
+    u_tstamp : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => 50_000_000)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => IO_CLK,
+        user_ctr    => lcl_tstamp,
+        user_lock   => lcl_tvalid,
+        user_rst_p  => io_reset);
+end generate;
 
 -- TXER signal is not part of the RMII spec; we include it here to make
 -- the interface completely symmetric for MAC-to-MAC mode.
@@ -334,6 +358,7 @@ port_status <= (
     0 => reset_p,
     1 => io_lock,
     2 => rx_fast,
+    3 => lcl_tvalid,
     others => '0');
 
 -- Preamble removal and port interface logic.
@@ -346,6 +371,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_dv      => rx_dv,
     raw_err     => io_rxer,
     rate_word   => port_rate,
+    rx_tstamp   => lcl_tstamp,
     status      => port_status,
     rx_data     => rx_data);    -- Rx data to switch
 
@@ -358,6 +384,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_clk      => io_clk,
     tx_pwren    => io_lock,
     tx_cken     => tx_cken,
+    tx_tstamp   => lcl_tstamp,
     tx_data     => tx_data,     -- Tx data from switch
     tx_ctrl     => tx_ctrl);    -- (Associated control)
 

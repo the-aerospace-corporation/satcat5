@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -57,8 +57,6 @@ signal in_vtag      : vlan_hdr_t;
 signal in_valid     : std_logic;
 signal in_ready     : std_logic;
 signal in_nlast     : integer range 0 to IO_BYTES;
-signal fifo_valid   : std_logic;
-signal fifo_ready   : std_logic;
 
 -- Reference stream
 signal ref_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -75,13 +73,13 @@ signal out_next     : std_logic;
 -- Test control.
 constant LOAD_BYTES : positive := IO_BYTES;
 signal cfg_cmd      : cfgbus_cmd;
+signal rate_in      : real := 0.0;
 signal rate_out     : real := 0.0;
 signal load_data    : std_logic_vector(8*LOAD_BYTES-1 downto 0) := (others => '0');
 signal load_vtag    : vlan_hdr_t := (others => '0');
 signal load_nlast   : integer range 0 to LOAD_BYTES := 0;
 signal load_wr_in   : std_logic := '0';
 signal load_wr_ref  : std_logic := '0';
-signal load_commit  : std_logic;
 signal test_done_i  : std_logic := '0';
 
 begin
@@ -92,43 +90,34 @@ reset_p <= '0' after 1 us;
 cfg_cmd.clk <= clk100;
 
 -- Input and reference queues.
-load_commit <= bool2bit(load_nlast > 0);
-in_valid    <= fifo_valid and bool2bit(rate_out > 0.0);
-fifo_ready  <= in_ready and bool2bit(rate_out > 0.0);
-
-u_ififo : entity work.fifo_packet
+u_ififo : entity work.fifo_sim_throttle
     generic map(
     INPUT_BYTES     => LOAD_BYTES,
     OUTPUT_BYTES    => IO_BYTES,
-    BUFFER_KBYTES   => 2,
     META_WIDTH      => VLAN_HDR_WIDTH)
     port map(
     in_clk          => clk100,
     in_data         => load_data,
     in_nlast        => load_nlast,
-    in_pkt_meta     => load_vtag,
-    in_last_commit  => load_commit,
-    in_last_revert  => '0',
+    in_meta         => load_vtag,
     in_write        => load_wr_in,
     out_clk         => clk100,
     out_data        => in_data,
     out_nlast       => in_nlast,
-    out_pkt_meta    => in_vtag,
-    out_valid       => fifo_valid,
-    out_ready       => fifo_ready,
+    out_meta        => in_vtag,
+    out_valid       => in_valid,
+    out_ready       => in_ready,
+    out_rate        => rate_in,
     reset_p         => reset_p);
 
-u_rfifo : entity work.fifo_packet
+u_rfifo : entity work.fifo_sim_throttle
     generic map(
     INPUT_BYTES     => LOAD_BYTES,
-    OUTPUT_BYTES    => IO_BYTES,
-    BUFFER_KBYTES   => 2)
+    OUTPUT_BYTES    => IO_BYTES)
     port map(
     in_clk          => clk100,
     in_data         => load_data,
     in_nlast        => load_nlast,
-    in_last_commit  => load_commit,
-    in_last_revert  => '0',
     in_write        => load_wr_ref,
     out_clk         => clk100,
     out_data        => ref_data,
@@ -223,6 +212,7 @@ p_test : process
             wait until rising_edge(clk100);
         end loop;
         -- Start transmission of test data.
+        rate_in  <= 1.0;
         rate_out <= rate;
         -- Wait until N consecutive idle cycles.
         while (idle_count < 100) loop
@@ -236,6 +226,7 @@ p_test : process
         -- Post-test cleanup.
         assert (ref_valid = '0')
             report "Output too short" severity error;
+        rate_in  <= 0.0;
         rate_out <= 0.0;
     end procedure;
 

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -30,12 +30,44 @@
 library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
+use     ieee.math_real.all;
 use     work.common_primitives.all;
 
--- Deferred constant definition(s):
+-- Deferred constant and function definition(s):
+-- Note: The entire package body must be defined in one location.  For
+--       historical reasons, this is the file, even even if non-memory
+--       functions were added later. This may change in future revs.
 package body common_primitives is
     -- RAM64X1D is a single slice (LUT6) and supports 6-bit addresses.
     constant PREFER_DPRAM_AWIDTH : positive := 6;
+
+    -- Given reference frequency, determine the "best" Vernier configuration.
+    -- (See also: "7series_vernier.vhd")
+    function create_vernier_config(input_hz : natural) return vernier_config is
+        variable mul, d0, d1 : real;    -- MMCM multiply/divide parameters
+        variable f0, f1 : real;         -- Output frequency (Hz)
+    begin
+        -- Predefined list of supported configurations.
+        -- TODO: Do something smarter? This is adequate for now.
+        case input_hz is
+            when  20_000_000 => mul := 59.875; d0 := 60.125; d1 := 60.000;
+            when  25_000_000 => mul := 47.875; d0 := 60.125; d1 := 60.000;
+            when  50_000_000 => mul := 23.500; d0 := 58.875; d1 := 59.000;
+            when 100_000_000 => mul := 11.750; d0 := 58.875; d1 := 59.000;
+            when 125_000_000 => mul :=  9.250; d0 := 57.875; d1 := 58.000;
+            when 200_000_000 => mul :=  5.875; d0 := 58.875; d1 := 59.000;
+            when others => return VERNIER_DISABLED;
+        end case;
+        -- Calculate output frequencies.
+        f0 := real(input_hz) * mul / d0;
+        f1 := real(input_hz) * mul / d1;
+        -- Create data structure, swapping A/B outputs as needed.
+        if (f0 < f1) then
+            return (input_hz, f0, f1, (0 => mul, 1 => d0, 2 => d1, others => 0.0));
+        else
+            return (input_hz, f1, f0, (0 => mul, 1 => d0, 2 => d1, others => 0.0));
+        end if;
+    end function;
 end package body;
 
 ---------------------------------------------------------------------

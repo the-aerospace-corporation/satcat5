@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -69,6 +69,13 @@ void Address::connect(const Addr& dstaddr, const MacAddr& dstmac)
     m_dstaddr   = dstaddr;
     m_gateway   = ip::ADDR_NONE;
     m_ready     = 1;
+}
+
+void Address::retry()
+{
+    if (!m_ready) {
+        m_iface->m_arp.send_query(m_gateway);
+    }
 }
 
 void Address::close()

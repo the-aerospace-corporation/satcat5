@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,6 +31,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.config_mdio_rom_creation.all;
 use     work.switch_types.all;
 
 entity config_mdio_rom_tb is
@@ -44,30 +45,21 @@ constant MDIO_BAUD      : integer := 100000;
 constant TIME_HALF_BIT  : integer := CLKREF_HZ / (2*MDIO_BAUD); -- Round down
 constant TIME_MSEC      : integer := CLKREF_HZ / 1000;          -- Round down
 
--- Helper function to format command words.
-subtype cmd_word is std_logic_vector(31 downto 0);
-function make_cmd(dly, phy, reg, dat : integer) return cmd_word is
-    variable cmd : cmd_word :=
-        i2s(dly, 6) & i2s(phy, 5) & i2s(reg, 5) & i2s(dat, 16);
-begin
-    return cmd;
-end function;
-
 -- Hard-coded test sequence:
 constant CMD_COUNT  : integer := 12;
 constant ROM_VECTOR : std_logic_vector(32*CMD_COUNT-1 downto 0) :=
-    make_cmd( 5,  1, 12, 52764) &
-    make_cmd( 0,  2, 11, 55499) &
-    make_cmd( 0,  3, 10, 44684) &
-    make_cmd( 3,  4,  9, 49267) &
-    make_cmd( 0,  5,  8, 55148) &
-    make_cmd( 0,  6,  7, 10316) &
-    make_cmd( 0,  7,  6, 39596) &
-    make_cmd( 0,  8,  5, 46969) &
-    make_cmd( 0,  9,  4, 48849) &
-    make_cmd( 2, 10,  3, 22884) &
-    make_cmd( 0, 11,  2, 21071) &
-    make_cmd( 0, 12,  1, 49815);
+    config_mdio_rom_cmd( 5,  1, 12, 52764) &
+    config_mdio_rom_cmd( 0,  2, 11, 55499) &
+    config_mdio_rom_cmd( 0,  3, 10, 44684) &
+    config_mdio_rom_cmd( 3,  4,  9, 49267) &
+    config_mdio_rom_cmd( 0,  5,  8, 55148) &
+    config_mdio_rom_cmd( 0,  6,  7, 10316) &
+    config_mdio_rom_cmd( 0,  7,  6, 39596) &
+    config_mdio_rom_cmd( 0,  8,  5, 46969) &
+    config_mdio_rom_cmd( 0,  9,  4, 48849) &
+    config_mdio_rom_cmd( 2, 10,  3, 22884) &
+    config_mdio_rom_cmd( 0, 11,  2, 21071) &
+    config_mdio_rom_cmd( 0, 12,  1, 49815);
 
 -- Clock and reset generation
 signal clk_100      : std_logic := '0';
@@ -81,6 +73,7 @@ signal time_now     : time_word := (others => '0');
 signal mdio_clk     : std_logic;
 signal mdio_data    : std_logic;
 signal mdio_oe      : std_logic;
+signal status_done  : std_logic;
 
 -- MDIO receiver
 signal rcvr_phy     : std_logic_vector(4 downto 0) := (others => '0');
@@ -90,7 +83,7 @@ signal rcvr_rdy     : std_logic := '0';
 
 -- Check output against reference.
 signal ref_idx      : integer := 0;
-signal ref_cmd      : cmd_word := (others => '0');
+signal ref_cmd      : config_mdio_rom_word := (others => '0');
 signal ref_dly      : integer := 0;
 signal ref_phy      : std_logic_vector(4 downto 0) := (others => '0');
 signal ref_reg      : std_logic_vector(4 downto 0) := (others => '0');
@@ -120,6 +113,7 @@ uut : entity work.config_mdio_rom
     mdio_clk    => mdio_clk,
     mdio_data   => mdio_data,
     mdio_oe     => mdio_oe,
+    status_done => status_done,
     ref_clk     => clk_100,
     reset_p     => reset_p);
 
@@ -197,6 +191,8 @@ begin
         if (time_elapsed = 10*TIME_MSEC) then
             assert (ref_idx = CMD_COUNT)
                 report "Command count mismatch." severity error;
+            assert (status_done = '1')
+                report "Missing DONE flag." severity error;
             report "All tests completed.";
         end if;
 

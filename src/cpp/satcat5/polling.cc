@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -24,6 +24,7 @@
 
 namespace poll = satcat5::poll;
 using satcat5::irq::AtomicLock;
+using satcat5::util::GenericTimer;
 using satcat5::util::ListCore;
 
 // Global linked list for each major polling type:
@@ -153,12 +154,34 @@ unsigned poll::OnDemand::count()
     return ListCore::len(g_list_demand);
 }
 
+poll::Timekeeper::Timekeeper()
+    : m_clock(0)
+    , m_tref(0)
+{
+    // No other initialization required.
+}
+
+void poll::Timekeeper::set_clock(GenericTimer* timer)
+{
+    AtomicLock lock(LBL_POLL);
+    m_clock = timer;
+}
+
 void poll::Timekeeper::poll_demand()
 {
+    // Measure elapsed time if a reference clock is available.
+    unsigned elapsed_msec = 1;      // Default = 1 msec
+    if (m_clock) {
+        // Measure elapsed time since last call to "elapsed_msec".
+        // ("m_tref" updated to m_clock->now(), less fractional leftovers.)
+        AtomicLock lock(LBL_POLL);
+        elapsed_msec = m_clock->elapsed_msec(m_tref);
+        if (!elapsed_msec) return;  // Less than 1 msec elapsed?
+    }
     // Check on each of the registered Timer objects.
     poll::Timer* item = g_list_timer;
     while(item) {
-        item->query();
+        item->query(elapsed_msec);
         item = item->m_next;
     }
 }
@@ -206,13 +229,13 @@ void poll::Timer::timer_stop()
     m_tnext = 0;
 }
 
-void poll::Timer::query()
+void poll::Timer::query(unsigned elapsed_msec)
 {
-    if (m_trem > 1) {
-        --m_trem;           // Continue countdown...
+    if (m_trem > elapsed_msec) {
+        m_trem -= elapsed_msec;     // Continue countdown...
     } else if (m_trem) {
-        timer_event();      // Countdown just elapsed!
-        m_trem = m_tnext;   // Reset time to next event.
+        timer_event();              // Countdown just elapsed!
+        m_trem = m_tnext;           // Reset time to next event.
     }
 }
 
@@ -228,9 +251,7 @@ void poll::TimerAdapter::timer_event()
 }
 
 satcat5::irq::VirtualTimer::VirtualTimer(
-        poll::OnDemand* obj,
-        satcat5::util::GenericTimer* timer,
-        unsigned usec)
+        poll::OnDemand* obj, GenericTimer* timer, unsigned usec)
     : m_target(obj)
     , m_timer(timer)
     , m_interval(usec)

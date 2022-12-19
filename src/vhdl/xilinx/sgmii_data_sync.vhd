@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -53,10 +53,12 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.ptp_types.all;
 
 entity sgmii_data_sync is
     generic (
     LANE_COUNT      : integer;          -- I/O width (each lane four samples)
+    DLY_STEP        : tstamp_t;         -- Sample period for delay compensation
     ENABLE_VOTING   : boolean := true;  -- Enable quasi-majority-vote
     LOCK_THRESH     : integer := 1023;  -- Lock/unlock threshold
     TRACK_LEAKAGE   : integer := 8;     -- Leaky integrator factor (-1 to disable)
@@ -66,14 +68,17 @@ entity sgmii_data_sync is
     -- Input stream (MSB first, N lanes each four samples per bit)
     in_data         : in  std_logic_vector(4*LANE_COUNT-1 downto 0);
     in_next         : in  std_logic;    -- Clock enable
+    in_tsof         : in  tstamp_t;     -- Timestamp
 
     -- Intermediate output, for diagnostic and test only.
     aux_data        : out std_logic_vector(4*LANE_COUNT-1 downto 0);
     aux_next        : out std_logic;
+    aux_tsof        : out tstamp_t;
 
     -- Output stream (MSB first, N bits per clock)
     out_data        : out std_logic_vector(LANE_COUNT-1 downto 0);
     out_next        : out std_logic;
+    out_tsof        : out tstamp_t;
     out_locked      : out std_logic;
 
     -- Clock and reset
@@ -89,8 +94,10 @@ subtype output_word is std_logic_vector(LANE_COUNT-1 downto 0);
 -- Realigned data stream.
 signal in_data_d    : shift_word := (others => '0');
 signal in_next_d    : std_logic := '0';
+signal in_tsof_d    : tstamp_t := (others => '0');
 signal slip_data    : shift_word;
 signal slip_next    : std_logic;
+signal slip_tsof    : tstamp_t;
 
 -- Detect early/locked/late transition signatures.
 subtype DET_SCORE is integer range 0 to LANE_COUNT;
@@ -120,6 +127,7 @@ begin
     if rising_edge(clk) then
         in_data_d   <= in_data;
         in_next_d   <= in_next;
+        in_tsof_d   <= in_tsof;
     end if;
 end process;
 
@@ -127,12 +135,15 @@ end process;
 u_slip : entity work.sgmii_data_slip
     generic map(
     IN_WIDTH    => 4*LANE_COUNT,
-    OUT_WIDTH   => 4*LANE_COUNT)
+    OUT_WIDTH   => 4*LANE_COUNT,
+    DLY_STEP    => DLY_STEP)
     port map(
     in_data     => in_data_d,
     in_next     => in_next_d,
+    in_tsof     => in_tsof_d,
     out_data    => slip_data,
     out_next    => slip_next,
+    out_tsof    => slip_tsof,
     slip_early  => trk_late,    -- Note polarity swap!
     slip_late   => trk_early,   -- Note polarity swap!
     slip_ready  => trk_ready,
@@ -141,6 +152,7 @@ u_slip : entity work.sgmii_data_slip
 
 aux_data <= slip_data;  -- Debugging output
 aux_next <= slip_next;
+aux_tsof <= slip_tsof;
 
 -- Combinational logic needed to keep bias_early flag sync'd to output changes.
 bias_early <= bias_reg xnor trk_ready;
@@ -181,6 +193,7 @@ gen_voting : if ENABLE_VOTING generate
                 end case;
             end loop;
             out_next    <= slip_next;
+            out_tsof    <= slip_tsof;
             out_locked  <= trk_locked;
         end if;
     end process;
@@ -193,6 +206,7 @@ gen_simple : if not ENABLE_VOTING generate
         out_data(n) <= slip_data(4*n+2);
     end generate;
     out_next    <= slip_next;
+    out_tsof    <= slip_tsof;
     out_locked  <= trk_locked;
 end generate;
 

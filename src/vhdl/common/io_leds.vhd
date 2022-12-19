@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -23,6 +23,7 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     ieee.math_real.round;
 
 package IO_LEDS is
     -- A variable-brightness LED, using pulse-width modulation (PWM).
@@ -63,7 +64,28 @@ package IO_LEDS is
             Clk   : in  std_logic;
             pulse : in  std_logic);
     end component;
+
+    -- Helper function to configure "breathe_led".
+    -- Returns RATE setting to put period at ~2.0 seconds.
+    function breathe_led_rate(clk_hz : positive) return positive;
+    function breathe_led_rate(clk_hz : real) return positive;
 end IO_LEDS;
+
+
+
+
+----------------------- Function definitions --------------------------
+package body IO_LEDS is
+    function breathe_led_rate(clk_hz : positive) return positive is
+    begin
+        return (clk_hz + 16) / 32;  -- Round-nearest
+    end function;
+
+    function breathe_led_rate(clk_hz : real) return positive is
+    begin
+        return integer(round(clk_hz / 32.0));
+    end function;
+end package body;
 
 
 

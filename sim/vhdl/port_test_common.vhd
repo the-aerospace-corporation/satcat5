@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
+-- Copyright 2019, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,6 +31,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_test_common is
@@ -42,6 +43,7 @@ entity port_test_common is
     rxdata  : in  port_rx_m2s;      -- Received data from UUT (B/A)
     txdata  : out port_tx_s2m;      -- Transmit data to UUT (A/B)
     txctrl  : in  port_tx_m2s;      -- Transmit control from UUT (A/B)
+    txnow   : in  tstamp_t := (others => '0');  -- Current time (if needed)
     txrun   : in  std_logic := '1'; -- Allow transmission? (optional)
     rxcount : in  integer;          -- Number of Rx packets before "done"
     rxdone  : out std_logic);       -- Received at least rxcount packets?
@@ -69,7 +71,6 @@ type array_t is array(0 to FIFO_SZ-1) of std_logic_vector(7 downto 0);
 shared variable fifo_data : array_t := (others => (others => '0'));
 shared variable fifo_last : std_logic_vector(FIFO_SZ-1 downto 0) := (others => '0');
 shared variable rd_addr, wr_addr : integer range 0 to FIFO_SZ-1 := 0;
-
 
 begin
 
@@ -140,6 +141,8 @@ begin
     if falling_edge(rxdata.clk) then
         assert (rxdata_rxerr = '0')
             report "Rx: Unexpected error strobe" severity error;
+        assert (rxdata_reset = '1' or rxdata_write = '0' or rxdata_write = '1')
+            report "Rx: Invalid write strobe" severity error;
         if (rxdata_reset = '1') then
             rcvd_pkt <= 0;
         elsif (rxdata_write = '1') then

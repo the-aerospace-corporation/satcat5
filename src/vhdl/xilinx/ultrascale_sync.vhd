@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
+-- Copyright 2019, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -20,7 +20,7 @@
 -- Asynchronous input conditioning for Xilinx FPGAs
 --
 -- This file implements the components defined in "common_primitives", using
--- explicit components and inference templates for Xilinx Ultrascale(+) FPGAs.
+-- explicit components and inference templates for Xilinx Ultrascale FPGAs.
 --
 -- NOTE: Designs should only include ONE such implementation!  If your
 -- project includes "xilinx/ultrascale_sync.vhd", don't also include similar
@@ -56,6 +56,11 @@ signal out_combo     : std_logic;
 -- Note: No impact on timing analysis; refer to UG912.
 attribute ASYNC_REG : string;
 attribute ASYNC_REG of in_toggle_d1, in_toggle_d2 : signal is "TRUE";
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of in_toggle, in_toggle_d1 : signal is true;
 
 begin
 
@@ -138,6 +143,11 @@ signal in_flag_d2   : std_logic;
 -- Note: No impact on timing analysis; refer to UG912.
 attribute ASYNC_REG : string;
 attribute ASYNC_REG of in_flag_d1, in_flag_d2 : signal is "TRUE";
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of in_flag, in_flag_d1 : signal is true;
 
 begin
 
@@ -231,9 +241,18 @@ architecture sync_reset of sync_reset is
 
 signal sync_reset_p : std_logic := '0';
 signal out_reset_i  : std_logic := '1';
+signal countdown    : integer range 0 to HOLD_MIN := HOLD_MIN;
 
+-- Force retention of the reset signal?
+attribute DONT_TOUCH : string;
+attribute DONT_TOUCH of out_reset_i : signal is KEEP_ATTR;
 attribute KEEP : string;
 attribute KEEP of out_reset_i : signal is KEEP_ATTR;
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of countdown, in_reset_p, out_reset_i : signal is true;
 
 begin
 
@@ -247,18 +266,17 @@ u_sync : sync_buffer
 
 -- Asynchronous set, synchronous clear after N cycles.
 p_count : process(out_clk, in_reset_p)
-    variable countdown : integer range 0 to HOLD_MIN := HOLD_MIN;
 begin
     if (in_reset_p = '1') then
         out_reset_i <= '1';
-        countdown   := HOLD_MIN;
+        countdown   <= HOLD_MIN;
     elsif rising_edge(out_clk) then
         if (sync_reset_p = '1') then
             out_reset_i <= '1';
-            countdown   := HOLD_MIN;
+            countdown   <= HOLD_MIN;
         elsif (countdown /= 0) then
             out_reset_i <= '1';
-            countdown   := countdown - 1;
+            countdown   <= countdown - 1;
         else
             out_reset_i <= '0';
         end if;

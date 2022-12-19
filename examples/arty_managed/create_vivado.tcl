@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -46,6 +46,7 @@ set target_proj "arty_managed_$BOARD_OPTION"
 set constr_synth "arty_managed_synth.xdc"
 set constr_impl "arty_managed_impl.xdc"
 set override_postbit ""
+set bin_config [list SPIx4, 16]
 if {[string equal $BOARD_OPTION "100t"]} {
     set target_part "XC7A100TCSG324-1"
 } elseif {[string equal $BOARD_OPTION "35t"]} {
@@ -61,6 +62,7 @@ set files_main ""
 # Run the main project-creation script and install IP-cores.
 source ../../project/vivado/shared_create.tcl
 source ../../project/vivado/shared_ipcores.tcl
+set proj_dir [get_property directory [current_project]]
 
 # Create the block diagram
 set design_name arty_managed
@@ -385,23 +387,26 @@ regenerate_bd_layout
 save_bd_design
 validate_bd_design
 
+# Export block design in PDF and SVG form.
+source ../../project/vivado/export_bd_image.tcl
+
 # Suppress specific warnings in the Vivado GUI:
-set_msg_config -suppress -id {Constraints 18-550}
-set_msg_config -suppress -id {DRC 23-20}
-set_msg_config -suppress -id {Opt 31-35}
-set_msg_config -suppress -id {Place 30-574}
-set_msg_config -suppress -id {Power 33-332}
-set_msg_config -suppress -id {Project 1-486}
-set_msg_config -suppress -id {Synth 8-506}
-set_msg_config -suppress -id {Synth 8-3301}
-set_msg_config -suppress -id {Synth 8-3331}
-set_msg_config -suppress -id {Synth 8-3332}
-set_msg_config -suppress -id {Synth 8-3819}
-set_msg_config -suppress -id {Synth 8-3919}
-set_msg_config -suppress -id {Synth 8-3936}
-set_msg_config -suppress -id {Timing 38-316}
+set_msg_config -suppress -id {[Constraints 18-550]}
+set_msg_config -suppress -id {[DRC 23-20]}
+set_msg_config -suppress -id {[Opt 31-35]}
+set_msg_config -suppress -id {[Place 30-574]}
+set_msg_config -suppress -id {[Power 33-332]}
+set_msg_config -suppress -id {[Project 1-486]}
+set_msg_config -suppress -id {[Synth 8-506]}
+set_msg_config -suppress -id {[Synth 8-3301]}
+set_msg_config -suppress -id {[Synth 8-3331]}
+set_msg_config -suppress -id {[Synth 8-3332]}
+set_msg_config -suppress -id {[Synth 8-3819]}
+set_msg_config -suppress -id {[Synth 8-3919]}
+set_msg_config -suppress -id {[Synth 8-3936]}
+set_msg_config -suppress -id {[Timing 38-316]}
 
 # Create block-diagram wrapper and set as top level.
 set wrapper [make_wrapper -files [get_files ${design_name}.bd] -top]
 add_files -norecurse $wrapper
-set_property "top" arty_managed_wrapper [get_filesets sources_1]
+set_property "top" ${design_name}_wrapper [get_filesets sources_1]

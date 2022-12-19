@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -19,6 +19,7 @@
 
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
+#include <satcat5/utils.h>
 
 namespace io    = satcat5::io;
 namespace log   = satcat5::log;
@@ -29,7 +30,7 @@ using log::Log;
 #define SATCAT5_LOG_EMOJI 1
 #endif
 
-// Global pointer to the active destination object, if any.
+// Global pointer to a linked list of active destination objects, if any.
 log::EventHandler* g_log_dst = 0;
 
 // Helper function for looking up hex values.
@@ -54,8 +55,40 @@ inline char hex_lookup(unsigned val) {
     }
 }
 
+// Helper function for writing a single decimal digit.
+inline void next_digit(char* out, unsigned& wridx, u32& val, u32 place) {
+    // Find value of leading digit (i.e., '0' through '9').
+    // Use while loop in case CPU doesn't have a divide instruction.
+    char digit = '0';
+    while (val >= place) {++digit; val -= place;}
+
+    // Write the next digit if it is nonzero or trails an earlier digit.
+    if ((digit > '0') || (wridx > 0))
+        out[wridx++] = digit;
+}
+
+// Helper function writes a decimal number to buffer, returns sting length.
+// Working buffer MUST contain at least SATCAT5_ITOA_BUFFSIZE = 11 bytes.
+//  (u32 max = ~4 billion = 10 digits + terminator)
+static constexpr unsigned LOG_ITOA_BUFFSIZE = 11;
+unsigned log_itoa(char* out, u32 val) {
+    unsigned wridx = 0;
+    next_digit(out, wridx, val, 1000000000u);
+    next_digit(out, wridx, val, 100000000u);
+    next_digit(out, wridx, val, 10000000u);
+    next_digit(out, wridx, val, 1000000u);
+    next_digit(out, wridx, val, 100000u);
+    next_digit(out, wridx, val, 10000u);
+    next_digit(out, wridx, val, 1000u);
+    next_digit(out, wridx, val, 100u);
+    next_digit(out, wridx, val, 10u);
+    out[wridx++] = val + '0';   // Always write final digit
+    out[wridx] = 0;             // Null termination
+    return wridx;               // String length excludes terminator
+}
+
 // Translate priority code (+/-20) to a suitable UTF8 emoji.
-inline const char* priority_lookup(s8 val) {
+const char* log::priority_label(s8 val) {
     if (val >= log::CRITICAL)       // Critical = Skull and crossbones
         return SATCAT5_LOG_EMOJI ? "\xE2\x98\xA0\xEF\xB8\x8F" : "Crit";
     else if (val >= log::ERROR)     // Error = Red 'X'
@@ -68,43 +101,36 @@ inline const char* priority_lookup(s8 val) {
         return SATCAT5_LOG_EMOJI ? "\xE2\x9A\x99\xEF\xB8\x8F" : "Debug";
 }
 
-log::ToWriteable::ToWriteable(io::Writeable* dst, log::EventHandler* cc)
+log::EventHandler::EventHandler()
+    : m_next(0)
+{
+    satcat5::util::ListCore::add(g_log_dst, this);
+}
+
+#if SATCAT5_ALLOW_DELETION
+log::EventHandler::~EventHandler()
+{
+    satcat5::util::ListCore::remove(g_log_dst, this);
+}
+#endif
+
+log::ToWriteable::ToWriteable(io::Writeable* dst)
     : m_dst(dst)
-    , m_cc(cc)
 {
     // Write a few newlines to flush Tx buffer.
     dst->write_str("\r\n\n");
     dst->write_finalize();
-    // Automatically set ourselves as the log destination.
-    log::start(this);
 }
-
-#if SATCAT5_ALLOW_DELETION
-log::ToWriteable::~ToWriteable()
-{
-    // Object deleted, point to next hop in chain.
-    // (If this is NULL, this shuts down the logging system.)
-    log::start(m_cc);
-}
-#endif
 
 void log::ToWriteable::log_event(
     s8 priority, unsigned nbytes, const char* msg)
 {
     // Prefix message with a priority emoji.
-    m_dst->write_str(priority_lookup(priority));
+    m_dst->write_str(log::priority_label(priority));
     m_dst->write_str("\t");
     m_dst->write_bytes(nbytes, msg);
     m_dst->write_str("\r\n");
     m_dst->write_finalize();
-
-    // Optionally daisy-chain to a second handler.
-    if (m_cc) m_cc->log_event(priority, nbytes, msg);
-}
-
-void log::start(log::EventHandler* dst)
-{
-    g_log_dst = dst;
 }
 
 // Suppress static-analysis warnings for uninitialized members.
@@ -136,15 +162,25 @@ Log::Log(s8 priority, const char* str1, const char* str2)
 
 log::Log::~Log()
 {
-    if (g_log_dst) {
-        // Null-terminate the message string before we deliver it.
-        m_buff[m_wridx] = 0;
-        g_log_dst->log_event(m_priority, m_wridx, m_buff);
+    // Null-terminate the final message string.
+    m_buff[m_wridx] = 0;
+
+    // Deliver it to each handler on the global list.
+    log::EventHandler* dst = g_log_dst;
+    while (dst) {
+        dst->log_event(m_priority, m_wridx, m_buff);
+        dst = satcat5::util::ListCore::next(dst);
     }
 }
 
 Log& Log::write(const char* str) {
     wr_str(str);
+    return *this;
+}
+
+Log& Log::write(bool val) {
+    wr_str(" = ");
+    wr_hex(val ? 1:0, 1);
     return *this;
 }
 
@@ -179,6 +215,28 @@ Log& Log::write(const u8* val, unsigned nbytes) {
     wr_str(" = 0x");
     for (unsigned a = 0 ; a < nbytes ; ++a)
         wr_hex(val[a], 2);
+    return *this;
+}
+
+Log& Log::write10(s32 val) {
+    // Decimal conversion with absolute value.
+    char temp[LOG_ITOA_BUFFSIZE];
+    log_itoa(temp, satcat5::util::abs_s32(val));
+
+    // Write final string with sign prefix.
+    wr_str(val < 0 ? " = -" : " = +");
+    wr_str(temp);
+    return *this;
+}
+
+Log& Log::write10(u32 val) {
+    // Decimal conversion.
+    char temp[LOG_ITOA_BUFFSIZE];
+    log_itoa(temp, val);
+
+    // Write final string.
+    wr_str(" = ");
+    wr_str(temp);
     return *this;
 }
 

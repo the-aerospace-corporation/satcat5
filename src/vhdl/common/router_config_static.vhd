@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -36,6 +36,8 @@ entity router_config_static is
     R_IP_ADDR       : ip_addr_t := x"C0A80101";     -- Default = 192.168.1.1
     R_SUB_ADDR      : ip_addr_t := x"C0A80100";     -- Default = 192.168.0.0
     R_SUB_MASK      : ip_addr_t := x"FFFFFF00";     -- Default = 255.255.255.0
+    R_IPV4_DMAC_EG  : mac_addr_t := x"DEADBEEFCAFE";
+    R_IPV4_DMAC_IG  : mac_addr_t := x"DEADBEEFCAFE";
     R_NOIP_DMAC_EG  : mac_addr_t := MAC_ADDR_BROADCAST;
     R_NOIP_DMAC_IG  : mac_addr_t := MAC_ADDR_BROADCAST);
     port (
@@ -44,6 +46,8 @@ entity router_config_static is
     cfg_sub_addr    : out ip_addr_t;
     cfg_sub_mask    : out ip_addr_t;
     cfg_reset_p     : out std_logic;
+    ipv4_dmac_eg    : out mac_addr_t;
+    ipv4_dmac_ig    : out mac_addr_t;
     noip_dmac_eg    : out mac_addr_t;
     noip_dmac_ig    : out mac_addr_t;
 
@@ -65,6 +69,8 @@ cfg_reset_p     <= ext_reset_p;
 cfg_ip_addr     <= R_IP_ADDR;
 cfg_sub_addr    <= R_SUB_ADDR;
 cfg_sub_mask    <= R_SUB_MASK;
+ipv4_dmac_eg    <= R_IPV4_DMAC_EG;
+ipv4_dmac_ig    <= R_IPV4_DMAC_IG;
 noip_dmac_eg    <= R_NOIP_DMAC_EG;
 noip_dmac_ig    <= R_NOIP_DMAC_IG;
 rtr_time_msec   <= '1' & reg_time_msec;

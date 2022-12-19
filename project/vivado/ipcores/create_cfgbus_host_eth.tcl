@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,14 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     cfgbus_host_eth.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_top  $ip_root            wrap_cfgbus_host_eth
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_cfgbus_host_eth.vhd
 
 # Connect I/O ports
 ipcore_add_cfgbus Cfg cfg master
@@ -47,10 +41,14 @@ ipcore_add_clock sys_clk Eth
 ipcore_add_reset reset_p ACTIVE_HIGH
 
 # Set parameters
-ipcore_add_param CFG_ETYPE      hexstring {5C01}
-ipcore_add_param CFG_MACADDR    hexstring {5A5ADEADBEEF}
-ipcore_add_param MIN_FRAME      long 64
-ipcore_add_param RD_TIMEOUT     long 16
+ipcore_add_param CFG_ETYPE      hexstring {5C01} \
+    {EtherType for ConfigBus commands (hex)}
+ipcore_add_param CFG_MACADDR    hexstring {5A5ADEADBEEF} \
+    {Local MAC address (hex)}
+ipcore_add_param MIN_FRAME      long 64 \
+    {Minimum outgoing frame size (total bytes including FCS)}
+ipcore_add_param RD_TIMEOUT     long 16 \
+    {ConfigBus read timeout (clock cycles)}
 
 # Package the IP-core.
 ipcore_finished

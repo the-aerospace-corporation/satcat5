@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -46,6 +46,8 @@ namespace satcat5 {
 
             bool operator==(const satcat5::eth::MacAddr& other) const;
             bool operator<(const satcat5::eth::MacAddr& other) const;
+            inline bool operator!=(const satcat5::eth::MacAddr& other) const
+                {return !operator==(other);}
 
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_bytes(6, addr);}
@@ -61,6 +63,8 @@ namespace satcat5 {
 
             inline bool operator==(const satcat5::eth::MacType& other) const
                 {return value == other.value;}
+            inline bool operator!=(const satcat5::eth::MacType& other) const
+                {return value != other.value;}
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
             inline bool read_from(satcat5::io::Readable* rd)

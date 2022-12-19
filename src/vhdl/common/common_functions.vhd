@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -33,18 +33,26 @@ package COMMON_FUNCTIONS is
     -- Convert a boolean value to an integer: false->0, true->1
     function U2I(a: boolean) return natural;
     -- Convert an integer to a L-bit standard logic vector
-    function I2S(a: natural; l: natural) return std_logic_vector;
+    function I2S(a: natural; w: natural) return std_logic_vector;
+    -- Convert real to a L-bit signed (including W > 32)
+    function R2S(a: real; w: natural) return signed;
+    -- Convert real to a L-bit unsigned (including W > 32)
+    function R2U(a: real; w: natural) return unsigned;
+    -- Convert signed to real, avoiding integer overflow.
+    function S2R(a: signed) return real;
+    -- Convert unsigned to real, avoiding integer overflow.
+    function U2R(a: unsigned) return real;
     -- Convert a boolean to a bit, false->'0', true->'1'
     function bool2bit(a: boolean) return std_logic;
 
     -- Resize a std_logic_vector using the rules for UNSIGNED
-    function resize(a: std_logic_vector; B: natural) return std_logic_vector;
+    function resize(a: std_logic_vector; w: natural) return std_logic_vector;
 
     -- Saturate an unsigned input to N output bits.
-    function saturate(a: unsigned; nbits: natural) return unsigned;
+    function saturate(a: unsigned; w: natural) return unsigned;
 
     -- Add the two inputs, with saturation on overflow.
-    function saturate_add(a, b: unsigned; nbits: natural) return unsigned;
+    function saturate_add(a, b: unsigned; w: natural) return unsigned;
 
     -- Perform an XOR reduction
     -- (i.e., Return '1' if an odd number of input bits are '1')
@@ -69,6 +77,13 @@ package COMMON_FUNCTIONS is
     function int_min(a,b: integer) return integer;
     -- Return the least common multiple of two inputs
     function int_lcm(a,b: positive) return positive;
+
+    -- Return the input value if "en" is true, zero otherwise.
+    function value_else_zero(x: natural; en: boolean) return natural;
+    function value_else_zero(x: real; en: boolean) return real;
+
+    -- Reverse the bit-order of a vector.
+    function flip_vector(x: std_logic_vector) return std_logic_vector;
 
     -- Bit-shift functions for std_logic_vector, using rules for unsigned.
     function shift_left(x: std_logic_vector; b: integer) return std_logic_vector;
@@ -126,38 +141,104 @@ package body COMMON_FUNCTIONS is
         if a then return 1; else return 0; end if;
     end function;
 
-    function I2S(a: natural; l: natural) return std_logic_vector is
+    function I2S(a: natural; w: natural) return std_logic_vector is
     begin
-        return std_logic_vector(TO_UNSIGNED(a,l));
+        return std_logic_vector(TO_UNSIGNED(a, w));
     end;
+
+    function R2S(a: real; w: natural) return signed is
+        constant ONE : unsigned(w-1 downto 0) := to_unsigned(1, w);
+        variable tmp : unsigned(w-1 downto 0) := r2u(abs(a), w);
+    begin
+        if (a < 0.0) then   -- Two's complement negation
+            return signed((not tmp) + ONE);
+        else
+            return signed(tmp);
+        end if;
+    end function;
+
+    function R2U(a: real; w: natural) return unsigned is
+        variable result : unsigned(w-1 downto 0) := (others => '0');
+        variable brem   : real := a;            -- Bit-by-bit remainder
+        variable bscale : real := 2.0 ** w;     -- Scale of next bit
+    begin
+        if (w < 32) then
+            -- Simple direct conversion for smaller integers.
+            result := to_unsigned(integer(a), w);
+        else
+            -- Manual workaround for VHDL'93 signed integer overflow limit.
+            assert (a < bscale) report "R2U overflow" severity warning;
+            for b in w-1 downto 0 loop
+                bscale := 0.5 * bscale;
+                if (brem >= bscale) then
+                    result(b) := '1';
+                    brem := brem - bscale;
+                end if;
+            end loop;
+        end if;
+        return result;
+    end function;
+
+    function S2R(a: signed) return real is
+        variable x : real := 0.0;
+    begin
+        -- Workaround for XSIM bug, assign below rather than in function init.
+        x := u2r(unsigned(abs(a)));
+        if (a < 0) then
+            return -x;
+        else
+            return x;
+        end if;
+    end function;
+
+    function U2R(a: unsigned) return real is
+        variable x : unsigned(a'length-1 downto 0) := a;
+        variable accum  : real := 0.0;      -- Bit-by-bit summation
+        variable bscale : real := 1.0;      -- Scale of next bit
+    begin
+        if (a'length < 32) then
+            -- Simple direct conversion for smaller inputs.
+            return real(to_integer(x));
+        else
+            -- Manual workaround for VHDL'93 signed integer overflow limit.
+            for b in 0 to a'length-1 loop
+                if (x(b) = '1') then
+                    accum := accum + bscale;
+                else
+                end if;
+                bscale := bscale * 2.0;
+            end loop;
+            return accum;
+        end if;
+    end function;
 
     function bool2bit(a: boolean)   return std_logic is
     begin
         if a then return '1'; else return '0'; end if;
     end;
 
-    function resize(a: std_logic_vector; B: natural) return std_logic_vector is
+    function resize(a: std_logic_vector; w: natural) return std_logic_vector is
     begin
-        return std_logic_vector(resize(UNSIGNED(a), B));
+        return std_logic_vector(resize(UNSIGNED(a), w));
     end;
 
-    function saturate(a: unsigned; nbits: natural) return unsigned is
-        constant MAX_POS : unsigned(nbits-1 downto 0) := (others => '1');
+    function saturate(a: unsigned; w: natural) return unsigned is
+        constant MAX_POS : unsigned(w-1 downto 0) := (others => '1');
     begin
         if (a >= MAX_POS) then
             return MAX_POS;
         else
-            return resize(a, nbits);
+            return resize(a, w);
         end if;
     end function;
 
-    function saturate_add(a, b: unsigned; nbits: natural) return unsigned is
+    function saturate_add(a, b: unsigned; w: natural) return unsigned is
         -- Calculate sum with enough width to never overflow.
-        constant W   : natural := 1 + int_max(a'length, b'length);
-        variable sum : unsigned(W-1 downto 0) := resize(a, W) + resize(b, W);
+        constant ws  : natural := 1 + int_max(a'length, b'length);
+        variable sum : unsigned(ws-1 downto 0) := resize(a, ws) + resize(b, ws);
     begin
         -- Return the saturated output:
-        return saturate(sum, nbits);
+        return saturate(sum, w);
     end;
 
     function xor_reduce(a: std_logic_vector) return std_logic is
@@ -245,6 +326,34 @@ package body COMMON_FUNCTIONS is
         end loop;
         return accum_a;
     end;
+
+    function value_else_zero(x: natural; en: boolean) return natural is
+    begin
+        if en then
+            return x;
+        else
+            return 0;
+        end if;
+    end function;
+
+    function value_else_zero(x: real; en: boolean) return real is
+    begin
+        if en then
+            return x;
+        else
+            return 0.0;
+        end if;
+    end function;
+
+    function flip_vector(x: std_logic_vector) return std_logic_vector is
+        variable y : std_logic_vector(x'length-1 downto 0) := x;
+        variable z : std_logic_vector(x'length-1 downto 0);
+    begin
+        for b in z'range loop
+            z(b) := y(y'left-b);
+        end loop;
+        return z;
+    end function;
 
     function shift_left(x: std_logic_vector; b: integer) return std_logic_vector is
     begin

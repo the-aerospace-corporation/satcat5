@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -232,4 +232,51 @@ TEST_CASE("interrupts") {
     // Cleanup.
     ctrl.stop();
     REQUIRE(ctrl.count() == 0);
+}
+
+TEST_CASE("ControllerNull") {
+    // Print any SatCat5 messages to console.
+    satcat5::log::ToConsole log;
+
+    // Use system time for statistics monitoring.
+    satcat5::util::PosixTimer timer;
+
+    // Unit under test: One controller and two handlers.
+    satcat5::irq::ControllerNull ctrl(&timer);
+    MockInterruptHandler irq1(&ctrl, 1);
+    MockInterruptHandler irq2(&ctrl, 2);
+
+    // Initialize interrupt system.
+    CHECK(ctrl.is_initialized());
+    CHECK_FALSE(ctrl.is_irq_context());
+    CHECK_FALSE(ctrl.is_irq_or_locked());
+
+    SECTION("lock") {
+        // Enter and exit a critical section.
+        REQUIRE(ctrl.is_initialized());
+        CHECK_FALSE(ctrl.is_irq_context());
+        CHECK_FALSE(ctrl.is_irq_or_locked());
+        {
+            satcat5::irq::AtomicLock lock("LockTest");
+            CHECK_FALSE(ctrl.is_irq_context());
+            CHECK(ctrl.is_irq_or_locked());
+        }
+        CHECK_FALSE(ctrl.is_irq_context());
+        CHECK_FALSE(ctrl.is_irq_or_locked());
+    }
+
+    SECTION("interrupt") {
+        // Trigger each interrupt a few times.
+        REQUIRE(ctrl.is_initialized());
+        CHECK(irq1.count() == 0);
+        CHECK(irq2.count() == 0);
+        ctrl.service_all();
+        ctrl.service_one(&irq1);
+        ctrl.service_one(&irq2);
+        CHECK(irq1.count() == 2);
+        CHECK(irq2.count() == 2);
+    }
+
+    // Cleanup.
+    ctrl.stop();
 }

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -109,6 +109,15 @@ TEST_CASE("utils.h") {
         CHECK(!is_multiple_u32(42*3+1, 42));
     }
     SECTION("divide") {
+        // Signed modulo/divide functions.
+        CHECK(modulo<s32>(-7, 4) ==  1);
+        CHECK(modulo<s32>(-6, 4) ==  2);
+        CHECK(modulo<s32>(-5, 4) ==  3);
+        CHECK(modulo<s32>(-4, 4) ==  0);
+        CHECK(divide<s32>(-7, 4) == -2);
+        CHECK(divide<s32>(-6, 4) == -2);
+        CHECK(divide<s32>(-5, 4) == -2);
+        CHECK(divide<s32>(-4, 4) == -1);
         // 7 div 3 = 2.333...
         CHECK(div_floor_u32(7, 3) == 2);
         CHECK(div_floor_s32(7, 3) == 2);

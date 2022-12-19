@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -51,7 +51,8 @@
 --              0x50 = Read auto-increment
 --              All others reserved
 --  1 byte      Length parameter M = N-1 (see above)
---  2 bytes     Reserved (zero)
+--  1 byte      Sequence count (increment after each command)
+--  1 byte      Reserved (zero)
 --  4 bytes     Combined address (DevAddr * 1024 + RegAddr)
 --  (4N bytes)  Write value(s), if applicable
 --  (All subsequent bytes are ignored.)
@@ -62,7 +63,8 @@
 --  2 bytes     EtherType = CFG_ETYPE + 1
 --  1 byte      Opcode (echo)
 --  1 byte      Length parameter (echo)
---  2 bytes     Reserved (zero)
+--  1 byte      Sequence count (echo)
+--  1 byte      Reserved (zero)
 --  4 bytes     Combined address (echo)
 --  (4N bytes)  Read value(s), if applicable
 --  (1 byte)    Read-error flag, if applicable
@@ -128,7 +130,8 @@ constant PKTIDX_MAC_SRC     : integer := 12;    -- Bytes  6-11 = SRC
 constant PKTIDX_ETYPE       : integer := 14;    -- Bytes 12-13 = EtherType
 constant PKTIDX_OPCODE      : integer := 15;    -- Byte  14-14 = Opcode
 constant PKTIDX_LENGTH      : integer := 16;    -- Byte  15-15 = Word count - 1
-constant PKTIDX_RESERVED    : integer := 18;    -- Byte  16-17 = Reserved
+constant PKTIDX_SEQUENCE    : integer := 17;    -- Byte  16-16 = Sequence count
+constant PKTIDX_RESERVED    : integer := 18;    -- Byte  17-17 = Reserved
 constant PKTIDX_ADDR        : integer := 22;    -- Byte  18-21 = Combined address
 constant PKTIDX_HEADER      : integer := 22;    -- Byte   0-21 = Header
 constant PKTIDX_DATA        : integer := 26;    -- Bytes 22-25 = R/W data
@@ -163,6 +166,7 @@ signal rx_macaddr   : mac_addr_t := (others => '0');
 signal rx_opcode    : opcode_t := (others => '0');
 signal rx_wrmask    : opcode_t := (others => '0');
 signal rx_cmdlen    : std_logic_vector(7 downto 0) := (others => '0');
+signal rx_sequence  : std_logic_vector(7 downto 0) := (others => '0');
 signal rx_addr      : std_logic_vector(31 downto 0) := (others => '0');
 signal rx_wdata     : cfgbus_word := (others => '0');
 signal rx_is_read   : std_logic;
@@ -247,6 +251,8 @@ begin
             rx_wrmask   <= rx_data(3 downto 0);
         elsif (rx_bcount < PKTIDX_LENGTH) then
             rx_cmdlen   <= rx_data;
+        elsif (rx_bcount < PKTIDX_SEQUENCE) then
+            rx_sequence <= rx_data;
         elsif (rx_bcount < PKTIDX_RESERVED) then
             null;   -- Reserved field, ignored for now
         elsif (rx_bcount < PKTIDX_ADDR) then
@@ -435,8 +441,11 @@ begin
         elsif (ack_bcount < PKTIDX_LENGTH) then
             -- Length parameter (echo 1 byte)
             ack_data <= rx_cmdlen;
+        elsif (ack_bcount < PKTIDX_SEQUENCE) then
+            -- Sequence count (echo 1 byte)
+            ack_data <= rx_sequence;
         elsif (ack_bcount < PKTIDX_RESERVED) then
-            -- Reserved field (2 bytes)
+            -- Reserved field (1 byte)
             ack_data <= (others => '0');
         elsif (ack_bcount < PKTIDX_ADDR) then
             -- Register address (echo 4 bytes)

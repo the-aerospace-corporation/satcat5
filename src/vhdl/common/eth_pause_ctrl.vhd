@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -70,6 +70,11 @@ signal timer_en : std_logic := '0';
 -- Pause state machine
 signal pause_ct : unsigned(15 downto 0) := (others => '0');
 signal pause_i  : std_logic := '0';
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of cmd_val : signal is true;
 
 begin
 

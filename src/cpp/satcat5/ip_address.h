@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -54,6 +54,9 @@ namespace satcat5 {
             void connect(
                 const satcat5::ip::Addr& dstaddr,
                 const satcat5::eth::MacAddr& dstmac);
+
+            // Retry ARP query (automatic address resolution only).
+            void retry();
 
             // Unbind from current address, if any.
             void close() override;

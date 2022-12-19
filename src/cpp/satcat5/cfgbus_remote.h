@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -102,6 +102,7 @@ namespace satcat5 {
 
             // Stored state for pending responses.
             u32 m_status;
+            u8 m_sequence;
             u8 m_response_opcode;
             u32* m_response_ptr;
             unsigned m_response_len;
@@ -133,7 +134,8 @@ namespace satcat5 {
             , public satcat5::cfg::ConfigBusRemote
         {
         public:
-            ConfigBus(satcat5::udp::Dispatch* udp);     // UDP interface
+            explicit ConfigBus(
+                satcat5::udp::Dispatch* udp);           // UDP interface
 
             void connect(
                 const satcat5::ip::Addr& dstaddr,       // Remote address

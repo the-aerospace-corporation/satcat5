@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -24,7 +24,7 @@
 --  * cfgbus_register
 --  * cfgbus_timeout
 --
--- The complete test takes less than 0.1 milliseconds.
+-- The complete test takes less than 0.2 milliseconds.
 --
 
 library ieee;
@@ -44,7 +44,13 @@ constant A_DEV      : natural := 123;
 constant A_REG_RW   : natural := 42;
 constant A_REG_RD   : natural := 47;
 constant A_REG_IRQ  : natural := 52;
+constant A_REG_WDWR : natural := 55;
+constant A_REG_WDRD : natural := 57;
 constant RD_TIMEOUT : positive := 10;
+constant WIDE_BITS  : positive := 112;
+constant WIDE_BITX  : positive := CFGBUS_WORD_SIZE * div_ceil(WIDE_BITS, CFGBUS_WORD_SIZE);
+subtype cfgbus_wide is std_logic_vector(WIDE_BITS-1 downto 0);
+subtype cfgbus_xwide is std_logic_vector(WIDE_BITX-1 downto 0);
 
 -- Unit under test: Timeout
 signal time_test_index  : natural := 0;
@@ -60,9 +66,11 @@ signal time_count_err   : natural := 0;
 -- Unit under test: Register blocks
 signal reg_val_rw       : cfgbus_word;
 signal reg_cfg_cmd      : cfgbus_cmd;
-signal reg_cfg_acks     : cfgbus_ack_array(0 to 2);
+signal reg_cfg_acks     : cfgbus_ack_array(0 to 4);
 signal reg_cfg_ack      : cfgbus_ack;
 signal reg_readval      : cfgbus_word := (others => '0');
+signal reg_wideval      : cfgbus_wide := (others => '0');
+signal reg_wideref      : cfgbus_xwide := (others => '0');
 signal reg_irq_toggle   : std_logic := '0';
 signal reg_irq_enable   : std_logic := '0';
 
@@ -200,7 +208,7 @@ end process;
 -- Unit under test: Register (Read/Write)
 uut2 : cfgbus_register
     generic map(
-    DEVADDR     => 123,
+    DEVADDR     => A_DEV,
     REGADDR     => A_REG_RW)
     port map(
     cfg_cmd     => reg_cfg_cmd,
@@ -210,7 +218,7 @@ uut2 : cfgbus_register
 -- Unit under test: Register (Read Only)
 uut3 : cfgbus_readonly
     generic map(
-    DEVADDR     => 123,
+    DEVADDR     => A_DEV,
     REGADDR     => A_REG_RD)
     port map(
     cfg_cmd     => reg_cfg_cmd,
@@ -220,13 +228,37 @@ uut3 : cfgbus_readonly
 -- Unit under test: Interrupt controller
 uut4 : cfgbus_interrupt
     generic map(
-    DEVADDR     => 123,
+    DEVADDR     => A_DEV,
     REGADDR     => A_REG_IRQ,
     INITMODE    => '0')
     port map(
     cfg_cmd     => reg_cfg_cmd,
     cfg_ack     => reg_cfg_acks(2),
     ext_toggle  => reg_irq_toggle);
+
+-- Unit under test: Register (Wide write-only)
+uut5 : cfgbus_register_wide
+    generic map(
+    DWIDTH      => WIDE_BITS,
+    DEVADDR     => A_DEV,
+    REGADDR     => A_REG_WDWR)
+    port map(
+    cfg_cmd     => reg_cfg_cmd,
+    cfg_ack     => reg_cfg_acks(3),
+    sync_clk    => reg_cfg_cmd.clk,
+    sync_val    => reg_wideval);
+
+-- Unit under test: Register (Wide read-only)
+uut6 : cfgbus_readonly_wide
+    generic map(
+    DWIDTH      => WIDE_BITS,
+    DEVADDR     => A_DEV,
+    REGADDR     => A_REG_WDRD)
+    port map(
+    cfg_cmd     => reg_cfg_cmd,
+    cfg_ack     => reg_cfg_acks(4),
+    sync_clk    => reg_cfg_cmd.clk,
+    sync_val    => reg_wideval);
 
 -- Latch the recombined read value.
 reg_cfg_ack <= cfgbus_merge(reg_cfg_acks);
@@ -290,6 +322,32 @@ begin
         cfgbus_wait(reg_cfg_cmd, reg_cfg_ack);
         assert (u2i(reg_readval) = n)
             report "Read2 mismatch" severity error;
+
+        -- Write a new value to the wide-write register.
+        for w in 3 downto 0 loop
+            reg_wideref(32*w+31 downto 32*w) <= i2s(n+w, 32);
+            cfgbus_write(reg_cfg_cmd, A_DEV, A_REG_WDWR, i2s(n+w, 32));
+        end loop;
+        cfgbus_read(reg_cfg_cmd, A_DEV, A_REG_WDWR);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        assert (reg_wideval = resize(reg_wideref, WIDE_BITS))
+            report "WideWrite mismatch" severity error;
+
+        -- Read a new value from the wide-read register.
+        cfgbus_write(reg_cfg_cmd, A_DEV, A_REG_WDRD, i2s(0, 32));
+        wait until rising_edge(reg_cfg_cmd.clk);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        wait until rising_edge(reg_cfg_cmd.clk);
+        for w in 3 downto 0 loop
+            cfgbus_read(reg_cfg_cmd, A_DEV, A_REG_WDRD);
+            cfgbus_wait(reg_cfg_cmd, reg_cfg_ack);
+            assert (u2i(reg_readval) = n+w)
+                report "WideRead mismatch" severity error;
+        end loop;
     end loop;
 
     report "Register tests completed.";

@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -31,35 +31,11 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_check.vhd
-ipcore_add_file $src_dir/common     eth_preamble_rx.vhd
-ipcore_add_file $src_dir/common     eth_preamble_tx.vhd
-ipcore_add_file $src_dir/common     fifo_packet.vhd
-ipcore_add_file $src_dir/common     fifo_smol_async.vhd
-ipcore_add_file $src_dir/common     fifo_smol_resize.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     io_spi_controller.vhd
-ipcore_add_file $src_dir/common     port_adapter.vhd
-ipcore_add_file $src_dir/common     port_gmii_internal.vhd
-ipcore_add_file $src_dir/common     port_passthrough.vhd
-ipcore_add_file $src_dir/common     port_serial_spi_controller.vhd
-ipcore_add_file $src_dir/common     slip_decoder.vhd
-ipcore_add_file $src_dir/common     slip_encoder.vhd
-ipcore_add_file $src_dir/common     switch_dual.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_io   $src_dir/xilinx     $part_family
-ipcore_add_mem  $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $src_dir/common     switch_gmii_to_spi
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $src_dir/common/switch_gmii_to_spi.vhd
 
 # Connect the clock and reset ports
-ipcore_add_clock clk_125 ""
+ipcore_add_clock clk_125 "" slave 125000000
 ipcore_add_reset reset_p ACTIVE_HIGH
 
 # Connect the GMII port

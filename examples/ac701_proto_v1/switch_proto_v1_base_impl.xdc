@@ -1,4 +1,4 @@
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -43,3 +43,7 @@ create_clock -period 20.0 -name clk_eth0 [get_ports rmii_clkin]
 set_clock_groups -asynchronous \
     -group [get_clocks clk_ref      -include_generated_clocks] \
     -group [get_clocks clk_eth0     -include_generated_clocks]
+
+# Explicit delay constraints on clock-crossing signals.
+set_max_delay -datapath_only 5.0 -from [get_cells -hier -filter {satcat5_cross_clock_src > 0}]
+set_max_delay -datapath_only 5.0 -to   [get_cells -hier -filter {satcat5_cross_clock_dst > 0}]

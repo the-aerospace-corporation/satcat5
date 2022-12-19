@@ -31,5 +31,5 @@ variable example_dir [file normalize [file dirname [info script]]]
 source $example_dir/create_vivado.tcl
 source $example_dir/create_sysdef.tcl
 # XSCT returns error even if successful -> Ignore it.
-catch {exec xsct -eval source $example_dir/create_sdk.tcl}
+catch { exec xsct -eval source $example_dir/create_sdk.tcl >@stdout }
 source $example_dir/create_bin.tcl

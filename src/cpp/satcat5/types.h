@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -62,6 +62,7 @@ namespace satcat5 {
         class Mdio;                 // satcat5/cfgbus_mdio.h
         class MdioEventListener;    // satcat5/cfgbus_mdio.h
         class MdioLogger;           // satcat5/cfgbus_mdio.h
+        class MdioWrapper;          // satcat5/cfgbus_mdio.h
         class MultiSerial;          // satcat5/cfgbus_multiserial.h
         class NetworkStats;         // satcat5/cfgbus_stats.h
         class Spi;                  // satcat5/cfgbus_spi.h
@@ -123,7 +124,9 @@ namespace satcat5 {
         struct Port;                // satcat5/ip_core.h
         class Address;              // satcat5/ip_address.h
         class Dispatch;             // satcat5/ip_dispatch.h
+        class Ping;                 // satcat5/ip_ping.h
         class ProtoIcmp;            // satcat5/ip_icmp.h
+        class Stack;                // satcat5/ip_stack.h
     }
 
     namespace irq {                 // Interrupt handling
@@ -168,6 +171,10 @@ namespace satcat5 {
         class SerialUart;           // satcat5/port_serial.h
     }
 
+    namespace ptp {                 // Precision Time Protocol (PTP)
+        class Time;                 // satcat5/ptp_time.h
+    }
+
     namespace udp {                 // UDP networking
         class Address;              // satcat5/udp_core.h
         class ConfigBus;            // satcat5/cfgbus_remote.h
@@ -179,11 +186,13 @@ namespace satcat5 {
 
     namespace util {                // Other utilities
         class GenericTimer;         // satcat5/timer.h
-        class I2cAddr;              // satcat5/utils.h
+        struct I2cAddr;             // satcat5/utils.h
         class ListCore;             // satcat5/list.h
         template <class T>
             class List;             // satcat5/list.h
         class RunningMax;           // satcat5/utils.h
         class TimerRegister;        // satcat5/timer.h
+        struct uint128;             // satcat5/uint_wide.h
+        struct uint256;             // satcat5/uint_wide.h
     }
 }

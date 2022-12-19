@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -67,10 +67,20 @@ package eth_frame_common is
     constant IP_HDR_SRCADDR     : integer := ETH_HDR_DATA + 12; -- Source address
     constant IP_HDR_DSTADDR     : integer := ETH_HDR_DATA + 16; -- Destination address
     constant IP_HDR_OPTIONS     : integer := ETH_HDR_DATA + 20; -- Optional field(s)
-    constant IP_HDR_MAX         : integer := ETH_HDR_DATA + 60; -- Maximum IP-header
+    constant IP_HDR_MAX         : integer := ETH_HDR_DATA + 60; -- Maximum end of IP header
     function IP_HDR_DATA(ihl : nybb_u) return integer;          -- Start of data field
     -- Note: Data starts after the variable-length OPTIONS field, provide
     --       IP-header length (IHL) field to determine the initial offset.
+
+    -- Define byte-offsets for fields in the IPv4 + UDP frame header.
+    -- (Assume IP header is preceded by the 14-byte Ethernet header.)
+    -- See also: https://en.wikipedia.org/wiki/User_Datagram_Protocol#UDP_datagram_structure
+    constant UDP_HDR_MAX        : integer := IP_HDR_MAX + 8;    -- Maximum end of UDP header
+    function UDP_HDR_SRC(ihl : nybb_u) return integer;          -- Source port (U16)
+    function UDP_HDR_DST(ihl : nybb_u) return integer;          -- Destination port (U16)
+    function UDP_HDR_LEN(ihl : nybb_u) return integer;          -- Length field (U16)
+    function UDP_HDR_CHK(ihl : nybb_u) return integer;          -- Checksum field (U16)
+    function UDP_HDR_DAT(ihl : nybb_u) return integer;          -- Start of user data
 
     -- Byte or word counter for parsing Ethernet and IP headers.
     constant MAC_BCOUNT_MAX : integer := IP_HDR_MAX + 1;
@@ -111,14 +121,25 @@ package eth_frame_common is
     function mac_is_l3multicast(mac : mac_addr_t) return boolean;
     function mac_is_broadcast(mac : mac_addr_t) return boolean;
 
+    -- Define well-known EtherTypes:
+    constant ETYPE_IPV4 : mac_type_t := x"0800";    -- Internet Protocol, Version 4
+    constant ETYPE_ARP  : mac_type_t := x"0806";    -- Address Resolution Protocol
+    constant ETYPE_VLAN : mac_type_t := x"8100";    -- 802.1Q VLAN tags (C-VLAN)
+    constant ETYPE_VSVC : mac_type_t := x"88A8";    -- 802.1Q VLAN tags (S-VLAN)
+    constant ETYPE_PTP  : mac_type_t := x"88F7";    -- Precision Time Protocol
+
+    -- Well-known IPv4 protocols (IP_HDR_PROTOCOL):
+    constant IPPROTO_ICMP   : byte_t := x"01";      -- Internet Control Message Protocol
+    constant IPPROTO_IGMP   : byte_t := x"02";      -- Internet Group Management Protocol
+    constant IPPROTO_TCP    : byte_t := x"06";      -- Transmission Control Protocol
+    constant IPPROTO_UDP    : byte_t := x"11";      -- User Datagram Protocol
+
     -- Type definitions for 802.1Q tags:
     constant VLAN_HDR_WIDTH : integer := 16;
     subtype vlan_hdr_t is std_logic_vector(15 downto 0);
     subtype vlan_pcp_t is unsigned(2 downto 0);     -- Priority code point (PCP)
     subtype vlan_dei_t is std_logic;                -- Drop-eligible indicator (DEI)
     subtype vlan_vid_t is unsigned(11 downto 0);    -- VLAN identifier (VID)
-    constant ETYPE_VLAN : mac_type_t := x"8100";    -- EtherType for C-VLAN tags
-    constant ETYPE_VSVC : mac_type_t := x"88A8";    -- EtherType for S-VLAN tags
     constant PCP_NONE   : vlan_pcp_t := "000";      -- Default priority (zero)
     constant DEI_NONE   : vlan_dei_t := '0';        -- Default DEI (not set)
     constant VID_NONE   : vlan_vid_t := x"000";     -- Null or unspecified VID
@@ -193,6 +214,31 @@ package body eth_frame_common is
 function IP_HDR_DATA(ihl : nybb_u) return integer is
 begin
     return IP_HDR_VERSION + 4 * to_integer(ihl);
+end function;
+
+function UDP_HDR_SRC(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 0;
+end function;
+
+function UDP_HDR_DST(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 2;
+end function;
+
+function UDP_HDR_LEN(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 4;
+end function;
+
+function UDP_HDR_CHK(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 6;
+end function;
+
+function UDP_HDR_DAT(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 8;
 end function;
 
 function mac_is_swcontrol(mac : mac_addr_t) return boolean is

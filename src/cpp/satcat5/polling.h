@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -115,13 +115,22 @@ namespace satcat5 {
         // Coordinator for multiple "Timer" objects that receives
         // once-per-millisecond notifications (e.g., from cfg::Timer)
         class Timekeeper : public satcat5::poll::OnDemand {
+        public:
+            Timekeeper();
+
+            // An optional GenericTimer reference should be used to improve
+            // timer accuracy in cases where polling rate is less than 1 kHz.
+            void set_clock(satcat5::util::GenericTimer* timer);
+
         protected:
             void poll_demand() override;
+            satcat5::util::GenericTimer* m_clock;
+            u32 m_tref;
         };
 
         // There is a single global instance of the Timekeeper class.
         // User MUST link it to a once-per-millisecond event source
-        // such as a hardware interrupt or the VirtualTimerInterrupt.
+        // such as a hardware interrupt or the VirtualTimer.
         extern Timekeeper timekeeper;
 
         // Poll this object every X milliseconds (set_timer_every) or as a
@@ -147,7 +156,7 @@ namespace satcat5 {
 
         private:
             // Event handler called by Timekeeper class.
-            void query();
+            void query(unsigned elapsed_msec);
 
             friend satcat5::util::ListCore;
             friend satcat5::poll::Timekeeper;

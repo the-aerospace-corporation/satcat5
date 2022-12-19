@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -58,6 +58,7 @@ sw_rx_data.rate     <= mac_rx_data.rate;
 sw_rx_data.status   <= mac_rx_data.status;
 sw_rx_data.reset_p  <= mac_rx_data.reset_p;
 sw_tx_ctrl.clk      <= mac_tx_ctrl.clk;
+sw_tx_ctrl.tnow     <= mac_tx_ctrl.tnow;
 sw_tx_ctrl.txerr    <= mac_tx_ctrl.txerr;
 sw_tx_ctrl.reset_p  <= mac_tx_ctrl.reset_p;
 
@@ -65,6 +66,7 @@ sw_tx_ctrl.reset_p  <= mac_tx_ctrl.reset_p;
 sw_rx_data.data     <= mac_rx_data.data;
 sw_rx_data.last     <= mac_rx_data.last;
 sw_rx_data.write    <= mac_rx_data.write;
+sw_rx_data.tsof     <= mac_rx_data.tsof;
 
 -- Outgoing data may need padding.
 u_adj : entity work.eth_frame_adjust
