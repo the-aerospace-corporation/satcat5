@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
-// Test the Address Resolution Protocol handler
+// Test the "Chat" dispatch and protocol handlers
 
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
@@ -125,6 +125,7 @@ TEST_CASE("ethernet-chat") {
     }
 
     SECTION("echo") {
+        CHECK(uut.local_mac() == MAC_UUT);
         // Create echo service and attach to ChatProto.
         satcat5::eth::ChatEcho echo(&uut);
         // Send and process a text message (reference from earlier test).
@@ -132,5 +133,7 @@ TEST_CASE("ethernet-chat") {
         satcat5::poll::service_all();
         // Confirm a response exists, no need for byte-by-byte check.
         CHECK(rx.get_read_ready() > 0);
+        // Confirm that the reply-MAC matches expected value.
+        CHECK(uut.reply_mac() == MAC_UUT);
     }
 }

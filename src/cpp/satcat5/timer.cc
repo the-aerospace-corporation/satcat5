@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -23,12 +23,6 @@
 using satcat5::util::GenericTimer;
 using satcat5::util::TimerRegister;
 
-GenericTimer::GenericTimer(u32 ticks_per_usec)
-    : m_ticks_per_usec(ticks_per_usec)
-{
-    // No other initialization required.
-}
-
 u32 GenericTimer::elapsed_ticks(u32 tref)
 {
     // Note: U32 arithmetic handles wraparound correctly,
@@ -50,6 +44,16 @@ unsigned GenericTimer::elapsed_incr(u32& tref)
     u32 elapsed_tick = elapsed_usec * m_ticks_per_usec;
     tref += elapsed_tick;
     return (unsigned)elapsed_usec;
+}
+
+unsigned GenericTimer::elapsed_msec(u32& tref)
+{
+    // Note: Divide-then-multiply helps avoid drift in long-running
+    //       timers caused by cumulative rounding errors.
+    u32 elapsed_msec = (now() - tref) / m_ticks_per_msec;
+    u32 elapsed_tick = elapsed_msec * m_ticks_per_msec;
+    tref += elapsed_tick;
+    return (unsigned)elapsed_msec;
 }
 
 bool GenericTimer::elapsed_test(u32& tref, unsigned usec)

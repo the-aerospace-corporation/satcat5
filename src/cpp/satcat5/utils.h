@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -44,46 +44,46 @@ namespace satcat5 {
         }
 
         // Min and max functions
-        inline u8 min_u8(u8 a, u8 b)
+        inline constexpr u8 min_u8(u8 a, u8 b)
             {return (a < b) ? a : b;}
-        inline u16 min_u16(u16 a, u16 b)
+        inline constexpr u16 min_u16(u16 a, u16 b)
             {return (a < b) ? a : b;}
-        inline u32 min_u32(u32 a, u32 b)
+        inline constexpr u32 min_u32(u32 a, u32 b)
             {return (a < b) ? a : b;}
-        inline u64 min_u64(u64 a, u64 b)
+        inline constexpr u64 min_u64(u64 a, u64 b)
             {return (a < b) ? a : b;}
-        inline u32 min_s32(s32 a, s32 b)
+        inline constexpr u32 min_s32(s32 a, s32 b)
             {return (a < b) ? a : b;}
-        inline u64 min_s64(s64 a, s64 b)
+        inline constexpr u64 min_s64(s64 a, s64 b)
             {return (a < b) ? a : b;}
-        inline unsigned min_unsigned(unsigned a, unsigned b)
+        inline constexpr unsigned min_unsigned(unsigned a, unsigned b)
             {return (a < b) ? a : b;}
 
-        inline u8 max_u8(u8 a, u8 b)
+        inline constexpr u8 max_u8(u8 a, u8 b)
             {return (a > b) ? a : b;}
-        inline u16 max_u16(u16 a, u16 b)
+        inline constexpr u16 max_u16(u16 a, u16 b)
             {return (a > b) ? a : b;}
-        inline u32 max_u32(u32 a, u32 b)
+        inline constexpr u32 max_u32(u32 a, u32 b)
             {return (a > b) ? a : b;}
-        inline u64 max_u64(u64 a, u64 b)
+        inline constexpr u64 max_u64(u64 a, u64 b)
             {return (a > b) ? a : b;}
-        inline u32 max_s32(s32 a, s32 b)
+        inline constexpr u32 max_s32(s32 a, s32 b)
             {return (a > b) ? a : b;}
-        inline u64 max_s64(s64 a, s64 b)
+        inline constexpr u64 max_s64(s64 a, s64 b)
             {return (a > b) ? a : b;}
-        inline unsigned max_unsigned(unsigned a, unsigned b)
+        inline constexpr unsigned max_unsigned(unsigned a, unsigned b)
             {return (a > b) ? a : b;}
 
         u32 max_u32(u32 a, u32 b, u32 c);
 
         // Absolute value
-        inline u8 abs_s8(s8 a)
+        inline constexpr u8 abs_s8(s8 a)
             {return (u8)((a < 0) ? -a : +a);}
-        inline u16 abs_s16(s16 a)
+        inline constexpr u16 abs_s16(s16 a)
             {return (u16)((a < 0) ? -a : +a);}
-        inline u32 abs_s32(s32 a)
+        inline constexpr u32 abs_s32(s32 a)
             {return (u32)((a < 0) ? -a : +a);}
-        inline u64 abs_s64(s64 a)
+        inline constexpr u64 abs_s64(s64 a)
             {return (u64)((a < 0) ? -a : +a);}
 
         // Square an input (and double output width)
@@ -98,33 +98,58 @@ namespace satcat5 {
 
         // Modulo addition: If A and B in range [0..M), return (A+B) % M
         // (Note: Assumes M <= UINT_MAX/2 for respective word size.)
-        inline u16 modulo_add_u16(u16 sum, u16 m) {
+        inline constexpr u16 modulo_add_u16(u16 sum, u16 m) {
             return (sum >= m) ? (sum - m) : sum;
         }
-        inline u32 modulo_add_u32(u32 sum, u32 m) {
+        inline constexpr u32 modulo_add_u32(u32 sum, u32 m) {
             return (sum >= m) ? (sum - m) : sum;
         }
-        inline u32 modulo_add_u64(u64 sum, u64 m) {
+        inline constexpr u32 modulo_add_u64(u64 sum, u64 m) {
             return (sum >= m) ? (sum - m) : sum;
         }
-        inline unsigned modulo_add_uns(unsigned sum, unsigned m) {
+        inline constexpr unsigned modulo_add_uns(unsigned sum, unsigned m) {
             return (sum >= m) ? (sum - m) : sum;
+        }
+
+        // Portability wrapper for platforms with signed division and modulo:
+        //  * Modulo always returns the positive equivalent:
+        //      modulo(-7, 4) = +1
+        //      modulo(-6, 4) = +2
+        //      modulo(-5, 4) = +3
+        //      modulo(-4, 4) =  0
+        //  * Divide always rounds toward -infinity:
+        //      divide(-7, 4) = -2
+        //      divide(-6, 4) = -2
+        //      divide(-5, 4) = -2
+        //      divide(-4, 4) = -1
+        // https://stackoverflow.com/questions/10023440/signed-division-in-c
+        template <typename T> inline constexpr T divide(T a, T b) {
+            return (a % b < 0) ? (a / b - 1) : (a / b);
+        }
+        template <typename T> inline constexpr T modulo(T a, T b) {
+            return (a % b < 0) ? (a % b + b) : (a % b);
         }
 
         // Integer division functions with various rounding options:
-        template <typename T> inline T div_floor(T a, T b)
-            {return a / b;}
-        template <typename T> inline T div_round(T a, T b)
-            {return (a + b/2) / b;}
-        template <typename T> inline T div_ceil(T a, T b)
-            {return (a + b-1) / b;}
+        template <typename T> inline constexpr T div_floor(T a, T b)
+            {return divide(a, b);}
+        template <typename T> inline constexpr T div_round(T a, T b)
+            {return divide(a + b/2, b);}
+        template <typename T> inline constexpr T div_ceil(T a, T b)
+            {return divide(a + b-1, b);}
 
-        inline u32 div_floor_u32(u32 a, u32 b)  {return div_floor<u32>(a, b);}
-        inline s32 div_floor_s32(s32 a, s32 b)  {return div_floor<s32>(a, b);};
-        inline u32 div_round_u32(u32 a, u32 b)  {return div_round<u32>(a, b);};
-        inline s32 div_round_s32(s32 a, s32 b)  {return div_round<s32>(a, b);};
-        inline u32 div_ceil_u32 (u32 a, u32 b)  {return div_ceil<u32>(a, b);};
-        inline s32 div_ceil_s32 (s32 a, s32 b)  {return div_ceil<s32>(a, b);};
+        inline constexpr u32 div_floor_u32(u32 a, u32 b)
+            {return div_floor<u32>(a, b);}
+        inline constexpr s32 div_floor_s32(s32 a, s32 b)
+            {return div_floor<s32>(a, b);};
+        inline constexpr u32 div_round_u32(u32 a, u32 b)
+            {return div_round<u32>(a, b);};
+        inline constexpr s32 div_round_s32(s32 a, s32 b)
+            {return div_round<s32>(a, b);};
+        inline constexpr u32 div_ceil_u32 (u32 a, u32 b)
+            {return div_ceil<u32>(a, b);};
+        inline constexpr s32 div_ceil_s32 (s32 a, s32 b)
+            {return div_ceil<s32>(a, b);};
 
         // Check if A is a multiple of B:
         bool is_multiple_u32(u32 a, u32 b);
@@ -193,7 +218,7 @@ namespace satcat5 {
         // https://stackoverflow.com/questions/2100331/c-macro-definition-to-determine-big-endian-or-little-endian-machine
         enum {SATCAT5_LITTLE_ENDIAN = 0x03020100ul, SATCAT5_BIG_ENDIAN = 0x00010203ul};
         constexpr union {u8 bytes[4]; u32 value;} HOST_ORDER_CANARY = {{0,1,2,3}};
-        inline u32 HOST_BYTE_ORDER() {return HOST_ORDER_CANARY.value;}
+        inline constexpr u32 HOST_BYTE_ORDER() {return HOST_ORDER_CANARY.value;}
 
         // In-place byte-for-byte format conversion, aka "type-punning".
         template<typename T1, typename T2> inline T2 reinterpret(T1 x)

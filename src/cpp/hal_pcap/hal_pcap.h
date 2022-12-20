@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -37,6 +37,7 @@
 
 #include <deque>
 #include <string>
+#include <satcat5/ethernet.h>
 #include <satcat5/io_buffer.h>
 #include <satcat5/polling.h>
 
@@ -52,15 +53,24 @@ namespace satcat5 {
         {
         public:
             // Open the specified interface by name.
-            explicit Socket(const char* ifname, unsigned bsize=65536);
+            // Listens for all EtherTypes by default, specify value
+            // value to filter for a specific incoming EtherType.
+            explicit Socket(
+                const char* ifname,
+                unsigned bsize=65536,
+                satcat5::eth::MacType filter = satcat5::eth::ETYPE_NONE);
             virtual ~Socket();
 
             // Is the socket in a usable state?
             bool ok() const;
 
+            // Other useful info.
+            const char* name() const;
+            const char* desc() const;
+
         protected:
             void data_rcvd() override;
-            void poll() override;
+            void poll_always() override;
 
             satcat5::pcap::Device* const m_device;
         };
@@ -77,5 +87,12 @@ namespace satcat5 {
 
         // Fetch a list of Ethernet device descriptors.
         satcat5::pcap::DescriptorList list_all_devices();
+
+        // Check if a given name is on the list from "list_all_devices".
+        bool is_device(const char* ifname);
+
+        // Print a list of Ethernet devices, and select by index.
+        // Returns the "name" field from the selected Descriptor.
+        std::string prompt_for_ifname();
     }
 }

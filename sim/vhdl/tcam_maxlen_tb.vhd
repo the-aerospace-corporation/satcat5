@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,6 +31,7 @@ use     ieee.math_real.all;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
+use     work.tcam_constants.all;
 
 entity tcam_maxlen_tb is
     generic (TABLE_SIZE : positive := 7);
@@ -48,26 +49,23 @@ signal reset_p      : std_logic := '1';
 
 -- Input stream and delayed copy
 signal in_mask      : std_logic_vector(TABLE_SIZE-1 downto 0) := (others => '0');
-signal in_type      : std_logic := '0';
-signal in_rdy       : std_logic := '0';
+signal in_code      : std_logic_vector(1 downto 0) := (others => '0');
+signal in_type      : search_type;
 signal in_write     : std_logic;
 signal dly_mask     : std_logic_vector(TABLE_SIZE-1 downto 0);
-signal dly_type     : std_logic;
-signal dly_rdy      : std_logic;
+signal dly_code     : std_logic_vector(1 downto 0);
 signal dly_read     : std_logic;
 
 -- Reference stream (combinational logic)
 signal ref_index    : integer range 0 to TABLE_SIZE-1;
 signal ref_found    : std_logic;
 signal ref_error    : std_logic;
-signal ref_type     : std_logic;
-signal ref_rdy      : std_logic;
+signal ref_type     : search_type;
 
 -- Output stream from unit under test
 signal out_index    : integer range 0 to TABLE_SIZE-1;
 signal out_found    : std_logic;
-signal out_type     : std_logic;
-signal out_rdy      : std_logic;
+signal out_type     : search_type;
 signal out_error    : std_logic;
 
 -- Configuration interface
@@ -102,20 +100,19 @@ begin
                 uniform(seed1, seed2, rand);
                 in_mask(n) <= bool2bit(rand < PMASK);
             end loop;
-            uniform(seed1, seed2, rand);
-            in_type <= bool2bit(rand < 0.5);
-            uniform(seed1, seed2, rand);
-            in_rdy  <= bool2bit(rand < 0.5);
+            for n in in_code'range loop
+                uniform(seed1, seed2, rand);
+                in_code(n) <= bool2bit(rand < 0.5);
+            end loop;
         else
             in_mask <= (others => '0');
-            in_type <= '0';
-            in_rdy  <= '0';
+            in_code <= (others => '0');
         end if;
     end if;
 end process;
 
-in_write <= in_rdy or in_type;
-dly_read <= out_rdy or out_type;
+in_write <= bool2bit(in_type /= TCAM_SEARCH_NONE);
+dly_read <= bool2bit(out_type /= TCAM_SEARCH_NONE);
 
 u_dly : entity work.fifo_smol_sync
     generic map(
@@ -123,21 +120,27 @@ u_dly : entity work.fifo_smol_sync
     META_WIDTH  => 2)
     port map(
     in_data     => in_mask,
-    in_meta(0)  => in_type,
-    in_meta(1)  => in_rdy,
+    in_meta     => in_code,
     in_write    => in_write,
     out_data    => dly_mask,
-    out_meta(0) => dly_type,
-    out_meta(1) => dly_rdy,
+    out_meta    => dly_code,
     out_valid   => open,
     out_read    => dly_read,
     clk         => clk_100,
     reset_p     => reset_p);
 
+-- Convert type-codes to the enumerated type.
+in_type  <= TCAM_SEARCH_NONE when (in_code = "00")
+       else TCAM_SEARCH_USER when (in_code = "01")
+       else TCAM_SEARCH_DUPL when (in_code = "10")
+       else TCAM_SEARCH_SCAN;
+ref_type <= TCAM_SEARCH_NONE when (dly_code = "00")
+       else TCAM_SEARCH_USER when (dly_code = "01")
+       else TCAM_SEARCH_DUPL when (dly_code = "10")
+       else TCAM_SEARCH_SCAN;
+
 -- Reference stream (combinational logic)
-ref_found   <= or_reduce(dly_mask);
-ref_type    <= dly_type;
-ref_rdy     <= dly_rdy;
+ref_found <= or_reduce(dly_mask);
 
 p_ref : process(dly_mask)
     variable max_idx, max_len : integer := 0;
@@ -174,14 +177,13 @@ uut : entity work.tcam_maxlen
     in_meta     => (others => '0'),
     in_mask     => in_mask,
     in_type     => in_type,
-    in_rdy      => in_rdy,
     out_data    => open,        -- Not tested
     out_meta    => open,        -- Not tested
     out_index   => out_index,
     out_found   => out_found,
     out_type    => out_type,
-    out_rdy     => out_rdy,
     out_error   => out_error,
+    cfg_clear   => '0',         -- Not tested
     cfg_index   => cfg_index,
     cfg_plen    => cfg_plen,
     cfg_write   => cfg_write,
@@ -192,7 +194,7 @@ uut : entity work.tcam_maxlen
 p_check : process(clk_100)
 begin
     if rising_edge(clk_100) then
-        if (out_rdy = '0' and out_type = '0') then
+        if (out_type = TCAM_SEARCH_NONE) then
             -- No output this cycle.
             null;
         elsif (ref_error = '1') then
@@ -207,8 +209,6 @@ begin
                 report "Output mismatch (found)" severity error;
             assert (out_type = ref_type)
                 report "Output mismatch (type)" severity error;
-            assert (out_rdy = ref_rdy)
-                report "Output mismatch (rdy)" severity error;
             assert (out_index = ref_index)
                 report "Output mismatch (index)" severity error;
         end if;

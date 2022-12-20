@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -37,19 +37,22 @@ use     work.common_primitives.all;
 entity fifo_large_sync is
     generic (
     -- Maximum auxiliary packet size (bytes).
-    FIFO_WIDTH  : positive;
     FIFO_DEPTH  : positive;
+    FIFO_WIDTH  : positive;
+    META_WIDTH  : natural := 0;
     -- Formal verification mode? (See common_primitives)
     SIMTEST     : boolean := false);
     port (
     -- Primary input port (no flow control)
     in_data     : in  std_logic_vector(FIFO_WIDTH-1 downto 0);
+    in_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
     in_last     : in  std_logic;
     in_write    : in  std_logic;
     in_error    : out std_logic;    -- Optional
 
     -- Buffered output port (AXI flow control)
     out_data    : out std_logic_vector(FIFO_WIDTH-1 downto 0);
+    out_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
     out_last    : out std_logic;
     out_valid   : out std_logic;
     out_ready   : in  std_logic;
@@ -63,8 +66,9 @@ architecture fifo_large_sync of fifo_large_sync is
 
 -- Define FIFO size parameters.
 constant FIFO_AWIDTH    : integer := log2_ceil(FIFO_DEPTH);
+constant FIFO_DWIDTH    : integer := 1 + FIFO_WIDTH + META_WIDTH;
 subtype fifo_addr_t is unsigned(FIFO_AWIDTH-1 downto 0);
-subtype fifo_word_t is std_logic_vector(FIFO_WIDTH downto 0);
+subtype fifo_word_t is std_logic_vector(FIFO_DWIDTH-1 downto 0);
 
 -- Status flags
 signal fifo_error       : std_logic := '0';
@@ -87,19 +91,20 @@ begin
 -- Drive top-level outputs.
 in_error    <= fifo_error;
 out_data    <= fifo_rd_word(FIFO_WIDTH-1 downto 0);
-out_last    <= fifo_rd_word(FIFO_WIDTH);
+out_meta    <= fifo_rd_word(META_WIDTH+FIFO_WIDTH-1 downto FIFO_WIDTH);
+out_last    <= fifo_rd_word(META_WIDTH+FIFO_WIDTH);
 out_valid   <= not fifo_empty;
 
 -- Platform-specific dual-port block RAM.
 fifo_wr_en_d   <= in_write;
-fifo_wr_word   <= in_last & in_data;
+fifo_wr_word   <= in_last & in_meta & in_data;
 fifo_rd_next   <= out_ready and not fifo_empty;
 fifo_rd_addr_d <= fifo_rd_addr_q + u2i(fifo_rd_next);
 
 u_ram : dpram
     generic map(
     AWIDTH  => FIFO_AWIDTH,
-    DWIDTH  => FIFO_WIDTH + 1,
+    DWIDTH  => FIFO_DWIDTH,
     SIMTEST => SIMTEST)
     port map(
     wr_clk  => clk,

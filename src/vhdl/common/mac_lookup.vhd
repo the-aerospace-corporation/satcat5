@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -28,6 +28,21 @@
 -- (>= 96 bits), two copies of the TCAM are instantiated and kept in sync
 -- to allow concurrent searches.
 --
+-- This block also provides an interface for manual reads and writes to
+-- the underlying TCAM.
+--
+-- To write a new table entry:
+--  * Provide the MAC-address and source port index to be written.
+--  * Assert write_valid, hold until write_ready, then deassert.
+--  * After duplicate-checking, the new entry will be written to the next
+--    available slot in the table, depending on cache replacement policy.
+--
+-- To read a table entry:
+--  * Provide the table-index index to be read (0 to TABLE_SIZE-1).
+--  * Assert read_valid, hold until read_ready.
+--  * The corresponding address, if any (see read_found), is available on
+--    or after the cycle on which read_ready is asserted.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -42,7 +57,6 @@ entity mac_lookup is
     IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Max stored MAC addresses
-    MISS_BCAST      : std_logic;        -- Broadcast or drop unknown MAC?
     CACHE_POLICY    : repl_policy);     -- TCAM cache-replacement strategy
     port (
     -- Main input (Ethernet frame)
@@ -59,12 +73,31 @@ entity mac_lookup is
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
 
-    -- Promiscuous-port mask.
+    -- Other configuration flags:
+    -- MBMASK = Bit-mask for each port's "miss-broadcast" policy.
+    --          Ports with a '1' receive frames with an unknown destination MAC.
+    -- PRMASK = Bit-mask for each port's "promiscuous-mode" policy.
+    --          Ports with a '1' receive all frames regardless of destination.
+    cfg_clear       : in  std_logic := '0';     -- Clear table contents
+    cfg_learn       : in  std_logic := '1';     -- Allow automatic learning
+    cfg_mbmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
     cfg_prmask      : in  std_logic_vector(PORT_COUNT-1 downto 0);
 
     -- Error strobes
     error_change    : out std_logic;    -- MAC address changed ports
     error_table     : out std_logic;    -- Table integrity check failed
+
+    -- Manual read/write of table contents (optional).
+    read_index      : in  integer range 0 to TABLE_SIZE-1;
+    read_valid      : in  std_logic := '0';
+    read_ready      : out std_logic;
+    read_addr       : out mac_addr_t;
+    read_psrc       : out integer range 0 to PORT_COUNT-1;
+    read_found      : out std_logic;
+    write_addr      : in  mac_addr_t := (others => '0');
+    write_psrc      : in  integer range 0 to PORT_COUNT-1 := 0;
+    write_valid     : in  std_logic := '0';
+    write_ready     : out std_logic;
 
     -- System interface
     clk             : in  std_logic;
@@ -120,6 +153,7 @@ signal find_src_drp : std_logic := '0';
 signal find_src_ok  : std_logic := '0';
 signal find_src_rdy : std_logic := '0';
 signal find_error   : std_logic := '0';
+signal read_psrc_i  : port_idx_t;
 
 -- Final output mask and queueing.
 signal dst_pmask    : port_mask_t;
@@ -130,6 +164,7 @@ signal learn_addr   : mac_addr_t := (others => '0');
 signal learn_pidx   : port_idx_t := (others => '0');
 signal learn_write  : std_logic := '0';
 signal learn_error  : std_logic := '0';
+signal learn_accept : std_logic;
 
 -- Queued writes to TCAM.
 signal cfg_macaddr  : mac_addr_t := (others => '0');
@@ -137,12 +172,14 @@ signal cfg_pidx     : port_idx_t;
 signal cfg_valid    : std_logic;
 signal cfg_ready    : std_logic;
 signal cfg_wren     : std_logic;
+signal cfg_reset    : std_logic;
 
 begin
 
--- Top-level error strobes.
+-- Top-level error strobes and output conversion.
 error_change <= learn_error;
 error_table  <= find_error;
+read_psrc    <= u2i(to_01_vec(read_psrc_i));
 
 -- Extract destination and source MAC address.
 p_pkt : process(clk)
@@ -205,12 +242,20 @@ gen_tcam1 : if (IO_BYTES < 12) generate
             out_result  => tcam_pidx,
             out_found   => tcam_ok,
             out_error   => find_error,
+            cfg_clear   => cfg_clear,
             cfg_suggest => cfg_tidx,
             cfg_index   => cfg_tidx,
             cfg_search  => cfg_macaddr,
             cfg_result  => cfg_pidx,
             cfg_valid   => cfg_valid,
             cfg_ready   => cfg_ready,
+            scan_index  => read_index,
+            scan_valid  => read_valid,
+            scan_ready  => read_ready,
+            scan_found  => read_found,
+            scan_search => read_addr,
+            scan_result => read_psrc_i,
+            scan_mask   => open,
             clk         => clk,
             reset_p     => reset_p);
 
@@ -275,12 +320,19 @@ gen_tcam2 : if (IO_BYTES >= 12) generate
             out_found   => find_src_ok,
             out_next    => find_src_rdy,
             out_error   => tsrc_err,
+            cfg_clear   => cfg_clear,
             cfg_suggest => cfg_tidx,
             cfg_index   => cfg_tidx,
             cfg_search  => cfg_macaddr,
             cfg_result  => cfg_pidx,
             cfg_valid   => cfg_valid,
             cfg_ready   => cfg_ready,
+            scan_index  => read_index,
+            scan_valid  => read_valid,
+            scan_ready  => read_ready,
+            scan_found  => read_found,
+            scan_search => read_addr,
+            scan_result => read_psrc_i,
             clk         => clk,
             reset_p     => reset_p);
 
@@ -299,6 +351,7 @@ gen_tcam2 : if (IO_BYTES >= 12) generate
             out_found   => find_dst_ok,
             out_next    => find_dst_rdy,
             out_error   => tdst_err,
+            cfg_clear   => cfg_clear,
             cfg_suggest => open,            -- Cache controlled by TCAM0
             cfg_index   => cfg_tidx,
             cfg_search  => cfg_macaddr,
@@ -332,7 +385,7 @@ gen_dst_mask : for n in dst_pmask'range generate
                else '0' when (find_dst_drp = '1')           -- Switch control
                else '1' when (cfg_prmask(n) = '1')          -- Promiscuous
                else '1' when (find_dst_all = '1')           -- Broadcast
-               else MISS_BCAST when (find_dst_ok = '0')     -- Miss
+               else cfg_mbmask(n) when (find_dst_ok = '0')  -- Miss
                else bool2bit(n = u2i(find_dst_idx));        -- Hit
 end generate;
 
@@ -355,12 +408,20 @@ u_dst_fifo : entity work.fifo_smol_sync
     reset_p     => reset_p);
 
 -- Address-learning filter.
+-- (Also allows auxiliary writes when otherwise idle.)
+cfg_reset    <= cfg_clear or reset_p;
+learn_accept <= cfg_learn and find_src_rdy and not find_src_drp;
+write_ready  <= not learn_accept;   -- Accept auxiliary write
+
 p_learn : process(clk)
 begin
     if rising_edge(clk) then
         -- Drive the write-enable strobe:
-        if (reset_p = '1' or find_src_rdy = '0' or find_src_drp = '1') then
-            learn_write <= '0'; -- Idle or ignored
+        if (cfg_reset = '1') then
+            learn_write <= '0'; -- Configuration reset
+            learn_error <= '0';
+        elsif (learn_accept = '0') then
+            learn_write <= write_valid; -- Idle / allow aux write
             learn_error <= '0';
         elsif (find_src_ok = '0') then
             learn_write <= '1'; -- Cache miss -> Add to table
@@ -372,9 +433,16 @@ begin
             learn_write <= '0'; -- Consistency check OK
             learn_error <= '0';
         end if;
-        -- Matched delay for port-index and MAC-address fields.
-        learn_pidx <= find_psrc;
-        learn_addr <= find_src_mac;
+        -- What address and port-index should be written to the table?
+        if (write_valid = '1' and learn_accept = '0') then
+            -- Override for manual write mode.
+            learn_pidx <= i2s(write_psrc, PIDX_WIDTH);
+            learn_addr <= write_addr;
+        else
+            -- Matched delay for port-index and MAC-address fields.
+            learn_pidx <= find_psrc;
+            learn_addr <= find_src_mac;
+        end if;
     end if;
 end process;
 
@@ -393,6 +461,6 @@ u_cfg_fifo : entity work.fifo_smol_sync
     out_valid   => cfg_valid,
     out_read    => cfg_ready,
     clk         => clk,
-    reset_p     => reset_p);
+    reset_p     => cfg_reset);
 
 end mac_lookup;

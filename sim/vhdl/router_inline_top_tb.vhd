@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -166,6 +166,8 @@ net_rx_data.rxerr   <= '0';
 net_rx_data.reset_p <= reset_p;
 
 -- Unit under test
+-- Note: Must manually specify egress MAC because PROXY_EN_INGRESS = false.
+--       (The ingress MAC is automatically determined via ARP handshake.)
 uut : entity work.router_inline_top
     generic map(
     ROUTER_MACADDR      => ROUTER_MACADDR,
@@ -192,6 +194,7 @@ uut : entity work.router_inline_top
     net_rx_data         => net_rx_data,
     net_tx_data         => net_tx_data,
     net_tx_ctrl         => net_tx_ctrl,
+    ipv4_dmac_egress    => SERVER_MACADDR,
     router_ip_addr      => ROUTER_IPADDR,
     router_sub_addr     => ROUTER_SUBNET,
     router_sub_mask     => ROUTER_SUBMASK,
@@ -317,8 +320,8 @@ p_test : process
         variable pkt : eth_packet := decr_ipv4_ttl(eth);
         variable len : natural := pkt.all'length;
     begin
-        -- Second, replace source MAC address and recalculate FCS.
-        return make_eth_fcs(MAC_ADDR_BROADCAST, ROUTER_MACADDR, ETYPE_IPV4,
+        -- Second, replace both MAC addresses and recalculate FCS.
+        return make_eth_fcs(SERVER_MACADDR, ROUTER_MACADDR, ETYPE_IPV4,
             pkt.all(len-113 downto 32));
     end function;
 

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -17,19 +17,26 @@
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
 
-#include "hal_pcap.h"
+#include "hal_pcap/hal_pcap.h"
 #include <cstdio>
-#include <pcap.h>
+#include <cstring>
+#include <iostream>
 #include <satcat5/log.h>
 
+// PCAP must be included last due to name conflicts on some platforms.
+#include <pcap.h>
+
+// Platform-specific includes
 #ifdef _WIN32
-#include <tchar.h>
+    #include <tchar.h>
+    #undef ERROR            // Deconflict Windows "ERROR" macro
 #else
-#include <arpa/inet.h>
+    #include <arpa/inet.h>
 #endif
 
+namespace eth   = satcat5::eth;
 namespace log   = satcat5::log;
-namespace pcap  = satcat5::pcap;
+namespace spcap = satcat5::pcap;
 
 // Set verbosity level (0/1/2)
 static const unsigned DEBUG_VERBOSE = 0;
@@ -41,14 +48,16 @@ static const unsigned MAX_ETH_FRAME = 1536;
 static pcap_if_t* g_pcap_alldevs = 0;
 
 // Define the PCAP data structures required for a Socket.
-struct pcap::Device {
-    explicit Device(const char* ifname);
+struct spcap::Device {
+    explicit Device(const char* ifname, u16 filter);
 
     const char* name() const {return m_descr->name;}
+    const char* desc() const {return m_descr->description;}
 
     bool m_ok;
     pcap_if_t* m_descr;
     pcap_t* m_device;
+    struct bpf_program m_filter;
 };
 
 // First-time PCAP initialization.
@@ -74,7 +83,7 @@ bool pcap_init()
     // Get the list of Ethernet devices.
     char errbuf[PCAP_ERRBUF_SIZE];
     if (pcap_findalldevs(&g_pcap_alldevs, errbuf) < 0) {
-        log::Log(log::ERROR, "pcap_findalldevs = ").write(errbuf);
+        log::Log(log::ERROR, "pcap_findalldevs", errbuf);
         return false;
     }
 
@@ -95,20 +104,20 @@ bool is_ethernet_device(const char* ifname)
         pcap_close(dev);
         return (type == DLT_EN10MB);
     } else if (DEBUG_VERBOSE > 0) {
-        log::Log(log::WARNING, ifname).write("Can't open, ").write(errbuf);
+        log::Log(log::WARNING, ifname, "Can't open, ").write(errbuf);
     }
     return false;
 }
 
-pcap::Descriptor::Descriptor(const char* n, const char* d)
-    : name(n), desc(d)
+spcap::Descriptor::Descriptor(const char* n, const char* d)
+    : name(n), desc(d ? d : n)
 {
     // Nothing else to initialize.
 }
 
-pcap::DescriptorList pcap::list_all_devices()
+spcap::DescriptorList spcap::list_all_devices()
 {
-    pcap::DescriptorList list;
+    spcap::DescriptorList list;
 
     // First-time PCAP initialization.
     if (!g_pcap_alldevs) pcap_init();
@@ -116,14 +125,53 @@ pcap::DescriptorList pcap::list_all_devices()
     // Scan the global list for Ethernet devices (PCAP also handles USB).
     for (pcap_if_t* dev = g_pcap_alldevs ; dev ; dev = dev->next) {
         if (is_ethernet_device(dev->name)) {
-            list.push_back(pcap::Descriptor(dev->name, dev->description));
+            list.push_back(spcap::Descriptor(dev->name, dev->description));
         }
     }
 
     return list;
 }
 
-pcap::Device::Device(const char* ifname)
+bool spcap::is_device(const char* ifname)
+{
+    // First-time setup for Pcap.
+    if (!g_pcap_alldevs) pcap_init();
+
+    // Scan list of device-descriptors for a matching name.
+    for (pcap_if_t* dev = g_pcap_alldevs ; dev ; dev = dev->next) {
+        if (strstr(ifname, dev->name)) return true;
+    }
+
+    return false;   // No match
+}
+
+std::string spcap::prompt_for_ifname()
+{
+    // Sanity check: Only one option? No options at all?
+    spcap::DescriptorList devs = spcap::list_all_devices();
+    if (devs.size() == 1) return devs[0].name;
+    if (devs.size() == 0) {
+        std::cerr << "No valid PCAP devices." << std::endl;
+        return "";
+    }
+
+    // Otherwise print a menu of options.
+    std::cout << "Please select a device from the list:" << std::endl;
+    for (unsigned a = 0 ; a < devs.size() ; ++a) {
+        std::cout << "  " << a << ":\t" << devs[a].desc << std::endl;
+    }
+    std::cout << "  (Any other number to cancel)" << std::endl;
+
+    // Return selected index, if valid.
+    int sel = -1;
+    std::cin >> sel;
+    if (sel < 0 || sel >= (int)devs.size())
+        return "";
+    else
+        return devs[sel].name;
+}
+
+spcap::Device::Device(const char* ifname, u16 filter)
     : m_ok(false)
     , m_descr(0)
     , m_device(0)
@@ -137,7 +185,7 @@ pcap::Device::Device(const char* ifname)
     }
 
     if (!m_descr) {       // Success?
-        log::Log(log::ERROR, ifname).write("No matching Ethernet device.");
+        log::Log(log::ERROR, ifname, "No matching Ethernet device.");
         return;
     }
 
@@ -151,30 +199,38 @@ pcap::Device::Device(const char* ifname)
         errbuf);        // Buffer for error string
 
     if (!m_device) {
-        log::Log(log::ERROR, ifname).write("Could not open: ").write(errbuf);
+        log::Log(log::ERROR, ifname, "Could not open: ").write(errbuf);
         return;
     }
 
     // Set non-blocking mode.
     if (pcap_setnonblock(m_device, 1, errbuf) == PCAP_ERROR) {
-        log::Log(log::ERROR, ifname).write("Could not set mode: ").write(errbuf);
+        log::Log(log::ERROR, ifname, "Could not set mode: ").write(errbuf);
         return;
+    }
+
+    // Enable a filter for incoming packets?
+    if (filter) {
+        char filter_str[128];
+        snprintf(filter_str, sizeof(filter_str), "ether proto 0x%04X", filter);
+        if (pcap_compile(m_device, &m_filter, filter_str, 1, PCAP_NETMASK_UNKNOWN) < 0) return;
+        if (pcap_setfilter(m_device, &m_filter) < 0) return;
     }
 
     // Success!
     m_ok = true;
 }
 
-pcap::Socket::Socket(const char* ifname, unsigned bsize)
+spcap::Socket::Socket(const char* ifname, unsigned bsize, eth::MacType filter)
     : satcat5::io::BufferedIO(
         new u8[bsize], bsize, bsize/64,
         new u8[bsize], bsize, bsize/64)
-    , m_device(new pcap::Device(ifname))
+    , m_device(new spcap::Device(ifname, filter.value))
 {
     // Nothing else to initialize.
 }
 
-pcap::Socket::~Socket()
+spcap::Socket::~Socket()
 {
     // Close down the socket.
     if (m_device) pcap_close(m_device->m_device);
@@ -185,35 +241,48 @@ pcap::Socket::~Socket()
     delete m_device;
 }
 
-bool pcap::Socket::ok() const
+bool spcap::Socket::ok() const
 {
     return (m_device) && (m_device->m_ok);
 }
 
-void pcap::Socket::data_rcvd()
+const char* spcap::Socket::name() const
+{
+    return m_device ? m_device->name() : "";
+}
+
+const char* spcap::Socket::desc() const
+{
+    return m_device ? m_device->desc() : "";
+}
+
+void spcap::Socket::data_rcvd()
 {
     // New data ready for transmission?
     unsigned nread = m_tx.get_read_ready();
     if (nread > MAX_ETH_FRAME) {
-        log::Log(log::ERROR, m_device->name()).write("Tx frame too long.").write(nread);
-    } else if (nread) {
+        log::Log(log::ERROR, m_device->name(), "Tx frame too long.").write(nread);
+    } else if (nread && ok()) {
         // Copy outgoing data to a working buffer...
         u8 temp[MAX_ETH_FRAME];
         m_tx.read_bytes(nread, temp);
         // ...then write to the PCAP socket.
         int result = pcap_sendpacket(m_device->m_device, temp, nread);
         if (result <= 0)
-            log::Log(log::WARNING, m_device->name()).write("Tx failed.");
+            log::Log(log::WARNING, m_device->name(), "Tx failed.");
     }
 
     // Cleanup for the next packet, if any.
     m_tx.read_finalize();
 }
 
-void pcap::Socket::poll()
+void spcap::Socket::poll_always()
 {
     struct pcap_pkthdr* pkt_header;
     const u_char *pkt_data;
+
+    // Sanity check before polling...
+    if (!ok()) return;
 
     // Attempt to read next frame from PCAP socket...
     int result = pcap_next_ex(m_device->m_device, &pkt_header, &pkt_data);
@@ -221,6 +290,6 @@ void pcap::Socket::poll()
         m_rx.write_bytes(pkt_header->len, pkt_data);
         m_rx.write_finalize();
     } else if (result < 0 && DEBUG_VERBOSE > 0) {
-        log::Log(log::WARNING, m_device->name()).write("Rx error.");
+        log::Log(log::WARNING, m_device->name(), "Rx error.");
     }
 }

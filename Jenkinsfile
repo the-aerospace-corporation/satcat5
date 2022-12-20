@@ -1,4 +1,4 @@
-// Copyright 2020, 2021 The Aerospace Corporation
+// Copyright 2020, 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -14,13 +14,77 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
-
+// ------------------------------------------------------------------------
+// Jenkinsfile for CI/CD builds of SatCat5.
+//
 // For more information on the required Jenkins environment,
 // refer to "docs/DEVOPS.md".
 
 // Shortcut function: Shell command (sh) that notes the responsible node.
-def sh_node (String cmd) {
+def sh_node(String cmd) {
     sh label: this.env.NODE_NAME, script: cmd
+}
+
+// Skip time-consuming steps for software-only updates, based on branch name.
+def build_type() {
+    return (this.env.BRANCH_NAME ==~ /software(.*)/) ? "sw" : "hdl"
+}
+
+// Check for errors or critical warnings in Vivado build logs.
+// (Especially useful for block-diagram projects with out-of-context runs.)
+def check_vivado_build(String project_folder) {
+    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+        dir(project_folder) {
+            sh_node '! grep "ERROR:" */*.log'
+            sh_node '! grep "CRITICAL WARNING:" */*.log'
+        }
+    }
+}
+
+// Pack files into a .zip file, then archive it.
+def archive_zip(zipfile, srcfiles = './*') {
+    sh_node "zip -r ${zipfile} ${srcfiles}"
+    archiveArtifacts artifacts: "${zipfile}"
+}
+
+// Shortcuts for launching specific Docker images:
+def docker_devtool(String cmd) {
+    sh_node "./start_docker.sh csaps/dev_tools:2.1 ${cmd}"
+}
+def docker_libero(String cmd) {
+    withEnv(['DOCKER_REG=dcid.aero.org:5000']) {
+        sh_node "./start_docker.sh libero:12.3 ${cmd}"
+    }
+}
+def docker_vivado_2016_3(String cmd) {
+    withEnv(['VIVADO_VERSION=2016.3']) {
+        sh_node "./start_docker.sh csaps/vivado:2016.3_20201007 ${cmd}"
+    }
+}
+def docker_vivado_2019_1(String cmd) {
+    withEnv(['VIVADO_VERSION=2019.1']) {
+        sh_node "./start_docker.sh csaps/vivado:2019.1_20220329 ${cmd}"
+    }
+}
+def docker_vivado_2020_2(String cmd) {
+    withEnv(['VIVADO_VERSION=2020.2']) {
+        sh_node "./start_docker.sh csaps/vivado:2020.2_20220801 ${cmd}"
+    }
+}
+def docker_yosys(String cmd) {
+    sh_node "./start_docker.sh csaps/open-fpga-toolchain:latest_04272021 ${cmd}"
+}
+
+// Run one of the parallel unit-test simulations and post results.
+def run_sim(Integer phase, Integer total) {
+    def work_folder = "sim/vhdl/xsim_tmp_${phase}"
+    withEnv(["PARALLEL_PHASE=${phase}", "PARALLEL_SIMS=${total}"]) {
+        docker_vivado_2016_3 'make sims'
+    }
+    dir (work_folder) {
+        archive_zip("simulate_${phase}.zip", './simulate_*.log')
+    }
+    junit "${work_folder}/sim_results.xml"
 }
 
 pipeline {
@@ -29,135 +93,222 @@ pipeline {
     options {
         timeout(time: 240, unit: 'MINUTES')
         timestamps()              // Prepends timestap to build messages
+        buildDiscarder(logRotator(numToKeepStr: '10')) // Limit build history
         disableConcurrentBuilds() // Prevent two concurrent runs
         parallelsAlwaysFailFast() // Fail as soon as any parallel stage fails
     }
 
     environment {
-        VIVADO_VERSION = "2016.3"
-        DOCKER_REG = "dcid.aero.org:5000"
-        DOCKER_DEVTOOL = "dev_tools:1.0"
-        DOCKER_LIBERO = "libero:12.3"
-        DOCKER_VIVADO = "vivado:2016.3"
-        DOCKER_YOSYS  = "open-fpga-toolchain:latest"
+        BUILD_TYPE = build_type()
+        DOCKER_REG = 'e3-devops.aero.org'
     }
 
     stages {
         stage('SW-Test') {
-            agent { label 'docker' }
-            steps {
-                sh_node './start_docker.sh $DOCKER_DEVTOOL make sw_coverage'
-                dir('./sim/cpp') {
-                    // Archive the basic coverage reports
-                    archiveArtifacts artifacts: 'coverage.txt'
-                    archiveArtifacts artifacts: 'coverage.xml'
-                    // Fancy HTML coverage viewer
-                    cobertura coberturaReportFile: 'coverage.xml'
-                    publishHTML target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: false,
-                        keepAll: true,
-                        reportDir: './coverage/',
-                        reportFiles: 'coverage.html',
-                        reportName: "Coverage with Source",
-                        reportTitles: ''
-                    ]
+            parallel {
+                stage('Linter') {
+                    agent { label 'docker' }
+                    steps {
+                        sh_node 'echo $BRANCH_NAME : $BUILD_TYPE'
+                        sh_node 'echo $DOCKER_REG'
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE')
+                            { docker_devtool 'make sw_cppcheck' }
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE')
+                            { docker_devtool 'make sw_cpplint' }
+                        archiveArtifacts artifacts: 'cppcheck.xml, cpplint.log'
+                    }
                 }
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    // Run the tool again, throws error below designated coverage threshold.
-                    sh_node './start_docker.sh $DOCKER_DEVTOOL make sw_covertest'
+                stage('Tools') {
+                    agent { label 'docker' }
+                    steps {
+                        docker_devtool 'make sw_tools'
+                    }
+                }
+                stage('Unit tests') {
+                    agent { label 'docker' }
+                    steps {
+                        docker_devtool 'make sw_python'
+                        docker_devtool 'make sw_coverage'
+                        dir('./sim/cpp') {
+                            // Archive the basic coverage reports
+                            archiveArtifacts artifacts: 'coverage.txt'
+                            archiveArtifacts artifacts: 'coverage.xml'
+                            // Fancy HTML coverage viewer
+                            cobertura coberturaReportFile: 'coverage.xml'
+                            publishHTML target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: true,
+                                reportDir: './coverage/',
+                                reportFiles: 'coverage.html',
+                                reportName: 'Coverage_with_Source',
+                                reportTitles: ''
+                            ]
+                        }
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                            // Run the tool again, throws error below designated coverage threshold.
+                            docker_devtool 'make sw_covertest'
+                        }
+                    }
+                }
+                // TODO: Generate simulation stages automatically?
+                // Note: Auto-generated stages cannot use a declarative pipeline.
+                // https://devops.stackexchange.com/questions/9887/how-to-define-dynamic-parallel-stages-in-a-jenkinsfile
+                // https://www.incredibuild.com/blog/jenkins-parallel-builds-jenkins-distributed-builds
+                stage('Sims 0') {
+                    when { expression { env.BUILD_TYPE == 'hdl' } }
+                    agent { label 'docker' }
+                    steps { run_sim(0, 4) }
+                }
+                stage('Sims 1') {
+                    when { expression { env.BUILD_TYPE == 'hdl' } }
+                    agent { label 'docker' }
+                    steps { run_sim(1, 4) }
+                }
+                stage('Sims 2') {
+                    when { expression { env.BUILD_TYPE == 'hdl' } }
+                    agent { label 'docker' }
+                    steps { run_sim(2, 4) }
+                }
+                stage('Sims 3') {
+                    when { expression { env.BUILD_TYPE == 'hdl' } }
+                    agent { label 'docker' }
+                    steps { run_sim(3, 4) }
                 }
             }
         }
         stage('HW-Build') {
-            when { not { expression { env.BRANCH_NAME ==~ 'software.*' } } }
+            when { expression { env.BUILD_TYPE == 'hdl' } }
             parallel {
-                stage('Sims') {
-                    agent { label 'docker' }
-                    steps {
-                        sh_node './start_docker.sh $DOCKER_VIVADO make sims'
-                    }
-                    post { success {
-                        // junit has issues with paths, so soft-link it first
-                        sh_node 'ln -s sim/vhdl/sim_results.xml $WORKSPACE'
-                        junit 'sim_results.xml'
-                        // Archive sim results
-                        archiveArtifacts artifacts: 'sim/vhdl/xsim_tmp/simulate_*.log'
-                    } }
-                }
                 stage('Arty-35T') {
                     agent { label 'docker' }
                     steps {
-                        sh_node './start_docker.sh $DOCKER_VIVADO make arty_35t'
+                        docker_vivado_2016_3 'make arty_35t'
+                        check_vivado_build 'examples/arty_a7/switch_arty_a7_35t/switch_arty_a7_35t.runs'
+                        dir('examples/arty_a7/switch_arty_a7_35t/switch_arty_a7_35t.runs/impl_1') {
+                            archive_zip('switch_top_arty_a7_rmii.zip', './*.rpt')
+                            archiveArtifacts artifacts: 'switch_top_arty_a7_rmii.bit'
+                        }
                     }
-                    post { success { dir('examples/arty_a7/switch_arty_a7_35t/switch_arty_a7_35t.runs/impl_1') {
-                        archiveArtifacts artifacts: '*.rpt'
-                        archiveArtifacts artifacts: 'switch_top_arty_a7_rmii.bit'
-                    } } }
                 }
                 stage('Arty-Managed') {
                     agent { label 'docker' }
                     steps {
-                        sh_node './start_docker.sh $DOCKER_VIVADO make arty_managed_35t'
-                    }
-                    post { success {
-                        dir('examples/arty_managed/arty_managed_35t/arty_managed_35t.runs/impl_1') {
-                            archiveArtifacts artifacts: '*.rpt'
+                        docker_vivado_2019_1 'make arty_managed_35t'
+                        check_vivado_build 'examples/arty_managed/arty_managed_35t/arty_managed_35t.runs'
+                        dir('examples/arty_managed/arty_managed_35t/arty_managed_35t.runs') {
+                            archive_zip('arty_managed.zip', '*/*.rpt')
                         }
                         dir('examples/arty_managed') {
                             archiveArtifacts artifacts: 'arty_managed.hdf'
                             archiveArtifacts artifacts: 'arty*.bit'
                             archiveArtifacts artifacts: 'arty*.bin'
+                            archiveArtifacts artifacts: 'arty_managed_35t/*.svg'
                         }
-                    } }
+                    }
+                }
+                stage('NetFPGA') {
+                    agent { label 'docker' }
+                    steps {
+                        docker_vivado_2019_1 'make netfpga'
+                        check_vivado_build 'examples/netfpga/netfpga/netfpga.runs'
+                        dir('examples/netfpga/netfpga') {
+                            archiveArtifacts artifacts: 'netfpga.runs/impl_1/runme.log'
+                        }
+                        dir('examples/netfpga') {
+                            archiveArtifacts artifacts: 'netfpga.hdf'
+                            archiveArtifacts artifacts: 'netfpga*.bit'
+                            archiveArtifacts artifacts: 'netfpga*.bin'
+                            archiveArtifacts artifacts: 'netfpga/*.svg'
+                        }
+                    }
+                }
+                stage('VC707-ClkSynth') {
+                    agent { label 'docker' }
+                    steps {
+                        docker_vivado_2019_1 'make vc707_clksynth'
+                        check_vivado_build 'examples/vc707_clksynth/clock_synth/clock_synth.runs'
+                        dir('examples/vc707_clksynth/clock_synth') {
+                            archiveArtifacts artifacts: 'clock_synth.runs/impl_1/runme.log'
+                        }
+                        dir('examples/vc707_clksynth/clock_synth/clock_synth.runs/impl_1') {
+                            archiveArtifacts artifacts: 'clock_synth.bit'
+                        }
+                    }
+                }
+                stage('VC707-Managed') {
+                    agent { label 'docker' }
+                    steps {
+                        docker_vivado_2019_1 'make vc707_managed'
+                        check_vivado_build 'examples/vc707_managed/vc707_managed/vc707_managed.runs'
+                        dir('examples/vc707_managed/vc707_managed') {
+                            archiveArtifacts artifacts: 'vc707_managed.runs/impl_1/runme.log'
+                        }
+                        dir('examples/vc707_managed') {
+                            archiveArtifacts artifacts: 'vc707_managed/*.svg'
+                            archiveArtifacts artifacts: 'vc707_managed.hdf'
+                            archiveArtifacts artifacts: 'vc707*.bit'
+                            archiveArtifacts artifacts: 'vc707*.bin'
+                        }
+                    }
                 }
                 stage('AC701-SGMII') {
                     agent { label 'docker' }
                     steps {
-                        sh_node './start_docker.sh $DOCKER_VIVADO make proto_v1_sgmii'
+                        docker_vivado_2016_3 'make proto_v1_sgmii'
+                        check_vivado_build 'examples/ac701_proto_v1/ac701_proto_v1/ac701_proto_v1.runs'
+                        dir('examples/ac701_proto_v1/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1') {
+                            archive_zip('switch_top_ac701_sgmii.zip', './*.rpt')
+                            archiveArtifacts artifacts: 'switch_top_ac701_sgmii.bit'
+                        }
                     }
-                    post { success { dir('examples/ac701_proto_v1/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1') {
-                        archiveArtifacts artifacts: '*.rpt'
-                        archiveArtifacts artifacts: 'switch_top_ac701_sgmii.bit'
-                    } } }
                 }
                 stage('AC701-Router') {
                     agent { label 'docker' }
                     steps {
-                        sh_node './start_docker.sh $DOCKER_VIVADO make ac701_router'
+                        docker_vivado_2019_1 'make ac701_router'
+                        check_vivado_build 'examples/ac701_router/router_ac701/router_ac701.runs'
+                        dir('examples/ac701_router') {
+                            archiveArtifacts artifacts: 'router_ac701/*.svg'
+                        }
+                        dir('examples/ac701_router/router_ac701/router_ac701.runs') {
+                            archive_zip('router_ac701_wrapper.zip', '*/*.rpt')
+                        }
+                        dir('examples/ac701_router/router_ac701/router_ac701.runs/impl_1') {
+                            archiveArtifacts artifacts: 'router_ac701_wrapper.bit'
+                        }
                     }
-                    post { success { dir('examples/ac701_router/router_ac701/router_ac701.runs/impl_1') {
-                        archiveArtifacts artifacts: '*.rpt'
-                        archiveArtifacts artifacts: 'router_ac701_wrapper.bit'
-                    } } }
-                } /* Disable polarfire build due to Jenkins licensing and permission issues
+                }
                 stage('MPF-Splash') {
                     agent { label 'docker' }
+                    when { expression { false } }   // Disabled due to licensing issues.
                     steps {
                         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') { retry(2) {
-                            sh_node './start_docker.sh $DOCKER_LIBERO ./examples/mpf_splash/make_project.sh'
+                            docker_libero './examples/mpf_splash/make_project.sh'
                         } }
-                    }
-                    post { success { 
                         dir('examples/mpf_splash/switch_mpf_splash_rgmii_100T/designer/switch_top_mpf_splash_rgmii') {
                             archiveArtifacts artifacts: '*has_violations,*violations*.xml,*timing_constraints_coverage.xml'
                         }
                         dir('examples/mpf_splash/switch_mpf_splash_rgmii_100T') {
                             archiveArtifacts artifacts: 'switch_mpf_splash_rgmii_100T.job'
                             archiveArtifacts artifacts: 'switch_mpf_splash_rgmii_100T_job.digest'
-                        } 
-                    } }
-                } */
+                        }
+                    }
+                }
                 stage('iCE40-rmii-serial') {
                     agent { label 'docker' }
                     steps {
-                        sh_node './start_docker.sh $DOCKER_YOSYS make ice40_rmii_serial'
+                        docker_yosys 'make ice40_rmii_serial'
+                        dir('examples/ice40_hx8k/switch_top_rmii_serial_adapter') {
+                            archiveArtifacts artifacts: 'switch_top_rmii_serial_adapter.bin'
+                        }
                     }
-                    post { success { dir('examples/ice40_hx8k/switch_top_rmii_serial_adapter') {
-                        archiveArtifacts artifacts: 'switch_top_rmii_serial_adapter.bin'
-                    } } }
                 }
             }
         }
     }
+    post { always {
+        // Keep failed builds for debugging, otherwise discard to save disk space.
+        cleanWs cleanWhenFailure: false, cleanWhenUnstable: false, notFailBuild: true
+    } }
 }

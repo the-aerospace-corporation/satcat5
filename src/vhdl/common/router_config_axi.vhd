@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -41,10 +41,14 @@
 --                  MSB = '1' for any other time reference.
 --      Base + 20 = Number of dropped packets since last query.
 --                  Write anything to update, then read after a short delay.
---      Base + 24 = LSBs of egress DMAC (31:00)
---      Base + 28 = 16-bit reserved + MSBs of egress DMAC (47:32)
---      Base + 32 = LSBs of ingress DMAC (31:00)
---      Base + 36 = 16-bit reserved + MSBs of ingress DMAC (47:32)
+--      Base + 24 = LSBs of non-IPv4 egress DMAC (31:00)
+--      Base + 28 = 16-bit reserved + MSBs of non-IPv4 egress DMAC (47:32)
+--      Base + 32 = LSBs of non-IPv4 ingress DMAC (31:00)
+--      Base + 36 = 16-bit reserved + MSBs of non-IPv4 ingress DMAC (47:32)
+--      Base + 40 = LSBs of IPv4 egress DMAC (31:00)
+--      Base + 44 = 16-bit reserved + MSBs of IPv4 egress DMAC (47:32)
+--      Base + 48 = LSBs of IPv4 ingress DMAC (31:00)
+--      Base + 52 = 16-bit reserved + MSBs of IPv4 ingress DMAC (47:32)
 --      All other addresses reserved.
 --
 
@@ -59,10 +63,13 @@ use     work.router_common.all;
 entity router_config_axi is
     generic (
     CLKREF_HZ       : positive := 125_000_000;      -- Frequency of rtr_clk
+    IPV4_REG_EN     : boolean := true;              -- Enable IPV4_* registers?
     NOIP_REG_EN     : boolean := true;              -- Enable NOIP_* registers?
     R_IP_ADDR       : ip_addr_t := x"C0A80101";     -- Default = 192.168.1.1
     R_SUB_ADDR      : ip_addr_t := x"C0A80100";     -- Default = 192.168.0.0
     R_SUB_MASK      : ip_addr_t := x"FFFFFF00";     -- Default = 255.255.255.0
+    R_IPV4_DMAC_EG  : mac_addr_t := x"DEADBEEFCAFE";
+    R_IPV4_DMAC_IG  : mac_addr_t := x"DEADBEEFCAFE";
     R_NOIP_DMAC_EG  : mac_addr_t := MAC_ADDR_BROADCAST;
     R_NOIP_DMAC_IG  : mac_addr_t := MAC_ADDR_BROADCAST;
     ADDR_WIDTH      : positive := 32;               -- AXI-Lite address width
@@ -73,6 +80,8 @@ entity router_config_axi is
     cfg_sub_addr    : out ip_addr_t;
     cfg_sub_mask    : out ip_addr_t;
     cfg_reset_p     : out std_logic;
+    ipv4_dmac_eg    : out mac_addr_t;
+    ipv4_dmac_ig    : out mac_addr_t;
     noip_dmac_eg    : out mac_addr_t;
     noip_dmac_ig    : out mac_addr_t;
 
@@ -128,6 +137,8 @@ signal reg_running      : std_logic := '0';
 signal reg_ip_addr      : ip_addr_t := R_IP_ADDR;
 signal reg_sub_addr     : ip_addr_t := R_SUB_ADDR;
 signal reg_sub_mask     : ip_addr_t := R_SUB_MASK;
+signal reg_ipv4_dmac_eg : mac_addr_t := R_IPV4_DMAC_EG;
+signal reg_ipv4_dmac_ig : mac_addr_t := R_IPV4_DMAC_IG;
 signal reg_noip_dmac_eg : mac_addr_t := R_NOIP_DMAC_EG;
 signal reg_noip_dmac_ig : mac_addr_t := R_NOIP_DMAC_IG;
 
@@ -151,6 +162,8 @@ cfg_reset_p     <= not reg_running;
 cfg_ip_addr     <= reg_ip_addr;
 cfg_sub_addr    <= reg_sub_addr;
 cfg_sub_mask    <= reg_sub_mask;
+ipv4_dmac_eg    <= reg_ipv4_dmac_eg;
+ipv4_dmac_ig    <= reg_ipv4_dmac_ig;
 noip_dmac_eg    <= reg_noip_dmac_eg;
 noip_dmac_ig    <= reg_noip_dmac_ig;
 
@@ -227,6 +240,8 @@ begin
             reg_ip_addr         <= R_IP_ADDR;
             reg_sub_addr        <= R_SUB_ADDR;
             reg_sub_mask        <= R_SUB_MASK;
+            reg_ipv4_dmac_eg    <= R_IPV4_DMAC_EG;
+            reg_ipv4_dmac_ig    <= R_IPV4_DMAC_IG;
             reg_noip_dmac_eg    <= R_NOIP_DMAC_EG;
             reg_noip_dmac_ig    <= R_NOIP_DMAC_IG;
         elsif (wr_exec = '0') then
@@ -248,6 +263,14 @@ begin
             reg_noip_dmac_ig(31 downto 0) <= wr_data;
         elsif (wr_addr = 9 and NOIP_REG_EN) then
             reg_noip_dmac_ig(47 downto 32) <= wr_data(15 downto 0);
+        elsif (wr_addr = 10 and IPV4_REG_EN) then
+            reg_ipv4_dmac_eg(31 downto 0) <= wr_data;
+        elsif (wr_addr = 11 and IPV4_REG_EN) then
+            reg_ipv4_dmac_eg(47 downto 32) <= wr_data(15 downto 0);
+        elsif (wr_addr = 12 and IPV4_REG_EN) then
+            reg_ipv4_dmac_ig(31 downto 0) <= wr_data;
+        elsif (wr_addr = 13 and IPV4_REG_EN) then
+            reg_ipv4_dmac_ig(47 downto 32) <= wr_data(15 downto 0);
         end if;
 
         -- Clock-domain transition for the timestamp counter.
@@ -350,6 +373,14 @@ begin
                 rd_data <= reg_noip_dmac_ig(31 downto 0);
             elsif (addr_temp = 9 and NOIP_REG_EN) then
                 rd_data <= x"0000" & reg_noip_dmac_ig(47 downto 32);
+            elsif (addr_temp = 10 and IPV4_REG_EN) then
+                rd_data <= reg_ipv4_dmac_eg(31 downto 0);
+            elsif (addr_temp = 11 and IPV4_REG_EN) then
+                rd_data <= x"0000" & reg_ipv4_dmac_eg(47 downto 32);
+            elsif (addr_temp = 12 and IPV4_REG_EN) then
+                rd_data <= reg_ipv4_dmac_ig(31 downto 0);
+            elsif (addr_temp = 13 and IPV4_REG_EN) then
+                rd_data <= x"0000" & reg_ipv4_dmac_ig(47 downto 32);
             else
                 rd_data <= (others => '0');
             end if;

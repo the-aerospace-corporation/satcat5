@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -84,6 +84,12 @@ entity router_inline_top is
     router_sub_mask     : in  ip_addr_t;
     router_time_msec    : in  timestamp_t;
 
+    -- Fixed destination for IPv4 packets on each subnet, if enabled.
+    -- Do not use the broadcast address, per RFC 1812 section 4.2.3.1.
+    -- (Only used if PROXY_EN_* = false and IPV4_DMAC_REPLACE = true)
+    ipv4_dmac_egress    : in  mac_addr_t := x"DEADBEEFCAFE";
+    ipv4_dmac_ingress   : in  mac_addr_t := x"DEADBEEFCAFE";
+
     -- Fixed destination for non-IPv4 packets on each subnet, if enabled.
     -- (Only used if NOIP_BLOCK_ALL = false and NOIP_DMAC_REPLACE = true)
     noip_dmac_egress    : in  mac_addr_t := (others => '1');
@@ -166,10 +172,12 @@ lcl_rx_data.write   <= ig_out.valid;
 lcl_rx_data.rxerr   <= error_combined;
 lcl_rx_data.rate    <= net_rx_data.rate;
 lcl_rx_data.status  <= net_rx_data.status;
+lcl_rx_data.tsof    <= net_tx_ctrl.tnow;
 lcl_rx_data.reset_p <= reset_p;
 ig_out.ready        <= '1';
 
 lcl_tx_ctrl.clk     <= clk_main;
+lcl_tx_ctrl.tnow    <= net_tx_ctrl.tnow;
 lcl_tx_ctrl.txerr   <= net_tx_ctrl.txerr;
 lcl_tx_ctrl.reset_p <= reset_p;
 lcl_tx_ctrl.ready   <= eg_inraw.ready;
@@ -335,6 +343,7 @@ u_ig_gate : entity work.router_ip_gateway
     icmp_ready      => aux_ig_gate.ready,
     router_ipaddr   => router_ip_addr,
     router_submask  => router_sub_mask,
+    ipv4_dmac       => ipv4_dmac_ingress,
     noip_dmac       => noip_dmac_ingress,
     time_msec       => router_time_msec,
     clk             => clk_main,
@@ -479,6 +488,7 @@ u_eg_gate : entity work.router_ip_gateway
     router_ipaddr   => router_ip_addr,
     router_submask  => router_sub_mask,
     router_link_ok  => link_ok,
+    ipv4_dmac       => ipv4_dmac_egress,
     noip_dmac       => noip_dmac_egress,
     time_msec       => router_time_msec,
     clk             => clk_main,

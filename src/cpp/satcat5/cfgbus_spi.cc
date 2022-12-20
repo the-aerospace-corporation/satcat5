@@ -31,8 +31,8 @@ static inline u32 CMD_START(u32 x)
     {return CMD_OPCODE(0, x);}
 static inline u32 CMD_TXONLY(u32 x)
     {return CMD_OPCODE(1, x);}
-static inline u32 CMD_TXRX(u32 x)
-    {return CMD_OPCODE(2, x);}
+// static inline u32 CMD_TXRX(u32 x)
+//     {return CMD_OPCODE(2, x);}
 static const u32 CMD_RXONLY = CMD_OPCODE(3, 0);
 static const u32 CMD_STOP   = CMD_OPCODE(4, 0);
 

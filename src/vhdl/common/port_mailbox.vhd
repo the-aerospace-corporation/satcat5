@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -67,9 +67,10 @@ library ieee;
 use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
-use     work.common_primitives.sync_reset;
+use     work.common_primitives.all;
 use     work.cfgbus_common.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_mailbox is
@@ -79,12 +80,17 @@ entity port_mailbox is
     IRQ_ENABLE  : boolean := true;      -- Enable ConfigBus interrupt?
     MIN_FRAME   : natural := 64;        -- Minimum output frame size
     APPEND_FCS  : boolean := true;      -- Append FCS to each sent frame??
-    STRIP_FCS   : boolean := true);     -- Remove FCS from received frames?
+    STRIP_FCS   : boolean := true;      -- Remove FCS from received frames?
+    CFG_CLK_HZ  : natural := 0;         -- ConfigBus clock rate (for PTP)
+    VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
     -- Internal Ethernet port.
     rx_data     : out port_rx_m2s;
     tx_data     : in  port_tx_s2m;
     tx_ctrl     : out port_tx_m2s;
+
+    -- Global reference for PTP timestamps, if enabled.
+    ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
 
     -- ConfigBus interface.
     cfg_cmd     : in  cfgbus_cmd;
@@ -100,6 +106,10 @@ constant OPCODE_RESET   : byte_t := x"FF";
 -- Internal reset signal
 signal port_areset  : std_logic;
 signal port_reset_p : std_logic;
+
+-- Precision timestamps, if enabled.
+signal lcl_tstamp   : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tvalid   : std_logic := '0';
 
 -- Parse and execute commands from CPU.
 signal cfg_status   : cfgbus_word;
@@ -129,10 +139,12 @@ begin
 rx_data.clk     <= cfg_cmd.clk;
 rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1);
-rx_data.status  <= (0 => port_reset_p, others => '0');
+rx_data.status  <= (0 => port_reset_p, 1 => lcl_tvalid, others => '0');
+rx_data.tsof    <= lcl_tstamp;
 rx_data.reset_p <= port_reset_p;
 
 tx_ctrl.clk     <= cfg_cmd.clk;
+tx_ctrl.tnow    <= lcl_tstamp;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= port_reset_p;
 
@@ -144,6 +156,20 @@ u_rst : sync_reset
     in_reset_p  => port_areset,
     out_reset_p => port_reset_p,
     out_clk     => cfg_cmd.clk);
+
+-- If enabled, generate timestamps with a Vernier synchronizer.
+gen_ptp : if VCONFIG.input_hz > 0 generate
+    u_tstamp : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => CFG_CLK_HZ)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => cfg_cmd.clk,
+        user_ctr    => lcl_tstamp,
+        user_lock   => lcl_tvalid,
+        user_rst_p  => port_reset_p);
+end generate;
 
 -- Decode command word + small FIFO for flow-control.
 cmd_last    <= cmd_exec and bool2bit(cmd_opcode = OPCODE_WRFINAL);

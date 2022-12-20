@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -33,11 +33,16 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_primitives.sync_toggle2pulse;
+use     work.common_functions.all;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_sgmii_gtx is
+    generic (
+    AUTONEG_EN  : boolean;          -- Enable or disable autonegotiation
+    VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
     -- External SGMII interfaces (direct to GTX pins)
     sgmii_rxp   : in  std_logic;
@@ -51,10 +56,13 @@ entity port_sgmii_gtx is
     ptx_ctrl    : out port_tx_m2s;
     port_shdn   : in  std_logic;
 
+    -- Global reference for PTP timestamps, if enabled.
+    ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
+
     -- Reference clocks and reset.
-    gtref_125p  : in  std_logic;    -- GTX RefClk
-    gtref_125n  : in  std_logic;    -- (Differential)
-    clkin_200   : in  std_logic;    -- IDELAYCTRL clock
+    gtrefclk_p  : in  std_logic;    -- GTX RefClk, 125MHz on 7 series
+    gtrefclk_n  : in  std_logic;    -- (Differential)
+    clkin_bufg  : in  std_logic;    -- IDELAYCTRL or DRP clock
     clkout_125  : out std_logic);   -- Optional 125 MHz output
 end port_sgmii_gtx;
 
@@ -66,7 +74,6 @@ component sgmii_gtx0 is
     gtrefclk_p              : in  std_logic;
     gtrefclk_n              : in  std_logic;
     gtrefclk_out            : out std_logic;
-    gtrefclk_bufg_out       : out std_logic;
     txp                     : out std_logic;
     txn                     : out std_logic;
     rxp                     : in std_logic;
@@ -94,9 +101,7 @@ component sgmii_gtx0 is
     speed_is_100            : in std_logic;
     status_vector           : out std_logic_vector(15 downto 0);
     reset                   : in std_logic;
-    signal_detect           : in std_logic;
-    gt0_qplloutclk_out      : out std_logic;
-    gt0_qplloutrefclk_out   : out std_logic);
+    signal_detect           : in std_logic);
 end component;
 
 -- Control signals
@@ -112,6 +117,15 @@ signal status_badsymb   : std_logic;
 signal status_phyok     : std_logic;
 signal aux_err_async    : std_logic;
 signal aux_err_sync     : std_logic;
+
+-- Receiver timestamp logic, if enabled.
+signal txrx_reset       : std_logic := '0';
+signal rx_treset        : std_logic := '0';
+signal rx_tstamp        : tstamp_t := TSTAMP_DISABLED;
+signal rx_tvalid        : std_logic := '0';
+signal tx_treset        : std_logic := '0';
+signal tx_tstamp        : tstamp_t := TSTAMP_DISABLED;
+signal tx_tvalid        : std_logic := '0';
 
 -- IP-core provides a quasi-GMII interface.
 signal gmii_user_clk2   : std_logic;
@@ -136,8 +150,54 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_clk      => gmii_tx_clk,
     tx_pwren    => txrx_pwren,
     tx_pkten    => tx_pkten,
+    tx_tstamp   => tx_tstamp,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl);
+
+-- Receiver timestamp logic, if enabled.
+-- TODO: This logic doesn't have visibility into the Xilinx SGMII IP core.
+--  As a result, various internal delays will result in uncontrolled error.
+--  The error will likely be an integer multiple of the bit period and may
+--  be quasi-static on each reset.  The end-to-end result could be up to
+--  +/- 100 nsec of uncorrectable bias.  Later versions should integrate
+--  the core's PTP timestamps to correct this deficiency.
+gen_tstamp : if VCONFIG.input_hz > 0 generate
+    txrx_reset <= not clk_locked;
+
+    u_rx_treset : sync_reset
+        port map(
+        in_reset_p  => txrx_reset,
+        out_reset_p => rx_treset,
+        out_clk     => gmii_rx_clk);
+
+    u_tx_treset : sync_reset
+        port map(
+        in_reset_p  => txrx_reset,
+        out_reset_p => tx_treset,
+        out_clk     => gmii_tx_clk);
+
+    u_rx_tstamp : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => 125_000_000)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => gmii_rx_clk,
+        user_ctr    => rx_tstamp,
+        user_lock   => rx_tvalid,
+        user_rst_p  => rx_treset);
+
+    u_tx_tstamp : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => 125_000_000)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => gmii_tx_clk,
+        user_ctr    => tx_tstamp,
+        user_lock   => tx_tvalid,
+        user_rst_p  => tx_treset);
+end generate;
 
 -- Remove preambles from the incoming data:
 u_amble_rx : entity work.eth_preamble_rx
@@ -149,12 +209,14 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_dv      => gmii_rx_dv,
     raw_err     => gmii_rx_er,
     rate_word   => get_rate_word(1000),
+    rx_tstamp   => rx_tstamp,
     aux_err     => aux_err_sync,
     status      => gmii_status,
     rx_data     => prx_data);
 
 -- Flush received data if we get an 8b/10b decode error.
 aux_err_async <= clk_locked and (status_disperr or status_badsymb);
+
 u_errsync : sync_toggle2pulse
     generic map(RISING_ONLY => true)
     port map(
@@ -167,11 +229,11 @@ txrx_pwren  <= not port_shdn;
 tx_pkten    <= clk_locked and status_linkok;
 
 config_vec <= (
-    4 => '1',       -- Enable auto-negotation
-    3 => '0',       -- Normal GMII operation
-    2 => port_shdn, -- Power-down strobe
-    1 => '0',       -- Disable loopback
-    0 => '0');      -- Bidirectional mode
+    4 => bool2bit(AUTONEG_EN),  -- Enable/disable auto-negotation
+    3 => '0',                   -- Normal GMII operation
+    2 => port_shdn,             -- Power-down strobe
+    1 => '0',                   -- Disable loopback
+    0 => '0');                  -- Bidirectional mode
 
 status_linkok   <= status_vec(0);   -- SGMII link ready for use
 status_sync     <= status_vec(1);   -- 8b/10b initial sync
@@ -185,6 +247,7 @@ gmii_status <= (
     2 => status_sync,
     3 => status_linkok,
     4 => status_phyok,
+    5 => rx_tvalid and tx_tvalid,
     others => '0');
 
 -- Instantiate the IP-core.
@@ -195,10 +258,9 @@ gmii_tx_clk <= gmii_user_clk2;  -- This is the only 125 MHz clock avail from cor
 
 u_ipcore : sgmii_gtx0
     port map(
-    gtrefclk_p              => gtref_125p,
-    gtrefclk_n              => gtref_125n,
+    gtrefclk_p              => gtrefclk_p,
+    gtrefclk_n              => gtrefclk_n,
     gtrefclk_out            => clkout_125,
-    gtrefclk_bufg_out       => open,
     txp                     => sgmii_txp,
     txn                     => sgmii_txn,
     rxp                     => sgmii_rxp,
@@ -210,7 +272,7 @@ u_ipcore : sgmii_gtx0
     rxuserclk2_out          => open,            -- Rx 62.5 MHz
     pma_reset_out           => open,
     mmcm_locked_out         => clk_locked,
-    independent_clock_bufg  => clkin_200,       -- Clock for control logic
+    independent_clock_bufg  => clkin_bufg,      -- Clock for control logic
     sgmii_clk_r             => open,            -- Line-rate Tx clock
     sgmii_clk_f             => open,
     sgmii_clk_en            => open,
@@ -226,8 +288,6 @@ u_ipcore : sgmii_gtx0
     speed_is_100            => '0',             -- Always 1000 Mbps
     status_vector           => status_vec,      -- See PG047, Table 2-41
     reset                   => port_shdn,       -- Reset the entire core
-    signal_detect           => '1',
-    gt0_qplloutclk_out      => open,
-    gt0_qplloutrefclk_out   => open);
+    signal_detect           => '1');
 
 end port_sgmii_gtx;

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -101,6 +101,16 @@ signal scrub_busy   : std_logic := '0';
 signal cfg_prmask   : port_mask_t := (others => '0');
 signal error_change : std_logic := '0';     -- MAC address changed ports
 signal error_table  : std_logic := '0';     -- Table integrity check failed
+signal read_index   : integer range 0 to TABLE_SIZE-1 := 0;
+signal read_valid   : std_logic := '0';
+signal read_ready   : std_logic;
+signal read_addr    : mac_addr_t;
+signal read_psrc    : port_idx_t;
+signal read_found   : std_logic;
+signal write_addr   : mac_addr_t := (others => '0');
+signal write_psrc   : integer range 0 to PORT_COUNT-1 := 0;
+signal write_valid  : std_logic := '0';
+signal write_ready  : std_logic;
 
 -- Overall test state
 signal got_packet   : std_logic := '0';
@@ -242,18 +252,24 @@ begin
                         pkt_src := make_mac(4);
                         pkt_dly := TCAM_DELAY;  -- Delay before next packet
                     elsif (pkt_count = 1) then
-                        -- From address x05 to x04 (should match)
+                        -- From address x05 to x04 (should match learned address)
                         pkt_dst := make_mac(4);
                         pkt_src := make_mac(5);
                         pkt_dly := TCAM_DELAY;
-                    else
+                    elsif (pkt_count = 2) then
                         -- From address x04 to x06 (should miss)
+                        pkt_dst := make_mac(6);
+                        pkt_src := make_mac(4);
+                        pkt_dly := TCAM_DELAY;
+                        -- Note: At the end of this packet, manually write x06 to the MAC table.
+                    else
+                        -- From address x04 to x06 (should match manual address)
                         pkt_dst := make_mac(6);
                         pkt_src := make_mac(4);
                         pkt_dly := TCAM_DELAY;
                     end if;
                 elsif (pkt_mode = 1) then
-                    -- Fill the address table (already have x04, x05)
+                    -- Fill the address table (already have x04, x05, x06)
                     -- (Leave a pause after each one to update the table.)
                     pkt_dst := make_mac(pkt_count + 5);
                     pkt_src := make_mac(pkt_count + 6);
@@ -351,7 +367,7 @@ begin
             -- After end of packet, increment generator state.
             if (bcount < pkt_len) then
                 null;  -- Waiting for end of packet.
-            elsif (pkt_mode = 0 and pkt_count = 2) then
+            elsif (pkt_mode = 0 and pkt_count = 3) then
                 -- Finished initial tests.
                 pkt_count <= 0;
                 pkt_mode  <= pkt_mode + 1;
@@ -385,6 +401,48 @@ begin
         -- Drive the "real" last and write strobes.
         in_last  <= temp_last;
         in_write <= temp_write;
+
+        -- Drive manual "write" interface at selected times.
+        if (reset_p = '1' or write_ready = '1') then
+            write_addr  <= (others => '0');
+            write_psrc  <= 0;
+            write_valid <= '0';
+        elsif (pkt_mode = 0 and pkt_count = 2 and temp_last = '1' and temp_write = '1') then
+            write_addr  <= x"060606060606";
+            write_psrc  <= mac2port(x"06");
+            write_valid <= '1';
+            mac_known(6) := '1';
+        end if;
+
+        -- Compare manual "read" results against expected status.
+        if (read_valid = '1' and read_ready = '1') then
+            if (pkt_mode = 0 and read_index > 2) then
+                assert (read_found = '0' and read_addr = MAC_ADDR_BROADCAST)
+                    report "Table entry should be empty." severity error;
+            elsif (pkt_mode = 2 or pkt_mode = 4) then
+                bnext := unsigned(read_addr(7 downto 0));
+                assert (read_found = '1' and read_addr /= MAC_ADDR_BROADCAST)
+                    report "Table entry should be filled." severity error;
+                assert (read_psrc = mac2port(bnext))
+                    report "Table read mismatch: Got " & integer'image(read_psrc)
+                        & " expected " & integer'image(mac2port(bnext))
+                    severity error;
+            end if;
+        end if;
+
+        -- Issue manual "read" commands whenever the table is quiet.
+        if (reset_p = '1') then
+            read_valid  <= '0';         -- Global reset
+            read_index  <= 0;
+        elsif (read_valid = '0' or read_ready = '1') then
+            if (pkt_mode = 0 or pkt_mode = 2 or pkt_mode = 4) then
+                read_valid <= '1';      -- Start of new read
+                uniform(seed1, seed2, rand);
+                read_index <= integer(floor(rand * real(TABLE_SIZE)));
+            else
+                read_valid <= '0';      -- Idle
+            end if;
+        end if;
 
         -- Update post-packet delay countdown, if requested.
         if (reset_p = '1') then
@@ -453,7 +511,6 @@ uut : entity work.mac_lookup
     IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => TABLE_SIZE,
-    MISS_BCAST      => MISS_BCAST,
     CACHE_POLICY    => TCAM_REPL_WRAP)
     port map(
     in_psrc         => in_psrc,
@@ -465,9 +522,20 @@ uut : entity work.mac_lookup
     out_pmask       => out_pdst,
     out_valid       => out_valid,
     out_ready       => out_ready,
+    cfg_mbmask      => (others => MISS_BCAST),
     cfg_prmask      => cfg_prmask,
     error_change    => error_change,
     error_table     => error_table,
+    read_index      => read_index,
+    read_valid      => read_valid,
+    read_ready      => read_ready,
+    read_addr       => read_addr,
+    read_psrc       => read_psrc,
+    read_found      => read_found,
+    write_addr      => write_addr,
+    write_psrc      => write_psrc,
+    write_valid     => write_valid,
+    write_ready     => write_ready,
     clk             => clk,
     reset_p         => reset_p);
 

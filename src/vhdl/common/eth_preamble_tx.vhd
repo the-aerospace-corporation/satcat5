@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -37,6 +37,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity eth_preamble_tx is
@@ -55,6 +56,7 @@ entity eth_preamble_tx is
     tx_frmst    : in  std_logic := '1'; -- Start-of-frame accepted?
     tx_cken     : in  std_logic := '1'; -- Clock-enable strobe
     tx_idle     : in  std_logic_vector(3 downto 0) := (others => '0');
+    tx_tstamp   : in  tstamp_t := TSTAMP_DISABLED;
 
     -- Byte-repetition: Each input byte is repeated N+1 times.
     -- (Optional. If unused, leave this port disconnected or tied to zero.)
@@ -105,6 +107,7 @@ rep_read        <= rep_read_i;
 
 tx_ctrl.clk     <= tx_clk;
 tx_ctrl.ready   <= not fifo_full;
+tx_ctrl.tnow    <= tx_tstamp;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= not tx_pwren;
 

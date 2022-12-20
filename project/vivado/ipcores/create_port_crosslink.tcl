@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,26 +30,23 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     port_crosslink.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_crosslink
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_port_crosslink.vhd
 
 # Connect I/O ports
 ipcore_add_ethport PortA pa master
 ipcore_add_ethport PortB pb master
+ipcore_add_refopt PtpRef tref
 ipcore_add_clock ref_clk {PortA PortB}
 ipcore_add_reset reset_p ACTIVE_HIGH
 
 # Set parameters
-ipcore_add_param RUNT_PORTA bool false
-ipcore_add_param RUNT_PORTB bool false
-ipcore_add_param RATE_DIV long 2
+ipcore_add_param RUNT_PORTA bool false \
+    {Allow frames shorter than 64 bytes on PortA?}
+ipcore_add_param RUNT_PORTB bool false \
+    {Allow frames shorter than 64 bytes on PortB?}
+ipcore_add_param RATE_DIV long 2 \
+    {Throughput limiter with maximum duty cycle = 1/N}
 
 # Package the IP-core.
 ipcore_finished

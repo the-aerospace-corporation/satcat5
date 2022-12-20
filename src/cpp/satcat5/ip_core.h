@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -29,7 +29,7 @@ namespace satcat5 {
             u32 value;
 
             constexpr Addr() : value(0) {}
-            constexpr Addr(u32 ip) : value(ip) {}
+            constexpr Addr(u32 ip) : value(ip) {}   // NOLINT
             constexpr Addr(u16 msb, u16 lsb)
                 : value(65536ul * msb + lsb) {}
             constexpr Addr(u8 a, u8 b, u8 c, u8 d)
@@ -37,6 +37,8 @@ namespace satcat5 {
 
             inline bool operator==(const satcat5::ip::Addr& other) const
                 {return value == other.value;}
+            inline bool operator!=(const satcat5::ip::Addr& other) const
+                {return value != other.value;}
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u32(value);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -49,10 +51,12 @@ namespace satcat5 {
         struct Port {
             u16 value;
 
-            constexpr Port(u16 port) : value(port) {}
+            constexpr Port(u16 port) : value(port) {}   // NOLINT
 
             inline bool operator==(const satcat5::ip::Port& other) const
                 {return value == other.value;}
+            inline bool operator!=(const satcat5::ip::Port& other) const
+                {return value != other.value;}
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
             inline bool read_from(satcat5::io::Readable* rd)

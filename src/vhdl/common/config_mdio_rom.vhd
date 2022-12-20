@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,6 +31,8 @@
 --     Bit 20-16: Register address
 --     Bit 15-00: Register data
 --
+-- A package is provided to enable easier ROM generation.
+--
 -- The command sequence is set at build time (i.e., during synthesis),
 -- specified as a single std_logic_vector of concatenated command words.
 -- Concatenation can be in either order, but MSW-first (big-endian on
@@ -42,6 +44,29 @@
 -- Indirect registers (e.g., MMD3, MMD7, etc.) can be accessed by
 -- using multiple consecutive regular MDIO commands.
 --
+
+library ieee;
+use     ieee.numeric_std.all;
+use     ieee.std_logic_1164.all;
+use     work.common_functions.all;
+
+package config_mdio_rom_creation is
+    subtype config_mdio_rom_word is std_logic_vector(31 downto 0);
+
+    function config_mdio_rom_cmd(dly, phy, reg, dat : natural)
+        return config_mdio_rom_word;
+end package;
+
+package body config_mdio_rom_creation is
+    function config_mdio_rom_cmd(dly, phy, reg, dat : natural)
+        return config_mdio_rom_word
+    is
+        variable cmd : config_mdio_rom_word :=
+            i2s(dly, 6) & i2s(phy, 5) & i2s(reg, 5) & i2s(dat, 16);
+    begin
+        return cmd;
+    end function;
+end package body;
 
 library ieee;
 use     ieee.numeric_std.all;
@@ -61,6 +86,9 @@ entity config_mdio_rom is
     mdio_data   : out std_logic;
     mdio_oe     : out std_logic;
 
+    -- Status information.
+    status_done : out std_logic;
+
     -- System interface
     ref_clk     : in  std_logic;    -- Reference clock
     reset_p     : in  std_logic);   -- Active-high reset
@@ -69,11 +97,11 @@ end config_mdio_rom;
 architecture rtl of config_mdio_rom is
 
 -- Useful constants:
-constant ROM_NWORDS : integer := ROM_VECTOR'length / 32;    -- Round down
-constant ONE_MSEC   : integer := (CLKREF_HZ + 999) / 1000;  -- Round up
+constant ROM_WORDS  : integer := ROM_VECTOR'length / 32;    -- Round down
+constant ONE_MSEC   : integer := div_ceil(CLKREF_HZ, 1000); -- Round up
 
 -- Read data from ROM, one word at a time.
-signal rom_addr     : integer range 0 to ROM_NWORDS-1 := 0;
+signal rom_addr     : integer range 0 to ROM_WORDS-1 := 0;
 signal rom_data     : std_logic_vector(31 downto 0) := (others => '0');
 
 -- Interpreter state machine.
@@ -93,8 +121,11 @@ signal cmd_ready    : std_logic;
 begin
 
 -- Sanity check on input vector.
-assert (ROM_VECTOR'length = 32*ROM_NWORDS)
+assert (ROM_VECTOR'length = 32*ROM_WORDS)
     report "ROM_VECTOR length should be a multiple of 32 bits." severity error;
+
+-- Top-level outputs.
+status_done <= bool2bit(cmd_state = ST_DONE);
 
 -- Read data from ROM, one word at a time.
 -- (Keep this as a separate process, no reset, to allow BRAM inferrence.)
@@ -102,8 +133,8 @@ p_rom : process(ref_clk)
 begin
     if rising_edge(ref_clk) then
         if (MSW_FIRST) then
-            rom_data <= ROM_VECTOR(32*(ROM_NWORDS-rom_addr)-1
-                            downto 32*(ROM_NWORDS-rom_addr)-32);
+            rom_data <= ROM_VECTOR(32*(ROM_WORDS-rom_addr)-1
+                            downto 32*(ROM_WORDS-rom_addr)-32);
         else
             rom_data <= ROM_VECTOR(32*rom_addr+31 downto 32*rom_addr);
         end if;
@@ -174,7 +205,7 @@ begin
             -- After the last byte, start next command if applicable.
             if (cmd_bcount < 7) then
                 cmd_bcount <= cmd_bcount + 1;
-            elsif (rom_addr + 1 < ROM_NWORDS) then
+            elsif (rom_addr + 1 < ROM_WORDS) then
                 rom_addr   <= rom_addr + 1;
                 cmd_bcount <= 0;
                 cmd_state  <= ST_READ;  -- Start next command

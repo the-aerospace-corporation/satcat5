@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -149,13 +149,17 @@ end process;
 
 -- Unit under test.
 uut : entity work.sgmii_data_sync
-    generic map(LANE_COUNT => LANE_COUNT)
+    generic map(
+    DLY_STEP    => (others => '0'),
+    LANE_COUNT  => LANE_COUNT)
     port map(
     in_data     => in_data,
     in_next     => in_next,
+    in_tsof     => (others => '0'),
     aux_data    => aux_data,
     aux_next    => aux_next,
     out_data    => out_data,
+    out_tsof    => open,            -- Not tested
     out_next    => out_next,
     out_locked  => out_locked,
     clk         => clk_100,
@@ -255,7 +259,7 @@ end process;
 
 -- Overall test control
 p_test : process
-    procedure run_test(nwords : integer; dfreq_ppm, jitter_ui : real) is
+    procedure run_test(num_words : integer; dfreq_ppm, jitter_ui : real) is
         variable temp_ctr : integer := 0;
     begin
         -- Set test conditions and reset receiver.
@@ -270,12 +274,12 @@ p_test : process
         wait for 1 us;
 
         -- Wait until we've sent N words...
-        wait until (in_count >= nwords);
+        wait until (in_count >= num_words);
 
         -- Confirm received data looks OK.
-        assert (ref_locked = '1' and ref_checked > nwords/2)
+        assert (ref_locked = '1' and ref_checked > num_words/2)
             report "End of test, receiver not locked." severity error;
-        if (ref_errors > nwords/100) then
+        if (ref_errors > num_words/100) then
             report "Bit errors: " & integer'image(ref_errors)
                           & " / " & integer'image(ref_checked)
                 severity error;
@@ -300,30 +304,30 @@ p_test : process
             report "No signal, receiver still locked." severity error;
     end procedure;
 
-    constant NWORDS_SHORT   : integer := 50000;
-    constant NWORDS_MEDIUM  : integer := 200000;
-    constant NWORDS_LONG    : integer := 1000000;
+    constant WORDS_SHORT    : integer := 50000;
+    constant WORDS_MEDIUM   : integer := 200000;
+    constant WORDS_LONG     : integer := 1000000;
 
 
     procedure run_sweep(jitter_ui : real) is
     begin
         report "Starting frequency sweep";
-        run_test(NWORDS_MEDIUM,   20.0, jitter_ui);
-        run_test(NWORDS_MEDIUM,   40.0, jitter_ui);
-        run_test(NWORDS_MEDIUM,   80.0, jitter_ui);
-        run_test(NWORDS_MEDIUM,  120.0, jitter_ui);
-        run_test(NWORDS_MEDIUM,  -20.0, jitter_ui);
-        run_test(NWORDS_MEDIUM,  -40.0, jitter_ui);
-        run_test(NWORDS_MEDIUM,  -80.0, jitter_ui);
-        run_test(NWORDS_MEDIUM, -120.0, jitter_ui);
+        run_test(WORDS_MEDIUM,   20.0, jitter_ui);
+        run_test(WORDS_MEDIUM,   40.0, jitter_ui);
+        run_test(WORDS_MEDIUM,   80.0, jitter_ui);
+        run_test(WORDS_MEDIUM,  120.0, jitter_ui);
+        run_test(WORDS_MEDIUM,  -20.0, jitter_ui);
+        run_test(WORDS_MEDIUM,  -40.0, jitter_ui);
+        run_test(WORDS_MEDIUM,  -80.0, jitter_ui);
+        run_test(WORDS_MEDIUM, -120.0, jitter_ui);
     end procedure;
 begin
     -- Run a few short tests with no frequency offset:
-    run_test(NWORDS_SHORT, 0.0, 0.00);
-    run_test(NWORDS_SHORT, 0.0, 0.02);
-    run_test(NWORDS_SHORT, 0.0, 0.04);
-    run_test(NWORDS_SHORT, 0.0, 0.08);
-    run_test(NWORDS_SHORT, 0.0, 0.12);
+    run_test(WORDS_SHORT, 0.0, 0.00);
+    run_test(WORDS_SHORT, 0.0, 0.02);
+    run_test(WORDS_SHORT, 0.0, 0.04);
+    run_test(WORDS_SHORT, 0.0, 0.08);
+    run_test(WORDS_SHORT, 0.0, 0.12);
 
     -- Now run a full frequency sweep at varying jitter levels:
     run_sweep(0.02);
@@ -332,8 +336,8 @@ begin
     run_sweep(0.12);
 
     -- Longer tests for specific cases:
-    run_test(NWORDS_LONG, -80.0, 0.07);
-    run_test(NWORDS_LONG, 120.0, 0.07);
+    run_test(WORDS_LONG, -80.0, 0.07);
+    run_test(WORDS_LONG, 120.0, 0.07);
     report "All tests completed.";
     wait;
 end process;

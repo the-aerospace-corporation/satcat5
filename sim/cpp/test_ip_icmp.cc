@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
-// Test cases for UDP dispatch and related blocks
+// Test cases for the Internet Control Message Protocol (ICMP)
 
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
@@ -92,10 +92,11 @@ TEST_CASE("ICMP") {
 
     // Issue ICMP requests from controller to peripheral.
     SECTION("ping") {
+        satcat5::test::CountPingResponse event(&ip_controller);
         ip_controller.m_icmp.send_ping(addr);
-        log.disable();
+        CHECK(event.count() == 0);
         satcat5::poll::service_all();
-        CHECK(log.contains("Ping"));
+        CHECK(event.count() == 1);
     }
 
     SECTION("time") {

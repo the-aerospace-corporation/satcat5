@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
+-- Copyright 2019, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -44,6 +44,9 @@
 --  * Synchronization primitives
 --      Primitives for handling asynchronous signals and clock-crossing.
 --      Special handling is required to avoid metastability faults.
+--  * Vernier clock generation
+--      Primitives for configuring and generating closely-spaced "Vernier"
+--      clocks, suitable for use with the "ptp_counter_gen" block.
 --
 
 library ieee;
@@ -230,11 +233,49 @@ package common_primitives is
     -- Ensures that reset is propagated even without an output clock.
     component sync_reset is
         generic(
-        HOLD_MIN    : integer := 7);
+        HOLD_MIN    : integer := 7;
+        KEEP_ATTR   : string := "true");
         port(
         in_reset_p  : in  std_logic;
         out_reset_p : out std_logic;
         out_clk     : in  std_logic := '0');
+    end component;
+
+    ---------------------------------------------------------------------
+    -- Vernier clocks
+    ---------------------------------------------------------------------
+
+    -- Array of build-time clock-generator parameters.
+    -- Interpretation is entirely reserved for platform implementation.
+    -- Array size may increase in future versions, but will never decrease.
+    type vernier_params is array(0 to 8) of real;
+
+    -- Structure containing Vernier parameters for a given configuration.
+    -- Users should access "input_hz", "vclka_hz", and "vclkb_hz" only.
+    type vernier_config is record
+        input_hz    : natural;          -- Original reference frequency
+        vclka_hz    : real;             -- Frequency of the slow output (0 = invalid)
+        vclkb_hz    : real;             -- Frequency of the fast output (0 = invalid)
+        params      : vernier_params;   -- Reserved parameters (varies by platform)
+    end record;
+
+    -- Use this configuration to indicate PTP is disabled.
+    constant VERNIER_DISABLED : vernier_config :=
+        (0, 0.0, 0.0, (others => 0.0));
+
+    -- Given reference frequency, determine the "best" Vernier configuration.
+    -- (An unsupported or zero input frequency returns "VERNIER_DISABLED".)
+    function create_vernier_config(input_hz : natural) return vernier_config;
+
+    -- Standardized clock generator for a Vernier clock-pair.
+    component clkgen_vernier is
+        generic (VCONFIG : vernier_config);
+        port (
+        rstin_p     : in  std_logic;        -- Active high reset
+        refclk      : in  std_logic;        -- Input clock
+        vclka       : out std_logic;        -- Slow output clock
+        vclkb       : out std_logic;        -- Fast output clock
+        vreset_p    : out std_logic);       -- Output reset
     end component;
 
     ---------------------------------------------------------------------

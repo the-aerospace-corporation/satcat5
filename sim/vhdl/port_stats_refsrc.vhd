@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -26,6 +26,7 @@ use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_stats_refsrc is
@@ -94,6 +95,7 @@ prx_data.last    <= rx_last;
 prx_data.write   <= rx_write;
 prx_data.rate    <= get_rate_word(1000);
 prx_data.status  <= rx_status;
+prx_data.tsof    <= TSTAMP_DISABLED;
 prx_data.rxerr   <= '0';
 prx_data.reset_p <= reset_p;
 ptx_data.data    <= tx_data;
@@ -101,6 +103,7 @@ ptx_data.last    <= tx_last;
 ptx_data.valid   <= tx_valid;
 ptx_ctrl.clk     <= clk;
 ptx_ctrl.ready   <= tx_ready;
+ptx_ctrl.tnow    <= TSTAMP_DISABLED;
 ptx_ctrl.txerr   <= '0';
 ptx_ctrl.reset_p <= reset_p;
 

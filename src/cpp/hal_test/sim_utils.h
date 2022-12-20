@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -23,6 +23,7 @@
 #include <hal_posix/posix_utils.h>
 #include <satcat5/cfgbus_core.h>
 #include <satcat5/ethernet.h>
+#include <satcat5/ip_stack.h>
 #include <satcat5/polling.h>
 #include <satcat5/timer.h>
 
@@ -64,6 +65,19 @@ namespace satcat5 {
             unsigned m_count;
         };
 
+        class CountArpResponse : public satcat5::eth::ArpListener {
+        public:
+            explicit CountArpResponse(satcat5::ip::Dispatch* iface)
+                : m_arp(&iface->m_arp), m_count(0) {m_arp->add(this);}
+            ~CountArpResponse() {m_arp->remove(this);}
+            unsigned count() const {return m_count;}
+        protected:
+            void arp_event(const satcat5::eth::MacAddr& mac, const satcat5::ip::Addr& ip) override {++m_count;}
+            void gateway_change(const satcat5::ip::Addr& dstaddr, const satcat5::ip::Addr& gateway) override {}
+            satcat5::eth::ProtoArp* const m_arp;
+            unsigned m_count;
+        };
+
         class CountOnDemand : public poll::OnDemand {
         public:
             CountOnDemand() : m_count(0) {}
@@ -71,6 +85,18 @@ namespace satcat5 {
             unsigned count() const {return m_count;}
             void poll_demand() override {++m_count;}
         protected:
+            unsigned m_count;
+        };
+
+        class CountPingResponse : public satcat5::ip::PingListener {
+        public:
+            explicit CountPingResponse(satcat5::ip::Dispatch* iface)
+                : m_icmp(&iface->m_icmp), m_count(0) {m_icmp->add(this);}
+            ~CountPingResponse() {m_icmp->remove(this);}
+            unsigned count() const {return m_count;}
+        protected:
+            void ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec) {++m_count;}
+            satcat5::ip::ProtoIcmp* const m_icmp;
             unsigned m_count;
         };
 
@@ -82,6 +108,15 @@ namespace satcat5 {
             void timer_event() override {++m_count;}
         protected:
             unsigned m_count;
+        };
+
+        // Accelerated version of PosixTimer is 256x real-time.
+        class FastPosixTimer : public satcat5::util::GenericTimer {
+        public:
+            FastPosixTimer() : satcat5::util::GenericTimer(1) {}
+            u32 now() override {return m_timer.now() << 8;}
+        protected:
+            satcat5::util::PosixTimer m_timer;
         };
 
         // Helper object for counting notifications.
@@ -122,6 +157,8 @@ namespace satcat5 {
 
         // Timekeeper object that always fires a timer interrupt.
         class TimerAlways : public satcat5::poll::Always {
+        public:
+            void sim_wait(unsigned dly_msec);
         protected:
             void poll_always() override {
                 satcat5::poll::timekeeper.request_poll();

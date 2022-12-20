@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -40,7 +40,10 @@ namespace satcat5 {
         protected:
             // Constructor accepts a scale-factor for conversion to real-time.
             // (Only children should create or destroy the base class.)
-            explicit GenericTimer(u32 ticks_per_usec);
+            explicit constexpr GenericTimer(u32 ticks_per_usec)
+                : m_ticks_per_usec(ticks_per_usec)
+                , m_ticks_per_msec(1000*ticks_per_usec)
+                {}  // No other initialization required.
             ~GenericTimer() {}
 
         public:
@@ -58,6 +61,9 @@ namespace satcat5 {
             // As elapsed_usec, but also increment TREF.
             unsigned elapsed_incr(u32& tref);
 
+            // As elapsed_incr, but units in milliseconds.
+            unsigned elapsed_msec(u32& tref);
+
             // Test if a given interval has elapsed since TREF.
             // If so, increment TREF for the next interval.
             bool elapsed_test(u32& tref, unsigned usec);
@@ -74,6 +80,7 @@ namespace satcat5 {
 
             // Time conversion factor
             u32 const m_ticks_per_usec;
+            u32 const m_ticks_per_msec;
         };
 
         // Implement GenericTimer using a memory-mapped performance counter.

@@ -168,7 +168,7 @@ namespace satcat5 {
         protected:
             // Constructor and destructor access restricted to children.
             // Note: Child MUST call Dispatch::add and Dispatch::remove.
-            Protocol(const satcat5::net::Type& type)
+            explicit Protocol(const satcat5::net::Type& type)
                 : m_filter(type), m_next(0) {}
             ~Protocol() {}
 

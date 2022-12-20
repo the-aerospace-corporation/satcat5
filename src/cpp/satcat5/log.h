@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -41,13 +41,14 @@
 //          log.write(errcode);
 //      }
 //
-// Message contents are written to the globally-specified event-handler
-// when the Log object falls out of scope.  Call log_start() to set
-// or reset the event-handler object.
+// When the Log object falls out of scope, the message contents are written to
+// every object that defines the "EventHandler" interface.  (The constructor
+// for that class automatically adds itself to a global list.)
 //
 
 #pragma once
 
+#include <satcat5/list.h>
 #include <satcat5/types.h>
 
 // Default parameters:
@@ -67,23 +68,23 @@ namespace satcat5 {
             // (Child class must override this method.)
             virtual void log_event(s8 priority, unsigned nbytes, const char* msg) = 0;
         protected:
-            ~EventHandler() {}
+            // Constructor automatically manage the list of active handler objects.
+            EventHandler();
+            ~EventHandler() SATCAT5_OPTIONAL_DTOR;
+        private:
+            friend satcat5::util::ListCore;
+            satcat5::log::EventHandler* m_next;
         };
 
         // Basic LogEventHandler that copies contents to a UART or similar.
         // (And optionally carbon-copies the data to a second handler.)
-        // Note: This object's constructor automatically calls log_start().
         class ToWriteable final : public satcat5::log::EventHandler {
         public:
-            explicit ToWriteable(
-                    satcat5::io::Writeable* dst,
-                    satcat5::log::EventHandler* cc = 0);
-            ~ToWriteable() SATCAT5_OPTIONAL_DTOR;
+            explicit ToWriteable(satcat5::io::Writeable* dst);
             void log_event(s8 priority, unsigned nbytes, const char* msg) override;
 
         private:
             satcat5::io::Writeable* const m_dst;
-            satcat5::log::EventHandler* const m_cc;
         };
 
         // Define basic priority codes.
@@ -93,9 +94,9 @@ namespace satcat5 {
         constexpr s8 ERROR      = +10;
         constexpr s8 CRITICAL   = +20;
 
-        // Start the logging system and connect it to the designated output.
-        // (Note: Calling log_start(0) stops the logging system.)
-        void start(satcat5::log::EventHandler* dst);
+        // Convert priority code to a human-readable UTF-8 string.
+        // (May include emoji or plaintext labels, depending on build flags.)
+        const char* priority_label(s8 priority);
 
         // Ephemeral Log class.
         class Log final {
@@ -109,13 +110,19 @@ namespace satcat5 {
             ~Log();
 
             // Formatting methods for various data types.
+            // All integer types print as fixed-width hexadecimal values.
             // Returns reference to itself to make chaining easy.
             Log& write(const char* str);
+            Log& write(bool val);
             Log& write(u8 val);
             Log& write(u16 val);
             Log& write(u32 val);
             Log& write(u64 val);
             Log& write(const u8* val, unsigned nbytes);
+
+            // Print integer as a decimal value with no leading zeros.
+            Log& write10(s32 val);  // Signed (e.g., "+1234" or "-1234")
+            Log& write10(u32 val);  // Unsigned (e.g., "1234")
 
         private:
             // Forbid use of copy constructor.

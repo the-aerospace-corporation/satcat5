@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -219,9 +219,13 @@ void ProtoIcmp::frame_rcvd(satcat5::io::LimitedRead& src)
     if (code == ip::ICMP_ECHO_REPLY) {
         // Ping response: Extract the timestamp we inserted earlier.
         u32 tref = src.read_u32();
-        // Log the elapsed round-trip time.
         u32 elapsed = m_iface->m_timer->elapsed_usec(tref);
-        log::Log(log::INFO, "Ping response").write(elapsed);
+        // Notify listeners of the elapsed round-trip time.
+        satcat5::ip::PingListener* item = m_listeners.head();
+        while (item) {
+            item->ping_event(m_iface->reply_ip(), elapsed);
+            item = m_listeners.next(item);
+        }
     } else if (code == ip::ICMP_ECHO_REQUEST && wlen <= MAX_ECHO) {
         // Ping request: Copy data from echo request
         buff[0] = ip::ICMP_ECHO_REPLY;      // Message type

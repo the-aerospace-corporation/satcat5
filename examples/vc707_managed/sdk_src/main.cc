@@ -1,0 +1,203 @@
+//////////////////////////////////////////////////////////////////////////
+// Copyright 2022 The Aerospace Corporation
+//
+// This file is part of SatCat5.
+//
+// SatCat5 is free software: you can redistribute it and/or modify it under
+// the terms of the GNU Lesser General Public License as published by the
+// Free Software Foundation, either version 3 of the License, or (at your
+// option) any later version.
+//
+// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+// License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+//////////////////////////////////////////////////////////////////////////
+// Microblaze software top-level for the "VC707 Managed" example design
+
+#include <hal_ublaze/interrupts.h>
+#include <hal_ublaze/temac.h>
+#include <hal_ublaze/uartlite.h>
+#include <satcat5/build_date.h>
+#include <satcat5/cfgbus_core.h>
+#include <satcat5/cfgbus_mdio.h>
+#include <satcat5/cfgbus_led.h>
+#include <satcat5/cfgbus_stats.h>
+#include <satcat5/cfgbus_text_lcd.h>
+#include <satcat5/cfgbus_timer.h>
+#include <satcat5/cfgbus_uart.h>
+#include <satcat5/eth_chat.h>
+#include <satcat5/ip_stack.h>
+#include <satcat5/log.h>
+#include <satcat5/port_mailmap.h>
+#include <satcat5/port_serial.h>
+#include <satcat5/switch_cfg.h>
+#include "vc707_devices.h"
+
+using satcat5::cfg::LedActivity;
+using satcat5::cfg::LedWave;
+using satcat5::log::Log;
+
+// Enable diagnostic options?
+static const bool DEBUG_MAC_TABLE   = true;
+static const bool DEBUG_MDIO_REG    = false;
+static const bool DEBUG_PING_HOST   = true;
+static const bool DEBUG_PORT_STATUS = false;
+
+// Global interrupt controller.
+static XIntc irq_xilinx;
+static satcat5::irq::ControllerMicroblaze irq_satcat5(&irq_xilinx);
+
+// Setup the Tri-Mode Ethernet MAC (TEMAC) cores
+satcat5::ublaze::Temac temac_rj45(XPAR_XILINX_TEMAC_AXI_ETHERNET_RJ45_BASEADDR);
+satcat5::ublaze::Temac temac_sfp(XPAR_XILINX_TEMAC_AXI_ETHERNET_SFP_BASEADDR);
+
+// ConfigBus peripherals.
+satcat5::cfg::ConfigBusMmap cfgbus((void*)XPAR_UBLAZE0_CFGBUS_HOST_AXI_0_BASEADDR,
+        XPAR_UBLAZE0_MICROBLAZE_0_AXI_INTC_UBLAZE0_CFGBUS_HOST_AXI_0_IRQ_OUT_INTR);
+satcat5::port::Mailmap      eth_port        (&cfgbus, DEVADDR_MAILMAP);
+satcat5::port::SerialUart   eth_uart        (&cfgbus, DEVADDR_ETH_UART);
+satcat5::eth::SwitchConfig  eth_switch      (&cfgbus, DEVADDR_SWCORE);
+satcat5::cfg::NetworkStats  traffic_stats   (&cfgbus, DEVADDR_TRAFFIC);
+satcat5::cfg::I2c           i2c_sfp         (&cfgbus, DEVADDR_I2C_SFP);
+satcat5::cfg::Mdio          eth_mdio        (&cfgbus, DEVADDR_MDIO);
+satcat5::cfg::Timer         timer           (&cfgbus, DEVADDR_TIMER);
+satcat5::cfg::Uart          uart_status     (&cfgbus, DEVADDR_SWSTATUS);
+satcat5::cfg::TextLcd       text_lcd        (&cfgbus, DEVADDR_TEXTLCD);
+
+// Status LEDs generate a "wave" pattern.
+static const u8 LED_BRT = 255;
+satcat5::cfg::LedWaveCtrl led_wave;
+LedWave led_status[] = {
+    LedWave(&cfgbus, DEVADDR_LEDS, 0, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 1, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 2, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 3, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 4, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 5, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 6, LED_BRT),
+    LedWave(&cfgbus, DEVADDR_LEDS, 7, LED_BRT),
+};
+
+constexpr unsigned LED_COUNT = sizeof(led_status) / sizeof(led_status[0]);
+
+// UDP network stack
+static const satcat5::eth::MacAddr local_mac
+    = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+static const satcat5::ip::Addr local_ip
+    = {192, 168, 1, 42};
+static const satcat5::ip::Addr gateway_ip
+    = {192, 168, 1, 1};
+
+satcat5::ip::Stack ip_stack(local_mac, local_ip, &eth_port, &eth_port, &timer);
+
+// Connect logging system to the MDM's virtual UART
+satcat5::ublaze::UartLite   uart_mdm("UART",
+        XPAR_UBLAZE0_MICROBLAZE_0_AXI_INTC_UBLAZE0_MDM_1_INTERRUPT_INTR,
+        XPAR_UBLAZE0_MDM_1_DEVICE_ID);
+satcat5::log::ToWriteable   log_uart(&uart_mdm);
+
+// Connect logging system to Ethernet (with carbon-copy to LCD and UART).
+satcat5::eth::ChatProto     eth_chat(&ip_stack.m_eth, "VC707");
+satcat5::eth::LogToChat     log_chat(&eth_chat);
+satcat5::cfg::LogToLcd      log_lcd(&text_lcd);
+
+// Set up MDIO for Marvell M88E1111 PHY.
+satcat5::cfg::MdioMarvell   eth_phy(&eth_mdio, RJ45_PHYADDR);
+
+// Timer object for general househeeping.
+class HousekeepingTimer : satcat5::poll::Timer
+{
+public:
+    HousekeepingTimer() : m_first(1) {
+        // Set callback delay for first-time startup message.
+        // (Need a little extra time for the RJ45 PHY to reset.)
+        timer_once(1500);
+    }
+
+    void timer_event() override {
+        // First-time setup?
+        if (m_first) {
+            m_first = false;    // Clear initial-setup flag.
+            Log(LOG_INFO,       // Startup message (with emoji)
+                "Welcome to SatCat5: "
+                "\xf0\x9f\x9b\xb0\xef\xb8\x8f\xf0\x9f\x90\xb1\xf0\x9f\x95\x94\r\n\t"
+                "VC707-Managed Demo, built ").write(satcat5::get_sw_build_string());
+            eth_switch.log_info("VC707-Switch");
+            timer_every(1000);  // After first time, poll once per second
+            return;
+        }
+        // Optionally log key registers from the Ethernet PHY.
+        if (DEBUG_MDIO_REG) {
+            eth_phy.read(0x00, &m_logger);  // BMCR
+            eth_phy.read(0x01, &m_logger);  // BMSR
+            eth_phy.read(0x10, &m_logger);  // PHYSTS
+        }
+        // Optionally log the SatCat5 port status register.
+        // (Refer to port_rmii and port_statistics for more info.)
+        if (DEBUG_PORT_STATUS) {
+            u32 status1 = traffic_stats.get_port(PORT_IDX_ETH_RJ45)->status;
+            u32 status2 = traffic_stats.get_port(PORT_IDX_ETH_SFP)->status;
+            Log(LOG_DEBUG, "Port status").write(status1).write(status2);
+        }
+    }
+
+    bool m_first;
+    satcat5::cfg::MdioLogger m_logger;
+} housekeeping;
+
+// A slower timer object that activates once every minute.
+class SlowHousekeepingTimer : satcat5::poll::Timer
+{
+public:
+    SlowHousekeepingTimer() {
+        timer_every(60000);
+    }
+
+    void timer_event() override {
+        // Log the contents of the MAC routing table.
+        if (DEBUG_MAC_TABLE) {
+            eth_switch.mactbl_log("VC707-Switch");
+        }
+    }
+} slowkeeping;
+
+// Main loop: Initialize and then poll forever.
+int main()
+{
+    // VLAN setup for the managed Ethernet switch.
+    eth_switch.vlan_reset();    // Reset in open mode
+
+    // Ping the default gateway every second?
+    if (DEBUG_PING_HOST) {
+         ip_stack.m_ping.ping(gateway_ip, gateway_ip);
+    }
+
+    // Set up the status LEDs.
+    for (unsigned a = 0 ; a < LED_COUNT ; ++a)
+        led_wave.add(led_status + a);
+    led_wave.start();
+
+    // Override flow control signals on the UART port.
+    eth_uart.config_uart(921600, true);
+
+    // Link timer callback to the SatCat5 polling service.
+    timer.timer_callback(&satcat5::poll::timekeeper);
+
+    // Enable interrupts.
+    irq_satcat5.irq_start(XPAR_UBLAZE0_MICROBLAZE_0_AXI_INTC_DEVICE_ID, &timer);
+
+    // For now, set the RJ45 and SFP ports to promiscuous mode
+    eth_switch.set_promiscuous(PORT_IDX_ETH_SFP, true);
+    eth_switch.set_promiscuous(PORT_IDX_ETH_RJ45, true);
+
+    // Run the main polling loop forever.
+    while (1) {
+        satcat5::poll::service();
+    }
+
+    return 0;
+}

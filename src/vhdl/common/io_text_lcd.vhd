@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -23,6 +23,9 @@
 -- AC701 Artix-7 Evaluation Kit.  New text is written to a small buffer,
 -- one byte at a time.  A newline character transfers that working buffer
 -- to the LCD display.
+--
+-- See also: ST7066U datasheet:
+--  https://www.newhavendisplay.com/app_notes/ST7066U.pdf
 --
 
 library ieee;
@@ -148,7 +151,8 @@ begin
                         lcd_db  <= wr_data(3 downto 0);
                     when 1 =>  -- Enable low;.
                         lcd_e   <= '0';
-                    when 0 => assert(false); -- If statement above already excludes state_ctr = 0
+                    when 0 =>  -- Unreachable (see above)
+                        assert(false);
                 end case;
                 state_ctr := state_ctr - 1;
             end if;
@@ -171,7 +175,7 @@ cmd_ready <= not (cmd_busy or wr_byte or wr_nybb);
 
 -- Higher-level LCD initialization and refresh.
 p_ctrl : process(strm_clk)
-    constant INIT_WAIT : integer := 31; -- Need >15 ms delay before first write
+    constant INIT_WAIT : integer := 63; -- Need >40 ms delay before first write
     constant MAX_WAIT  : integer := int_max(INIT_WAIT, MSG_WAIT);
     type lcd_state_t is (IDLE, INIT, UPDATE_START, UPDATE_TRANSFER, UPDATE_FINISH);
     variable lcd_state  : lcd_state_t := INIT;
@@ -211,17 +215,17 @@ begin
                 case counter is
                     when 12 => -- (Wakeup pulse #1)
                         wr_nybb <= '1'; wr_data <= x"33";
-                    when  6 => -- (Wakeup pulse #2)
+                    when  7 => -- (Wakeup pulse #2)
                         wr_nybb <= '1'; wr_data <= x"33";
-                    when  5 => -- (Wakeup pulse #3)
+                    when  6 => -- (Wakeup pulse #3)
                         wr_nybb <= '1'; wr_data <= x"33";
-                    when  4 => -- Function set = 4-bit mode, 2 lines, 5x10 font
+                    when  5 => -- Function set = 4-bit mode, 2 lines, 5x10 font
                         wr_byte <= '1'; wr_data <= x"2C";
-                    when  3 => -- Function set (must be repeated due to 4-bit switch)
+                    when  4 => -- Function set (must be repeated due to 4-bit switch)
                         wr_byte <= '1'; wr_data <= x"2C";
-                    when  2 => -- Display off, cursor off
+                    when  3 => -- Display off, cursor off
                         wr_byte <= '1'; wr_data <= x"08";
-                    when  1 => -- Display clear
+                    when  2 => -- Display clear + wait 2 msec
                         wr_byte <= '1'; wr_data <= x"01";
                     when  0 => -- Entry mode set + done
                         wr_byte <= '1'; wr_data <= x"06";

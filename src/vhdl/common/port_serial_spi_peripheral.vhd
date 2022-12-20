@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -63,6 +63,7 @@ use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.common_primitives.sync_reset;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_serial_spi_peripheral is
@@ -71,6 +72,7 @@ entity port_serial_spi_peripheral is
     CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
     SPI_GDLY    : natural := 1;     -- SPI glitch-detection threshold
     SPI_MODE    : natural := 3;     -- SPI clock phase & polarity
+    SYNC_MODE   : boolean := false; -- Disable both sync and async process on sclk? 
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -127,9 +129,11 @@ begin
 rx_data.clk     <= refclk;
 rx_data.rate    <= get_rate_word(10);
 rx_data.status  <= status_word(7 downto 0);
+rx_data.tsof    <= TSTAMP_DISABLED;
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= wdog_rst_p;
+tx_ctrl.tnow    <= TSTAMP_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No Tx error states
 
 -- Upstream status reporting.
@@ -185,7 +189,8 @@ u_cfg_reg2 : cfgbus_register_sync
 -- Raw SPI interface
 u_spi : entity work.io_spi_peripheral
     generic map(
-    IDLE_BYTE   => SLIP_FEND)
+    IDLE_BYTE   => SLIP_FEND,
+    SYNC_MODE   => SYNC_MODE)
     port map(
     spi_csb     => spi_csb,
     spi_sclk    => spi_sclk,

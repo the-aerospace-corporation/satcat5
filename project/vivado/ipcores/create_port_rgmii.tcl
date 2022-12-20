@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,23 +30,13 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_preamble_rx.vhd
-ipcore_add_file $src_dir/common     eth_preamble_tx.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     io_clock_detect.vhd
-ipcore_add_file $src_dir/common     port_rgmii.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_io   $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_rgmii
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_port_rgmii.vhd
 
 # Connect everything except the RGMII port.
 ipcore_add_ethport Eth sw master
-ipcore_add_clock clk_125 Eth
+ipcore_add_refopt PtpRef tref
+ipcore_add_clock clk_125 Eth slave 125000000
 ipcore_add_clock clk_txc {}
 ipcore_add_reset reset_p ACTIVE_HIGH
 
@@ -67,11 +57,16 @@ set_property physical_name rgmii_rxctl  [ipx::add_port_map RX_CTL   $intf]
 set_property value clk_125 [ipx::add_bus_parameter ASSOCIATED_BUSIF $intf]
 
 # Set parameters
-ipcore_add_param RXCLK_ALIGN bool false
-ipcore_add_param RXCLK_LOCAL bool false
-ipcore_add_param RXCLK_GLOBL bool true
-ipcore_add_param RXCLK_DELAY long 0
-ipcore_add_param RXDAT_DELAY long 2000
+ipcore_add_param RXCLK_ALIGN bool false \
+    {Instantiate an MMCM for precise clock-phase alignment?}
+ipcore_add_param RXCLK_LOCAL bool false \
+    {Instantiate a local clock buffer for Rx clock?}
+ipcore_add_param RXCLK_GLOBL bool true \
+    {Instantiate a global clock buffer for Rx clock? (Recommended)}
+ipcore_add_param RXCLK_DELAY long 0 \
+    {Added delay for Rx-clock signal, in picoseconds}
+ipcore_add_param RXDAT_DELAY long 2000 \
+    {Added delay for Rx-data signal, in picoseconds}
 
 # Package the IP-core.
 ipcore_finished

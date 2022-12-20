@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -23,7 +23,7 @@
 -- It sends a series of read and write commands and verifies that they
 -- are executed correctly and that the replies are correct.
 --
--- The complete test takes 9.8 milliseconds.
+-- The complete test takes 10.1 milliseconds.
 --
 
 library ieee;
@@ -258,29 +258,31 @@ p_test : process
     constant DATA_ZERO      : cfgbus_word := (others => '0');
 
     -- Create a command packet using router test functions.
-    function make_cmd(
+    impure function make_cmd(
         opcode  : byte_t;
         addr    : addr_word;
         wordct  : positive;
         wrval   : std_logic_vector)
     return std_logic_vector is
         constant len : positive := 64 + wrval'length;
+        constant seq : byte_t := i2s(test_index mod 256, 8);
         constant cmd : std_logic_vector(len-1 downto 0)
-            := opcode& i2s(wordct-1, 8) & x"0000" & addr & wrval;
+            := opcode& i2s(wordct-1, 8) & seq & x"00" & addr & wrval;
     begin
         return cmd;
     end function;
 
     -- Create a reply packet using router test functions.
-    function make_ack(
+    impure function make_ack(
         opcode  : byte_t;
         addr    : addr_word;
         wordct  : positive;
         rdval   : std_logic_vector)
     return std_logic_vector is
         constant len : positive := 64 + rdval'length;
+        constant seq : byte_t := i2s(test_index mod 256, 8);
         constant ack : std_logic_vector(len-1 downto 0)
-            := opcode & i2s(wordct-1, 8) & x"0000" & addr & rdval;
+            := opcode & i2s(wordct-1, 8) & seq & x"00" & addr & rdval;
     begin
         return ack;
     end function;

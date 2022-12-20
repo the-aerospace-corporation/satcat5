@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2022 The Aerospace Corporation
+
+This file is part of SatCat5.
+
+SatCat5 is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+SatCat5 is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<spirit:busDefinition xmlns:xilinx="http://www.xilinx.com" xmlns:spirit="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <spirit:vendor>aero.org</spirit:vendor>
+  <spirit:library>satcat5</spirit:library>
+  <spirit:name>VernierClk</spirit:name>
+  <spirit:version>1.0</spirit:version>
+  <spirit:directConnection>false</spirit:directConnection>
+  <spirit:isAddressable>false</spirit:isAddressable>
+  <spirit:maxMasters>1</spirit:maxMasters>
+  <spirit:maxSlaves>999</spirit:maxSlaves>
+  <spirit:description>SatCat5 Vernier time reference</spirit:description>
+  <spirit:vendorExtensions>
+    <xilinx:busDefinitionInfo>
+      <xilinx:displayName>VernierClk</xilinx:displayName>
+    </xilinx:busDefinitionInfo>
+  </spirit:vendorExtensions>
+</spirit:busDefinition>

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -108,6 +108,31 @@ namespace satcat5 {
             // Post-handler acknowledgement, notification, and cleanup.
             // Child SHOULD override this method if such action is required.
             virtual void irq_acknowledge(satcat5::irq::Handler* obj);
+        };
+
+        // A do-nothing placeholder implementation of irq::Controller .
+        // Instantiate this class if interrupts are handled outside of SatCat5
+        // infrastructure and no other hardware abstraction is available.
+        class ControllerNull final
+            : public satcat5::irq::Controller {
+        public:
+            // Constructor accepts an optional Timer pointer, if available.
+            explicit ControllerNull(satcat5::util::GenericTimer* timer = 0);
+            ~ControllerNull() {}
+
+            // User should call one of the "service" methods whenever a
+            // SatCat5-related interrupt occurs.
+            void service_all();
+            inline void service_one(satcat5::irq::Handler* obj)
+                {satcat5::irq::Controller::interrupt_static(obj);}
+
+        protected:
+            // Empty hardware-abstraction overrides.
+            void irq_pause() override {}
+            void irq_resume() override {}
+            void irq_register(satcat5::irq::Handler* obj) override {}
+            void irq_unregister(satcat5::irq::Handler* obj) override {}
+            void irq_acknowledge(satcat5::irq::Handler* obj) override {}
         };
 
         // Parent class for any object that responds to CPU interrupts.

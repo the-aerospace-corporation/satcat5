@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -27,8 +27,10 @@ use     work.common_primitives.sync_reset;
 
 entity wrap_reset_hold is
     generic (
+    RESET_HIGH  : boolean;          -- Choose input polarity
     RESET_HOLD  : natural);         -- Minimum reset duration, in clocks
     port (
+    aresetp     : in  std_logic;    -- Async reset, active high
     aresetn     : in  std_logic;    -- Async reset, active low
     clk         : in  std_logic;    -- Reference clock
     reset_p     : out std_logic;    -- Output reset, active high
@@ -43,7 +45,7 @@ signal out_reset_p  : std_logic;
 begin
 
 -- Polarity conversion
-in_reset_p  <= not aresetn;
+in_reset_p  <= (aresetp) when RESET_HIGH else (not aresetn);
 reset_n     <= not out_reset_p;
 reset_p     <= out_reset_p;
 

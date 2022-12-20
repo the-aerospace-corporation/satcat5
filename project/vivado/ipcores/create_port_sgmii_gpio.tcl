@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,33 +30,18 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_dec8b10b.vhd
-ipcore_add_file $src_dir/common     eth_enc8b10b.vhd
-ipcore_add_file $src_dir/common     eth_enc8b10b_table.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_preamble_rx.vhd
-ipcore_add_file $src_dir/common     eth_preamble_tx.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     port_sgmii_common.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_file $src_dir/xilinx     port_sgmii_gpio.vhd
-ipcore_add_file $src_dir/xilinx     sgmii_data_slip.vhd
-ipcore_add_file $src_dir/xilinx     sgmii_data_sync.vhd
-ipcore_add_file $src_dir/xilinx     sgmii_input_fifo.vhd
-ipcore_add_file $src_dir/xilinx     sgmii_serdes_rx.vhd
-ipcore_add_file $src_dir/xilinx     sgmii_serdes_tx.vhd
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_sgmii_gpio
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_file $src_dir/xilinx/port_sgmii_gpio.vhd
+ipcore_add_file $src_dir/xilinx/sgmii_*.vhd
+ipcore_add_top  $ip_root/wrap_port_sgmii_gpio.vhd
 
 # Connect everything except the SGMII port.
 ipcore_add_ethport Eth sw master
-ipcore_add_clock clk_125 {}
-ipcore_add_clock clk_200 Eth
-ipcore_add_clock clk_625_00 {}
-ipcore_add_clock clk_625_90 {}
+ipcore_add_refopt PtpRef tref
+ipcore_add_clock clk_125    {}  slave 125000000
+ipcore_add_clock clk_200    Eth slave 200000000
+ipcore_add_clock clk_625_00 {}  slave 625000000
+ipcore_add_clock clk_625_90 {}  slave 625000000
 ipcore_add_reset reset_p ACTIVE_HIGH
 
 # Connect the SGMII port.
@@ -71,13 +56,20 @@ set_property physical_name sgmii_txp    [ipx::add_port_map TXP  $intf]
 set_property physical_name sgmii_txn    [ipx::add_port_map TXN  $intf]
 
 # Set parameters
-ipcore_add_param TX_INVERT bool false
-ipcore_add_param TX_IOSTD string "LVDS_25"
-ipcore_add_param RX_INVERT bool false
-ipcore_add_param RX_IOSTD string "LVDS_25"
-ipcore_add_param RX_BIAS_EN bool false
-ipcore_add_param RX_TERM_EN bool true
-ipcore_add_param SHAKE_WAIT bool true
+ipcore_add_param TX_INVERT bool false \
+    {Invert outgoing signal?}
+ipcore_add_param TX_IOSTD string "LVDS_25" \
+    {I/O standard for outgoing signal}
+ipcore_add_param RX_INVERT bool false \
+    {Invert incoming signal?}
+ipcore_add_param RX_IOSTD string "LVDS_25" \
+    {I/O standard for incoming signal}
+ipcore_add_param RX_BIAS_EN bool false \
+    {Enable built-in DC biasing?}
+ipcore_add_param RX_TERM_EN bool true \
+    {Enable built-in differential termination?}
+ipcore_add_param SHAKE_WAIT bool true \
+    {Wait for handshake completion before transmitting data?}
 
 # Package the IP-core.
 ipcore_finished

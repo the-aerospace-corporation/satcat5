@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -43,9 +43,10 @@ use     work.common_functions.all;
 
 entity clkgen_sgmii_xilinx is
     generic (
-    REFCLK_MHZ      : integer := 200;   -- Allowed: 25, 50, 100, 125, 200 MHz
-    MMCM_BANDWIDTH  : string := "LOW";  -- Allowed: "LOW" / "OPTIMIZED" / "HIGH"
-    SPEED_MULT      : integer := 1);    -- 1x or 2x VCO freq. See notes.
+    -- Allowed references: 25, 50, 100, 125, 156.25, 200 MHz
+    REFCLK_HZ       : positive := 200_000_000;
+    MMCM_BANDWIDTH  : string := "LOW";      -- "LOW" / "OPTIMIZED" / "HIGH"
+    SPEED_MULT      : positive := 1);       -- 1x or 2x VCO freq. See notes.
     port (
     shdn_p          : in  std_logic;        -- Long-term shutdown
     rstin_p         : in  std_logic;        -- Reset, hold 1 msec after shdn_p
@@ -62,6 +63,9 @@ end entity clkgen_sgmii_xilinx;
 
 architecture arch of clkgen_sgmii_xilinx is
 
+constant REFCLK_MHZ : real := 0.000001 * real(REFCLK_HZ);
+constant RESET_HOLD : integer := 31;
+
 signal clkfb                : std_logic;
 signal clkbuf_125_00        : std_logic;
 signal clkbuf_125_90        : std_logic;
@@ -70,7 +74,17 @@ signal clkbuf_625_00        : std_logic;
 signal clkbuf_625_90        : std_logic;
 signal clkout_125_00_i      : std_logic;
 signal mmcm_locked          : std_logic;
+signal rstctr               : integer range 0 to RESET_HOLD := RESET_HOLD;
 signal rstout               : std_logic := '1';
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+-- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of mmcm_locked, rstctr, rstout : signal is true;
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of mmcm_locked : signal is true;
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of rstctr, rstout : signal is true;
 
 begin
 
@@ -82,13 +96,13 @@ begin
 --   * No phase alignment to input --> No BUFG required for CLKFB.
 u_mmcm : MMCME2_ADV
     generic map (
-    BANDWIDTH               => MMCM_BANDWIDTH,            -- string
-    CLKIN1_PERIOD           => 1000.0 / real(REFCLK_MHZ), -- real
-    CLKIN2_PERIOD           => 1000.0 / real(REFCLK_MHZ), -- real
+    BANDWIDTH               => MMCM_BANDWIDTH,      -- string
+    CLKIN1_PERIOD           => 1000.0 / REFCLK_MHZ, -- real
+    CLKIN2_PERIOD           => 1000.0 / REFCLK_MHZ, -- real
     REF_JITTER1             => 0.010,       -- real
     REF_JITTER2             => 0.010,       -- real
     DIVCLK_DIVIDE           => 1,           -- integer
-    CLKFBOUT_MULT_F         => 625.0 * real(SPEED_MULT) / real(REFCLK_MHZ),
+    CLKFBOUT_MULT_F         => 625.0 * real(SPEED_MULT) / REFCLK_MHZ,
     CLKFBOUT_PHASE          => 0.0,         -- real
     CLKFBOUT_USE_FINE_PS    => FALSE,       -- boolean
     CLKOUT0_DIVIDE_F        => 3.125 * real(SPEED_MULT),
@@ -175,20 +189,18 @@ clkout_125_00 <= clkout_125_00_i;
 -- Hold reset for a few cycles after MMCM is locked.
 rstout_p <= rstout;
 
-p_reset : process(rstin_p, clkout_125_00_i)
-    constant RESET_HOLD : integer := 31;
-    variable count : integer range 0 to RESET_HOLD := RESET_HOLD;
+p_reset : process(rstin_p, clkbuf_125_00)
 begin
     if (rstin_p = '1') then
         rstout  <= '1';
-        count   := RESET_HOLD;
-    elsif rising_edge(clkout_125_00_i) then
-        rstout  <= bool2bit(count > 0);
+        rstctr  <= RESET_HOLD;
+    elsif rising_edge(clkbuf_125_00) then
+        rstout  <= bool2bit(rstctr > 0);
 
         if (mmcm_locked = '0') then
-            count := RESET_HOLD;
-        elsif (count > 0) then
-            count := count - 1;
+            rstctr <= RESET_HOLD;
+        elsif (rstctr > 0) then
+            rstctr <= rstctr - 1;
         end if;
     end if;
 end process;

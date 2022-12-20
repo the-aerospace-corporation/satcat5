@@ -38,6 +38,12 @@ package body common_primitives is
     -- TODO: 256x16 supports per-bit write enable, maybe should make a new generic module to take advantage of that
     -- Or could force 2048x2 in TCAM to only waste half of the memory?
     constant PREFER_DPRAM_AWIDTH : positive := 8;
+
+    -- TODO: Add support for Vernier clock generator on this platform.
+    function create_vernier_config(input_hz : natural) return vernier_config is
+    begin
+        return VERNIER_DISABLED;
+    end function;
 end package body;
 
 ---------------------------------------------------------------------

@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -47,6 +47,7 @@ set files_main ""
 # Run the main project-creation script and install IP-cores.
 source ../../project/vivado/shared_create.tcl
 source ../../project/vivado/shared_ipcores.tcl
+set proj_dir [get_property directory [current_project]]
 
 # Create the main block diagram.
 set design_name router_ac701
@@ -240,14 +241,17 @@ regenerate_bd_layout
 save_bd_design
 validate_bd_design
 
+# Export block design in PDF and SVG form.
+source ../../project/vivado/export_bd_image.tcl
+
 # Suppress specific warnings in the Vivado GUI:
-set_msg_config -suppress -id {Project 1-486}
-set_msg_config -suppress -id {Synth 8-506}
-set_msg_config -suppress -id {Synth 8-3331}
-set_msg_config -suppress -id {Synth 8-3332}
-set_msg_config -suppress -id {Synth 8-3919}
-set_msg_config -suppress -id {Place 30-574}
-set_msg_config -suppress -id {DRC 23-20}
+set_msg_config -suppress -id {[Project 1-486]}
+set_msg_config -suppress -id {[Synth 8-506]}
+set_msg_config -suppress -id {[Synth 8-3331]}
+set_msg_config -suppress -id {[Synth 8-3332]}
+set_msg_config -suppress -id {[Synth 8-3919]}
+set_msg_config -suppress -id {[Place 30-574]}
+set_msg_config -suppress -id {[DRC 23-20]}
 
 # Create block-diagram wrapper and set as top level.
 set wrapper [make_wrapper -files [get_files ${design_name}.bd] -top]

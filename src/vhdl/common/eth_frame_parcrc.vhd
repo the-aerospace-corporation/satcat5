@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -62,6 +62,9 @@
 -- gaps.  A matched-delay copy of the original input is provided at the
 -- output, with the frame's CRC32 provided in sync with the LAST strobe.
 --
+-- An optional "in_error" strobe can be asserted at any point during the
+-- input frame to set the "out_error" flag for the rest of the frame.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -77,6 +80,7 @@ entity eth_frame_parcrc is
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_nlast    : in  integer range 0 to IO_BYTES := 0;
     in_write    : in  std_logic;
+    in_error    : in  std_logic := '0';
 
     -- Early copy of output stream
     dly_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -87,6 +91,7 @@ entity eth_frame_parcrc is
     out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
     out_crc     : out crc_word_t;   -- Normal format for FCS
     out_res     : out crc_word_t;   -- Residue format for verification
+    out_error   : out std_logic;
     out_nlast   : out integer range 0 to IO_BYTES;
     out_write   : out std_logic;
 
@@ -112,6 +117,7 @@ type stage_t is record
     sdata   : data_t;       -- Shifted input data
     nlast   : last_t;       -- End-of-frame indicator
     crc     : crc_word_t;   -- Checksum register for this stage
+    error   : std_logic;    -- Sticky frame-error flag
     wren    : std_logic;    -- Clock enable / new-data strobe
 end record;
 
@@ -122,6 +128,7 @@ constant STAGE_RST : stage_t := (
     sdata   => (others => '0'),
     nlast   => 0,
     crc     => CRC_INIT,
+    error   => '0',
     wren    => '0');
 
 -- Create lookup table for Sarwate's algorithm.
@@ -234,6 +241,7 @@ gen_stage : for p in 0 to CRC_STAGES generate
         -- Temporary variables used for combinational logic ONLY.
         variable tmp_len : unsigned(CRC_STAGES downto 0);
         variable tmp_en  : std_logic;
+        variable tmp_err : std_logic;
         variable tmp_crc : crc_word_t;
         variable tmp_dat : data_t;
         variable tmp_xor : std_logic_vector(8*NBYTES-1 downto 0);
@@ -250,8 +258,10 @@ gen_stage : for p in 0 to CRC_STAGES generate
                 tmp_dat := in_data;
                 if (in_first = '1') then
                     tmp_crc := CRC_INIT;
+                    tmp_err := in_error and in_write;
                 else
                     tmp_crc := fcs_stage(p).crc;
+                    tmp_err := fcs_stage(p).error or (in_error and in_write);
                 end if;
             else
                 -- Feedforward stage.
@@ -259,6 +269,7 @@ gen_stage : for p in 0 to CRC_STAGES generate
                 tmp_en  := bool2bit(tmp_len < IO_BYTES) and tmp_len(p);
                 tmp_dat := fcs_stage(p+1).sdata;
                 tmp_crc := fcs_stage(p+1).crc;
+                tmp_err := 'X';  -- Unused
             end if;
 
             -- Format conversion of input and CRC fields, then XOR.
@@ -286,6 +297,7 @@ gen_stage : for p in 0 to CRC_STAGES generate
                     sdata   => in_data,
                     nlast   => in_nlast,
                     crc     => crc_out,
+                    error   => tmp_err,
                     wren    => in_write and not reset_p);
             elsif (tmp_en = '1') then
                 -- Feedforward stage (enabled)
@@ -294,6 +306,7 @@ gen_stage : for p in 0 to CRC_STAGES generate
                     sdata   => shift_left(fcs_stage(p+1).sdata, 8*NBYTES),
                     nlast   => fcs_stage(p+1).nlast,
                     crc     => crc_out,
+                    error   => fcs_stage(p+1).error,
                     wren    => fcs_stage(p+1).wren and not reset_p);
             else
                 -- Feedforward stage (passthrough)
@@ -302,6 +315,7 @@ gen_stage : for p in 0 to CRC_STAGES generate
                     sdata   => fcs_stage(p+1).sdata,
                     nlast   => fcs_stage(p+1).nlast,
                     crc     => crc_out,
+                    error   => fcs_stage(p+1).error,
                     wren    => fcs_stage(p+1).wren and not reset_p);
             end if;
         end if;
@@ -325,6 +339,7 @@ end generate;
 out_data  <= fcs_stage(0).rdata;
 out_crc   <= not endian_swap(fcs_stage(0).crc);
 out_res   <= flip_word(fcs_stage(0).crc);
+out_error <= fcs_stage(0).error;
 out_nlast <= fcs_stage(0).nlast;
 out_write <= fcs_stage(0).wren;
 

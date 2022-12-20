@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -63,6 +63,9 @@ namespace satcat5 {
                 const satcat5::udp::Addr& gateway,
                 const satcat5::udp::Port& dstport,
                 satcat5::udp::Port srcport = satcat5::udp::PORT_NONE);
+
+            // Retry automatic address resolution.
+            void reconnect() {m_addr.retry();}
 
         protected:
             SocketCore(

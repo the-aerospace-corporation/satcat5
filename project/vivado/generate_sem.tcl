@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -22,6 +22,16 @@
 #
 
 proc generate_sem { sem_name } {
+
+    # Check part family. Current SEM core is 7 series only.
+    # TODO: Add Ultrascale SEM support using sem_ultra core with different interface.
+    set part_family [get_property family [get_parts -of_objects [current_project]]]
+    if {[lsearch -exact {spartan7 artix7 kintex7 virtex7 zynq} $part_family] < 0} {
+        puts {Unsupported part family for SEM core, not generating.}
+        return
+    }
+
+    # Create IP
     create_ip -name sem -vendor xilinx.com -library ip -module_name $sem_name
     set_property -dict [list\
         CONFIG.ENABLE_INJECTION {false}\
@@ -30,6 +40,8 @@ proc generate_sem { sem_name } {
         CONFIG.INJECTION_SHIM {none}\
         CONFIG.CLOCK_FREQ {100}\
     ] [get_ips $sem_name]
+
+    # Generate IP
     generate_target {instantiation_template} [get_files $sem_name.xci]
     generate_target all [get_files $sem_name.xci]
     catch { config_ip_cache -export [get_ips -all $sem_name] }

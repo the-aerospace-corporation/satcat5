@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -22,32 +22,12 @@
 
 puts {Running create_sysdef.tcl}
 
-# Build bitfile (may take a while...)
-# Note: Ignore "launch_runs" errors for already-finished builds.
-catch {
-    launch_runs impl_1 -to_step write_bitstream -jobs 4
-}
-puts {Waiting for completion...}
-wait_on_run impl_1 -timeout 30;     # Wait for run to finish...
+# Import functions for "shared_build.tcl".
+variable script_dir [file normalize [file dirname [info script]]]
+source $script_dir/../../project/vivado/shared_build.tcl
 
-# Find the output we just generated.
-puts {Looking for output files...}
-set run_dir [get_property DIRECTORY [current_run]]
-set run_bit [lindex [glob -nocomplain $run_dir/*.bit] 0]
-set run_mmi [lindex [glob -nocomplain $run_dir/*.mmi] 0]
+# Build bitfile (may take a while...)
+satcat5_launch_run
 
 # Write out the hardware definition
-puts "Writing SYSDEF:"
-puts "    BIT: $run_bit"
-puts "    MMI: $run_mmi"
-
-set script_dir [file normalize [file dirname [info script]]]
-write_hwdef -force -file $run_dir/arty_managed.hwdef
-write_sysdef -force \
-    -hwdef $run_dir/arty_managed.hwdef \
-    -bitfile $run_bit \
-    -meminfo $run_mmi \
-    -file $script_dir/arty_managed.hdf
-
-set sysdef_size [file size $script_dir/arty_managed.hdf]
-puts "SYSDEF Ready ($sysdef_size bytes)"
+satcat5_write_hdf $script_dir/arty_managed.hdf

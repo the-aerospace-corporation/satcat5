@@ -60,6 +60,7 @@ entity wrap_cfgbus_host_eth is
     sw_rx_error     : out std_logic;
     sw_rx_rate      : out std_logic_vector(15 downto 0);
     sw_rx_status    : out std_logic_vector(7 downto 0);
+    sw_rx_tsof      : out std_logic_vector(47 downto 0);
     sw_rx_reset     : out std_logic;
     sw_tx_clk       : out std_logic;
     sw_tx_data      : in  std_logic_vector(7 downto 0);
@@ -67,6 +68,7 @@ entity wrap_cfgbus_host_eth is
     sw_tx_valid     : in  std_logic;
     sw_tx_ready     : out std_logic;
     sw_tx_error     : out std_logic;
+    sw_tx_tnow      : out std_logic_vector(47 downto 0);
     sw_tx_reset     : out std_logic;
 
     -- Interrupt (optional)
@@ -88,10 +90,12 @@ begin
 sw_rx_clk       <= sys_clk;
 sw_rx_error     <= '0';
 sw_rx_rate      <= get_rate_word(1);
+sw_rx_tsof      <= (others => '0');
 sw_rx_status    <= (others => '0');
 sw_rx_reset     <= reset_p;
 sw_tx_clk       <= sys_clk;
 sw_tx_error     <= '0';
+sw_tx_tnow      <= (others => '0');
 sw_tx_reset     <= reset_p;
 
 -- Convert ConfigBus signals.

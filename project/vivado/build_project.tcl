@@ -1,4 +1,4 @@
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -20,14 +20,38 @@
 # It is used as part of the Jenkins build-automation pipeline.
 #
 
-if {[llength $argv] == 1} {
-    set PROJNAME [lindex $argv 0]
-} else {
+# Arguments with default values
+proc setvars {projname {cfgmem_type "none"} {cfgmem_interface SPIx4} {cfgmem_size 16}} {
+    upvar 1 PROJNAME PROJNAME
+    upvar 1 CFGMEM_TYPE CFGMEM_TYPE
+    upvar 1 CFGMEM_INTERFACE CFGMEM_INTERFACE
+    upvar 1 CFGMEM_SIZE CFGMEM_SIZE
+    set PROJNAME $projname
+    set CFGMEM_TYPE $cfgmem_type
+    set CFGMEM_INTERFACE $cfgmem_interface
+    set CFGMEM_SIZE $cfgmem_size
+}
+
+# Set args
+if {[llength $argv] < 1} {
     error "Must specify project! Pass with -tclargs in batch mode or set argv in GUI mode"
 }
-puts "Building project: $PROJNAME"
+setvars $argv
 
+# Import functions for "shared_build.tcl".
+variable script_dir [file normalize [file dirname [info script]]]
+source $script_dir/shared_build.tcl
+
+# Synthesis, P&R, Bitgen
+puts "Building project: $PROJNAME"
 open_project ./$PROJNAME/$PROJNAME.xpr
-update_compile_order -fileset sources_1
-launch_runs impl_1 -to_step write_bitstream
-wait_on_run impl_1
+satcat5_launch_run
+
+# If requested, also write out the .bit or .hdf file.
+# Note: OUT_NAME is set by the "create_project" or "shared_create" script.
+cd [get_property DIRECTORY [get_runs impl_1]]
+if {$CFGMEM_TYPE == "zynq"} {
+    satcat5_write_hdf ${OUT_NAME}.hdf
+} elseif {$CFGMEM_TYPE == "cfgmem"} {
+    satcat5_write_bin ${OUT_NAME}.bin $CFGMEM_INTERFACE $CFGMEM_SIZE
+}

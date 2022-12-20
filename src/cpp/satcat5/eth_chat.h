@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -68,11 +68,19 @@ namespace satcat5 {
             // Open a reply to the sender of the most recent message.
             satcat5::io::Writeable* open_reply(unsigned len);
 
+            // As "open_reply", but to any destination address.
+            satcat5::io::Writeable* open_text(
+                const satcat5::eth::MacAddr& dst, unsigned len);
+
+            // Accessors for local and reply addresses.
+            satcat5::eth::MacAddr local_mac() const;
+            satcat5::eth::MacAddr reply_mac() const;
+
         protected:
-            void send_inner(
+            satcat5::io::Writeable* open_inner(
                 const satcat5::eth::MacAddr& dst,
                 const satcat5::eth::MacType& typ,
-                unsigned nbytes, const void* msg);
+                unsigned msg_bytes);
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
             void timer_event() override;
 
@@ -88,13 +96,12 @@ namespace satcat5 {
         public:
             explicit LogToChat(
                 satcat5::eth::ChatProto* dst,
-                satcat5::log::EventHandler* cc = 0);
-            ~LogToChat() SATCAT5_OPTIONAL_DTOR;
+                const satcat5::eth::MacAddr& addr = satcat5::eth::MACADDR_BROADCAST);
             void log_event(s8 priority, unsigned nbytes, const char* msg) override;
 
         private:
-            satcat5::eth::ChatProto* const m_dst;
-            satcat5::log::EventHandler* const m_cc;
+            satcat5::eth::ChatProto* const m_chat;
+            const satcat5::eth::MacAddr m_addr;
         };
 
         // Service for echoing ChatProto text messages.

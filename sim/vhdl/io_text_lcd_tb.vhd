@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -117,7 +117,7 @@ p_src : process
     constant NEWLINE_CRLF : string := character'val(13) & character'val(10);
 begin
     wait until falling_edge(reset_p);
-    wait for 1 us;
+    wait for 30 ms;
 
     -- Send simple message:
     send_str("Hello world!" & NEWLINE_CRLF);

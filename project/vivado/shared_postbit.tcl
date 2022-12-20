@@ -1,4 +1,4 @@
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -51,14 +51,4 @@ foreach BITFILE [glob -nocomplain *.bit *.mmi] {
     set OUT_NAME ${DST_DIR}/${DESIGN_NAME}_${TIME_STR}
     # Copy the file and derived outputs to the destination folder.
     file copy -force $BITFILE ${OUT_NAME}.$FILE_EXT
-    if {$FILE_EXT == "bit"} {
-        if {[get_property architecture [get_parts $TARGET_DEVICE]] == "zynq"} {
-            # Zynq projects: Create a .hdf file with the same name.
-            write_hwdef -force -file ${DESIGN_NAME}.hwdef
-            write_sysdef -force -hwdef ${DESIGN_NAME}.hwdef -bitfile $BITFILE -file ${OUT_NAME}.hdf
-        } else {
-            # FPGA projects: create a .bin file with the same name.
-            write_cfgmem -force -format BIN -interface SPIx4 -size 16 -loadbit "up 0x0 ${BITFILE}" ${OUT_NAME}.bin
-        }
-    }
 }

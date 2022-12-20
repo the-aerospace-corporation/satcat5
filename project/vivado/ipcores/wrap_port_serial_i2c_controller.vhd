@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -50,6 +50,7 @@ entity wrap_port_serial_i2c_controller is
     sw_rx_error : out std_logic;
     sw_rx_rate  : out std_logic_vector(15 downto 0);
     sw_rx_status: out std_logic_vector(7 downto 0);
+    sw_rx_tsof  : out std_logic_vector(47 downto 0);
     sw_rx_reset : out std_logic;
     sw_tx_clk   : out std_logic;
     sw_tx_data  : in  std_logic_vector(7 downto 0);
@@ -57,6 +58,7 @@ entity wrap_port_serial_i2c_controller is
     sw_tx_valid : in  std_logic;
     sw_tx_ready : out std_logic;
     sw_tx_error : out std_logic;
+    sw_tx_tnow  : out std_logic_vector(47 downto 0);
     sw_tx_reset : out std_logic;
 
     -- Runtime configuration (optional)
@@ -111,10 +113,12 @@ sw_rx_last      <= rx_data.last;
 sw_rx_write     <= rx_data.write;
 sw_rx_error     <= rx_data.rxerr;
 sw_rx_rate      <= rx_data.rate;
+sw_rx_tsof      <= std_logic_vector(rx_data.tsof);
 sw_rx_status    <= rx_data.status;
 sw_rx_reset     <= rx_data.reset_p;
 sw_tx_clk       <= tx_ctrl.clk;
 sw_tx_ready     <= tx_ctrl.ready;
+sw_tx_tnow      <= std_logic_vector(tx_ctrl.tnow);
 sw_tx_error     <= tx_ctrl.txerr;
 sw_tx_reset     <= tx_ctrl.reset_p;
 tx_data.data    <= sw_tx_data;

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -38,6 +38,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity eth_preamble_rx is
@@ -55,6 +56,9 @@ entity eth_preamble_rx is
 
     -- Line-rate reporting (see switch_types::get_rate_word)
     rate_word   : in  port_rate_t;
+
+    -- Received message timestamps, if enabled.
+    rx_tstamp   : in  tstamp_t := TSTAMP_DISABLED;
 
     -- Repeat detection (each input byte repeated N+1 times)
     rep_rate    : out byte_u;
@@ -102,6 +106,7 @@ rx_data.last    <= out_last;
 rx_data.rxerr   <= bool2bit(err_dlyct > 0);
 rx_data.rate    <= rate_word;
 rx_data.status  <= status;
+rx_data.tsof    <= rx_tstamp;
 rep_rate        <= reg_rpt;
 rep_valid       <= got_rpt;
 

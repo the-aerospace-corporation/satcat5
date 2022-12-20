@@ -275,9 +275,9 @@ p_test : process
 
     -- Calculate the effective FIFO capacity, given frame size.
     function nbytes_max(nf : natural) return natural is
-        constant nwords_pkt : natural := (nf + FIFO_BYTES - 1) / FIFO_BYTES;
-        variable nwords_max : natural := 2**DEPTH_LOG2;
-        variable nframes, nwords_rem : natural;
+        constant num_words_pkt : natural := (nf + FIFO_BYTES - 1) / FIFO_BYTES;
+        variable num_words_max : natural := 2**DEPTH_LOG2;
+        variable num_frames, num_words_rem : natural;
     begin
         -- Shortcut for random frames:
         if (nf = 0) then
@@ -286,13 +286,13 @@ p_test : process
         -- +1 effective capacity if there is an output buffer and
         -- it is large enough to fit the entire frame.
         if (OUT_BYTES < FIFO_BYTES and nf <= OUT_BYTES) then
-            nwords_max := nwords_max + 1;
+            num_words_max := num_words_max + 1;
         end if;
         -- Number of full-size frames?  How many leftover words?
-        nframes     := nwords_max / nwords_pkt;
-        nwords_rem  := nwords_max - nframes * nwords_pkt;
-        -- If needed, add a smaller frame to get exactly nwords_max.
-        return nframes * nf + nwords_rem * FIFO_BYTES;
+        num_frames    := num_words_max / num_words_pkt;
+        num_words_rem := num_words_max - num_frames * num_words_pkt;
+        -- If needed, add a smaller frame to get exactly num_words_max.
+        return num_frames * nf + num_words_rem * FIFO_BYTES;
     end function;
 
     -- Run a single test from start to finish.

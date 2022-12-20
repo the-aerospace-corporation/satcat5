@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -116,6 +116,12 @@ signal cfg_plen     : table_plen := INPUT_WIDTH;
 signal cfg_valid    : std_logic := '0';
 signal cfg_ready    : std_logic;
 signal cfg_reject   : std_logic;
+signal scan_index   : integer range 0 to TABLE_SIZE-1 := 0;
+signal scan_valid   : std_logic := '0';
+signal scan_ready   : std_logic;
+signal scan_found   : std_logic;
+signal scan_data    : std_logic_vector(INPUT_WIDTH-1 downto 0);
+signal scan_mask    : std_logic_vector(INPUT_WIDTH-1 downto 0);
 
 -- Reference FIFO.
 signal ref_data     : input_word;
@@ -201,6 +207,12 @@ uut : entity work.tcam_core
     cfg_valid   => cfg_valid,
     cfg_ready   => cfg_ready,
     cfg_reject  => cfg_reject,
+    scan_index  => scan_index,
+    scan_valid  => scan_valid,
+    scan_ready  => scan_ready,
+    scan_found  => scan_found,
+    scan_data   => scan_data,
+    scan_mask   => scan_mask,
     clk         => clk_100,
     reset_p     => reset_p);
 
@@ -314,6 +326,49 @@ p_test : process
         end if;
     end procedure;
 
+    -- Read a single address through the SCAN port.
+    procedure read_addr(tbl_idx : natural) is
+        variable ref_idx : integer := INDEX_NOT_FOUND;
+    begin
+        -- Is there a reference entry written in this slot?
+        for n in test_table'range loop
+            if (test_table(n).index = tbl_idx) then
+                ref_idx := n;
+            end if;
+        end loop;
+        -- Issue the scan command.
+        wait until rising_edge(clk_100);
+        scan_index  <= tbl_idx;
+        scan_valid  <= '1';
+        -- Wait for command to complete...
+        wait until rising_edge(clk_100);
+        while (scan_ready = '0') loop
+            wait until rising_edge(clk_100);
+        end loop;
+        -- Confirm results match the corresponding reference, if any.
+        if (ref_idx = INDEX_NOT_FOUND) then
+            assert (scan_found = '0')
+                report "Read: Expected empty table entry." severity error;
+        elsif (scan_found = '0') then
+            report "Read: Missing table entry." severity error;
+        else
+            assert (scan_data = test_table(ref_idx).keyword and
+                    scan_mask = test_table(ref_idx).keymask)
+                report "Read: Mismatched table entry #" & integer'image(ref_idx) severity error;
+        end if;
+        -- End of scan command.
+        scan_valid  <= '0';
+        wait until rising_edge(clk_100);
+    end procedure;
+
+    -- Read the entire table through the SCAN port.
+    procedure read_table is
+    begin
+        for n in 0 to TABLE_SIZE-1 loop
+            read_addr(n);
+        end loop;
+    end procedure;
+
     -- Start-of-test setup.
     procedure test_start(rr: real; lbl: string) is
     begin
@@ -328,6 +383,7 @@ begin
 
     -- Run for a while with an empty table.
     test_start(0.5, "Empty table");
+    read_table;
     wait for 20 us;
 
     -- Load TCAM table, one address at a time.
@@ -336,6 +392,7 @@ begin
         load_addr(n);
         wait for 10 us;
     end loop;
+    read_table;
     wait for 100 us;
 
     -- If CONFIRM mode is enabled, attempt to reload an entry.
@@ -346,6 +403,7 @@ begin
         load_addr(1, '1');
         wait for 50 us;
     end if;
+    read_table;
 
     -- If overwrite is enabled, overwrite a few entries.
     if (REPL_MODE /= TCAM_REPL_NONE) then
@@ -356,10 +414,12 @@ begin
         end loop;
         wait for 100 us;
     end if;
+    read_table;
 
     -- Keep running the test at different rates.
     test_start(0.1, "Rate-0.1");
     wait for 200 us;
+
     test_start(0.9, "Rate-0.9");
     wait for 200 us;
 

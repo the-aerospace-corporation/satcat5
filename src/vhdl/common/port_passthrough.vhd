@@ -26,8 +26,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.common_primitives.sync_pulse2pulse;
-use     work.common_primitives.sync_toggle2pulse;
+use     work.common_primitives.all;
 use     work.switch_types.all;
 
 entity port_passthrough is

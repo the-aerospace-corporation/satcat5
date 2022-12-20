@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2019, 2020 The Aerospace Corporation
+# Copyright 2019, 2020, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -24,6 +24,7 @@ which is functionally equivalent to satcat5_uart::AsyncSLIPPort.
 """
 
 from scapy import all as sca
+import scapy
 import threading
 import traceback
 from time import sleep
@@ -68,7 +69,16 @@ def list_eth_interfaces():
     """
     result = {}
     if os.name =='nt':
-        ifs = sca.get_windows_if_list()
+        # Different versions of the Scapy API move the get_windows_if_list() function.
+        # Supporting older versions by using trial-and-error to find it.
+        try:
+            ifs = sca.get_windows_if_list()
+        except AttributeError:
+            try:
+                ifs = scapy.arch.windows.get_windows_if_list()
+            except Exception:
+                raise
+
         for interface in ifs:
             result[interface['description']] = interface['name']
     else:

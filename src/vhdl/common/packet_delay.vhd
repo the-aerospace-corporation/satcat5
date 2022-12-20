@@ -39,7 +39,7 @@ entity packet_delay is
     port (
     -- Input port (no flow control).
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
-    in_meta     : in  switch_meta_t;
+    in_meta     : in  switch_meta_t := SWITCH_META_NULL;
     in_nlast    : in  integer range 0 to IO_BYTES;
     in_write    : in  std_logic;
 

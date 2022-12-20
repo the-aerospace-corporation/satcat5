@@ -21,7 +21,7 @@
 --
 -- For cross-platform support, other blocks in this design use generic
 -- wrappers for vendor-specific I/O structures.  This file contains
--- implementations of these structures for Xilinx Ultrascale(+) FPGAs.
+-- implementations of these structures for Xilinx Ultrascale FPGAs.
 --
 -- NOTE: Designs should only include ONE such implementation!  If your
 -- project includes "xilinx/ultrascale_io.vhd", don't also include similar
@@ -259,6 +259,7 @@ gen_dly_en : if (DELAY_PSEC >= 0) generate
         CASC_RETURN => '0',
         EN_VTC      => '0'
     );
+end generate;
 
 gen_dly_no : if (DELAY_PSEC < 0) generate
     d_dly <= d_pin;

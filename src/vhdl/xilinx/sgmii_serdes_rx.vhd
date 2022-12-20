@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
+-- Copyright 2019, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -53,9 +53,13 @@ entity sgmii_serdes_rx is
     RxD_p_pin   : in  std_logic;
     RxD_n_pin   : in  std_logic;
 
+    -- Timestamp metadata in the "clk_125" domain.
+    rx_tstamp   : in  unsigned(47 downto 0) := (others => '0');
+
     -- Parallel output data (MSB first, AXI flow control).
     out_clk     : in  std_logic;        -- 130 MHz or higher
     out_data    : out std_logic_vector(39 downto 0);
+    out_tstamp  : out unsigned(47 downto 0);
     out_next    : out std_logic;
 
     -- Rx clock and reset/shutdown
@@ -105,6 +109,7 @@ subtype slv8 is std_logic_vector(7 downto 0);
 subtype slv40 is std_logic_vector(39 downto 0);
 signal rx_par8          : slv8;
 signal rx_par40         : slv40 := (others => '0');
+signal out_meta         : std_logic_vector(47 downto 0);
 signal reset_125        : std_logic := '1';
 
 begin
@@ -335,9 +340,11 @@ gen_impl_a : if (IN_FIFO_LOC'length >= 1) generate
         port map(
         in_clk      => clk_125,
         in_data     => rx_par40,
+        in_meta     => std_logic_vector(rx_tstamp),
         in_reset_p  => reset_125,
         out_clk     => out_clk,
         out_data    => out_data,
+        out_meta    => out_meta,
         out_next    => out_next);
 end generate;
 
@@ -346,10 +353,15 @@ gen_impl_b : if (IN_FIFO_LOC'length <= 0) generate
         port map(
         in_clk      => clk_125,
         in_data     => rx_par40,
+        in_meta     => std_logic_vector(rx_tstamp),
         in_reset_p  => reset_125,
         out_clk     => out_clk,
         out_data    => out_data,
+        out_meta    => out_meta,
         out_next    => out_next);
 end generate;
+
+-- Convert timestamp back to unsigned.
+out_tstamp <= unsigned(out_meta);
 
 end rtl;

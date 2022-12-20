@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -27,11 +27,15 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity wrap_port_rmii is
     generic (
-    MODE_CLKOUT : boolean);             -- Enable clock output?
+    MODE_CLKOUT : boolean;              -- Enable clock output?
+    PTP_ENABLE  : boolean := false;     -- Enable PTP timestamps?
+    PTP_REF_HZ  : integer := 0);        -- Vernier reference frequency
     port (
     -- External RMII interface.
     rmii_txd    : out std_logic_vector(1 downto 0);
@@ -45,6 +49,12 @@ entity wrap_port_rmii is
     rmii_clkin  : in  std_logic;        -- 50 MHz reference
     rmii_clkout : out std_logic;        -- Optional clock output
 
+    -- Vernier reference time (optional)
+    tref_vclka  : in  std_logic;
+    tref_vclkb  : in  std_logic;
+    tref_tnext  : in  std_logic;
+    tref_tstamp : in  std_logic_vector(47 downto 0);
+
     -- Network port
     sw_rx_clk   : out std_logic;
     sw_rx_data  : out std_logic_vector(7 downto 0);
@@ -53,6 +63,7 @@ entity wrap_port_rmii is
     sw_rx_error : out std_logic;
     sw_rx_rate  : out std_logic_vector(15 downto 0);
     sw_rx_status: out std_logic_vector(7 downto 0);
+    sw_rx_tsof  : out std_logic_vector(47 downto 0);
     sw_rx_reset : out std_logic;
     sw_tx_clk   : out std_logic;
     sw_tx_data  : in  std_logic_vector(7 downto 0);
@@ -60,6 +71,7 @@ entity wrap_port_rmii is
     sw_tx_valid : in  std_logic;
     sw_tx_ready : out std_logic;
     sw_tx_error : out std_logic;
+    sw_tx_tnow  : out std_logic_vector(47 downto 0);
     sw_tx_reset : out std_logic;
 
     -- Other control
@@ -68,6 +80,10 @@ end wrap_port_rmii;
 
 architecture wrap_port_rmii of wrap_port_rmii is
 
+constant VCONFIG : vernier_config := create_vernier_config(
+    value_else_zero(PTP_REF_HZ, PTP_ENABLE));
+
+signal ref_time : port_timeref;
 signal rx_data  : port_rx_m2s;
 signal tx_data  : port_tx_s2m;
 signal tx_ctrl  : port_tx_m2s;
@@ -81,20 +97,29 @@ sw_rx_last      <= rx_data.last;
 sw_rx_write     <= rx_data.write;
 sw_rx_error     <= rx_data.rxerr;
 sw_rx_rate      <= rx_data.rate;
+sw_rx_tsof      <= std_logic_vector(rx_data.tsof);
 sw_rx_status    <= rx_data.status;
 sw_rx_reset     <= rx_data.reset_p;
 sw_tx_clk       <= tx_ctrl.clk;
 sw_tx_ready     <= tx_ctrl.ready;
+sw_tx_tnow      <= std_logic_vector(tx_ctrl.tnow);
 sw_tx_error     <= tx_ctrl.txerr;
 sw_tx_reset     <= tx_ctrl.reset_p;
 tx_data.data    <= sw_tx_data;
 tx_data.last    <= sw_tx_last;
 tx_data.valid   <= sw_tx_valid;
 
+-- Convert Vernier signals.
+ref_time.vclka  <= tref_vclka;
+ref_time.vclkb  <= tref_vclkb;
+ref_time.tnext  <= tref_tnext;
+ref_time.tstamp <= unsigned(tref_tstamp);
+
 -- Unit being wrapped.
 u_wrap : entity work.port_rmii
     generic map(
-    MODE_CLKOUT => MODE_CLKOUT)
+    MODE_CLKOUT => MODE_CLKOUT,
+    VCONFIG     => VCONFIG)
     port map(
     rmii_txd    => rmii_txd,
     rmii_txen   => rmii_txen,
@@ -104,6 +129,7 @@ u_wrap : entity work.port_rmii
     rmii_rxer   => rmii_rxer,
     rmii_clkin  => rmii_clkin,
     rmii_clkout => rmii_clkout,
+    ref_time    => ref_time,
     rx_data     => rx_data,
     tx_data     => tx_data,
     tx_ctrl     => tx_ctrl,

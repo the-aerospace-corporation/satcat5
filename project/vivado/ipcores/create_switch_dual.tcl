@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,21 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_frame_check.vhd
-ipcore_add_file $src_dir/common     fifo_packet.vhd
-ipcore_add_file $src_dir/common     fifo_smol_async.vhd
-ipcore_add_file $src_dir/common     fifo_smol_resize.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     port_passthrough.vhd
-ipcore_add_file $src_dir/common     switch_dual.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_mem  $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_switch_dual
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_switch_dual.vhd
 
 # Connect I/O ports
 ipcore_add_ethport "PortA" "pa" "slave"
@@ -52,9 +39,12 @@ ipcore_add_ethport "PortB" "pb" "slave"
 ipcore_add_gpio errvec_t
 
 # Set parameters
-ipcore_add_param ALLOW_JUMBO bool false
-ipcore_add_param ALLOW_RUNT bool false
-ipcore_add_param OBUF_KBYTES long 2
+ipcore_add_param ALLOW_JUMBO bool false \
+    {Allow Ethernet frames longer than 1522 bytes? (Total bytes including FCS)}
+ipcore_add_param ALLOW_RUNT bool false \
+    {Allow Ethernet frames shorter than 64 bytes? (Total bytes including FCS)}
+ipcore_add_param OBUF_KBYTES long 2 \
+    {Output buffer size, in kilobytes.}
 
 # Package the IP-core.
 ipcore_finished

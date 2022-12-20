@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -22,6 +22,7 @@
 #include <cstring>
 
 namespace eth = satcat5::eth;
+namespace log = satcat5::log;
 namespace net = satcat5::net;
 using eth::ChatEcho;
 using eth::ChatProto;
@@ -39,6 +40,7 @@ ChatProto::ChatProto(
     , m_vtag(eth::VTAG_NONE)
     , m_callback(0)
 {
+    if (dispatch->m_addr == eth::MACADDR_NONE) return;
     timer_every(1000);  // Heartbeat every N msec
 }
 
@@ -54,14 +56,15 @@ ChatProto::ChatProto(
     , m_vtag(vtag)
     , m_callback(0)
 {
+    if (dispatch->m_addr == eth::MACADDR_NONE) return;
     timer_every(1000);  // Heartbeat every N msec
 }
 #endif
 
-void ChatProto::send_inner(
+Writeable* ChatProto::open_inner(
     const eth::MacAddr& dst,
     const eth::MacType& typ,
-    unsigned nbytes, const void* msg)
+    unsigned msg_bytes)
 {
     // All the chat-protocol messages have the same format.
     #ifdef SATCAT5_VLAN_ENABLE
@@ -70,38 +73,66 @@ void ChatProto::send_inner(
     Writeable* wr = m_iface->open_write(dst, typ);
     #endif
 
-    if (wr) {
-        wr->write_u16((u16)nbytes);
-        wr->write_bytes(nbytes, msg);
-        wr->write_finalize();
-    }
+    if (wr) {wr->write_u16((u16)msg_bytes);}
+
+    return wr;
 }
-    
+
 void ChatProto::send_heartbeat()
 {
-    send_inner(
+    Writeable* wr = open_inner(
         eth::MACADDR_BROADCAST,
         eth::ETYPE_CHAT_HEARTBEAT,
-        m_userlen, m_username);
+        m_userlen);
+
+    if (wr) {
+        wr->write_bytes(m_userlen, m_username);
+        wr->write_finalize();
+    }
 }
 
 void ChatProto::send_text(
     const eth::MacAddr& dst, unsigned nbytes, const char* msg)
 {
-    send_inner(dst, eth::ETYPE_CHAT_TEXT, nbytes, msg);
+    Writeable* wr = open_inner(dst, eth::ETYPE_CHAT_TEXT, nbytes);
+
+    if (wr) {
+        wr->write_bytes(nbytes, msg);
+        wr->write_finalize();
+    }
 }
 
 void ChatProto::send_data(
     const eth::MacAddr& dst, unsigned nbytes, const void* msg)
 {
-    send_inner(dst, eth::ETYPE_CHAT_DATA, nbytes, msg);
+    Writeable* wr = open_inner(dst, eth::ETYPE_CHAT_DATA, nbytes);
+
+    if (wr) {
+        wr->write_bytes(nbytes, msg);
+        wr->write_finalize();
+    }
 }
 
 Writeable* ChatProto::open_reply(unsigned len)
 {
     Writeable* wr = m_iface->open_reply(m_reply_type, len + 2);
-    wr->write_u16(len);
+    if (wr) wr->write_u16(len);
     return wr;
+}
+
+Writeable* ChatProto::open_text(const eth::MacAddr& dst, unsigned len)
+{
+    return open_inner(dst, eth::ETYPE_CHAT_TEXT, len);
+}
+
+satcat5::eth::MacAddr ChatProto::local_mac() const
+{
+    return m_iface->m_addr;
+}
+
+satcat5::eth::MacAddr ChatProto::reply_mac() const
+{
+    return m_iface->reply_mac();
 }
 
 void ChatProto::frame_rcvd(LimitedRead& src)
@@ -126,26 +157,28 @@ void ChatProto::timer_event()
     send_heartbeat();
 }
 
-LogToChat::LogToChat(eth::ChatProto* dst, satcat5::log::EventHandler* cc)
-    : m_dst(dst)
-    , m_cc(cc)
+LogToChat::LogToChat(eth::ChatProto* dst, const eth::MacAddr& addr)
+    : m_chat(dst)
+    , m_addr(addr)
 {
-    // Automatically set ourselves as the log destination.
-    satcat5::log::start(this);
+    // Nothing else to initialize.
 }
-
-#if SATCAT5_ALLOW_DELETION
-LogToChat::~LogToChat()
-{
-    // Object deleted, point to next hop in chain.
-    // (If this is NULL, this shuts down the logging system.)
-    satcat5::log::start(m_cc);
-}
-#endif
 
 void LogToChat::log_event(s8 priority, unsigned nbytes, const char* msg)
 {
-    m_dst->send_text(eth::MACADDR_BROADCAST, nbytes, msg);
+    // Prepend a human-readable priority label.
+    const char* pstr = log::priority_label(priority);
+    unsigned    plen = strlen(pstr);
+    unsigned   total = plen + nbytes + 1;
+
+    // Write header, append each message field, and send.
+    Writeable* wr = m_chat->open_text(m_addr, total);
+    if (wr) {
+        wr->write_bytes(plen, pstr);
+        wr->write_u8((u8)'\t');
+        wr->write_bytes(nbytes, msg);
+        wr->write_finalize();
+    }
 }
 
 ChatEcho::ChatEcho(eth::ChatProto* service)

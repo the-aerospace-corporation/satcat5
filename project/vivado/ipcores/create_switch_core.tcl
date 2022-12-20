@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,49 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     cfgbus_port_stats.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_adjust.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_frame_check.vhd
-ipcore_add_file $src_dir/common     eth_frame_parcrc.vhd
-ipcore_add_file $src_dir/common     eth_frame_vstrip.vhd
-ipcore_add_file $src_dir/common     eth_frame_vtag.vhd
-ipcore_add_file $src_dir/common     eth_pause_ctrl.vhd
-ipcore_add_file $src_dir/common     eth_statistics.vhd
-ipcore_add_file $src_dir/common     fifo_packet.vhd
-ipcore_add_file $src_dir/common     fifo_priority.vhd
-ipcore_add_file $src_dir/common     fifo_repack.vhd
-ipcore_add_file $src_dir/common     fifo_smol_async.vhd
-ipcore_add_file $src_dir/common     fifo_smol_bytes.vhd
-ipcore_add_file $src_dir/common     fifo_smol_resize.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     mac_core.vhd
-ipcore_add_file $src_dir/common     mac_counter.vhd
-ipcore_add_file $src_dir/common     mac_igmp_simple.vhd
-ipcore_add_file $src_dir/common     mac_lookup.vhd
-ipcore_add_file $src_dir/common     mac_priority.vhd
-ipcore_add_file $src_dir/common     mac_vlan_mask.vhd
-ipcore_add_file $src_dir/common     packet_delay.vhd
-ipcore_add_file $src_dir/common     packet_inject.vhd
-ipcore_add_file $src_dir/common     packet_round_robin.vhd
-ipcore_add_file $src_dir/common     port_statistics.vhd
-ipcore_add_file $src_dir/common     portx_statistics.vhd
-ipcore_add_file $src_dir/common     switch_core.vhd
-ipcore_add_file $src_dir/common     switch_port_rx.vhd
-ipcore_add_file $src_dir/common     switch_port_tx.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_file $src_dir/common     tcam_cache_nru2.vhd
-ipcore_add_file $src_dir/common     tcam_cache_plru.vhd
-ipcore_add_file $src_dir/common     tcam_core.vhd
-ipcore_add_file $src_dir/common     tcam_maxlen.vhd
-ipcore_add_file $src_dir/common     tcam_table.vhd
-ipcore_add_mem  $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_switch_core
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_switch_core.vhd
 
 # Connect all the basic I/O ports
 ipcore_add_clock core_clk {}
@@ -82,22 +41,40 @@ ipcore_add_gpio errvec_t
 ipcore_add_cfgopt Cfg cfg
 
 # Set parameters
-set pcount [ipcore_add_param PORT_COUNT long 3]
-set xcount [ipcore_add_param PORTX_COUNT long 0]
-set dwidth [ipcore_add_param DATAPATH_BYTES long 3]
-ipcore_add_param STATS_ENABLE bool false
-ipcore_add_param STATS_DEVADDR devaddr 1
-ipcore_add_param CORE_CLK_HZ long 200000000
-ipcore_add_param SUPPORT_PAUSE bool true
-ipcore_add_param SUPPORT_PTP bool false
-ipcore_add_param SUPPORT_VLAN bool false
-ipcore_add_param ALLOW_JUMBO bool false
-ipcore_add_param ALLOW_RUNT bool false
-ipcore_add_param IBUF_KBYTES long 2
-ipcore_add_param HBUF_KBYTES long 0
-ipcore_add_param OBUF_KBYTES long 6
-ipcore_add_param MAC_TABLE_SIZE long 64
-ipcore_add_param SCRUB_TIMEOUT long 15
+set pcount [ipcore_add_param PORT_COUNT long 3 \
+    {Number of attached Ethernet ports (standard)}]
+set xcount [ipcore_add_param PORTX_COUNT long 0 \
+    {Number of attached Ethernet ports (10-gigabit)}]
+set dwidth [ipcore_add_param DATAPATH_BYTES long 3 \
+    {Width of datapath. Max aggregate throughput is DATAPATH_BYTES x CORE_CLK_HZ x 8 Mbps}]
+ipcore_add_param STATS_ENABLE bool false \
+    {Enable throughput and packet-count statistics for each port?}
+ipcore_add_param STATS_DEVADDR devaddr 1 \
+    {ConfigBus device address for statistics module}
+ipcore_add_param CORE_CLK_HZ long 200000000 \
+    {Frequency of "core_clk" signal (Hz)}
+ipcore_add_param SUPPORT_PAUSE bool true \
+    {Include support for IEEE 802.3x "pause" frames? (Recommended)}
+ipcore_add_param SUPPORT_PTP bool false \
+    {Reserved for future expansion, not currently supported.}
+ipcore_add_param SUPPORT_VLAN bool false \
+    {Include support for IEEE 802.1Q Virtual Local Area Networks?}
+ipcore_add_param MISS_BCAST bool true \
+    {Should frames with an uncached destination MAC be broadcast (true) or dropped (false)?}
+ipcore_add_param ALLOW_JUMBO bool false \
+    {Allow Ethernet frames with a length longer than 1522 bytes? (Total including FCS)}
+ipcore_add_param ALLOW_RUNT bool false \
+    {Allow Ethernet frames witha  length shorter than 64 bytes? (Total including FCS)}
+ipcore_add_param IBUF_KBYTES long 2 \
+    {Size of each port's input buffer, in kilobytes}
+ipcore_add_param HBUF_KBYTES long 0 \
+    {Size of each port's high-priority output buffer, in kilobytes (0 = disabled)}
+ipcore_add_param OBUF_KBYTES long 6 \
+    {Size of each port's output buffer, in kilobytes}
+ipcore_add_param MAC_TABLE_EDIT bool true \
+    {Allow manual read/write of the MAC-address cache?}
+ipcore_add_param MAC_TABLE_SIZE long 64 \
+    {Size of the MAC-address cache}
 
 # Set min/max range on the DATAPATH_BYTES parameter.
 set_property value_validation_type range_long $dwidth
@@ -118,6 +95,7 @@ set_property value_validation_range_maximum $PORTX_COUNT_MAX $xcount
 # Enable ports and parameters depending on configuration.
 set_property enablement_dependency {$CFG_ENABLE || $STATS_ENABLE} [ipx::get_bus_interfaces Cfg -of_objects $ip]
 set_property enablement_tcl_expr {$STATS_ENABLE} [ipx::get_user_parameters STATS_DEVADDR -of_objects $ip]
+set_property enablement_tcl_expr {$CFG_ENABLE} [ipx::get_user_parameters MAC_TABLE_EDIT -of_objects $ip]
 
 # Add each of the Ethernet ports with logic to show/hide.
 # (HDL always has PORT_COUNT_MAX, enable first N depending on GUI setting.)

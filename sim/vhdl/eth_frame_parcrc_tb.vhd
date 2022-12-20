@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -53,8 +53,6 @@ signal reset_p      : std_logic := '1';
 signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0);
 signal in_nlast     : integer range 0 to IO_BYTES;
 signal in_write     : std_logic;
-signal in_valid     : std_logic;
-signal in_ready     : std_logic := '0';
 
 -- Reference stream
 signal ref_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -75,7 +73,6 @@ signal load_data    : std_logic_vector(8*LOAD_BYTES-1 downto 0) := (others => '0
 signal load_crc     : crc_word_t := (others => '0');
 signal load_nlast   : integer range 0 to LOAD_BYTES := 0;
 signal load_wr      : std_logic := '0';
-signal load_commit  : std_logic;
 signal test_done_i  : std_logic := '0';
 
 begin
@@ -85,58 +82,41 @@ clk100  <= not clk100 after 5 ns;   -- 1 / (2*5ns) = 100 MHz
 reset_p <= '0' after 1 us;
 
 -- Input and reference queues.
-load_commit <= bool2bit(load_nlast > 0);
-
-u_ififo : entity work.fifo_packet
+u_ififo : entity work.fifo_sim_throttle
     generic map(
     INPUT_BYTES     => LOAD_BYTES,
-    OUTPUT_BYTES    => IO_BYTES,
-    BUFFER_KBYTES   => 2)
+    OUTPUT_BYTES    => IO_BYTES)
     port map(
     in_clk          => clk100,
     in_data         => load_data,
     in_nlast        => load_nlast,
-    in_last_commit  => load_commit,
-    in_last_revert  => '0',
     in_write        => load_wr,
     out_clk         => clk100,
     out_data        => in_data,
     out_nlast       => in_nlast,
-    out_valid       => in_valid,
-    out_ready       => in_ready,
+    out_valid       => in_write,
+    out_ready       => '1',
+    out_rate        => rate_in,
     reset_p         => reset_p);
 
-u_rfifo : entity work.fifo_packet
+u_rfifo : entity work.fifo_sim_throttle
     generic map(
     INPUT_BYTES     => LOAD_BYTES,
     OUTPUT_BYTES    => IO_BYTES,
-    BUFFER_KBYTES   => 2,
     META_WIDTH      => 32)
     port map(
     in_clk          => clk100,
     in_data         => load_data,
     in_nlast        => load_nlast,
-    in_pkt_meta     => load_crc,
-    in_last_commit  => load_commit,
-    in_last_revert  => '0',
+    in_meta         => load_crc,
     in_write        => load_wr,
     out_clk         => clk100,
     out_data        => ref_data,
     out_nlast       => ref_nlast,
-    out_pkt_meta    => ref_crc,
+    out_meta        => ref_crc,
     out_valid       => ref_valid,
     out_ready       => out_write,
     reset_p         => reset_p);
-
--- Flow-control randomization.
-in_write <= in_valid and in_ready;
-
-p_flow : process(clk100)
-begin
-    if rising_edge(clk100) then
-        in_ready <= rand_bit(rate_in);
-    end if;
-end process;
 
 -- Unit under test.
 uut : entity work.eth_frame_parcrc

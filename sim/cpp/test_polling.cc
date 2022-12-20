@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -20,6 +20,7 @@
 
 #include <ctime>
 #include <deque>
+#include <hal_posix/posix_utils.h>
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
 #include <satcat5/polling.h>
@@ -28,6 +29,15 @@ namespace poll = satcat5::poll;
 using satcat5::test::CountAlways;
 using satcat5::test::CountOnDemand;
 using satcat5::test::CountTimer;
+
+// Helper function to wait N real-time milliseconds.
+void realtime_wait(unsigned msec) {
+    clock_t start    = clock();
+    clock_t duration = (msec * CLOCKS_PER_SEC) / 1000;
+    while (clock() - start < duration) {
+        poll::service();
+    }
+}
 
 TEST_CASE("polling") {
     SECTION("always") {
@@ -135,16 +145,23 @@ TEST_CASE("polling") {
         CountOnDemand ctr;
         satcat5::util::PosixTimer timer;
         satcat5::irq::VirtualTimer uut(&ctr, &timer, 10000);
-        // Run the polling loop for ~100 msec (1/10th second)
-        clock_t start    = clock();
-        clock_t duration = CLOCKS_PER_SEC / 10;
-        while (clock() - start < duration) {
-            poll::service();
-        }
+        // Run the polling loop for ~100 msec.
+        realtime_wait(100);
         // Confirm we got roughly the expected event count.
         // Note: This assumes timer resolution <= 10 msec.
         CHECK(ctr.count() >=  8);
         CHECK(ctr.count() <= 12);
     }
 
+    SECTION("posix-timekeeper") {
+        // Test the default PosixTimekeeper object.
+        satcat5::util::PosixTimekeeper timer;
+        CountTimer ctr;
+        ctr.timer_every(25);    // One event per 25 msec
+        // Run the polling loop for ~100 msec.
+        realtime_wait(100);
+        // Confirm we got roughly the expected event count.
+        CHECK(ctr.count() >= 3);
+        CHECK(ctr.count() <= 5);
+    }
 }

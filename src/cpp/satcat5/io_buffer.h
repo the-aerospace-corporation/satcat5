@@ -52,7 +52,7 @@ namespace satcat5 {
             BufferedIO(
                 u8* txbuff, unsigned txbytes, unsigned txpkt,
                 u8* rxbuff, unsigned rxbytes, unsigned rxpkt);
-            ~BufferedIO() {};
+            ~BufferedIO() {}
 
             // Child MUST implement the following inherited methods:
             //  void data_rcvd() override;

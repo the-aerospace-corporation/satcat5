@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -39,6 +39,7 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.common_primitives.sync_buffer;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_sgmii_common is
@@ -49,12 +50,16 @@ entity port_sgmii_common is
     tx_clk      : in  std_logic;    -- 125 MHz typical
     tx_cken     : in  std_logic := '1';
     tx_data     : out std_logic_vector(9 downto 0);
+    tx_tstamp   : in  tstamp_t := (others => '0');
+    tx_tvalid   : in  std_logic := '0';
 
     -- Receiver/Deserializer interface.
     rx_clk      : in  std_logic;    -- 125 MHz minimum
     rx_cken     : in  std_logic := '1';
     rx_lock     : in  std_logic := '1';
     rx_data     : in  std_logic_vector(9 downto 0);
+    rx_tstamp   : in  tstamp_t := (others => '0');
+    rx_tvalid   : in  std_logic := '0';
 
     -- Generic internal port interface.
     prx_data    : out port_rx_m2s;  -- Ingress data
@@ -81,7 +86,9 @@ signal tx_frmst     : std_logic;
 signal rx_dly_cken  : std_logic := '0';
 signal rx_dly_lock  : std_logic := '0';
 signal rx_dly_data  : std_logic_vector(9 downto 0) := (others => '0');
+signal rx_dly_tsof  : tstamp_t := (others => '0');
 signal rx_dec_data  : std_logic_vector(7 downto 0);
+signal rx_dec_tsof  : tstamp_t := (others => '0');
 signal rx_dec_lock  : std_logic;
 signal rx_dec_cken  : std_logic;
 signal rx_dec_dv    : std_logic;
@@ -143,6 +150,7 @@ u_txamb : entity work.eth_preamble_tx
     tx_pkten    => tx_pkten,
     tx_frmst    => tx_frmst,
     tx_cken     => tx_cken,
+    tx_tstamp   => tx_tstamp,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl,
     rep_rate    => rx_rep_rate);
@@ -169,6 +177,7 @@ begin
         rx_dly_cken <= rx_cken;
         rx_dly_lock <= rx_lock;
         rx_dly_data <= rx_data;
+        rx_dly_tsof <= rx_tstamp;
     end if;
 end process;
 
@@ -179,11 +188,13 @@ u_rxdec : entity work.eth_dec8b10b
     in_lock     => rx_dly_lock,
     in_cken     => rx_dly_cken,
     in_data     => rx_dly_data,
+    in_tsof     => rx_dly_tsof,
     out_lock    => rx_dec_lock,
     out_cken    => rx_dec_cken,
     out_dv      => rx_dec_dv,
     out_err     => rx_dec_err,
     out_data    => rx_dec_data,
+    out_tsof    => rx_dec_tsof,
     cfg_rcvd    => rx_cfg_rcvd,
     cfg_word    => rx_cfg_reg);
 
@@ -202,6 +213,7 @@ u_rxamb : entity work.eth_preamble_rx
     rep_valid   => rx_rep_valid,
     rate_word   => rate_word,
     aux_err     => rate_error,
+    rx_tstamp   => rx_dec_tsof,
     status      => status_word,
     rx_data     => prx_data);
 
@@ -237,8 +249,8 @@ end process;
 -- Upstream status reporting.
 status_word <= (
     0 => reset_p,
-    1 => rx_dly_lock,
-    2 => rx_dec_lock,
+    1 => rx_tvalid and tx_tvalid,
+    2 => rx_dly_lock and rx_dec_lock,
     3 => rx_cfg_rcvd,
     4 => rx_cfg_ack,
     5 => rate_1000,

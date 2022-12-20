@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020 The Aerospace Corporation
+-- Copyright 2019, 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -32,14 +32,17 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.common_primitives.sync_reset;
+use     work.common_primitives.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_crosslink is
     generic (
     RUNT_PORTA  : boolean;          -- Allow runt packets on Port A?
     RUNT_PORTB  : boolean;          -- Allow runt packets on Port B?
-    RATE_DIV    : positive := 2);   -- Rate limit of 1/N
+    RATE_DIV    : positive := 2;    -- Rate limit of 1/N
+    REF_CLK_HZ  : natural := 0;     -- Transfer clock rate (for PTP)
+    VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
     -- Internal interface for Port A.
     rxa_data    : out port_rx_m2s;
@@ -50,6 +53,9 @@ entity port_crosslink is
     rxb_data    : out port_rx_m2s;
     txb_data    : in  port_tx_s2m;
     txb_ctrl    : out port_tx_m2s;
+
+    -- Global reference for PTP timestamps, if enabled.
+    ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
 
     -- Other control
     ref_clk     : in  std_logic;    -- Transfer clock
@@ -65,6 +71,10 @@ constant PAD_REQ_B2A : boolean := RUNT_PORTB and not RUNT_PORTA;
 -- Synchronized reset signal.
 signal reset_sync       : std_logic;
 
+-- Precision timestamps, if enabled.
+signal lcl_tstamp       : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tvalid       : std_logic := '0';
+
 -- Rate limiter state machine.
 signal rxa_data_valid   : std_logic := '0';
 signal rxb_data_valid   : std_logic := '0';
@@ -77,10 +87,12 @@ rxa_data.clk        <= ref_clk;
 rxa_data.rxerr      <= '0';
 rxa_data.rate       <= get_rate_word(1000 / RATE_DIV);
 rxa_data.status     <= (0 => reset_sync, others => '0');
+rxa_data.tsof       <= lcl_tstamp;
 rxa_data.reset_p    <= reset_sync;
 rxa_data.write      <= rxa_data_valid and xfer_ready;
 
 txa_ctrl.clk        <= ref_clk;
+txa_ctrl.tnow       <= lcl_tstamp;
 txa_ctrl.txerr      <= '0';
 txa_ctrl.reset_p    <= reset_sync;
 
@@ -88,10 +100,12 @@ rxb_data.clk        <= ref_clk;
 rxb_data.rxerr      <= '0';
 rxb_data.rate       <= get_rate_word(1000 / RATE_DIV);
 rxb_data.status     <= (others => '0');
+rxb_data.tsof       <= lcl_tstamp;
 rxb_data.reset_p    <= reset_sync;
 rxb_data.write      <= rxb_data_valid and xfer_ready;
 
 txb_ctrl.clk        <= ref_clk;
+txb_ctrl.tnow       <= lcl_tstamp;
 txb_ctrl.txerr      <= '0';
 txb_ctrl.reset_p    <= reset_sync;
 
@@ -101,6 +115,20 @@ u_rsync : sync_reset
     in_reset_p  => reset_p,
     out_reset_p => reset_sync,
     out_clk     => ref_clk);
+
+-- If enabled, generate timestamps with a Vernier synchronizer.
+gen_ptp : if VCONFIG.input_hz > 0 generate
+    u_tstamp : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => REF_CLK_HZ)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => ref_clk,
+        user_ctr    => lcl_tstamp,
+        user_lock   => lcl_tvalid,
+        user_rst_p  => reset_sync);
+end generate;
 
 -- Rate limiter state machine.
 p_rate : process(ref_clk)

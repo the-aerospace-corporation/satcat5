@@ -114,7 +114,7 @@ u_clkbuf_sja : BUFG
 
 u_clkgen : entity work.clkgen_sgmii_xilinx
     generic map(
-    REFCLK_MHZ      => 25,
+    REFCLK_HZ       => 25_000_000,
     SPEED_MULT      => 2)
     port map(
     shdn_p          => '0',

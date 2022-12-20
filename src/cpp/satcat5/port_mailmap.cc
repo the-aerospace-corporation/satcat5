@@ -56,7 +56,7 @@ void Mailmap::write_bytes(unsigned nbytes, const void* src)
     if (nbytes <= get_write_space()) {
         memcpy(m_ctrl->tx_buff + m_wridx, src, nbytes);
         m_wridx += nbytes;
-    } else write_overflow();
+    } else {write_overflow();}
 }
 
 void Mailmap::write_overflow()

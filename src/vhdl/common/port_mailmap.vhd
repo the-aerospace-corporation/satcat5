@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -46,15 +46,37 @@
 -- depending on whether dual-port block-RAM can simultaneously read
 -- or write on a single port.
 --
+-- Enabling PTP (i.e., CFG_CLK_HZ and VCONFIG configured), also enables
+-- the real-time clock (RTC) output and several ConfigBus registers:
+--  * Control for the RTC (see "ptp_realtime.vhd")
+--  * Precise Tx and Rx timestamps (see "ptp_realsof.vhd")
+--  * Freezing the current time for one-step SYNC messages.
+--
+-- To send a one-step PTP SYNC message:
+--  * Write Reg 1022 = 0x01 to freeze the current time (RTC and TSOF).
+--  * Read Reg 1012 through 1015 and copy that timestamp into the SYNC
+--    message.  (Note: RTC-subns sets initial value of correctionField.)
+--  * Write the message contents normally (copy data, then Reg 1023).
+-- By freezing the TSOF reported to the SatCat5 switch, the unknown delay from
+-- the freeze until the message is sent is added to the PTP "correctionField".
+--
 -- Memory is mapped as follows:
 --  * Reg 0-399:    Received frame contents (read-only)
---  * Reg 400-509:  Reserved
+--  * Reg 400-505:  Reserved
+--  * Reg 506-509:  Timestamp of most recent received frame (PTP, read-only)
 --  * Reg 510:      Interrupt control (see cfgbus_common::cfgbus_interrupt)
 --  * Reg 511:      Received frame control (read-write):
 --                  Read = Current frame length, in bytes. (0 = Empty)
 --                  Write = Discard buffer and begin reading next frame.
 --  * Reg 512-911:  Transmit frame buffer (read-write or write-only)
---  * Reg 912-1022: Reserved
+--  * Reg 912-1011: Reserved
+--  * Reg 1012-17:  Real-time clock control (PTP, read-write)
+--  * Reg 1018-21:  Timestamp of most recent sent frame (PTP, read-only)
+--  * Reg 1022:     Read: PTP status register
+--                      Bit 31: PTP enabled?
+--                      Bit 30: Vernier locked?
+--                      Bit 00: One-step frozen?
+--                  Write: One-step freeze (1 to freeze, 0 for normal operation)
 --  * Reg 1023:     Transmit frame control (read-write)
 --                  Write = Set frame length to be sent, in bytes.
 --                  Read = Busy (1) or idle (0).
@@ -67,6 +89,7 @@ use     work.common_functions.all;
 use     work.common_primitives.all;
 use     work.cfgbus_common.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity port_mailmap is
@@ -75,13 +98,19 @@ entity port_mailmap is
     BIG_ENDIAN  : boolean := false;     -- Big-endian byte order?
     TX_READBACK : boolean := true;      -- Enable readback of Tx buffer?
     MIN_FRAME   : natural := 64;        -- Minimum output frame size
-    APPEND_FCS  : boolean := true;      -- Append FCS to each sent frame??
-    STRIP_FCS   : boolean := true);     -- Remove FCS from received frames?
+    APPEND_FCS  : boolean := true;      -- Append FCS to each sent frame?
+    STRIP_FCS   : boolean := true;      -- Remove FCS from received frames?
+    CFG_CLK_HZ  : natural := 0;         -- ConfigBus clock rate (for PTP)
+    VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
     -- Internal Ethernet port.
     rx_data     : out port_rx_m2s;
     tx_data     : in  port_tx_s2m;
     tx_ctrl     : out port_tx_m2s;
+
+    -- Global reference for PTP timestamps, if enabled.
+    ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
+    rtc_time    : out ptp_time_t;
 
     -- ConfigBus interface.
     cfg_cmd     : in  cfgbus_cmd;
@@ -119,11 +148,22 @@ end function;
 signal port_areset  : std_logic;
 signal port_reset_p : std_logic;
 
+-- Precision timestamps
+constant PTP_ENABLE : boolean := (CFG_CLK_HZ > 0 and VCONFIG.input_hz > 0);
+signal lcl_tsof     : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tnow     : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tvalid   : std_logic := '0';
+signal rtc_tnow     : ptp_time_t := PTP_TIME_ZERO;
+signal rtc_freeze   : std_logic := '0';     -- Strobe
+signal rtc_frozen   : std_logic := '0';     -- Persistent flag
+signal rtc_status   : cfgbus_word := (others => '0');
+
 -- Receive datapath and control.
 signal rx_raw_data  : byte_t;
 signal rx_raw_last  : std_logic;
 signal rx_raw_valid : std_logic;
 signal rx_raw_ready : std_logic;
+signal rx_raw_write : std_logic;
 signal rx_adj_data  : byte_t;
 signal rx_adj_last  : std_logic;
 signal rx_adj_valid : std_logic;
@@ -153,6 +193,7 @@ signal tx_adj_data  : byte_t;
 signal tx_adj_last  : std_logic;
 signal tx_adj_valid : std_logic;
 signal tx_adj_ready : std_logic;
+signal tx_adj_write : std_logic;
 
 -- ConfigBus interface.
 signal cfg_addr     : ram_addr;
@@ -168,8 +209,7 @@ signal cfg_clr_rx   : std_logic := '0';
 signal cfg_send_tx  : std_logic := '0';
 signal cfg_send_len : len_word := (others => '0');
 signal irq_toggle   : std_logic := '0';
-signal irq_ack      : cfgbus_ack;
-signal reg_ack      : cfgbus_ack;
+signal cfg_acks     : cfgbus_ack_array(0 to 4) := (others => cfgbus_idle);
 
 begin
 
@@ -177,8 +217,10 @@ begin
 rx_raw_data     <= tx_data.data;
 rx_raw_last     <= tx_data.last;
 rx_raw_valid    <= tx_data.valid;
+rx_raw_write    <= rx_raw_valid and rx_raw_ready;
 tx_ctrl.ready   <= rx_raw_ready;
 tx_ctrl.clk     <= cfg_cmd.clk;
+tx_ctrl.tnow    <= lcl_tnow;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= port_reset_p;
 
@@ -188,6 +230,82 @@ u_rst : sync_reset
     in_reset_p  => cfg_cmd.reset_p,
     out_reset_p => port_reset_p,
     out_clk     => cfg_cmd.clk);
+
+-- If PTP is enabled...
+gen_ptp : if PTP_ENABLE generate
+    --  Generate switch-local timestamps with a Vernier synchronizer.
+    u_tstamp : entity work.ptp_counter_sync
+        generic map(
+        VCONFIG     => VCONFIG,
+        USER_CLK_HZ => CFG_CLK_HZ)
+        port map(
+        ref_time    => ref_time,
+        user_clk    => cfg_cmd.clk,
+        user_ctr    => lcl_tnow,
+        user_lock   => lcl_tvalid,
+        user_rst_p  => port_reset_p);
+
+    -- Freeze or unfreeze TSOF field.
+    p_sof : process(cfg_cmd.clk)
+        constant ONE_CYCLE : tstamp_t := get_tstamp_incr(CFG_CLK_HZ);
+    begin
+        if rising_edge(cfg_cmd.clk) then
+            -- Update the "freeze" strobe and "frozen" flag.
+            rtc_freeze <= '0';
+            if (port_reset_p = '1') then
+                rtc_frozen  <= '0';     -- Global reset
+            elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, 1022)) then
+                rtc_freeze  <= cfg_cmd.wdata(0);
+                rtc_frozen  <= cfg_cmd.wdata(0);
+            elsif (tx_adj_write = '1') then
+                rtc_frozen  <= '0';     -- Auto-clear on send
+            end if;
+
+            -- Clock-enable for the start-of-frame timestamp.
+            if (rtc_freeze = '1' or rtc_frozen = '0') then
+                lcl_tsof <= lcl_tnow + ONE_CYCLE;
+            end if;
+        end if;
+    end process;
+
+    -- Instantiate a real-time clock for global timestamps.
+    u_rtc : entity work.ptp_realtime
+        generic map(
+        CFG_CLK_HZ  => CFG_CLK_HZ,
+        DEV_ADDR    => DEV_ADDR,
+        REG_BASE    => 1012)    -- Six consecutive registers
+        port map(
+        time_now    => rtc_tnow,
+        time_read   => rtc_freeze,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(0));
+
+    -- Read-only Tx and Rx timestamps.
+    u_rx : entity work.ptp_realsof
+        generic map(
+        DEV_ADDR    => DEV_ADDR,
+        REG_BASE    => 506)     -- Four consecutive registers
+        port map(
+        in_tnow     => rtc_tnow,
+        in_last     => rx_raw_last,
+        in_write    => rx_raw_write,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(1));
+
+    u_tx : entity work.ptp_realsof
+        generic map(
+        DEV_ADDR    => DEV_ADDR,
+        REG_BASE    => 1018)    -- Four consecutive registers
+        port map(
+        in_tnow     => rtc_tnow,
+        in_last     => tx_adj_last,
+        in_write    => tx_adj_write,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(2));
+
+    -- ConfigBus status reporting.
+    rtc_status <= (31 => '1', 30 => lcl_tvalid, 0 => rtc_frozen, others => '0');
+end generate;
 
 -- Optionally strip FCS from incoming packets.
 u_rx_adj : entity work.eth_frame_adjust
@@ -346,14 +464,17 @@ u_tx_adj : entity work.eth_frame_adjust
     reset_p     => port_reset_p);
 
 -- Data going to the Ethernet switch. (Note Tx/Rx swap)
+rtc_time        <= rtc_tnow;
+tx_adj_ready    <= '1';
+tx_adj_write    <= tx_adj_valid and tx_adj_ready;
 rx_data.clk     <= cfg_cmd.clk;
 rx_data.data    <= tx_adj_data;
 rx_data.last    <= tx_adj_last;
-rx_data.write   <= tx_adj_valid;
-tx_adj_ready    <= '1';
+rx_data.write   <= tx_adj_write;
 rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1);
-rx_data.status  <= (0 => port_reset_p, others => '0');
+rx_data.status  <= (0 => port_reset_p, 1 => lcl_tvalid, others => '0');
+rx_data.tsof    <= lcl_tsof;
 rx_data.reset_p <= port_reset_p;
 
 -- Interrupt control uses the standard ConfigBus primitive.
@@ -363,16 +484,16 @@ u_irq : cfgbus_interrupt
     REGADDR     => 510)
     port map(
     cfg_cmd     => cfg_cmd,
-    cfg_ack     => irq_ack,
+    cfg_ack     => cfg_acks(3),
     ext_toggle  => irq_toggle);
 
 -- Combine ConfigBus replies from each source.
-reg_ack <= cfgbus_reply(cfg_status) when (cfg_regread = '1')
-      else cfgbus_reply(cfg_txdata) when (cfg_txread = '1')
-      else cfgbus_reply(cfg_rxdata) when (cfg_rxread = '1')
-      else cfgbus_idle;
+cfg_acks(4) <= cfgbus_reply(cfg_status) when (cfg_regread = '1')
+          else cfgbus_reply(cfg_txdata) when (cfg_txread = '1')
+          else cfgbus_reply(cfg_rxdata) when (cfg_rxread = '1')
+          else cfgbus_idle;
 
-cfg_ack <= cfgbus_merge(irq_ack, reg_ack);
+cfg_ack <= cfgbus_merge(cfg_acks);
 
 -- ConfigBus interface.
 p_cfgbus : process(cfg_cmd.clk)
@@ -402,12 +523,15 @@ begin
                 cfg_status <= (others => '0');
             end if;
             cfg_regread <= '1';
+        elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, 1022)) then
+            cfg_status  <= rtc_status;
+            cfg_regread <= '1';
         elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, 1023)) then
             cfg_status  <= (0 => tx_ctrl_busy, others => '0');
             cfg_regread <= '1';
         elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR)) then
-            cfg_rxread <= bool2bit(cfg_cmd.regaddr <  510);
-            cfg_txread <= bool2bit(cfg_cmd.regaddr >= 512);
+            cfg_rxread <= bool2bit(cfg_cmd.regaddr <= 399);
+            cfg_txread <= bool2bit(512 <= cfg_cmd.regaddr and cfg_cmd.regaddr <= 911);
         end if;
     end if;
 end process;

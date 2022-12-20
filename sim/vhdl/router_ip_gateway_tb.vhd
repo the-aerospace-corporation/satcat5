@@ -415,8 +415,8 @@ p_test : process
 
     -- All-in-one test with a single randomly generated packet.
     procedure test_single(
-        opt_nwords      : natural;
-        dat_nbytes      : natural;
+        opt_num_words   : natural;
+        dat_num_bytes   : natural;
         print_interval  : natural := 1)
     is
         variable pkt_ip     : ip_packet := make_ipv4_pkt(
@@ -426,8 +426,8 @@ p_test : process
                 IPPROTO_UDP,                -- Protcol = UDP
                 IPFLAG_NORMAL,              -- Fragmentation flags
                 1+rand_int(63)),            -- Time-to-live
-            rand_vec(8*dat_nbytes),         -- Packet data
-            rand_vec(32*opt_nwords));       -- Extended header options
+            rand_vec(8*dat_num_bytes),      -- Packet data
+            rand_vec(32*opt_num_words));    -- Extended header options
         variable eth_in     : eth_packet := ip_to_router(LOCAL1_MAC, pkt_ip.all);
         variable eth_out    : eth_packet := decr_ipv4_ttl(eth_in.all);
     begin

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
+-- Copyright 2019, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -52,11 +52,13 @@ entity sgmii_input_fifo is
     -- Input port:
     in_clk      : in  std_logic;
     in_data     : in  std_logic_vector(39 downto 0);
+    in_meta     : in  std_logic_vector(47 downto 0);
     in_reset_p  : in  std_logic;
 
     -- Output port:
     out_clk     : in  std_logic;
     out_data    : out std_logic_vector(39 downto 0);
+    out_meta    : out std_logic_vector(47 downto 0);
     out_next    : out std_logic);
 end sgmii_input_fifo;
 
@@ -68,6 +70,7 @@ architecture prim_in_fifo of sgmii_input_fifo is
 signal fifo_in_d5   : std_logic_vector(7 downto 0);
 signal fifo_in_d6   : std_logic_vector(7 downto 0);
 signal fifo_out     : std_logic_vector(79 downto 0);
+signal meta_out     : std_logic_vector(79 downto 0);
 signal fifo_rd      : std_logic;
 signal fifo_empty   : std_logic;
 
@@ -119,18 +122,69 @@ u_fifo : IN_FIFO
     Q8          => fifo_out(71 downto 64),
     Q9          => fifo_out(79 downto 72));
 
+-- A second instance for metadata.
+u_meta : IN_FIFO
+    generic map (
+    ARRAY_MODE          => "ARRAY_MODE_4_X_4",  -- ARRAY_MODE_4_X_8, ARRAY_MODE_4_X_4
+    SYNCHRONOUS_MODE    => "FALSE")             -- I/O clocks are async
+    port map (
+    -- FIFO status
+    ALMOSTEMPTY => open,
+    ALMOSTFULL  => open,
+    EMPTY       => fifo_empty,
+    FULL        => open,
+    RESET       => in_reset_p,
+    -- FIFO input ports (10x4 + 2x8 lanes)
+    WRCLK       => in_clk,
+    WREN        => '1',
+    D0          => in_meta(3 downto 0),
+    D1          => in_meta(7 downto 4),
+    D2          => in_meta(11 downto 8),
+    D3          => in_meta(15 downto 12),
+    D4          => in_meta(19 downto 16),
+    D5          => in_meta(27 downto 20),
+    D6          => in_meta(35 downto 28),
+    D7          => in_meta(39 downto 36),
+    D8          => in_meta(43 downto 40),
+    D9          => in_meta(47 downto 44),
+    -- FIFO output ports (10 lanes x 8 bits each)
+    RDCLK       => out_clk,
+    RDEN        => fifo_rd,
+    Q0          => meta_out(7 downto 0),
+    Q1          => meta_out(15 downto 8),
+    Q2          => meta_out(23 downto 16),
+    Q3          => meta_out(31 downto 24),
+    Q4          => meta_out(39 downto 32),
+    Q5          => meta_out(47 downto 40),
+    Q6          => meta_out(55 downto 48),
+    Q7          => meta_out(63 downto 56),
+    Q8          => meta_out(71 downto 64),
+    Q9          => meta_out(79 downto 72));
+
 -- Reconstruct the final output word.
 -- (Use LSBs and ignore MSBs from each sub-word.)
-out_data <= fifo_out(75 downto 72)
-          & fifo_out(67 downto 64)
-          & fifo_out(59 downto 56)
-          & fifo_out(51 downto 48)
-          & fifo_out(43 downto 40)
-          & fifo_out(35 downto 32)
-          & fifo_out(27 downto 24)
-          & fifo_out(19 downto 16)
-          & fifo_out(11 downto 8)
-          & fifo_out(3 downto 0);
+out_data <= fifo_out(75 downto 72)      -- LSBs Q9
+          & fifo_out(67 downto 64)      -- LSBs Q8
+          & fifo_out(59 downto 56)      -- LSBs Q7
+          & fifo_out(51 downto 48)      -- LSBs Q6
+          & fifo_out(43 downto 40)      -- LSBs Q5
+          & fifo_out(35 downto 32)      -- LSBs Q4
+          & fifo_out(27 downto 24)      -- LSBs Q3
+          & fifo_out(19 downto 16)      -- LSBs Q2
+          & fifo_out(11 downto 8)       -- LSBs Q1
+          & fifo_out(3 downto 0);       -- LSBs Q0
+
+out_meta <= meta_out(75 downto 72)      -- LSBs Q9
+          & meta_out(67 downto 64)      -- LSBs Q8
+          & meta_out(59 downto 56)      -- LSBs Q7
+          & meta_out(55 downto 48)      -- Full Q6
+          & meta_out(47 downto 40)      -- Full Q5
+          & meta_out(35 downto 32)      -- LSBs Q4
+          & meta_out(27 downto 24)      -- LSBs Q3
+          & meta_out(19 downto 16)      -- LSBs Q2
+          & meta_out(11 downto 8)       -- LSBs Q1
+          & meta_out(3 downto 0);       -- LSBs Q0
+
 out_next <= not fifo_empty;
 fifo_rd  <= not fifo_empty;
 
@@ -152,8 +206,8 @@ signal out_reset_p  : std_logic;
 
 begin
 
--- Each primitive is 1-bit, so instantiate 40 of them.
-gen_prim : for n in in_data'range generate
+-- Each primitive is 1-bit, so instantiate 40 for data and 48 for metadata.
+gen_data : for n in in_data'range generate
     u_ram32x1d : RAM32X1D
         port map (
         -- Write port
@@ -168,6 +222,28 @@ gen_prim : for n in in_data'range generate
         A4      => wr_addr(4),
         -- Read port
         DPO     => out_data(n), -- Read data
+        DPRA0   => rd_addr(0),  -- Read address
+        DPRA1   => rd_addr(1),
+        DPRA2   => rd_addr(2),
+        DPRA3   => rd_addr(3),
+        DPRA4   => rd_addr(4));
+end generate;
+
+gen_meta : for n in in_meta'range generate
+    u_ram32x1d : RAM32X1D
+        port map (
+        -- Write port
+        WCLK    => in_clk,      -- Write clock
+        WE      => '1',         -- Write enable
+        D       => in_meta(n),  -- Write data
+        SPO     => open,        -- Data passthrough (unused)
+        A0      => wr_addr(0),  -- Write address
+        A1      => wr_addr(1),
+        A2      => wr_addr(2),
+        A3      => wr_addr(3),
+        A4      => wr_addr(4),
+        -- Read port
+        DPO     => out_meta(n), -- Read data
         DPRA0   => rd_addr(0),  -- Read address
         DPRA1   => rd_addr(1),
         DPRA2   => rd_addr(2),

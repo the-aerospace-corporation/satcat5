@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
+-- Copyright 2020, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -111,6 +111,7 @@ entity router_ip_gateway is
     router_ipaddr   : in  ip_addr_t;
     router_submask  : in  ip_addr_t;
     router_link_ok  : in  std_logic := '1';
+    ipv4_dmac       : in  mac_addr_t := x"DEADBEEFCAFE";
     noip_dmac       : in  mac_addr_t := (others => '1');
     time_msec       : in  timestamp_t;
 
@@ -504,9 +505,10 @@ begin
         if (cmd_data = ACT_FWD_IP0 or cmd_data = ACT_FWD_IP1) then
             -- IPv4 frames modify selected fields:
             if (IPV4_DMAC_REPLACE and fwd_bct < 6) then
-                -- If enabled, replace destination-MAC with the broadcast address.
-                -- (This is a fail-safe placeholder; remote router should replace this...)
-                fwd_data <= get_byte_s(MAC_ADDR_BROADCAST, 5-fwd_bct);
+                -- If enabled, replace destination-MAC with a placeholder address.
+                -- Do NOT use the broadcast address per RFC 1812 section 4.2.3.1,
+                -- which requires that such packets be blocked by the next router.
+                fwd_data <= get_byte_s(ipv4_dmac, 5-fwd_bct);
             elsif (IPV4_SMAC_REPLACE and 6 <= fwd_bct and fwd_bct < 12) then
                 -- If enabled, replace source-MAC with the router's address.
                 fwd_data <= get_byte_s(ROUTER_MACADDR, 11-fwd_bct);

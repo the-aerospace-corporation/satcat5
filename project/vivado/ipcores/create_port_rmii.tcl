@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021 The Aerospace Corporation
+# Copyright 2020, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,24 +30,14 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     eth_frame_common.vhd
-ipcore_add_file $src_dir/common     eth_preamble_rx.vhd
-ipcore_add_file $src_dir/common     eth_preamble_tx.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     io_clock_detect.vhd
-ipcore_add_file $src_dir/common     port_rmii.vhd
-ipcore_add_file $src_dir/common     switch_types.vhd
-ipcore_add_io   $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_port_rmii
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_port_rmii.vhd
 
 # Connect everything except the RMII port.
 ipcore_add_ethport Eth sw master
+ipcore_add_refopt PtpRef tref
 ipcore_add_clock ctrl_clkin {}
-ipcore_add_clock rmii_clkin {Eth rmii_clkout}
+ipcore_add_clock rmii_clkin {Eth rmii_clkout} slave 50000000
 ipcore_add_gpio  rmii_clkout
 ipcore_add_reset reset_p ACTIVE_HIGH
 
@@ -67,7 +57,8 @@ set_property physical_name rmii_txen    [ipx::add_port_map TX_EN    $intf]
 set_property value rmii_clkin [ipx::add_bus_parameter ASSOCIATED_BUSIF $intf]
 
 # Set parameters
-ipcore_add_param MODE_CLKOUT bool true
+ipcore_add_param MODE_CLKOUT bool true \
+    {Is RMII clock signal an output from this block?}
 
 # Enable ports and parameters depending on configuration.
 set_property enablement_dependency {$MODE_CLKOUT} [ipx::get_ports rmii_clkout -of_objects $ip]

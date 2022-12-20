@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -110,3 +110,10 @@ void satcat5::test::MockConfigBusMmap::irq_event()
 {
     satcat5::cfg::ConfigBusMmap::irq_event();
 }
+
+void satcat5::test::TimerAlways::sim_wait(unsigned dly_msec)
+{
+    for (unsigned a = 0 ; a < dly_msec ; ++a)
+        satcat5::poll::service_all();
+}
+

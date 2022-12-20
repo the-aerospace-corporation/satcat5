@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -26,6 +26,7 @@
 TEST_CASE("GenericTimer") {
     satcat5::test::ConstantTimer t00(0);
     satcat5::test::ConstantTimer t64(64);
+    satcat5::test::ConstantTimer t64k(65536);
 
     SECTION("elapsed_ticks") {
         CHECK(t00.elapsed_ticks(0) == 0);
@@ -52,6 +53,17 @@ TEST_CASE("GenericTimer") {
         CHECK(t64.elapsed_incr(tref) == 4);
         CHECK(tref == 64);
         CHECK(t64.elapsed_incr(tref) == 0);
+        CHECK(tref == 64);
+    }
+
+    SECTION("elapsed_msec") {
+        u32 tref = 0;
+        CHECK(t64.elapsed_msec(tref) == 0);
+        CHECK(tref == 0);                   // No change (increment < 1 msec)
+        CHECK(t64k.elapsed_msec(tref) == 4);
+        CHECK(tref == 64000);               // 65536 = 4 msec + 1536 ticks
+        CHECK(t64k.elapsed_msec(tref) == 0);
+        CHECK(tref == 64000);               // No change (increment < 1 msec)
     }
 
     SECTION("elapsed_test") {

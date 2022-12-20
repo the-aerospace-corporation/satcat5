@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
-// Define hardware constants relating to
+// Define hardware constants relating to the "Arty-Managed" design.
 
 // Import definitions from the BSP.
 #include <xparameters.h>

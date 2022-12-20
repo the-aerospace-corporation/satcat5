@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -132,7 +132,8 @@ void ProtoConfig::frame_rcvd(satcat5::io::LimitedRead& src)
     // Read header contents.
     u8  opcode  = src.read_u8();
     u8  len8    = src.read_u8();
-    src.read_u16();     // Skip reserved field
+    u8  seq     = src.read_u8();
+    u8  rsvd    = src.read_u8();
     u32 addr    = src.read_u32();
 
     if (DEBUG_VERBOSE > 0)
@@ -158,7 +159,8 @@ void ProtoConfig::frame_rcvd(satcat5::io::LimitedRead& src)
     // Start writing reply header.
     dst->write_u8(opcode);
     dst->write_u8(len8);
-    dst->write_u16(0);
+    dst->write_u8(seq);
+    dst->write_u8(rsvd);
     dst->write_u32(addr);
 
     // Get the read/write pointer.

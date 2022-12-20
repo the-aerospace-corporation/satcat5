@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -70,6 +70,7 @@ entity tcam_table is
     out_error   : out std_logic;    -- TCAM internal error
 
     -- Write new table entries (AXI flow-control).
+    cfg_clear   : in  std_logic := '0';
     cfg_suggest : out integer range 0 to TABLE_SIZE-1;
     cfg_index   : in  integer range 0 to TABLE_SIZE-1;
     cfg_plen    : in  integer range 1 to IN_WIDTH := IN_WIDTH;
@@ -77,6 +78,15 @@ entity tcam_table is
     cfg_result  : in  std_logic_vector(OUT_WIDTH-1 downto 0);
     cfg_valid   : in  std_logic;
     cfg_ready   : out std_logic;
+
+    -- Scan interface is used to read table contents (optional).
+    scan_index  : in  integer range 0 to TABLE_SIZE-1 := 0;
+    scan_valid  : in  std_logic := '0';
+    scan_ready  : out std_logic;
+    scan_found  : out std_logic;
+    scan_search : out std_logic_vector(IN_WIDTH-1 downto 0);
+    scan_result : out std_logic_vector(OUT_WIDTH-1 downto 0);
+    scan_mask   : out std_logic_vector(IN_WIDTH-1 downto 0);
 
     -- System interface
     clk         : in  std_logic;
@@ -106,6 +116,7 @@ signal out_next_i   : std_logic := '0';
 signal cfg_ivec     : tbl_idx_u;
 signal cfg_wren     : std_logic;
 signal cfg_ready_i  : std_logic;
+signal scan_tvec    : tbl_idx_u;
 
 begin
 
@@ -127,11 +138,18 @@ u_tcam : entity work.tcam_core
     out_found   => tcam_found,
     out_next    => tcam_next,
     out_error   => out_error,
+    cfg_clear   => cfg_clear,
     cfg_suggest => cfg_suggest,
     cfg_index   => cfg_index,
     cfg_data    => cfg_search,
     cfg_valid   => cfg_valid,
     cfg_ready   => cfg_ready_i,
+    scan_index  => scan_index,
+    scan_valid  => scan_valid,
+    scan_ready  => scan_ready,
+    scan_found  => scan_found,
+    scan_data   => scan_search,
+    scan_mask   => scan_mask,
     clk         => clk,
     reset_p     => reset_p);
 
@@ -140,6 +158,7 @@ u_tcam : entity work.tcam_core
 cfg_wren    <= cfg_valid and cfg_ready_i;
 cfg_ivec    <= to_unsigned(cfg_index, TIDX_WIDTH);
 tcam_tvec   <= to_unsigned(tcam_tidx, TIDX_WIDTH);
+scan_tvec   <= to_unsigned(scan_index, TIDX_WIDTH);
 
 u_lookup : dpram
     generic map(
@@ -154,6 +173,22 @@ u_lookup : dpram
     rd_addr => tcam_tvec,
     rd_en   => tcam_next,
     rd_val  => out_result);
+
+-- Second copy of the lookup table for "scan" port, if enabled.
+-- (Mirrored writes ensure it has the same underlying data.)
+u_lookup2 : dpram
+    generic map(
+    AWIDTH  => TIDX_WIDTH,
+    DWIDTH  => OUT_WIDTH)
+    port map(
+    wr_clk  => clk,
+    wr_addr => cfg_ivec,
+    wr_en   => cfg_wren,
+    wr_val  => cfg_result,
+    rd_clk  => clk,
+    rd_addr => scan_tvec,
+    rd_en   => scan_valid,
+    rd_val  => scan_result);
 
 -- Matched delay for other fields.
 p_dly : process(clk)

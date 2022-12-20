@@ -1,4 +1,4 @@
-# Copyright 2019, 2021 The Aerospace Corporation
+# Copyright 2019, 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -25,8 +25,12 @@
 .vscode/settings.json
 .vscode/settings.json
 
-# Ignore all Vivado-created subfolders
-project/vivado_2015.4/*/
+# Ignore test reports.
+cppcheck.xml
+cpplint.log
+
+# Ignore temporary files from example designs.
+test/log_viewer/build_tmp
 
 # Ignore most Lattice-created project files
 project/icecube2_2017.8/**

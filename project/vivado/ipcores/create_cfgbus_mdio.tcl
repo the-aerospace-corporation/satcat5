@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -30,16 +30,8 @@ set ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-#               Path                Filename/Part Family
-ipcore_add_file $src_dir/common     cfgbus_common.vhd
-ipcore_add_file $src_dir/common     cfgbus_mdio.vhd
-ipcore_add_file $src_dir/common     common_primitives.vhd
-ipcore_add_file $src_dir/common     common_functions.vhd
-ipcore_add_file $src_dir/common     fifo_smol_sync.vhd
-ipcore_add_file $src_dir/common     io_mdio_readwrite.vhd
-ipcore_add_io   $src_dir/xilinx     $part_family
-ipcore_add_sync $src_dir/xilinx     $part_family
-ipcore_add_top  $ip_root            wrap_cfgbus_mdio
+ipcore_add_file $src_dir/common/*.vhd
+ipcore_add_top  $ip_root/wrap_cfgbus_mdio.vhd
 
 # Connect I/O ports
 ipcore_add_cfgbus Cfg cfg slave
@@ -47,9 +39,12 @@ ipcore_add_gpio mdio_clk
 ipcore_add_gpio mdio_data
 
 # Set parameters
-ipcore_add_param DEV_ADDR devaddr 0
-ipcore_add_param CLKREF_HZ long 100000000
-ipcore_add_param MDIO_BAUD long 1000000
+ipcore_add_param DEV_ADDR devaddr 0 \
+    {ConfigBus device address (0-255)}
+ipcore_add_param CLKREF_HZ long 100000000 \
+    {Frequency of ConfigBus clock (Hz)}
+ipcore_add_param MDIO_BAUD long 1000000 \
+    {MDIO baud rate (Hz)}
 
 # Package the IP-core.
 ipcore_finished

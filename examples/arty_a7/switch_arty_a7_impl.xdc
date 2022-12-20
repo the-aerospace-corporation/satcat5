@@ -1,4 +1,4 @@
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2022 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 
-# Synthesis constraints for switch_top_arty_a7
+# Implementation constraints for switch_top_arty_a7
 # This file is for added constraints required ONLY during implementation.
 
 #####################################################################
@@ -37,3 +37,7 @@ create_clock -period 10.000 -name clk_ref [get_ports ref_clk100]
 # (Same as adding calling set_false_path on all pairwise permutations.)
 # See also: https://www.xilinx.com/support/answers/44651.html
 set_clock_groups -asynchronous -group [get_clocks clk_ref -include_generated_clocks]
+
+# Explicit delay constraints on clock-crossing signals.
+set_max_delay -datapath_only 5.0 -from [get_cells -hier -filter {satcat5_cross_clock_src > 0}]
+set_max_delay -datapath_only 5.0 -to   [get_cells -hier -filter {satcat5_cross_clock_dst > 0}]

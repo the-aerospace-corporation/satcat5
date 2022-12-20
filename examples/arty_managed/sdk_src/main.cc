@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -27,11 +27,8 @@
 #include <satcat5/cfgbus_stats.h>
 #include <satcat5/cfgbus_timer.h>
 #include <satcat5/eth_chat.h>
-#include <satcat5/eth_dispatch.h>
-#include <satcat5/ip_dispatch.h>
+#include <satcat5/ip_stack.h>
 #include <satcat5/log.h>
-#include <satcat5/net_echo.h>
-#include <satcat5/udp_dispatch.h>
 #include <satcat5/port_mailmap.h>
 #include <satcat5/port_serial.h>
 #include <satcat5/switch_cfg.h>
@@ -42,7 +39,9 @@ using satcat5::cfg::LedWave;
 using satcat5::log::Log;
 
 // Enable diagnostic options?
+static const bool DEBUG_MAC_TABLE   = true;
 static const bool DEBUG_MDIO_REG    = false;
+static const bool DEBUG_PING_HOST   = true;
 static const bool DEBUG_PORT_STATUS = false;
 
 // Global interrupt controller.
@@ -106,18 +105,15 @@ static const satcat5::eth::MacAddr local_mac
     = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
 static const satcat5::ip::Addr local_ip
     = {192, 168, 1, 42};
+static const satcat5::ip::Addr local_gateway
+    = {192, 168, 1, 1};
 
-satcat5::eth::Dispatch      net_eth(local_mac, &eth_port, &eth_port);
-satcat5::ip::Dispatch       net_ip(local_ip, &net_eth, &timer);
-satcat5::udp::Dispatch      net_udp(&net_ip);
-
-// UDP echo service.
-satcat5::udp::ProtoEcho     udp_echo(&net_udp);
+satcat5::ip::Stack ip_stack(local_mac, local_ip, &eth_port, &eth_port, &timer);
 
 // Chat message service with echo, bound to a specific VLAN ID.
 // (The chat-echo service only responds to requests from this VID.)
 const satcat5::eth::VlanTag VTAG_ECHO = {42};
-satcat5::eth::ChatProto     chat_proto(&net_eth, "Arty", VTAG_ECHO);
+satcat5::eth::ChatProto     chat_proto(&ip_stack.m_eth, "Arty", VTAG_ECHO);
 satcat5::eth::ChatEcho      chat_echo(&chat_proto);
 
 // Per-port VLAN configuration for the "toggling VID" example.
@@ -129,8 +125,9 @@ static const u32 RMII_ECHO_ON   = satcat5::eth::vlan_portcfg(
 static const u32 RMII_ECHO_OFF  = satcat5::eth::vlan_portcfg(
     PORT_IDX_RMII, satcat5::eth::VTAG_ADMIT_ALL, {1});      // Default VID = 1
 
-// Connect logging system to the Arty's USB-UART.
+// Connect logging system to Ethernet-chat and to Arty's USB-UART.
 satcat5::log::ToWriteable   log_uart(&uart_usb);
+satcat5::eth::LogToChat     log_chat(&chat_proto);
 
 // Also enable echo/loopback on the USB-UART.
 satcat5::io::BufferedCopy   uart_echo(&uart_usb, &uart_usb);
@@ -159,9 +156,10 @@ public:
         // Optionally log key registers from the Ethernet PHY.
         // (Refer to DP83848 datasheet, Section 6.6 for more info.)
         if (DEBUG_MDIO_REG) {
-            eth_mdio.read(RMII_PHYADDR, 0x00, &m_logger);   // BMCR
-            eth_mdio.read(RMII_PHYADDR, 0x01, &m_logger);   // BMSR
-            eth_mdio.read(RMII_PHYADDR, 0x10, &m_logger);   // PHYSTS
+            satcat5::cfg::MdioGenericMmd rmii(&eth_mdio, RMII_PHYADDR);
+            rmii.read(0x00, &m_logger);     // BMCR
+            rmii.read(0x01, &m_logger);     // BMSR
+            rmii.read(0x10, &m_logger);     // PHYSTS
         }
         // Optionally log the SatCat5 port status register.
         // (Refer to port_rmii and port_statistics for more info.)
@@ -174,6 +172,22 @@ public:
     satcat5::cfg::MdioLogger m_logger;
 } housekeeping;
 
+// A slower timer object that activates once every minute.
+class SlowHousekeepingTimer : satcat5::poll::Timer
+{
+public:
+    SlowHousekeepingTimer() {
+        timer_every(60000);
+    }
+
+    void timer_event() override {
+        // Log the contents of the MAC routing table.
+        if (DEBUG_MAC_TABLE) {
+            eth_switch.mactbl_log("Arty-Switch");
+        }
+    }
+} slowkeeping;
+
 // Main loop: Initialize and then poll forever.
 int main()
 {
@@ -185,7 +199,12 @@ int main()
         PORT_MASK_MAILMAP | PORT_MASK_RMII);
     eth_switch.vlan_set_port(RMII_ECHO_ON);     // Configure RMII port
     eth_switch.vlan_set_port(MAILMAP_MODE);     // Configure uBlaze port
-    net_eth.set_default_vid({1});               // Default outbound VID
+    ip_stack.m_eth.set_default_vid({1});        // Default outbound VID
+
+    // Ping the default gateway every second?
+    if (DEBUG_PING_HOST) {
+         ip_stack.m_ping.ping(local_gateway, local_gateway);
+    }
 
     // Set up the status LEDs.
     for (unsigned a = 0 ; a < LED_RGB_COUNT ; ++a)

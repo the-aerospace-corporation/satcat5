@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -147,9 +147,9 @@ architecture packet_inject of packet_inject is
 subtype data_t is std_logic_vector(8*IO_BYTES-1 downto 0);
 subtype last_t is integer range 0 to IO_BYTES;
 subtype meta_t is std_logic_vector(META_WIDTH downto 0);
-type data_array is array(0 to INPUT_COUNT) of data_t;
-type last_array is array(0 to INPUT_COUNT) of last_t;
-type meta_array is array(0 to INPUT_COUNT) of meta_t;
+type data_array is array(0 to INPUT_COUNT-1) of data_t;
+type last_array is array(0 to INPUT_COUNT-1) of last_t;
+type meta_array is array(0 to INPUT_COUNT-1) of meta_t;
 
 -- Legacy format conversion for LAST strobe if IO_BYTES = 1.
 function convert_nlast(nlast: last_t; last: std_logic) return last_t is

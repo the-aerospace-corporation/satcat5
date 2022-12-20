@@ -366,12 +366,12 @@ p_test : process
 
     -- Write reference data to the designated FIFO.
     procedure expect_out(x : std_logic_vector) is
-        constant NBYTES : integer := x'length / 8;
+        constant NUM_BYTES : integer := x'length / 8;
     begin
         -- Sanity check before we start.
         assert (check_vector(x)) report "Bad input" severity failure;
         -- Load each byte in the packet...
-        for n in NBYTES-1 downto 0 loop
+        for n in NUM_BYTES-1 downto 0 loop
             wait until rising_edge(clk_100);
             tst_out_data    <= get_byte_s(x, n);
             tst_out_last    <= bool2bit(n = 0);
@@ -393,12 +393,12 @@ p_test : process
     end procedure;
 
     procedure expect_icmp(x : std_logic_vector) is
-        constant NBYTES : integer := x'length / 8;
+        constant NUM_BYTES : integer := x'length / 8;
     begin
         -- Sanity check before we start.
         assert (check_vector(x)) report "Bad input" severity failure;
         -- Load each byte in the packet...
-        for n in NBYTES-1 downto 0 loop
+        for n in NUM_BYTES-1 downto 0 loop
             wait until rising_edge(clk_100);
             tst_icmp_data   <= get_byte_s(x, n);
             tst_icmp_last   <= bool2bit(n = 0);
@@ -473,8 +473,8 @@ p_test : process
 
     -- All-in-one test with a single randomly generated packet.
     procedure test_single(
-        opt_nwords      : natural;
-        dat_nbytes      : natural;
+        opt_num_words   : natural;
+        dat_num_bytes   : natural;
         print_interval  : natural := 1)
     is
         variable pkt_ip : ip_packet := make_ipv4_pkt(
@@ -484,8 +484,8 @@ p_test : process
                 IPPROTO_UDP,                -- Protcol = UDP
                 IPFLAG_NORMAL,              -- Fragmentation flags
                 1+rand_int(63)),            -- Time-to-live
-            rand_vec(8*dat_nbytes),         -- Packet data
-            rand_vec(32*opt_nwords));       -- Extended header options
+            rand_vec(8*dat_num_bytes),      -- Packet data
+            rand_vec(32*opt_num_words));    -- Extended header options
     begin
         test_start(print_interval);
         if (test_arp_match = '1') then

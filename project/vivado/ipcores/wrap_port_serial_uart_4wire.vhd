@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -38,7 +38,10 @@ entity wrap_port_serial_uart_4wire is
     BAUD_HZ         : integer);     -- Input and output rate (bps)
     port (
     -- External 4-wire interface.
-    ext_pads    : inout std_logic_vector(3 downto 0);
+    txd         : out std_logic;    -- Data from switch to user
+    rxd         : in  std_logic;    -- Data from user to switch
+    rts_n       : out std_logic;    -- Request to send (active-low)
+    cts_n       : in  std_logic;    -- Clear to send (active-low)
 
     -- Network port
     sw_rx_clk   : out std_logic;
@@ -48,6 +51,7 @@ entity wrap_port_serial_uart_4wire is
     sw_rx_error : out std_logic;
     sw_rx_rate  : out std_logic_vector(15 downto 0);
     sw_rx_status: out std_logic_vector(7 downto 0);
+    sw_rx_tsof  : out std_logic_vector(47 downto 0);
     sw_rx_reset : out std_logic;
     sw_tx_clk   : out std_logic;
     sw_tx_data  : in  std_logic_vector(7 downto 0);
@@ -55,6 +59,7 @@ entity wrap_port_serial_uart_4wire is
     sw_tx_valid : in  std_logic;
     sw_tx_ready : out std_logic;
     sw_tx_error : out std_logic;
+    sw_tx_tnow  : out std_logic_vector(47 downto 0);
     sw_tx_reset : out std_logic;
 
     -- Runtime configuration (optional)
@@ -83,7 +88,6 @@ signal tx_data  : port_tx_s2m;
 signal tx_ctrl  : port_tx_m2s;
 signal cfg_cmd  : cfgbus_cmd;
 signal cfg_ack  : cfgbus_ack;
-signal txd, rxd, rts, cts : std_logic;
 
 begin
 
@@ -109,41 +113,17 @@ sw_rx_last      <= rx_data.last;
 sw_rx_write     <= rx_data.write;
 sw_rx_error     <= rx_data.rxerr;
 sw_rx_rate      <= rx_data.rate;
+sw_rx_tsof      <= std_logic_vector(rx_data.tsof);
 sw_rx_status    <= rx_data.status;
 sw_rx_reset     <= rx_data.reset_p;
 sw_tx_clk       <= tx_ctrl.clk;
 sw_tx_ready     <= tx_ctrl.ready;
+sw_tx_tnow      <= std_logic_vector(tx_ctrl.tnow);
 sw_tx_error     <= tx_ctrl.txerr;
 sw_tx_reset     <= tx_ctrl.reset_p;
 tx_data.data    <= sw_tx_data;
 tx_data.last    <= sw_tx_last;
 tx_data.valid   <= sw_tx_valid;
-
--- Convert external interface.
-u_cts : entity work.bidir_io
-    port map(
-    io_pin  => ext_pads(0),
-    d_in    => cts,
-    d_out   => '1',
-    t_en    => '1');    -- Input only
-u_txd : entity work.bidir_io
-    port map(
-    io_pin  => ext_pads(1),
-    d_in    => open,
-    d_out   => txd,
-    t_en    => '0');    -- Output only
-u_rxd : entity work.bidir_io
-    port map(
-    io_pin  => ext_pads(2),
-    d_in    => rxd,
-    d_out   => '1',
-    t_en    => '1');    -- Input only
-u_rts : entity work.bidir_io
-    port map(
-    io_pin  => ext_pads(3),
-    d_in    => open,
-    d_out   => rts,
-    t_en    => '0');    -- Output only
 
 -- Unit being wrapped.
 u_wrap : entity work.port_serial_uart_4wire
@@ -154,8 +134,8 @@ u_wrap : entity work.port_serial_uart_4wire
     port map(
     uart_txd    => txd,
     uart_rxd    => rxd,
-    uart_rts_n  => rts,
-    uart_cts_n  => cts,
+    uart_rts_n  => rts_n,
+    uart_cts_n  => cts_n,
     rx_data     => rx_data,
     tx_data     => tx_data,
     tx_ctrl     => tx_ctrl,

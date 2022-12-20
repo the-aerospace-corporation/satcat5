@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2022 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -48,13 +48,13 @@ namespace satcat5 {
             explicit ChecksumTx(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
-            unsigned get_write_space() const;
+            unsigned get_write_space() const override;
             bool write_finalize() override;
             void write_abort() override;
 
         private:
             // Implement required API from Writeable:
-            void write_next(u8 data);
+            void write_next(u8 data) override;
 
             // Internal state:
             satcat5::io::Writeable* const m_dst;    // Output object
@@ -69,13 +69,13 @@ namespace satcat5 {
             explicit ChecksumRx(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
-            unsigned get_write_space() const;
+            unsigned get_write_space() const override;
             bool write_finalize() override;
             void write_abort() override;
 
         private:
             // Implement required API from Writeable:
-            void write_next(u8 data);
+            void write_next(u8 data) override;
 
             // Internal state:
             satcat5::io::Writeable* const m_dst;    // Output object
