@@ -41,6 +41,8 @@ We think this might be useful for Internet-of-Things applications,
 but even more useful for things like small satellites and cubesats,
 which typically pack many microcontroller-based subsystems into a small volume.
 
+SatCat5 is used for the modular payload interface on [the Slingshot-1 cubesat mission](https://aerospace.org/article/slingshot-platform-showcase-advantages-modular-payload-architecture).
+
 ### Can I customize it?
 
 Yes! That's a big part of why we chose the LGPL license,
@@ -180,10 +182,12 @@ The switch does not track group membership on an address-by-address basis,
 but will limit multicast traffic to ports that are IGMP-aware.
 
 [Virtual local-area networks (VLAN / IEEE 802.1Q)](https://en.wikipedia.org/wiki/IEEE_802.1Q)
-are supported, but disabled by default to save FPGA resources.
+are supported for network segmentation and prioritization.
+Per-VID throughput allocation may be added in a future release.
 
 [Precision time protocol (PTP / IEEE 1588-2008)](https://en.wikipedia.org/wiki/Precision_Time_Protocol)
-may be supported in a future release.
+is supported.  If enabled, a SatCat5 switch acts as an "End-to-end Transparent Clock"
+as described in IEEE 1588-2019 Section 10.2a.
 
 [Spanning Tree Protocol](https://en.wikipedia.org/wiki/Spanning_Tree_Protocol)
 is not supported. It is up to the user to ensure no loops are present in the network.
@@ -192,12 +196,16 @@ is not supported. It is up to the user to ensure no loops are present in the net
 is not supported. We may add a simpler management protocol in a future release.
 (e.g., So that a network device can activate or deactivate certain high-speed ports to save power.)
 
+[Time-Triggered Ethernet](https://en.wikipedia.org/wiki/TTEthernet) is not currently supported.
+
 [Cut-through switching](https://en.wikipedia.org/wiki/Cut-through_switching)
 for latency reduction is not supported.
 Due to extreme disparities in line-rates, this would be difficult to integrate.
 
 Packet prioritization is optionally supported.
 Packets can receive elevated priority based on EtherType and/or VLAN priority tags.
+
+Many of these features are optional and can be disabled to save FPGA resources.
 
 ### How are MAC addresses assigned to network devices?
 
@@ -232,7 +240,7 @@ Each instance of the "switch_core" block is a network segment, with different ru
 The low-speed segment services all I2C, SPI, and UART ports.
 It is always powered on and ready to receive frames.
 It has an 8-bit datapath and relatively small buffer sizes.
-This segment allows runt frames (see below), and only allows one MAC address per port.
+This segment allows runt frames (see below).
 
 The high-speed segment services all gigabit Ethernet ports.
 It can be shut down to save power.
@@ -268,7 +276,7 @@ since jumbo traffic usually isn't intended or well-suited for low-speed network 
 ### What happened to all the old MAC-address lookup algorithms?
 
 Previous versions of SatCat5 included a variety of algorithms for looking up ports based on MAC-address.
-However, in practice the LUTRAM implementation matched or outperfromed all others in terms of complexity,
+However, in practice the LUTRAM implementation matched or outperformed all others in terms of complexity,
 network scalability, resource utilization, thoughput, and latency.
 The new general-purpose TCAM block is based on this algorithm, and supports improved caching.
 
@@ -505,13 +513,16 @@ The CLA protects the rights of The Aerospace Corporation, our customers, and you
 We currently hold one relevant US patent, number US11055254B2,
 titled "Mixed Media Ethernet Switch".
 
+We have applied for a patent on the vernier phase locked loop (VPLL),
+which is used to generate cross-clock timestamps for PTP.
+
 In accordance with SatCat5's LGPL license agreement,
 we grant a royalty-free license for use of this technology.
 Refer to section 11 of the GPLv3 license for details.
 
 # Copyright Notice
 
-Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 
 This file is part of SatCat5.
 
