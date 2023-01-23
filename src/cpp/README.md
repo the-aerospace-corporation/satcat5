@@ -22,12 +22,12 @@ This includes stubs and helper functions used for unit-testing.
 We've tried to make it easy to use these libraries on nearly any platform, embedded or otherwise.
 
 There are three key steps:
-    * Create an instance of each applicable driver object.
-    * Call the "init()" method for the interrupt handler of choice.  (See "Hardware Abstraction Layer")
-    * Call the "satcat5::poll::service()" function at regular intervals.
+* Create an instance of each applicable driver object.
+* Call the `init()` method for the interrupt handler of choice.  (See "Hardware Abstraction Layer")
+* Call the `satcat5::poll::service()` function at regular intervals.
 
-If you use any satcat5::poll::Timer object, you must also call satcat5::poll::timekeeper.request_poll()
-once every millisecond.  (See also: irq::Adapter, irq::VirtualTimer)
+If you use any `satcat5::poll::Timer` object, you must also call `satcat5::poll::timekeeper.request_poll()`
+once every millisecond.  (See also: `irq::Adapter`, `irq::VirtualTimer`)
 
 In an embedded environment, instances should be statically allocated as global variables.
 The service() function can then be called from inside your main loop.
