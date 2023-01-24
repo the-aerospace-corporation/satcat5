@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019, 2020, 2021 The Aerospace Corporation
+# Copyright 2019, 2020, 2021, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -49,3 +49,8 @@ set files_main [list \
 
 # Run the main script.
 source ../../project/vivado/shared_create.tcl
+
+# Execute the build and write out the .bin file.
+source ../../project/vivado/shared_build.tcl
+satcat5_launch_run
+satcat5_write_bin $target_top.bin

@@ -5,28 +5,33 @@
 
 # Overview
 
-We provide an example design for the [Digilent Arty A7 board](https://reference.digilentinc.com/reference/programmable-logic/arty-a7/start) that can be used with the Python chat app or your own code to try out SatCat5.
+We provide an example design for the
+[Digilent Arty A7 board](https://reference.digilentinc.com/reference/programmable-logic/arty-a7/start)
+that can be used with the Python chat app or your own code to try out SatCat5.
 
-The design provides four UART ports on the PMOD connectors, one 10/100Mbps ethernet port connected to the FPGA MAC over RMII, and a status LCD interface on the ChipKit IOs.
+The design provides four UART ports on the PMOD connectors, one 10/100Mbps Ethernet port
+connected to the FPGA MAC over RMII, and a status LCD interface on the ChipKit IOs.
 
 
 # Building
 
-The design has been tested on both Arty A7 35T and 100T variants with Vivado 2015.4, 2018.2, or 2018.3.
+The design has been tested on both Arty A7 35T and 100T variants with Vivado 2015.4, 2016.1, 2018.2, 2018.3, or 2019.1.
 Follow these steps to build the design and deploy to your Arty A7 board.
 
-1. Obtain and install [Digilent board files](https://reference.digilentinc.com/vivado/installing-vivado/start) for Vivado
-1. From `project/vivado_2015.4` create and build the project with either of the methods below (examples for 100T variant).
-    * From the terminal, run
+1. Obtain and install [Digilent board files](https://reference.digilentinc.com/vivado/installing-vivado/start) for Vivado.
+1. Launch the Vivado GUI.
+1. From the Vivado TCL shell:
+    * Navigate to the SatCat5 folder. e.g., `cd path/to/satcat5`
+    * Run either `set argv 35t` or `set argv 100t` to select the appropriate hardware variant.
+    * Then run the following commands:
         ```
-        vivado -mode batch -nojournal -nolog -notrace -source create_project_arty_a7.tcl -tclargs 100T
-        vivado -mode batch -nojournal -nolog -notrace -source build_arty_a7_rmii.tcl -tclargs 100T
+        cd examples/arty_a7
+        source create_project_arty_a7.tcl
         ```
-    * From the Vivado GUI, run `set argv 100T` then `source ./create_project_arty_a7.tcl` and use the GUI to generate the bitstream.
 1. Connect an ethernet cable and up to 4 USB-UART cables (or Digilent PMOD USB-UART adapters) to the board and PC.
 If using 2-wire UART tie the `CTSb` line (pin 1) of each port to ground (pin 5).
 1. Open jumper JP1 to load bitstream with JTAG and program the device in Vivado.
-The `.bin` files generated in `project/vivado_2015.4/backups` can also be used to program the SPI flash.
+The `.bin` files generated in `examples/arty_a7/backups` can also be used to program the SPI flash.
 
 ## Notes
 * When using a design stored on the SPI flash, you may need to press the reset button after powering the board if power is applied through the micro-USB header.
@@ -38,13 +43,13 @@ The `.bin` files generated in `project/vivado_2015.4/backups` can also be used t
 1. Enjoy testing SatCat5 performance!
 
 ## Notes
-* The UART ports are fixed at 921,600 baud by default in the example design and the ethernet link operates at 100Mbps unless forced to 10Mbps by lowering `GPO_RMII_FAST` in `swtich_cfg.py`.
+* The UART ports are fixed at 921,600 baud by default in the example design and the ethernet link operates at 100Mbps unless forced to 10Mbps by lowering `GPO_RMII_FAST` in `switch_cfg.py`.
 * The `RESET` button may be pressed to reset the switch logic and ethernet PHY without reloading device configuration.
 
 
 # Copyright Notice
 
-Copyright 2019 The Aerospace Corporation
+Copyright 2019, 2023 The Aerospace Corporation
 
 This file is part of SatCat5.
 
