@@ -1,4 +1,4 @@
-# Copyright 2019, 2022 The Aerospace Corporation
+# Copyright 2019, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -49,9 +49,11 @@ satcat5_launch_run
 
 # If requested, also write out the .bit or .hdf file.
 # Note: OUT_NAME is set by the "create_project" or "shared_create" script.
+variable prev_dir [pwd]
 cd [get_property DIRECTORY [get_runs impl_1]]
 if {$CFGMEM_TYPE == "zynq"} {
     satcat5_write_hdf ${OUT_NAME}.hdf
 } elseif {$CFGMEM_TYPE == "cfgmem"} {
     satcat5_write_bin ${OUT_NAME}.bin $CFGMEM_INTERFACE $CFGMEM_SIZE
 }
+cd $prev_dir

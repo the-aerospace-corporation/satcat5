@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019, 2022 The Aerospace Corporation
+# Copyright 2019, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -257,3 +257,8 @@ set_msg_config -suppress -id {[DRC 23-20]}
 set wrapper [make_wrapper -files [get_files ${design_name}.bd] -top]
 add_files -norecurse $wrapper
 set_property "top" router_ac701_wrapper [get_filesets sources_1]
+
+# Execute the build and write out the .bin file.
+source ../../project/vivado/shared_build.tcl
+satcat5_launch_run
+satcat5_write_bin router_ac701_wrapper.bin
