@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -23,40 +23,7 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/cfgbus_interrupt.h>
 
-class MockInterrupt : public satcat5::cfg::Interrupt {
-public:
-    explicit MockInterrupt(satcat5::test::CfgDevice* cfg)
-        : satcat5::cfg::Interrupt(cfg)
-        , m_cfg(cfg)
-        , m_count(0)
-        , m_regaddr(0)
-    {
-        // Nothing else to initialize.
-    }
-
-    MockInterrupt(satcat5::test::CfgDevice* cfg, unsigned regaddr)
-        : satcat5::cfg::Interrupt(cfg, 0, regaddr)
-        , m_cfg(cfg)
-        , m_count(0)
-        , m_regaddr(regaddr)
-    {
-        // Nothing else to initialize.
-    }
-
-    unsigned count() const {return m_count;}
-
-    void fire() {
-        if (m_regaddr) m_cfg->write(m_regaddr, 0x03);
-        m_cfg->irq_poll();
-    }
-
-protected:
-    void irq_event() override {++m_count;}
-
-    satcat5::test::CfgDevice* const m_cfg;
-    unsigned m_count;
-    unsigned m_regaddr;
-};
+using satcat5::test::MockInterrupt;
 
 TEST_CASE("cfgbus_interrupt") {
     satcat5::log::ToConsole log;    // Logging handler

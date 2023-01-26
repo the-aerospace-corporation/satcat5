@@ -1,4 +1,4 @@
-// Copyright 2020, 2021, 2022 The Aerospace Corporation
+// Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -99,6 +99,7 @@ pipeline {
     }
 
     environment {
+        BUILD_AGENT = 'docker && !gpuboss2'
         BUILD_TYPE = build_type()
         DOCKER_REG = 'e3-devops.aero.org'
     }
@@ -107,7 +108,7 @@ pipeline {
         stage('SW-Test') {
             parallel {
                 stage('Linter') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     steps {
                         sh_node 'echo $BRANCH_NAME : $BUILD_TYPE'
                         sh_node 'echo $DOCKER_REG'
@@ -119,13 +120,13 @@ pipeline {
                     }
                 }
                 stage('Tools') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     steps {
                         docker_devtool 'make sw_tools'
                     }
                 }
                 stage('Unit tests') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     steps {
                         docker_devtool 'make sw_python'
                         docker_devtool 'make sw_coverage'
@@ -151,37 +152,45 @@ pipeline {
                         }
                     }
                 }
+                // Limit to three simultaneous Vivado builds.
                 // TODO: Generate simulation stages automatically?
                 // Note: Auto-generated stages cannot use a declarative pipeline.
                 // https://devops.stackexchange.com/questions/9887/how-to-define-dynamic-parallel-stages-in-a-jenkinsfile
                 // https://www.incredibuild.com/blog/jenkins-parallel-builds-jenkins-distributed-builds
                 stage('Sims 0') {
                     when { expression { env.BUILD_TYPE == 'hdl' } }
-                    agent { label 'docker' }
-                    steps { run_sim(0, 4) }
+                    agent { label env.BUILD_AGENT }
+                    steps { run_sim(0, 3) }
                 }
                 stage('Sims 1') {
                     when { expression { env.BUILD_TYPE == 'hdl' } }
-                    agent { label 'docker' }
-                    steps { run_sim(1, 4) }
+                    agent { label env.BUILD_AGENT }
+                    steps { run_sim(1, 3) }
                 }
                 stage('Sims 2') {
                     when { expression { env.BUILD_TYPE == 'hdl' } }
-                    agent { label 'docker' }
-                    steps { run_sim(2, 4) }
-                }
-                stage('Sims 3') {
-                    when { expression { env.BUILD_TYPE == 'hdl' } }
-                    agent { label 'docker' }
-                    steps { run_sim(3, 4) }
+                    agent { label env.BUILD_AGENT }
+                    steps { run_sim(2, 3) }
                 }
             }
         }
-        stage('HW-Build') {
+        stage('HW-Build1') {
             when { expression { env.BUILD_TYPE == 'hdl' } }
             parallel {
+                // Limit to three simultaneous Vivado builds.
+                stage('AC701-SGMII') {
+                    agent { label env.BUILD_AGENT }
+                    steps {
+                        docker_vivado_2016_3 'make proto_v1_sgmii'
+                        check_vivado_build 'examples/ac701_proto_v1/ac701_proto_v1/ac701_proto_v1.runs'
+                        dir('examples/ac701_proto_v1/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1') {
+                            archive_zip('switch_top_ac701_sgmii.zip', './*.rpt')
+                            archiveArtifacts artifacts: 'switch_top_ac701_sgmii.bit'
+                        }
+                    }
+                }
                 stage('Arty-35T') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     steps {
                         docker_vivado_2016_3 'make arty_35t'
                         check_vivado_build 'examples/arty_a7/switch_arty_a7_35t/switch_arty_a7_35t.runs'
@@ -192,7 +201,7 @@ pipeline {
                     }
                 }
                 stage('Arty-Managed') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     steps {
                         docker_vivado_2019_1 'make arty_managed_35t'
                         check_vivado_build 'examples/arty_managed/arty_managed_35t/arty_managed_35t.runs'
@@ -207,80 +216,9 @@ pipeline {
                         }
                     }
                 }
-                stage('NetFPGA') {
-                    agent { label 'docker' }
-                    steps {
-                        docker_vivado_2019_1 'make netfpga'
-                        check_vivado_build 'examples/netfpga/netfpga/netfpga.runs'
-                        dir('examples/netfpga/netfpga') {
-                            archiveArtifacts artifacts: 'netfpga.runs/impl_1/runme.log'
-                        }
-                        dir('examples/netfpga') {
-                            archiveArtifacts artifacts: 'netfpga.hdf'
-                            archiveArtifacts artifacts: 'netfpga*.bit'
-                            archiveArtifacts artifacts: 'netfpga*.bin'
-                            archiveArtifacts artifacts: 'netfpga/*.svg'
-                        }
-                    }
-                }
-                stage('VC707-ClkSynth') {
-                    agent { label 'docker' }
-                    steps {
-                        docker_vivado_2019_1 'make vc707_clksynth'
-                        check_vivado_build 'examples/vc707_clksynth/clock_synth/clock_synth.runs'
-                        dir('examples/vc707_clksynth/clock_synth') {
-                            archiveArtifacts artifacts: 'clock_synth.runs/impl_1/runme.log'
-                        }
-                        dir('examples/vc707_clksynth/clock_synth/clock_synth.runs/impl_1') {
-                            archiveArtifacts artifacts: 'clock_synth.bit'
-                        }
-                    }
-                }
-                stage('VC707-Managed') {
-                    agent { label 'docker' }
-                    steps {
-                        docker_vivado_2019_1 'make vc707_managed'
-                        check_vivado_build 'examples/vc707_managed/vc707_managed/vc707_managed.runs'
-                        dir('examples/vc707_managed/vc707_managed') {
-                            archiveArtifacts artifacts: 'vc707_managed.runs/impl_1/runme.log'
-                        }
-                        dir('examples/vc707_managed') {
-                            archiveArtifacts artifacts: 'vc707_managed/*.svg'
-                            archiveArtifacts artifacts: 'vc707_managed.hdf'
-                            archiveArtifacts artifacts: 'vc707*.bit'
-                            archiveArtifacts artifacts: 'vc707*.bin'
-                        }
-                    }
-                }
-                stage('AC701-SGMII') {
-                    agent { label 'docker' }
-                    steps {
-                        docker_vivado_2016_3 'make proto_v1_sgmii'
-                        check_vivado_build 'examples/ac701_proto_v1/ac701_proto_v1/ac701_proto_v1.runs'
-                        dir('examples/ac701_proto_v1/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1') {
-                            archive_zip('switch_top_ac701_sgmii.zip', './*.rpt')
-                            archiveArtifacts artifacts: 'switch_top_ac701_sgmii.bit'
-                        }
-                    }
-                }
-                stage('AC701-Router') {
-                    agent { label 'docker' }
-                    steps {
-                        docker_vivado_2019_1 'make ac701_router'
-                        check_vivado_build 'examples/ac701_router/router_ac701/router_ac701.runs'
-                        dir('examples/ac701_router') {
-                            archiveArtifacts artifacts: 'router_ac701/*.svg'
-                        }
-                        dir('examples/ac701_router/router_ac701/router_ac701.runs') {
-                            archive_zip('router_ac701_wrapper.zip', '*/*.rpt')
-                        }
-                        dir('examples/ac701_router/router_ac701/router_ac701.runs/impl_1') {
-                            archiveArtifacts artifacts: 'router_ac701_wrapper.bit'
-                        }
-                    }
-                }
+                // Other FPGA platforms:
                 stage('MPF-Splash') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     when { expression { false } }   // Disabled due to licensing issues.
                     steps {
                         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') { retry(2) {
@@ -296,11 +234,99 @@ pipeline {
                     }
                 }
                 stage('iCE40-rmii-serial') {
-                    agent { label 'docker' }
+                    agent { label env.BUILD_AGENT }
                     steps {
                         docker_yosys 'make ice40_rmii_serial'
                         dir('examples/ice40_hx8k/switch_top_rmii_serial_adapter') {
                             archiveArtifacts artifacts: 'switch_top_rmii_serial_adapter.bin'
+                        }
+                    }
+                }
+            }
+        }
+        stage('HW-Build2') {
+            when { expression { env.BUILD_TYPE == 'hdl' } }
+            parallel {
+                // Limit to three simultaneous Vivado builds.
+                stage('AC701-Router') {
+                    agent { label env.BUILD_AGENT }
+                    steps {
+                        docker_vivado_2019_1 'make ac701_router'
+                        check_vivado_build 'examples/ac701_router/router_ac701/router_ac701.runs'
+                        dir('examples/ac701_router') {
+                            archiveArtifacts artifacts: 'router_ac701/*.svg'
+                        }
+                        dir('examples/ac701_router/router_ac701/router_ac701.runs') {
+                            archive_zip('router_ac701_wrapper.zip', '*/*.rpt')
+                        }
+                        dir('examples/ac701_router/router_ac701/router_ac701.runs/impl_1') {
+                            archiveArtifacts artifacts: 'router_ac701_wrapper.bit'
+                        }
+                    }
+                }
+                stage('NetFPGA') {
+                    agent { label env.BUILD_AGENT }
+                    steps {
+                        docker_vivado_2019_1 'make netfpga'
+                        check_vivado_build 'examples/netfpga/netfpga/netfpga.runs'
+                        dir('examples/netfpga/netfpga') {
+                            archiveArtifacts artifacts: 'netfpga.runs/impl_1/runme.log'
+                        }
+                        dir('examples/netfpga') {
+                            archiveArtifacts artifacts: 'netfpga.hdf'
+                            archiveArtifacts artifacts: 'netfpga*.bit'
+                            archiveArtifacts artifacts: 'netfpga*.bin'
+                            archiveArtifacts artifacts: 'netfpga/*.svg'
+                        }
+                    }
+                }
+                stage('VC707-Managed') {
+                    agent { label env.BUILD_AGENT }
+                    when { expression { false } }   // Disabled due to licensing issues.
+                    steps {
+                        docker_vivado_2019_1 'make vc707_managed'
+                        check_vivado_build 'examples/vc707_managed/vc707_managed/vc707_managed.runs'
+                        dir('examples/vc707_managed/vc707_managed') {
+                            archiveArtifacts artifacts: 'vc707_managed.runs/impl_1/runme.log'
+                        }
+                        dir('examples/vc707_managed') {
+                            archiveArtifacts artifacts: 'vc707_managed/*.svg'
+                            archiveArtifacts artifacts: 'vc707_managed.hdf'
+                            archiveArtifacts artifacts: 'vc707*.bit'
+                            archiveArtifacts artifacts: 'vc707*.bin'
+                        }
+                    }
+                }
+            }
+        }
+        stage('HW-Build3') {
+            when { expression { env.BUILD_TYPE == 'hdl' } }
+            parallel {
+                // Limit to three simultaneous Vivado builds.
+                stage('VC707-ClkSynth') {
+                    agent { label env.BUILD_AGENT }
+                    steps {
+                        docker_vivado_2019_1 'make vc707_clksynth'
+                        check_vivado_build 'examples/vc707_clksynth/vc707_clksynth/vc707_clksynth.runs'
+                        dir('examples/vc707_clksynth/vc707_clksynth') {
+                            archiveArtifacts artifacts: 'vc707_clksynth.runs/impl_1/runme.log'
+                        }
+                        dir('examples/vc707_clksynth/vc707_clksynth/vc707_clksynth.runs/impl_1') {
+                            archiveArtifacts artifacts: 'vc707_clksynth.bit'
+                        }
+                    }
+                }
+                stage('ZCU208-ClkSynth') {
+                    agent { label env.BUILD_AGENT }
+                    when { expression { false } }   // Disabled due to licensing issues.
+                    steps {
+                        docker_vivado_2020_2 'make zcu208_clksynth'
+                        check_vivado_build 'examples/zcu208_clksynth/zcu208_clksynth/zcu208_clksynth.runs'
+                        dir('examples/zcu208_clksynth/zcu208_clksynth') {
+                            archiveArtifacts artifacts: 'zcu208_clksynth.runs/impl_1/runme.log'
+                        }
+                        dir('examples/zcu208_clksynth/zcu208_clksynth/zcu208_clksynth.runs/impl_1') {
+                            archiveArtifacts artifacts: 'zcu208_clksynth.bit'
                         }
                     }
                 }

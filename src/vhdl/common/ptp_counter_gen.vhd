@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
+-- Copyright 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -21,21 +21,11 @@
 --
 -- SatCat5 timestamps are referenced to a global free-running counter.
 -- Given a pair of closely-spaced reference clocks, this block generates
--- that free-running counter.  The output should be connected to every
--- PTP-enabled element in the design.
+-- that free-running counter using "ptp_counter_free".  The output should
+-- be connected to every PTP-enabled element in the design.
 --
 -- The optional ConfigBus interface allows runtime adjustments to the counter
--- rate.  This can be used for software-controlled PLLs.  If this feature is
--- not needed, leave the ConfigBus interface disconnected.  Otherwise, the
--- control register is a 32-bit signed integer N that offsets the time
--- increment by N / 2^32 nanoseconds:
---  * Tnom(nsec)        = 1e9 / VCLKA_HZ
---  * Toffset(nsec)     = Register value / 2^32
---  * Timestamp[n+1]    = Timestamp[n] + Tnom + Toffset
---
--- The typical increment rate is ~10 MHz, giving an overall drift-rate
--- resolution of 0.002 nanoseconds per second and a full-scale tuning
--- range of +/-50 kHz (0.5% = 5,000 ppm).
+-- rate.  See "ptp_counter_free" for details.
 --
 
 library ieee;
@@ -65,28 +55,14 @@ end ptp_counter_gen;
 
 architecture ptp_counter_gen of ptp_counter_gen is
 
--- Internal counter uses a finer resolution than the final timestamp.
--- (Note: Scale here isn't intrinsically tied to ConfigBus word size,
---        but this is the finest we can set with a simple register.)
-constant TFINE_SCALE    : integer := CFGBUS_WORD_SIZE;
-constant TFINE_EXTRA    : integer := TFINE_SCALE - TSTAMP_SCALE;
-constant TFINE_WIDTH    : integer := TSTAMP_WIDTH + TFINE_EXTRA;
-subtype tfine_t is unsigned(TFINE_WIDTH-1 downto 0);
-
--- Calculate the nominal increment based on VCLKA_HZ.
--- (Note: Updates every other cycle --> Effective frequency is halved.)
-constant ONE_SEC    : real := 1.0e9 * (2.0 ** TFINE_SCALE);
-constant INCR_R     : real := 2.0 * ONE_SEC / VCONFIG.vclka_hz;
-constant INCR_U     : tfine_t := r2u(INCR_R, TFINE_WIDTH);
-
 -- Free-running counter state.
 signal tnext    : std_logic := '0';
-signal tstamp   : tfine_t := (others => '0');
-signal cpu_incr : tfine_t := (others => '0');
-signal cpu_word : cfgbus_word := (others => '0');
+signal tstamp   : tstamp_t;
 
 -- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
 -- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
+attribute dont_touch : boolean;
+attribute dont_touch of tstamp : signal is true;
 attribute satcat5_cross_clock_src : boolean;
 attribute satcat5_cross_clock_src of tstamp : signal is true;
 
@@ -100,41 +76,22 @@ assert (VCONFIG.vclka_hz < VCONFIG.vclkb_hz and VCONFIG.vclkb_hz < 1.1*VCONFIG.v
 ref_time.vclka  <= vclka;
 ref_time.vclkb  <= vclkb;
 ref_time.tnext  <= tnext;
-ref_time.tstamp <= tstamp(tstamp'left downto TFINE_EXTRA);
+ref_time.tstamp <= tstamp;
 
--- Counter increments on every other VCLKA cycle.
--- Strobe "TNEXT" just before each update.
-p_ctr : process(vclka)
-begin
-    if rising_edge(vclka) then
-        if (vreset_p = '1') then
-            tstamp <= (others => '0');
-        elsif (tnext = '1') then
-            tstamp <= tstamp + INCR_U + cpu_incr;
-        end if;
-        if (vreset_p = '1') then
-            tnext <= '0';
-        else
-            tnext <= not tnext;
-        end if;
-    end if;
-end process;
-
--- Rescale the CPU adjustment word.
-cpu_incr <= unsigned(resize(signed(cpu_word), TFINE_WIDTH));
-
--- Optional ConfigBus register.
--- Note: This optimizes down to a constant zero if ConfigBus is disconnected.
-u_cpu : cfgbus_register_sync
+-- Free-running counter with optional ConfigBus tuning.
+-- Effective counter rate is 1/2 VCLKA (TNEXT every other cycle).
+u_ctr : entity work.ptp_counter_free
     generic map(
+    REF_CLK_HZ  => VCONFIG.vclka_hz,
+    REF_CLK_DIV => 2,
     DEVADDR     => DEVADDR,
-    REGADDR     => REGADDR,
-    WR_ATOMIC   => true,
-    RSTVAL      => (others => '0'))
+    REGADDR     => REGADDR)
     port map(
+    ref_clk     => vclka,
+    ref_cken    => tnext,
+    ref_ctr     => tstamp,
+    reset_p     => vreset_p,
     cfg_cmd     => cfg_cmd,
-    cfg_ack     => cfg_ack,
-    sync_clk    => vclka,
-    sync_val    => cpu_word);
+    cfg_ack     => cfg_ack);
 
 end ptp_counter_gen;

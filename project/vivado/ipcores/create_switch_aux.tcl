@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 Auxiliary Support"
 set ip_desc "Error-reporting for SatCat5 switches and FPGA configuration scrubbing."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Generate IP for the configuration-scrubbing IP-core, 7-series only.

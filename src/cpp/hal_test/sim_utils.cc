@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -20,9 +20,15 @@
 #include "sim_utils.h"
 #include <cstdio>
 #include <ctime>
+#include <hal_test/sim_cfgbus.h>
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
 #include <satcat5/utils.h>
+
+using satcat5::test::ConstantTimer;
+using satcat5::test::LogProtocol;
+using satcat5::test::MockConfigBusMmap;
+using satcat5::test::MockInterrupt;
 
 bool satcat5::test::write(
     satcat5::io::Writeable* dst,
@@ -65,14 +71,14 @@ bool satcat5::test::read(
     }
 }
 
-satcat5::test::ConstantTimer::ConstantTimer(u32 val)
+ConstantTimer::ConstantTimer(u32 val)
     : satcat5::util::GenericTimer(16)  // 16 ticks = 1 microsecond
     , m_now(val)
 {
     // Nothing else to initialize.
 }
 
-satcat5::test::LogProtocol::LogProtocol(
+LogProtocol::LogProtocol(
         satcat5::eth::Dispatch* dispatch,
         const satcat5::eth::MacType& ethertype)
     : satcat5::eth::Protocol(dispatch, ethertype)
@@ -80,35 +86,59 @@ satcat5::test::LogProtocol::LogProtocol(
     // Nothing else to initialize.
 }
 
-void satcat5::test::LogProtocol::frame_rcvd(satcat5::io::LimitedRead& src)
+void LogProtocol::frame_rcvd(satcat5::io::LimitedRead& src)
 {
     satcat5::log::Log(satcat5::log::INFO, "Frame received")
         .write(m_etype.value).write(", Len")
         .write((u16)src.get_read_ready());
 }
 
-satcat5::test::MockConfigBusMmap::MockConfigBusMmap()
+MockConfigBusMmap::MockConfigBusMmap()
     : satcat5::cfg::ConfigBusMmap(m_regs, satcat5::irq::IRQ_NONE)
 {
     clear_all();
 }
 
-void satcat5::test::MockConfigBusMmap::clear_all(u32 val)
+void MockConfigBusMmap::clear_all(u32 val)
 {
     for (unsigned a = 0 ; a < cfg::MAX_DEVICES ; ++a)
         clear_dev(a, val);
 }
 
-void satcat5::test::MockConfigBusMmap::clear_dev(unsigned devaddr, u32 val)
+void MockConfigBusMmap::clear_dev(unsigned devaddr, u32 val)
 {
     u32* dev = m_regs + devaddr * satcat5::cfg::REGS_PER_DEVICE;
     for (unsigned a = 0 ; a < cfg::REGS_PER_DEVICE ; ++a)
         dev[a] = val;
 }
 
-void satcat5::test::MockConfigBusMmap::irq_event()
+void MockConfigBusMmap::irq_event()
 {
     satcat5::cfg::ConfigBusMmap::irq_event();
+}
+
+MockInterrupt::MockInterrupt(satcat5::cfg::ConfigBus* cfg)
+    : satcat5::cfg::Interrupt(cfg)
+    , m_cfg(cfg)
+    , m_count(0)
+    , m_regaddr(0)
+{
+    // Nothing else to initialize.
+}
+
+// Poll the designated register to see if interrupt flag is set.
+MockInterrupt::MockInterrupt(satcat5::cfg::ConfigBus* cfg, unsigned regaddr)
+    : satcat5::cfg::Interrupt(cfg, 0, regaddr)
+    , m_cfg(cfg)
+    , m_count(0)
+    , m_regaddr(regaddr)
+{
+    // Nothing else to initialize.
+}
+
+void MockInterrupt::fire() {
+    if (m_regaddr) m_cfg->write(m_regaddr, 0x03);
+    m_cfg->irq_poll();
 }
 
 void satcat5::test::TimerAlways::sim_wait(unsigned dly_msec)

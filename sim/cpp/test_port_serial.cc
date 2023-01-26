@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,6 +25,7 @@
 #include <satcat5/utils.h>
 
 using satcat5::util::I2cAddr;
+using satcat5::port::SerialAuto;
 
 // Define register map (see "port_mailmap.vhd")
 static const unsigned CFG_DEVADDR       = 42;
@@ -32,6 +33,7 @@ static const unsigned REGADDR_STATUS    = 0;    // Port status (interpretation v
 static const unsigned REGADDR_CLKREF    = 1;    // Reference clock frequency, in Hz
 static const unsigned REGADDR_CTRL0     = 2;    // Main control register
 static const unsigned REGADDR_CTRL1     = 3;    // Aux control register, if applicable
+static const unsigned REGADDR_MODE      = 4;    // Mode/autodetect register, if applicable
 
 // Other test parameters.
 static const u32 TEST_STATUS        = 0x47;
@@ -81,7 +83,10 @@ TEST_CASE("port_serial") {
     }
 
     SECTION("SerialAuto") {
-        satcat5::port::SerialAuto uut(&mock, CFG_DEVADDR);
+        SerialAuto uut(&mock, CFG_DEVADDR);
+        CHECK(uut.read_mode() == SerialAuto::MODE_AUTO);
+        uut.config_mode(SerialAuto::MODE_UART1);
+        CHECK(uut.read_mode() == SerialAuto::MODE_UART1);
         uut.config_spi(3, 1);       // SPI Mode = 3, Filt = 1
         CHECK(mock.ctrl0() == 0x0301);
         uut.config_spi(2, 3);       // SPI Mode = 2, Filt = 3

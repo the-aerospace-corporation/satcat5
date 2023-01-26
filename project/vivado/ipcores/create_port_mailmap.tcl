@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 ConfigBus MailMap (Virtual PHY)"
 set ip_desc "Virtual Ethernet port suitable for microcontroller polling via ConfigBus with a memory-mapped interface."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

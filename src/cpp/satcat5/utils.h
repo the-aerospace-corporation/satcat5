@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -175,27 +175,6 @@ namespace satcat5 {
         // Store fields into a big-endian byte array.
         void write_be_u16(u8* dst, u16 val);
         void write_be_u32(u8* dst, u32 val);
-
-        // Conversion function for I2C device addresses.
-        // Natively, I2C device addresses are 7-bits followed by the read/write flag.
-        // There are two common conventions for representing this in software:
-        //  * 7-bit addresses (e.g., 0x77 = 1110111) are right-justified.
-        //  * 8-bit addresses (e.g., 0xEE/0xEF = 1110111x) are left-justified
-        //    and come in pairs, treating read and write as a "separate" address.
-        struct I2cAddr {
-        public:
-            // Create I2C address from a 7-bit input (right-justified)
-            static I2cAddr addr7(u8 addr);
-
-            // Create I2C address from an 8-bit input (left-justified)
-            static I2cAddr addr8(u8 addr);
-
-            // Native internal representation for SatCat5.
-            const u8 m_addr;
-
-        private:
-            explicit I2cAddr(u8 addr) : m_addr(addr) {}
-        };
 
         // A simple class for tracking the record-holder for any unsigned
         // integer (e.g., elapsed microseconds, buffer size, etc.)

@@ -1,4 +1,4 @@
-# Copyright 2019, 2021, 2022 The Aerospace Corporation
+# Copyright 2019, 2021, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -20,8 +20,13 @@
 *.o
 
 # Ignore temporary files (Vim, etc.)
+~*
+*.jou
+*.log
 *.swp
 *.swo
+backups
+build_tmp
 .vscode/settings.json
 .vscode/settings.json
 
@@ -40,8 +45,32 @@ project/icecube2_2017.8/**
 !project/icecube2_2017.8/*/*.pcf
 !project/icecube2_2017.8/*/*.sdc
 
-# Ignore all libero-created subfolders
+# Ignore all Libero-created subfolders
 project/libero/*/
 
-# Ignore all yosys-created subfolders
+# Ignore all Modelsim-created subfolders
+project/modelsim/*.ini
+project/modelsim/*.mti
+project/modelsim/*.mpf
+project/modelsim/*.wlf
+project/modelsim/work
+
+# Ignore all Vivado-created subfolders
+*.bit
+*.cache
+*.dmp
+*.hdf
+*.hw
+*.ip_user_files
+*.metadata
+*.project
+*.runs
+*.srcs
+.Xil
+examples/*/*/*.xdc
+satcat5_ip
+sdk_hw
+sdk_bsp
+
+# Ignore all Yosys-created subfolders
 project/yosys/*/

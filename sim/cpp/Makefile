@@ -40,6 +40,7 @@ endif
 ### files
 SRCS := \
 	$(wildcard ./*.cc) \
+	$(wildcard ../../src/cpp/hal_devices/*.cc) \
 	$(wildcard ../../src/cpp/hal_posix/*.cc) \
 	$(wildcard ../../src/cpp/hal_test/*.cc) \
 	$(wildcard ../../src/cpp/satcat5/*.cc)
@@ -68,6 +69,7 @@ CFLAGS := $(COMMON_FLAGS)
 CXXFLAGS := $(COMMON_FLAGS) -std=c++11
 GCOVR := gcovr $(BUILD_DIR) -g -k -r ../.. \
 	--exclude test_.* \
+	--exclude ../../src/cpp/hal_devices/ \
 	--exclude ../../src/cpp/hal_posix/ \
 	--exclude ../../src/cpp/hal_test/ \
 	--object-directory $(BUILD_DIR)

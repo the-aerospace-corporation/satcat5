@@ -186,7 +186,7 @@ namespace satcat5 {
 
     namespace util {                // Other utilities
         class GenericTimer;         // satcat5/timer.h
-        struct I2cAddr;             // satcat5/utils.h
+        struct I2cAddr;             // satcat5/cfg_i2c.h
         class ListCore;             // satcat5/list.h
         template <class T>
             class List;             // satcat5/list.h

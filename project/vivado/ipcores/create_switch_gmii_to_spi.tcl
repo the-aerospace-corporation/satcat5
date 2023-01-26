@@ -26,8 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 GMII to SPI"
 set ip_desc "A two-port switch, configured to translate a GMII internal interface (typically found on Zynq 70xx-PS) to EoS/SPI."
 
-set ip_root [file normalize [file dirname [info script]]]
-
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

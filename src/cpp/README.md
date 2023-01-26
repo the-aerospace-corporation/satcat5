@@ -153,6 +153,7 @@ Code that cannot be made cross-platform is moved to a separate "Hardware Abstrac
 This allows us to support platform-specific functionality, remote control over a network, and many other features.
 
 Currently supported platforms include:
+* hal_devices: Device drivers for specific peripheral devices.
 * hal_pcap: Adapter for connecting PCAP/NPCAP to a SatCat5 stream (Win/Linux).
 * hal_posix: Utility functions for POSIX-compatible systems (e.g., GNU/Linux)
 * hal_test: A simulated environment for unit-testing of ConfigBus drivers (Win/Linux).
@@ -175,7 +176,7 @@ These tests use the open-source ["Catch2" library](https://github.com/catchorg/C
 
 # Copyright Notice
 
-Copyright 2021 The Aerospace Corporation
+Copyright 2021, 2023 The Aerospace Corporation
 
 This file is part of SatCat5.
 

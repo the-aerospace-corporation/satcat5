@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 SPI PHY (Peripheral)"
 set ip_desc "Mixed-media Ethernet-over-SPI port with clock and CSb as inputs."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

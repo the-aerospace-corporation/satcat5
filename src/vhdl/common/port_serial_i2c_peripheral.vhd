@@ -84,6 +84,7 @@ entity port_serial_i2c_peripheral is
     -- Default settings for this port.
     I2C_ADDR    : i2c_addr_t;       -- Local I2C device address
     CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
+    TIMEOUT_SEC : positive := 15;   -- Activity timeout, in seconds
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -222,7 +223,7 @@ u_i2c : entity work.io_i2c_peripheral
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
 p_wdog : process(ref_clk, reset_sync)
-    constant TIMEOUT : integer := 2*CLKREF_HZ;
+    constant TIMEOUT : integer := TIMEOUT_SEC * CLKREF_HZ;
     variable wdog_ctr : integer range 0 to TIMEOUT := TIMEOUT;
 begin
     if (reset_sync = '1') then

@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 SGMII PHY (GPIO)"
 set ip_desc "SatCat5 SGMII port using oversampled GPIO."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

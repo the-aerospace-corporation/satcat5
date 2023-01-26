@@ -41,39 +41,51 @@ poll::Timekeeper poll::timekeeper;
 static const char* const LBL_POLL = "POLL";
 
 // Global helper object that services all on-demand children.
-class poll::OnDemandHelper : public poll::Always
+class poll::OnDemandHelper final : public poll::Always
 {
-    // Poll each block on the "demand" list, resetting the state of each
-    // item just before we process it.  (This allows reentrant follow-up.)
+public:
+    // Constructor is the only public method.
+    OnDemandHelper() : m_item(0) {}
+
+private:
+    // In rare cases, such as the wait loop of "cfgbus_remote", the
+    // poll_always() method may be called recursively.  To avoid
+    // leaving orphaned leftovers, retain the working pointer.
+    poll::OnDemand *m_item;
+
+    // Atomically claim the current global list, and create
+    // an empty one in its place for future requests.
+    inline void list_start() {
+        AtomicLock lock(LBL_POLL);
+        m_item = g_list_demand;
+        g_list_demand = 0;
+    }
+
+    // Atomically pop the current item from the queue, updating
+    // associated pointers and status flags to mark it as idle.
+    inline poll::OnDemand* list_pop() {
+        AtomicLock lock(LBL_POLL);
+        poll::OnDemand* temp = m_item;
+        m_item = m_item->m_next;
+        temp->m_idle = 1;
+        temp->m_next = 0;
+        return temp;
+    }
+
+    // Poll each block on the "demand" list, resuming work in progress if
+    // possible.  Reset the state of each item just before we process it.
     void poll_always() override {
-        poll::OnDemand *item, *next;
-
-        // Atomically claim the current global list, and create
-        // an empty one in its place for future requests.
-        {
-            AtomicLock lock(LBL_POLL);
-            item = g_list_demand;
-            g_list_demand = 0;
-        }
-
-        while (item) {
-            // Atomically prefetch/clear state of the next list item.
-            {
-                AtomicLock lock(LBL_POLL);
-                next = item->m_next;
-                item->m_idle = 1;
-                item->m_next = 0;
-            }
-            // Notify that item's callback.
-            item->poll_demand();
-            item = next;
+        if (!m_item) list_start();
+        while (m_item) {
+            poll::OnDemand* next = list_pop();
+            next->poll_demand();
         }
     }
 } on_demand_helper;
 
 void poll::service()
 {
-    // Poll each block on the global list.
+    // Poll each block on the global list exactly once.
     // (This includes the on_demand_helper defined above.)
     poll::Always* item = g_list_always;
     while (item) {

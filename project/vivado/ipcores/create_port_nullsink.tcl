@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 Null-sink Port"
 set ip_desc "SatCat5 adapter for capped-off or empty ports."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

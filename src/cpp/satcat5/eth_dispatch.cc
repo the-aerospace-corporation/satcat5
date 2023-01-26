@@ -129,7 +129,7 @@ void Dispatch::data_rcvd()
     bool pending = m_src->read_obj(hdr);
 
     if (DEBUG_VERBOSE > 0)
-        log::Log(log::DEBUG, "EthDispatch: data_rcvd").write(pending ? "OK" : "Error");
+        log::Log(log::DEBUG, "EthDispatch: data_rcvd ").write(pending ? "OK" : "Error");
 
     // Store reply address.
     m_reply_macaddr = hdr.src;

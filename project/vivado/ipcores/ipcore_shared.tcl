@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021, 2022 The Aerospace Corporation
+# Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -31,14 +31,25 @@
 #   ip_desc = Longer description (e.g., "A two-port switch, typically used..."")
 #
 
+# Create the following variables in this namespace
+variable ip
+variable ip_root
+variable ip_cat
+variable ip_dir
+variable src_dir
+variable proj_dir
+variable part_family
+variable fg_syn
+variable fg_sim
+
 # Root folder contains this script, HDL wrappers, and port definitions.
-variable ip_root [file normalize [file dirname [info script]]]
+set ip_root [file normalize [file dirname [info script]]]
 
 # Relative path to most HDL source files, located under "src/vhdl":
 set src_dir [file normalize "$ip_root/../../../src/vhdl/"]
 
 # Target folder for the catalog and the newly-created IP-core.
-variable proj_dir [get_property DIRECTORY [current_project]]
+set proj_dir [get_property DIRECTORY [current_project]]
 set ip_cat [file normalize "$proj_dir/satcat5_ip"]
 set ip_dir [file normalize "$proj_dir/satcat5_ip/$ip_name"]
 
@@ -72,7 +83,7 @@ if {$ipcount eq 0} {
 variable families_7series {spartan7 artix7 kintex7 virtex7 zynq}
 variable families_ultrascale {kintexu virtexu}
 variable families_ultraplus {kintexuplus virtexuplus zynquplus zynquplusRFSOC}
-variable part_family [get_property family [get_parts -of_objects [current_project]]]
+set part_family [get_property family [get_parts -of_objects [current_project]]]
 if {[lsearch -exact $families_7series $part_family] >= 0} {
     set part_family "7series"
     set supported_families $families_7series
@@ -461,6 +472,7 @@ proc ipcore_add_param { param_name param_type param_default param_tooltip {param
     if {!($has_hdl) && $param_editable} {
         # $param_hdl is an Error, unacceptable if it's a r/w parameter.
         # It's OK if readonly (value is for display purposes)
+        puts "Error adding $param_name - cannot set params specified in HDL as editable"
         return -code error $param_hdl
     }
 

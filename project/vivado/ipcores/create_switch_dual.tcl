@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 Dual-port Ethernet Switch"
 set ip_desc "A two-port switch, typically used for interface-type adapation."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

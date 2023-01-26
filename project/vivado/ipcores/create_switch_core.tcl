@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 N-Port Ethernet Switch"
 set ip_desc "SatCat5 general-purpose Layer-2 Ethernet Switch."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

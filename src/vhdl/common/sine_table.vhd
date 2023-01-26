@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
+-- Copyright 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -141,12 +141,13 @@ end function;
 constant TABLE_ROM : table_t := create_table(OUT_MODE);
 
 -- State variables.
+-- Note: Some registers have no initial value for better BRAM/URAM packing.
 signal in_quad  : quad_t := (others => '0');
 signal in_idx   : index_t := (others => '0');
 signal ri_quad  : quad_t := (others => '0');
-signal ri_idx   : index_t := (others => '0');
+signal ri_idx   : index_t;
 signal ro_quad  : quad_t := (others => '0');
-signal ro_data  : output_t := (others => '0');
+signal ro_data  : output_t;
 signal ro_flip  : std_logic := '0';
 signal ro_zero  : std_logic := '0';
 signal mod_data : output_t := (others => '0');

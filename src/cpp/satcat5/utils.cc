@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -168,16 +168,6 @@ void util::write_be_u32(u8* dst, u32 val)
     dst[1] = (u8)(val >> 16);
     dst[2] = (u8)(val >> 8);
     dst[3] = (u8)(val >> 0);
-}
-
-util::I2cAddr util::I2cAddr::addr7(u8 addr)
-{
-    return I2cAddr(2 * addr);
-}
-
-util::I2cAddr util::I2cAddr::addr8(u8 addr)
-{
-    return I2cAddr(addr & 0xFE);
 }
 
 static const char* LABEL_NONE = "None";

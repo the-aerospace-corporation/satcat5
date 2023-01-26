@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -31,8 +31,8 @@ static inline u32 CMD_START(u32 x)
     {return CMD_OPCODE(0, x);}
 static inline u32 CMD_TXONLY(u32 x)
     {return CMD_OPCODE(1, x);}
-// static inline u32 CMD_TXRX(u32 x)
-//     {return CMD_OPCODE(2, x);}
+static inline u32 CMD_TXRX(u32 x)
+    {return CMD_OPCODE(2, x);}
 static const u32 CMD_RXONLY = CMD_OPCODE(3, 0);
 static const u32 CMD_STOP   = CMD_OPCODE(4, 0);
 
@@ -55,6 +55,28 @@ void cfg::Spi::configure(
 {
     u32 clkdiv = util::div_ceil_u32(clkref_hz, 2 * baud_hz);
     m_ctrl[REGADDR_CFG] = (mode << 8) | (clkdiv);
+}
+
+bool cfg::Spi::exchange(
+        u8 devidx, const u8* wrdata, u8 rwbytes,
+        cfg::SpiEventListener* callback)
+{
+    // How many opcodes required for this command?
+    unsigned ncmd = 2 + rwbytes;
+
+    // Can we queue this command now?
+    if (!write_check(ncmd, rwbytes)) return false;
+
+    // Queue up each opcode.
+    m_tx.write_u16(CMD_START(devidx));
+    for (unsigned a = 0 ; a < rwbytes ; ++a)
+        m_tx.write_u16(CMD_TXRX(wrdata[a]));
+    m_tx.write_u16(CMD_STOP);
+
+    // Finalize write and note metadata for later.
+    unsigned idx = write_finish();
+    m_callback[idx] = callback;
+    return true;    // Success!
 }
 
 bool cfg::Spi::query(

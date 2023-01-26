@@ -292,7 +292,7 @@ TEST_CASE("ptp_time") {
             while (ref_subns >= SUBNS_PER_SEC)
                 {ref_secs += 1; ref_subns -= SUBNS_PER_SEC;}
             CHECK(sum.secs() == ref_secs);
-            CHECK(sum.subns() == ref_subns);
+            CHECK(sum.subns() == (u64)ref_subns);
             CHECK(sum.delta_subns() == ref_delta);
         }
     }

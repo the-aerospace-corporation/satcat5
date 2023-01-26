@@ -73,6 +73,7 @@ entity port_serial_spi_peripheral is
     SPI_GDLY    : natural := 1;     -- SPI glitch-detection threshold
     SPI_MODE    : natural := 3;     -- SPI clock phase & polarity
     SYNC_MODE   : boolean := false; -- Disable both sync and async process on sclk? 
+    TIMEOUT_SEC : positive := 15;   -- Activity timeout, in seconds
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -209,7 +210,7 @@ u_spi : entity work.io_spi_peripheral
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
 p_wdog : process(refclk, reset_sync)
-    constant TIMEOUT : integer := 2*CLKREF_HZ;
+    constant TIMEOUT : integer := TIMEOUT_SEC * CLKREF_HZ;
     variable wdog_ctr : integer range 0 to TIMEOUT := TIMEOUT;
 begin
     if (reset_sync = '1') then

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -139,8 +139,8 @@ public:
         // Optionally log the SatCat5 port status register.
         // (Refer to port_rmii and port_statistics for more info.)
         if (DEBUG_PORT_STATUS) {
-            u32 status1 = traffic_stats.get_port(PORT_IDX_ETH_RJ45)->status;
-            u32 status2 = traffic_stats.get_port(PORT_IDX_ETH_SFP)->status;
+            u32 status1 = traffic_stats.get_port(PORT_IDX_ETH_RJ45).status;
+            u32 status2 = traffic_stats.get_port(PORT_IDX_ETH_SFP).status;
             Log(LOG_DEBUG, "Port status").write(status1).write(status2);
         }
     }

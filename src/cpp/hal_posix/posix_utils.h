@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -50,13 +50,16 @@ namespace satcat5 {
         // Stream keyboard input to a Writeable interface.
         class KeyboardStream : public satcat5::poll::Always {
         public:
-            explicit KeyboardStream(satcat5::io::Writeable* dst);
+            explicit KeyboardStream(
+                satcat5::io::Writeable* dst,
+                bool line_buffer = true);
             virtual ~KeyboardStream();
 
         protected:
             void poll_always() override;
             void write_key(int ch);
             satcat5::io::Writeable* const m_dst;
+            const bool m_line_buffer;
         };
 
         // Packet buffer with heap allocation.
@@ -82,6 +85,9 @@ namespace satcat5 {
         public:
             PosixTimekeeper();
             ~PosixTimekeeper();
+
+            satcat5::util::GenericTimer* timer() {return &m_timer;}
+
         protected:
             satcat5::util::PosixTimer m_timer;
             satcat5::irq::VirtualTimer m_adapter;
@@ -89,6 +95,9 @@ namespace satcat5 {
 
         // Cross-platform wrapper for sleep()/Sleep()/etc.
         void sleep_msec(unsigned msec);
+
+        // Alternate between sleep_msec() and poll::service_all().
+        void service_msec(unsigned total_msec, unsigned msec_per_iter = 10);
     }
 
     namespace log {

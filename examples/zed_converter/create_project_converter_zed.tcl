@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019 The Aerospace Corporation
+# Copyright 2019, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -105,3 +105,8 @@ close_bd_design [get_bd_designs ps]
 
 # unset to avoid interference with future runs
 unset target_board
+
+# Execute the build and write out the .bin file.
+source ../../project/vivado/shared_build.tcl
+satcat5_launch_run
+satcat5_write_hdf $target_top.hdf

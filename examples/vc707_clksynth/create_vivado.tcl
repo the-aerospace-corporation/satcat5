@@ -25,8 +25,8 @@ cd [file normalize [file dirname [info script]]]
 
 # Set project-level properties depending on the selected board.
 set target_part "XC7VX485TFFG1761-2"
-set target_proj "clock_synth"
-set target_top "clock_synth"
+set target_proj "vc707_clksynth"
+set target_top "vc707_clksynth"
 set constr_synth "vc707_synth.xdc"
 set constr_impl "vc707_impl.xdc"
 set override_postbit ""

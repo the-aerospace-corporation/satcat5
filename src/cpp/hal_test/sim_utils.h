@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -22,6 +22,7 @@
 
 #include <hal_posix/posix_utils.h>
 #include <satcat5/cfgbus_core.h>
+#include <satcat5/cfgbus_interrupt.h>
 #include <satcat5/ethernet.h>
 #include <satcat5/ip_stack.h>
 #include <satcat5/polling.h>
@@ -153,6 +154,29 @@ namespace satcat5 {
         protected:
             // Simulated register-map for up to 256 devices.
             u32 m_regs[satcat5::cfg::MAX_TOTAL_REGS];
+        };
+
+        // Mockup for a ConfigBus interrupt register.
+        class MockInterrupt : public satcat5::cfg::Interrupt {
+        public:
+            // No associated register, assumes interrupt has fired.
+            explicit MockInterrupt(satcat5::cfg::ConfigBus* cfg);
+
+            // Poll the designated register to see if interrupt flag is set.
+            MockInterrupt(satcat5::cfg::ConfigBus* cfg, unsigned regaddr);
+
+            // Number of callback events for this interrupt?
+            unsigned count() const {return m_count;}
+
+            // Trigger a virtual interrupt.
+            void fire();
+
+        protected:
+            void irq_event() override {++m_count;}
+
+            satcat5::cfg::ConfigBus* const m_cfg;
+            unsigned m_count;
+            unsigned m_regaddr;
         };
 
         // Timekeeper object that always fires a timer interrupt.

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -27,8 +27,8 @@
 namespace cfg = satcat5::cfg;
 
 cfg::NetworkStats::NetworkStats(
-        cfg::ConfigBusMmap* cfg, unsigned devaddr)
-    : m_traffic((cfg::TrafficStats*)cfg->get_device_mmap(devaddr))
+        cfg::ConfigBus* cfg, unsigned devaddr)
+    : m_traffic(cfg->get_register(devaddr))
 {
     // Nothing else to initialize.
 }
@@ -36,14 +36,29 @@ cfg::NetworkStats::NetworkStats(
 void cfg::NetworkStats::refresh_now()
 {
     // Writing to any portion of the register map reloads all counters.
-    m_traffic->status = 0;
+    *m_traffic = 0;
 }
 
-volatile cfg::TrafficStats* cfg::NetworkStats::get_port(unsigned idx)
+cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
 {
-    // ConfigBus address space = 4 kiB = 128 ports max.
-    if (idx < 128)
-        return m_traffic + idx;
-    else
-        return 0;
+    cfg::TrafficStats stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned reg = 8 * idx;         // Fixed size, 8 registers per port
+    if (reg < cfg::REGS_PER_DEVICE) {
+        // Read ConfigBus registers.
+        stats.bcast_bytes   = m_traffic[reg+0];
+        stats.bcast_frames  = m_traffic[reg+1];
+        stats.rcvd_bytes    = m_traffic[reg+2];
+        stats.rcvd_frames   = m_traffic[reg+3];
+        stats.sent_bytes    = m_traffic[reg+4];
+        stats.sent_frames   = m_traffic[reg+5];
+        u32 errct_word      = m_traffic[reg+6];
+        stats.status        = m_traffic[reg+7];
+        // Split individual byte fields from errct_word.
+        // (This method works on both little-endian and big-endian hosts.)
+        stats.errct_mac     = (u8)(errct_word >> 0);
+        stats.errct_ovr_tx  = (u8)(errct_word >> 8);
+        stats.errct_ovr_rx  = (u8)(errct_word >> 16);
+        stats.errct_pkt     = (u8)(errct_word >> 24);
+    }
+    return stats;
 }

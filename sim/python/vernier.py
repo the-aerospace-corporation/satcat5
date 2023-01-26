@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2022 The Aerospace Corporation
+# Copyright 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -126,7 +126,6 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
         df (float)      Initial frequency offset (Hz)
         dt (float)      Initial phase offset (sec)
         jitter (float)  One-sigma jitter of user clock (sec)
-        alg (str)       Detector algorithm ('any', 'net', 'one', 'tot')
     Returns: Tuple containing:
         (vec-float)     Estimated REFA clock-phase at each timestep (sec)
         (vec-float)     Error from actual clock-phase (sec)
@@ -147,7 +146,6 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
     pha_scale = (1e9 * 2**20)       # Each phase LSB is (1/scale) seconds
     tau_scale = (1e9 * 2**30)       # Each period LSB is (1/scale) seconds
     gain_acc = 256                  # Gain for phase accumulator
-    gain_cmp = 16                   # Gain for phase-drift compensation
     gain_tau = 1                    # Gain for period accumulator
     tau_0 = int(tau_scale / fsamp)  # Initial period estimate
     # Set PLL initial state.
@@ -160,10 +158,14 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
     tau_a = int(pha_scale / fref[0])    # Period of RefA
     tau_b = int(pha_scale / fref[1])    # Period of RefB
     sc_ratio = int(tau_scale / pha_scale)
+    # Ratiometric accumulator maintains exact ratio between RefA and RefB.
+    # (Otherwise we will accumulate sub-LSB offsets over time and lose lock.)
+    ratio_accum = 0
     # Simulate each timestep.
     out_pll = np.zeros(npts)
     out_ped = np.zeros(npts)
     out_tau = np.zeros(npts)
+    out_rac = np.zeros(npts)
     for t in range(npts):
         # Calculate phase error from latest PLL state.
         clka = (2*phase_a < tau_a)
@@ -178,13 +180,18 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
         out_ped[t] = erra + errb
         out_pll[t] = phase_a / pha_scale
         out_tau[t] = tau_u / tau_scale
+        out_rac[t] = ratio_accum
         # Sub-LSB user clock accumulator.
         pincr = (tau_s + tau_u) // sc_ratio
         tau_s = (tau_s + tau_u)  % sc_ratio
-        # Update PLL state.
-        phase_a = (phase_a + pincr + gain_acc*(erra+errb) + gain_cmp*(erra-errb)) % tau_a
-        phase_b = (phase_b + pincr + gain_acc*(erra+errb) + gain_cmp*(errb-erra)) % tau_b
+        tau_a2 = tau_a + (ratio_accum < 0)
+        tau_b2 = tau_b + (ratio_accum >= 0)
+        # Update PLL state, including ratiometric accumulator.
+        phase_a = (phase_a + pincr + gain_acc*(erra+errb)) % tau_a2
+        phase_b = (phase_b + pincr + gain_acc*(erra+errb)) % tau_b2
         tau_u = tau_u + gain_tau * (erra + errb)
+        # Ratiometric accumulator.  Hard caps help mitigate windup effects.
+        ratio_accum = max(-15, min(15, ratio_accum + erra - errb))
         # Sanity check on loop stability.
         if (10*tau_u < 8*tau_0) or (10*tau_u > 12*tau_0):
             raise ValueError('Tau unstable!')
@@ -193,7 +200,7 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
     out_ref = np.mod(np.arange(npts) / (fsamp + df) + dt, t0)
     out_dif = np.mod(out_pll - out_ref + t0/2, t0) - t0/2
     # Return the estimated phase, actual phase, and PED output.
-    return (out_pll, out_dif, out_ped, out_tau)
+    return (out_pll, out_dif, out_ped, out_tau, out_rac)
 
 def plot_scurves(device, refin, fsamp=125e6, jitter=1e-10, show=True):
     # Import plotting libraries.
@@ -243,9 +250,9 @@ def plot_vernier_pll(device, refin, fsamp=125e6, jitter=1e-10, npts=8000000, sho
     fref = freq_vernier(device, refin, 20e6)
     # Simulate the PLL with a moderate phase step.
     t = np.arange(npts) / fsamp
-    (_, step_phase, _, _) = vernier_pll(npts, fsamp, fref, 0.0, 5.0e-9, jitter)
+    (_, step_phase, _, _, _) = vernier_pll(npts, fsamp, fref, 0.0, 5.0e-9, jitter)
     # Simulate PLL with a phase and frequency step.
-    (_, step_freq, _, _) = vernier_pll(npts, fsamp, fref, 1e3, 5.0e-9, jitter)
+    (_, step_freq, _, _, _) = vernier_pll(npts, fsamp, fref, 1e3, 5.0e-9, jitter)
     # Plot both results.
     fig, ax = plt.subplots()
     ax.plot(t * 1e3, step_phase * 1e9, 'b')
