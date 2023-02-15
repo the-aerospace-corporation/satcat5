@@ -26,15 +26,11 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 ConfigBus Host (AXI4-Lite)"
 set ip_desc "Adapter for controlling ConfigBus peripherals using AXI-Lite"
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-ipcore_add_file $src_dir/common/cfgbus_common.vhd
-ipcore_add_file $src_dir/common/cfgbus_host_axi.vhd
-ipcore_add_file $src_dir/common/common_functions.vhd
-ipcore_add_file $src_dir/common/common_primitives.vhd
-ipcore_add_file $src_dir/common/fifo_smol_sync.vhd
+ipcore_add_file $src_dir/common/*.vhd
 ipcore_add_top  $ip_root/wrap_cfgbus_host_axi.vhd
 
 # Connect I/O ports

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -38,6 +38,7 @@
 #include <satcat5/cfgbus_core.h>
 #include <satcat5/eth_dispatch.h>
 #include <satcat5/net_core.h>
+#include <satcat5/polling.h>
 #include <satcat5/udp_core.h>
 
 namespace satcat5 {
@@ -45,6 +46,7 @@ namespace satcat5 {
         class ConfigBusRemote
             : public satcat5::cfg::ConfigBus
             , public satcat5::net::Protocol
+            , public satcat5::poll::Timer
         {
         public:
             // Basic read and write operations (ConfigBus API).
@@ -67,6 +69,9 @@ namespace satcat5 {
             void set_timeout_rd(unsigned usec) {m_timeout_rd = usec;}
             void set_timeout_wr(unsigned usec) {m_timeout_wr = usec;}
 
+            // Adjust polling rate for interrupt status (0 = None).
+            void set_irq_polling(unsigned msec) {timer_every(msec);}
+
         protected:
             // Create a link to the designated remote address, with commands
             // and replies routed through the designated Dispatcher object.
@@ -78,6 +83,9 @@ namespace satcat5 {
 
             // Callback for incoming reply frames.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
+
+            // Callback for timer events.
+            void timer_event() override;
 
             // Send, then wait if requested.
             satcat5::cfg::IoStatus send_and_wait(

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -55,7 +55,7 @@ public:
 
 TEST_CASE("cfgbus-remote-eth") {
     satcat5::log::ToConsole log;
-    satcat5::util::PosixTimer timer;
+    satcat5::util::PosixTimekeeper timer;
 
     // Memory-mapped buffer is large enough for two full device-pages.
     std::vector<u32> mmap(2*cfg::REGS_PER_DEVICE, 0);
@@ -83,7 +83,7 @@ TEST_CASE("cfgbus-remote-eth") {
     };
 
     // Unit under test.
-    eth::ConfigBus uut_controller(&net_controller, &timer);
+    eth::ConfigBus uut_controller(&net_controller, timer.timer());
     eth::ProtoConfig uut_peripheral(&net_peripheral, &cfg);
     uut_controller.connect(MAC_PERIPHERAL);
 
@@ -289,6 +289,15 @@ TEST_CASE("cfgbus-remote-eth") {
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_TIMEOUT);
     }
 
+    SECTION("polling") {
+        satcat5::test::MockInterrupt irq(&uut_controller);
+        uut_controller.set_irq_polling(5);  // Poll every 5 msec.
+        u32 tref = timer.timer()->now();    // Run for 10 msec...
+        while (timer.timer()->elapsed_usec(tref) < 10000)
+            satcat5::poll::service_all();
+        CHECK(irq.count() > 0);             // At least one event?
+    }
+
     SECTION("timeout") {
         // Corrupt outgoing command to force a read-timeout.
         log.disable();                      // Suppress error display...
@@ -299,7 +308,7 @@ TEST_CASE("cfgbus-remote-eth") {
 
 TEST_CASE("cfgbus-remote-udp") {
     satcat5::log::ToConsole log;
-    satcat5::util::PosixTimer timer;
+    satcat5::util::PosixTimekeeper timer;
 
     // Memory-mapped buffer is large enough for two full device-pages.
     std::vector<u32> mmap(2*cfg::REGS_PER_DEVICE, 0);
@@ -313,8 +322,8 @@ TEST_CASE("cfgbus-remote-udp") {
     satcat5::io::PacketBufferHeap c2p, p2c;
     eth::Dispatch eth_controller(MAC_CONTROLLER, &c2p, &p2c);
     eth::Dispatch eth_peripheral(MAC_PERIPHERAL, &p2c, &c2p);
-    ip::Dispatch ip_controller(IP_CONTROLLER, &eth_controller, &timer);
-    ip::Dispatch ip_peripheral(IP_PERIPHERAL, &eth_peripheral, &timer);
+    ip::Dispatch ip_controller(IP_CONTROLLER, &eth_controller, timer.timer());
+    ip::Dispatch ip_peripheral(IP_PERIPHERAL, &eth_peripheral, timer.timer());
     udp::Dispatch udp_controller(&ip_controller);
     udp::Dispatch udp_peripheral(&ip_peripheral);
 

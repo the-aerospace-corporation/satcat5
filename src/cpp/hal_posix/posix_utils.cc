@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -70,8 +70,9 @@ BufferedWriterHeap::~BufferedWriterHeap()
     delete[] m_buff.get_buff_dtor();
 }
 
-KeyboardStream::KeyboardStream(Writeable* dst)
+KeyboardStream::KeyboardStream(Writeable* dst, bool line_buffer)
     : m_dst(dst)
+    , m_line_buffer(line_buffer)
 {
 #ifdef _WIN32
     // No initial setup for Windows (yet).
@@ -118,10 +119,11 @@ void KeyboardStream::poll_always()
 
 void KeyboardStream::write_key(int ch)
 {
-    if (ch == '\r' || ch == '\n') {
+    if (m_line_buffer && (ch == '\r' || ch == '\n')) {
         m_dst->write_finalize();    // EOL flushes input
     } else if (0 < ch && ch < 128) {
         m_dst->write_u8(ch);        // Forward "normal" keys
+        if (!m_line_buffer) m_dst->write_finalize();
     }
 }
 
@@ -212,6 +214,18 @@ void satcat5::util::sleep_msec(unsigned msec)
 #else
     usleep(msec * 1000);
 #endif
+}
+
+void satcat5::util::service_msec(unsigned total_msec, unsigned msec_per_iter)
+{
+    PosixTimer timer;
+    u32 usec = 1000 * total_msec;
+    u32 tref = timer.now();
+    while (1) {
+        poll::service_all();
+        if (timer.elapsed_test(tref, usec)) break;
+        satcat5::util::sleep_msec(msec_per_iter);
+    }
 }
 
 std::string satcat5::log::format(const satcat5::eth::MacAddr& addr)

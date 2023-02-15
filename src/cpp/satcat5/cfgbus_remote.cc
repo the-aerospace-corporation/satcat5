@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -41,6 +41,7 @@ static const u8 OPCODE_READ1    = 0x50;     // Read auto-increment
 // Internal software flags (m_status)
 static const u32 STATUS_PENDING = (1u << 0);
 static const u32 STATUS_BUSY    = (1u << 1);
+static const u32 STATUS_POLLING = (1u << 2);
 
 // Define Type codes for each supported protocol.
 static const Type TYPE_ETH_ACK =
@@ -111,6 +112,7 @@ ConfigBusRemote::~ConfigBusRemote()
 
 cfg::IoStatus ConfigBusRemote::read(unsigned regaddr, u32& rdval)
 {
+    rdval = 0;  // Default response zero if read fails.
     return send_and_wait(OPCODE_READ1, regaddr, 1, &rdval, m_timeout_rd);
 }
 
@@ -197,6 +199,20 @@ void ConfigBusRemote::frame_rcvd(satcat5::io::LimitedRead& src)
     util::clr_mask_u32(m_status, STATUS_PENDING);
 }
 
+void ConfigBusRemote::timer_event()
+{
+    // Do not poll status if we are already busy for any reason.
+    if (m_status) return;
+
+    // Service any pending tasks before we start.
+    satcat5::poll::service_all();
+
+    // Set POLLING flag until we have queried every ConfigBus interrupt.
+    util::set_mask_u32(m_status, STATUS_POLLING);
+    irq_poll();
+    util::clr_mask_u32(m_status, STATUS_POLLING);
+}
+
 cfg::IoStatus ConfigBusRemote::send_and_wait(
     u8 opcode, unsigned addr, unsigned len, const u32* ptr, unsigned timeout)
 {
@@ -216,6 +232,11 @@ cfg::IoStatus ConfigBusRemote::send_and_wait(
 bool ConfigBusRemote::send_command(
     u8 opcode, unsigned addr, unsigned len, const u32* ptr)
 {
+    if (DEBUG_VERBOSE > 1) {
+        log::Log(log::DEBUG, "CfgRemote: send_command")
+            .write(opcode).write((u32)addr).write((u16)len);
+    }
+
     // Sanity check: Never allow overlapping command/response.
     if (m_status & STATUS_BUSY) {
         log::Log(log::ERROR, "CfgRemote: Already busy");
@@ -240,7 +261,7 @@ bool ConfigBusRemote::send_command(
         return false;
     } else if (DEBUG_VERBOSE > 0) {
         log::Log(log::DEBUG, "CfgRemote: Sending command")
-            .write(opcode).write((u8)len);
+            .write(opcode).write((u32)addr).write((u16)len);
     }
 
     // Write frame contents (see cfgbus_host_eth.vhd)

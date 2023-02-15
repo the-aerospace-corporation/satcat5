@@ -26,16 +26,11 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 PTP Time Reference (Vernier clock)"
 set ip_desc "Generate a Vernier clock-pair and reference counter, with optional ConfigBus control."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:
-ipcore_add_file $src_dir/common/cfgbus_common.vhd
-ipcore_add_file $src_dir/common/common_functions.vhd
-ipcore_add_file $src_dir/common/common_primitives.vhd
-ipcore_add_file $src_dir/common/eth_frame_common.vhd
-ipcore_add_file $src_dir/common/ptp_counter_gen.vhd
-ipcore_add_file $src_dir/common/ptp_types.vhd
+ipcore_add_file $src_dir/common/*.vhd
 ipcore_add_top  $ip_root/wrap_ptp_reference.vhd
 
 # Connect I/O ports

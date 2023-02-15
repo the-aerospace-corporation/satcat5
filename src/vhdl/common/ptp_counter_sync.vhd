@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
+-- Copyright 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -34,7 +34,14 @@
 -- PLL coefficients are derived at build-time based on the time-constant
 -- "tau" and the user clock rate.  Typical time-to-first-lock is about
 -- 10*tau due to the multi-step acquisition process, including retries.
+--
 -- Default parameters are tested for user clocks from 50-200 MHz.
+-- Increasing the filter time-constant (LOOP_TAU_MS) may require an
+-- increase to accumulator precision (TAU_SCALE) to prevent fixed-point
+-- gain coefficients from rounding to zero.  Use of the "positive" type
+-- ensures that such problems result in a build-time error.  Adjustments
+-- to secondary accumulator precision (PHA_SCALE) are less common but
+-- may impact output performance.
 --
 -- An optional ConfigBus register can be used to add an adjustable time
 -- offset to the output counter.  Scale matches PTP format (i.e., one
@@ -61,6 +68,8 @@ entity ptp_counter_sync is
     VCONFIG     : vernier_config;   -- Vernier configuration
     USER_CLK_HZ : positive;         -- User clock frequency (Hz)
     LOOP_TAU_MS : real := 4.0;      -- Loop time-constant (msec)
+    PHA_SCALE   : integer := 28;    -- Phase scale (1 nsec = 2^N units)
+    TAU_SCALE   : natural := 32;    -- Period scale (1 nsec = 2^N units)
     WAIT_LOCKED : boolean := true;  -- Supress output until locked?
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
     REGADDR     : integer := CFGBUS_ADDR_NONE);
@@ -95,8 +104,8 @@ constant PHA_MAX_NS : integer := integer(ceil(2.0e9 / VCONFIG.vclka_hz));
 constant USR_MAX_NS : integer := integer(ceil(1.1e9 / real(USER_CLK_HZ)));
 
 -- Calculate required accumulator width.
-constant PHA_SCALE  : integer := 20;    -- Phase scale (1 nsec = 2^N)
-constant TAU_SCALE  : integer := 32;    -- Period scale (1 nsec = 2^N)
+-- * PHA_SCALE sets the phase accumulator precision (1 nsec = 2^N units).
+-- * TAU_SCALE sets the period accumulator precision (1 nsec = 2^N units).
 constant PHA_WIDTH  : integer := PHA_SCALE + log2_ceil(PHA_MAX_NS + USR_MAX_NS);
 constant TAU_WIDTH  : integer := TAU_SCALE + log2_ceil(USR_MAX_NS);
 constant SUB_WIDTH  : integer := TAU_SCALE - PHA_SCALE;
@@ -151,16 +160,6 @@ begin
     return integer(round(TRK_GAIN * TRK_ALPHA * real(k)));
 end function;
 
-function lpc(k : positive) return positive is       -- Loop gain (Phase-diff)
-begin
-    -- This factor compensates long-term drift caused by rounding errors
-    -- in PHA_MOD_A and PHA_MOD_B, which accumulate over many seconds.  It
-    -- must be small enough to minimize disruption to the primary loop, but
-    -- large enough to prevent gradual loss of lock.
-    -- TODO: Find an objective metric for calculating min/max safe value.
-    return lpp(k) / 4;
-end function;
-
 function lpd(k : positive) return positive is       -- Settling time (msec)
     constant MIN_MSEC : positive := 1;
     constant TRK_MSEC : real := 3.0 * LOOP_TAU_MS / real(k);
@@ -175,7 +174,6 @@ end function;
 -- Record holding a set of loop parameters:
 type mode_t is record
     DLY_MSEC    : natural;              -- Time spent in this mode
-    CMP_GAIN    : natural;              -- PED gain (rel. phase)
     PHA_GAIN    : natural;              -- PED gain (phase)
     TAU_GAIN    : natural;              -- PED gain (period)
     LOCK_SUB    : natural;              -- Lock mismatch penalty
@@ -188,12 +186,12 @@ end record;
 constant MODE_FIRST : integer := 3;     -- Number of acquisition modes
 type pll_mode_array is array(MODE_FIRST downto 0) of mode_t;
 
---      Dly     Cmp     Pha     Tau  Sub  Freq?
+--      Dly     Pha     Tau  Sub  Freq?
 constant PLL_MODES : pll_mode_array := (
-    (lpd(8), lpc(8), lpp(8), lpt(8),   2, false),   -- Coarse freq+phase
-    (lpd(4), lpc(4), lpp(4), lpt(4),   2, false),   -- Progressively finer
-    (lpd(2), lpc(2), lpp(2), lpt(2),   3, false),   -- Progressively finer
-    (lpd(1), lpc(1), lpp(1), lpt(1),   4, false));  -- Normal operation
+    (lpd(8), lpp(8), lpt(8),   4, false),   -- Coarse freq+phase
+    (lpd(4), lpp(4), lpt(4),   8, false),   -- Progressively finer
+    (lpd(2), lpp(2), lpt(2),  16, false),   -- Progressively finer
+    (lpd(1), lpp(1), lpt(1),  16, false));  -- Normal operation
 
 -- Calculate accumulator frequency hints and initial values.
 -- (Initial values are scaled to match average delay of the DDMTD strobe.)
@@ -202,6 +200,13 @@ constant PHA_MOD_B  : phase_t := freq2phase(0.5 * VCONFIG.vclkb_hz);
 constant PHA_INIT   : phase_t := freq2phase(real(USER_CLK_HZ) / 1.5);
 constant PHI_INIT   : phase_t := freq2phase(real(USER_CLK_HZ));
 constant TAU_INIT   : period_t := freq2period(real(USER_CLK_HZ));
+
+-- The drift-compensation accumulator mitigates long-term drift caused by
+-- rounding errors in PHA_MOD_A and PHA_MOD_B. The error is smaller than
+-- a femtosecond, but incurs every VCLKA or VCLKB cycle and accumulates
+-- indefinitely, eventually leading to loss of lock unless corrected.
+constant CMP_MAX    : integer := 15;        -- Max accumulator value
+subtype cmperr_t is integer range -CMP_MAX to CMP_MAX;
 
 -- Generate and resynchronize reference signals.
 signal ref_toga     : std_logic := '0';
@@ -230,6 +235,8 @@ signal pll_phb      : phase_t := PHA_INIT;          -- RefB phase accum
 signal pll_phi      : phase_t := PHI_INIT;          -- Next phase increment
 signal pll_tau      : period_t := TAU_INIT;         -- User clock period
 signal pll_sub      : subclk_t := (others => '0');  -- Sub-LSB accumulator
+signal pll_cmp      : cmperr_t := 0;                -- Drift compensation
+signal pll_cneg     : std_logic := '0';             -- Drift bias A or B?
 
 -- Lock detection
 constant LOCK_SET   : positive := get_lock_window;  -- Accumulator max
@@ -346,6 +353,18 @@ p_pll : process(user_clk)
         return unsigned(y);
     end function;
 
+    -- Clip integer input to +/- CMP_MAX.
+    function cmp_limit(x: integer) return cmperr_t is
+    begin
+        if (x < -CMP_MAX) then
+            return -CMP_MAX;
+        elsif (x < CMP_MAX) THEN
+            return x;
+        else
+            return CMP_MAX;
+        end if;
+    end function;
+
     -- Phase accumulator with modulo/wraparound.
     function accum_mod(phase, period : phase_t) return phase_t is
     begin
@@ -381,6 +400,7 @@ p_pll : process(user_clk)
         end if;
     end function;
 
+    variable incr_cmp           : cmperr_t := 0;
     variable incr_tau           : period_t := (others => '0');
     variable next_sub           : subclk_t := (others => '0');
     variable incr_pha, incr_phb : phase_t := (others => '0');
@@ -447,8 +467,8 @@ begin
             pll_pha <= PHA_INIT;            -- Frequency-sync mode
             pll_phb <= PHA_INIT;
         else                                -- Normal operation
-            pll_pha <= accum_mod(next_pha, PHA_MOD_A);
-            pll_phb <= accum_mod(next_phb, PHA_MOD_B);
+            pll_pha <= accum_mod(next_pha, PHA_MOD_A + u2i(pll_cneg));
+            pll_phb <= accum_mod(next_phb, PHA_MOD_B + u2i(not pll_cneg));
         end if;
 
         if (pll_run = '0' and pll_midx = MODE_FIRST) then
@@ -470,12 +490,21 @@ begin
             pll_sub <= next_sub;                -- Modulo accumulator
         end if;
 
+        -- Drift compenstation nudges the effective period of PHA_MOD_A or
+        -- PHA_MOD_B by 1 LSB, depending on the cumulative error.  This term
+        -- is required to mitigate long-term ratiometric drift.
+        pll_cneg <= bool2bit(pll_cmp < 0);
+        if (pll_run = '0') then
+            pll_cmp <= 0;
+        else
+            pll_cmp <= cmp_limit(pll_cmp + incr_cmp);
+        end if;
+
         -- Adjust loop gain based on active acquisition or tracking mode.
+        incr_cmp := pll_peda - pll_pedb;
         incr_pha := int2phase(PHA_WIDTH,
-            pll_mode.CMP_GAIN * (pll_peda - pll_pedb) +
             pll_mode.PHA_GAIN * (pll_peda + pll_pedb));
         incr_phb := int2phase(PHA_WIDTH,
-            pll_mode.CMP_GAIN * (pll_pedb - pll_peda) +
             pll_mode.PHA_GAIN * (pll_peda + pll_pedb));
         incr_tau := int2phase(TAU_WIDTH,
             pll_mode.TAU_GAIN * (pll_peda + pll_pedb));

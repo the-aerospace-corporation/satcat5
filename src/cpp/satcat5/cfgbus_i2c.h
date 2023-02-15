@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,8 +25,8 @@
 
 #pragma once
 
+#include <satcat5/cfg_i2c.h>
 #include <satcat5/cfgbus_multiserial.h>
-#include <satcat5/utils.h>  // For I2cAddr
 
 // Default sizes for the I2C working buffers
 // For reference: 256 bytes = 5.7 msec buffer @ 400 kbaud
@@ -44,22 +44,10 @@
 
 namespace satcat5 {
     namespace cfg {
-        // Prototype for the I2C Event Handler callback interface.
-        class I2cEventListener {
-        public:
-            virtual void i2c_done(
-                u8 noack,           // Missing ACK during this command?
-                u8 devaddr,         // Device address
-                u32 regaddr,        // Register address (if applicable)
-                unsigned nread,     // Number of bytes read (if applicable)
-                const u8* rdata)    // Pointer to read buffer
-                = 0;                // Child MUST override this method
-        protected:
-            ~I2cEventListener() {}
-        };
-
         // Interace driver for "cfgbus_i2c_controller"
-        class I2c : public satcat5::cfg::MultiSerial
+        class I2c
+            : public satcat5::cfg::I2cGeneric
+            , public satcat5::cfg::MultiSerial
         {
         public:
             // Constructor links to specified control register.
@@ -74,10 +62,10 @@ namespace satcat5 {
             // Add a bus operation to the queue. (Return true if successful.)
             bool read(const satcat5::util::I2cAddr& devaddr,
                 u8 regbytes, u32 regaddr, u8 nread,
-                satcat5::cfg::I2cEventListener* callback = 0);
+                satcat5::cfg::I2cEventListener* callback = 0) override;
             bool write(const satcat5::util::I2cAddr& devaddr,
                 u8 regbytes, u32 regaddr, u8 nwrite, const u8* data,
-                satcat5::cfg::I2cEventListener* callback = 0);
+                satcat5::cfg::I2cEventListener* callback = 0) override;
 
         protected:
             // Shared logic for for read() and write() methods.

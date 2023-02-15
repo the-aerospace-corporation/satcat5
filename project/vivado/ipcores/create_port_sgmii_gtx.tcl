@@ -39,7 +39,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 SGMII PHY (MGT)"
 set ip_desc "SatCat5 SGMII port using GTX-SERDES."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Set expected frequency for "independent_clock_bufg".

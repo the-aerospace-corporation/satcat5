@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -30,6 +30,7 @@ using satcat5::test::MST_READ;
 static const unsigned CFG_DEVADDR = 42;
 static const u16 CMD_START      = 0x0000u;
 static const u16 CMD_TXBYTE     = 0x0100u;
+static const u16 CMD_TXRXBYTE   = 0x0200u;
 static const u16 CMD_RXBYTE     = 0x0300u;
 static const u16 CMD_STOP       = 0x0400u;
 
@@ -94,7 +95,7 @@ TEST_CASE("cfgbus_spi") {
     }
 
     SECTION("read-long") {
-        // Expect 16-byte read w/ regaddr, followed by 3-byte read.
+        // Expect 16-byte read followed by 3-byte read.
         SpiEventCheck evt1(16);
         SpiEventCheck evt2(3);
         // Load the first reference sequence.
@@ -116,6 +117,23 @@ TEST_CASE("cfgbus_spi") {
         CHECK(mst.done());
         CHECK(evt1.m_count == 1);
         CHECK(evt2.m_count == 1);
+    }
+
+    SECTION("read-write") {
+        // Expect a read-write transaction.
+        SpiEventCheck evt(7);
+        // Load the reference sequence.
+        mst.load_refcmd(CMD_START | 42, MST_START);
+        for (unsigned a = 0 ; a < 7 ; ++a)
+            mst.load_refcmd(CMD_TXRXBYTE | wrdata[a], MST_READ);
+        mst.load_refcmd(CMD_STOP);
+        // Issue the read-write command.
+        uut.exchange(42, wrdata, 7, &evt);
+        // Process to completion.
+        for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
+        // Confirm test completed.
+        CHECK(mst.done());
+        CHECK(evt.m_count == 1);
     }
 
     SECTION("write-long") {

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -105,15 +105,20 @@ bool cfg::I2c::enqueue_cmd(u8 devaddr,
     m_tx.write_u16(CMD_START);
     if (regbytes || nwrite) {
         // Big-endian conversion for regaddr field.
-        const u8* regptr = ((const u8*)(&regaddr)) + regbytes;
+        u8 regarray[4];
+        util::write_be_u32(regarray, regaddr);
+        const u8* regptr = regarray + 4 - regbytes;
+        // Write command with device register address.
         m_tx.write_u16(CMD_TXBYTE | devaddr);
         for (unsigned a = 0 ; a < regbytes ; ++a)
-            m_tx.write_u16(CMD_TXBYTE | *(--regptr));
+            m_tx.write_u16(CMD_TXBYTE | regptr[a]);
         for (unsigned a = 0 ; a < nwrite ; ++a)
             m_tx.write_u16(CMD_TXBYTE | data[a]);
+        // Follow up with a read transaction?
         if (nread) m_tx.write_u16(CMD_RESTART);
     }
     if (nread) {
+        // Read command with device address.
         m_tx.write_u16(CMD_TXBYTE | (devaddr + 1));
         for (unsigned a = 1 ; a < nread ; ++a)
             m_tx.write_u16(CMD_RXBYTE);

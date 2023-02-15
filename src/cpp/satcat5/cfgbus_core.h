@@ -126,14 +126,16 @@ namespace satcat5 {
             // (Or for a specific register, if the second address is specified.)
             satcat5::cfg::Register get_register(unsigned dev, unsigned reg = 0);
 
+            // Poll all registered ConfigBus interrupt handlers.
+            // Issue callbacks to any that may have triggered.
+            // (This method should not usually be called directly.)
+            void irq_poll();
+
         protected:
             // Constructor should only be called by children.
             // (Only children should create or destroy base class.)
             explicit ConfigBus(void* base_ptr = 0);
             ~ConfigBus() {}
-
-            // Interrupt handler notifies all children.
-            void irq_poll();
 
             // Direct-access pointer, if applicable.
             volatile u32* const m_base_ptr;

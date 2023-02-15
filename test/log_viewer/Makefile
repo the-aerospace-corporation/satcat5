@@ -58,13 +58,13 @@ CXXFLAGS := $(COMMON_FLAGS) -std=c++11
 ### targets
 .PHONY: all clean run
 
-all: $(OBJS) $(BUILD_DIR)/$(PROJECT).bin
+all: $(OBJS) $(PROJECT).bin
 
 clean:
 	$(REMOVE) $(BUILD_DIR)
 
 run: all
-	@$(BUILD_DIR)/$(PROJECT).bin
+	@$(PROJECT).bin
 
 # Working folder
 $(BUILD_DIR):

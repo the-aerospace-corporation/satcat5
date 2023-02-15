@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
+-- Copyright 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -22,6 +22,10 @@
 -- This unit test connects a Vernier-clock counter-generator to a counter-
 -- synchronizer, runs for a few milliseconds, and confirms that the result
 -- converges with sub-nanosecond accuracy.
+--
+-- Note: If you encounter a SIGFPE "Floating point exception" when running
+-- this testbench, set simulation timestep to 1 picosecond or finer.
+--  * In Modelsim: "vsim ptp_counter_tb -t ps"
 --
 -- The complete test takes 40 milliseconds.
 --

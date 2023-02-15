@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -33,6 +33,7 @@
 
 #pragma once
 
+#include <satcat5/cfg_spi.h>
 #include <satcat5/cfgbus_multiserial.h>
 
 // Default sizes for the SPI working buffers
@@ -51,17 +52,10 @@
 
 namespace satcat5 {
     namespace cfg {
-        // Prototype for the SPI Event Handler callback interface.
-        // To use, inherit from this class and override the spi_done() method.
-        class SpiEventListener {
-        public:
-            virtual void spi_done(unsigned nread, const u8* rbytes) = 0;
-        protected:
-            ~SpiEventListener() {}
-        };
-
         // Interface controller class.
-        class Spi : public satcat5::cfg::MultiSerial
+        class Spi
+            : public satcat5::cfg::SpiGeneric
+            , public satcat5::cfg::MultiSerial
         {
         public:
             // Constructor.
@@ -74,10 +68,12 @@ namespace satcat5 {
                 unsigned mode = 3);     // SPI mode (0/1/2/3)
 
             // Queue a bus transaction. (Return true if successful.)
-            // All SPI operations are sequential write-then-read.
+            bool exchange(
+                u8 devidx, const u8* wrdata, u8 rwbytes,
+                satcat5::cfg::SpiEventListener* callback = 0) override;
             bool query(
                 u8 devidx, const u8* wrdata, u8 wrbytes, u8 rdbytes,
-                satcat5::cfg::SpiEventListener* callback = 0);
+                satcat5::cfg::SpiEventListener* callback = 0) override;
 
         protected:
             // Event handlers:

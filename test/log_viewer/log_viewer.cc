@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,83 +25,16 @@
 #include <iostream>
 #include <string>
 #include <hal_pcap/hal_pcap.h>
+#include <hal_posix/chat_printer.h>
 #include <hal_posix/posix_uart.h>
 #include <hal_posix/posix_utils.h>
 #include <satcat5/eth_chat.h>
-#include <satcat5/eth_dispatch.h>
 
 using namespace satcat5;
 
 // Global background services.
 log::ToConsole logger;          // Print Log messages to console
 util::PosixTimekeeper timer;    // Link system time to internal timers
-
-// Callback object that prints incoming messages.
-class ChatPrinter final
-    : public net::Protocol
-    , public io::Writeable
-{
-public:
-    ChatPrinter(eth::ChatProto* chat)
-        : net::Protocol(net::TYPE_NONE)
-        , m_chat(chat)
-        , m_loopback(true)
-    {
-        m_chat->set_callback(this);
-    }
-
-    ~ChatPrinter() {
-        m_chat->set_callback(0);
-    }
-
-    // Handle incoming data from eth::ChatProto.
-    void frame_rcvd(io::LimitedRead& rd) override {
-        std::string msg;
-        while (rd.get_read_ready())
-            msg.push_back((char)rd.read_u8());
-        print_message(m_chat->reply_mac(), msg);
-    }
-
-    // Pretty formatting for incoming or outgoing messages.
-    void print_message(const eth::MacAddr& from, const std::string& msg) {
-        std::cout << "From " << log::format(from) << std::endl
-            << msg << std::endl << std::endl;
-    }
-
-    // Send a message string to the chat client.
-    void send_message(const std::string& msg) {
-        if (m_loopback)
-            print_message(m_chat->local_mac(), msg);
-        m_chat->send_text(eth::MACADDR_BROADCAST,
-            msg.length(), msg.c_str());
-    }
-
-    // Send accumulated message to the chat client.
-    bool write_finalize() {
-        if (m_line.length() > 0) {
-            send_message(m_line);
-            m_line.clear();
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    // Always indicate we are ready to accept data.
-    unsigned get_write_space() const override {
-        return 1000;
-    }
-
-private:
-    // Accumulate characters from input stream.
-    void write_next(u8 ch) {
-        m_line.push_back(ch);
-    }
-
-    eth::ChatProto* const m_chat;
-    std::string m_line;
-    bool m_loopback;
-};
 
 // Set up a network stack and print received messages.
 void chat_forever(io::Writeable* dst, io::Readable* src,
@@ -112,7 +45,7 @@ void chat_forever(io::Writeable* dst, io::Readable* src,
         local_mac, dst, src);
     eth::ChatProto* proto = new eth::ChatProto(
         dispatch, "log-viewer");
-    ChatPrinter* chat = new ChatPrinter(proto);
+    util::ChatPrinter* chat = new util::ChatPrinter(proto);
 
     // Forward user input to the chat protocol.
     // (Type message and hit enter to send.)

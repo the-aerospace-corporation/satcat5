@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -32,7 +32,6 @@
 namespace satcat5 {
     namespace cfg {
         // Data structure for reading per-port traffic statistics.
-        // TODO: Support big-endian host platforms.
         struct TrafficStats {
             u32 bcast_bytes;        // Broadcast bytes received from device
             u32 bcast_frames;       // Broadcast frames received from device
@@ -51,17 +50,24 @@ namespace satcat5 {
         class NetworkStats {
         public:
             // Construct a memory-map for the designated ConfigBus device.
-            // TODO: Support for the generic ConfigBus interface.
-            NetworkStats(satcat5::cfg::ConfigBusMmap* cfg, unsigned devaddr);
+            NetworkStats(satcat5::cfg::ConfigBus* cfg, unsigned devaddr);
 
-            // Immediately refresh statistics.
+            // Immediately refresh statistics for every port.
+            // Each call to refresh_now() executes the following atomically:
+            //  * Copies the value of each internal counter to a separate
+            //    read-only register that is accessible through get_port().
+            //  * Resets all internal counters to zero.
+            // As a result, read-only registers indicate the amount of new
+            // traffic between the two preceding calls to refresh_now().
+            // Implementations MUST call this function regularly.
             void refresh_now();
 
-            // Get a pointer to the register map for the Nth port.
-            volatile satcat5::cfg::TrafficStats* get_port(unsigned idx);
+            // Read most recent statistics for the Nth port.
+            // (Call "refresh_now()" at regular intervals to update statistics.)
+            satcat5::cfg::TrafficStats get_port(unsigned idx);
 
         private:
-            volatile satcat5::cfg::TrafficStats* const m_traffic;
+            satcat5::cfg::Register m_traffic;
         };
     }
 }

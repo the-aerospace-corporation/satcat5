@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+# Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -137,6 +137,7 @@ project addfile ../../src/vhdl/common/eth_statistics.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_traffic_src.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_clksynth.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_counter_free.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_gen.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_sync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_egress.vhd VHDL common_sw

@@ -91,6 +91,15 @@ It also contains a Microblaze processor and several ConfigBus peripherals.
 
 Note that this design requires the "AVB" license for the Xilinx TEMAC IP-core, due to the use of PTP features.
 
+# zcu208_clksynth
+
+Target: [Xilinx ZCU208 development board](https://www.xilinx.com/products/boards-and-kits/zcu208.html)
+
+Like the `vc707_clksynth` demo, this example design is used to verify performance of the Vernier-PLL system.
+In this demo, a Vernier-PLL is used to synthesize a 125 MHz sine wave.
+Use of sine waves instead of discrete-sampled square waves avoids discrete-time quantization error.
+In theory, this allows accuracy and jitter measurements on picosecond time-scales.
+
 # zed_converter
 
 Target: [ZedBoard Zynq-7000 Development Board](https://digilent.com/reference/programmable-logic/zedboard/start)
@@ -99,7 +108,7 @@ This design connects the Zynq PS Ethernet port to a PMOD Ethernet-over-SPI/UART 
 
 # Copyright Notice
 
-Copyright 2021, 2022 The Aerospace Corporation
+Copyright 2021, 2022, 2023 The Aerospace Corporation
 
 This file is part of SatCat5.
 

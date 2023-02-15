@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -28,6 +28,8 @@ using satcat5::test::IoEventCounter;
 
 #define BUF_SIZE 2048
 #define BIG_BUF_SIZE (1<<17)
+
+const u32 WRITE_ERROR = (u32)(-1);
 
 TEST_CASE("Empty packet buffers are empty", "[pkt_buffer]") {
     // Print any SatCat5 messages to console.
@@ -204,7 +206,7 @@ TEST_CASE("Abandon packet on oversize write", "[pkt_buffer]") {
         // Should show overflow
         CHECK(uut.get_percent_full() == 100);
         CHECK(uut.get_write_space() == 0);
-        CHECK(uut.get_write_partial() == -1);
+        CHECK(uut.get_write_partial() == WRITE_ERROR);
 
 
         // Try to commit or revert
@@ -249,7 +251,7 @@ TEST_CASE("large packet", "[pkt_buffer]") {
     uut.write_bytes(big_write_size, buf_data);
     bytes_written += big_write_size;
     // Should overflow
-    CHECK(uut.get_write_partial() == -1);
+    CHECK(uut.get_write_partial() == WRITE_ERROR);
     CHECK(uut.get_write_space() == 0);
 
     // Commit should fail

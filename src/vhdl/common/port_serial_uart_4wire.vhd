@@ -75,6 +75,7 @@ entity port_serial_uart_4wire is
     -- Default baud-rate setting on startup
     CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
     BAUD_HZ     : positive;         -- Default UART baud rate (bps)
+    TIMEOUT_SEC : positive := 15;   -- Activity timeout, in seconds
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -233,7 +234,7 @@ uart_rts_n  <= not enc_valid;
 -- Detect stuck ports (flow control blocked) and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
 p_wdog : process(refclk, reset_sync)
-    constant TIMEOUT : integer := 2*CLKREF_HZ;
+    constant TIMEOUT : integer := TIMEOUT_SEC * CLKREF_HZ;
     variable wdog_ctr : integer range 0 to TIMEOUT := TIMEOUT;
 begin
     if (reset_sync = '1') then

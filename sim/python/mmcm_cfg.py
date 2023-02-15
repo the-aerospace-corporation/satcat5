@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2022 The Aerospace Corporation
+# Copyright 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -174,7 +174,9 @@ def freq_vernier(limits, refin, refout):
     # (Extra 0.5 is for local divide-by-two used in the sampling circuit.)
     f1 = 0.5 * refin * m / max(d1, d2)  # Lower freq
     f2 = 0.5 * refin * m / min(d1, d2)  # Upper freq
-    return (f1, f2)
+    n1 = int(8 * max(d1, d2))           # Integer divider for F1
+    n2 = int(8 * min(d1, d2))           # Integer divider for F2
+    return (f1, f2, n1, n2)
 
 if __name__ == '__main__':
     for device in ['7series', 'ultrascale', 'ultraplus']:

@@ -24,7 +24,7 @@ Follow these steps to build the design and deploy to your Arty A7 board.
     * Navigate to the SatCat5 folder. e.g., `cd path/to/satcat5`
     * Run either `set argv 35t` or `set argv 100t` to select the appropriate hardware variant.
     * Then run the following commands:
-        ```
+        ```bash
         cd examples/arty_a7
         source create_project_arty_a7.tcl
         ```

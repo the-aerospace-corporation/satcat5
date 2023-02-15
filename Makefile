@@ -106,6 +106,11 @@ vc707_clksynth:
 vc707_managed:
 	@cd examples/vc707_managed && ${VIVADO_RUN} create_all.tcl
 
+# ZCU208 example design
+.PHONY: zcu208_clksynth
+zcu208_clksynth:
+	@cd examples/zcu208_clksynth && ${VIVADO_RUN} create_vivado.tcl
+
 # Example design for ZedBoard.
 .PHONY: zed_converter
 zed_converter:
@@ -129,6 +134,7 @@ log_viewer:
 # Build each of the C++ example tools.
 .PHONY: sw_tools
 sw_tools:
+	@cd examples/zcu208_clksynth/config_tool && make all
 	@cd test/log_viewer && make all
 
 # Build and run software tests

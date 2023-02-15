@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -57,8 +57,16 @@ namespace satcat5 {
         class SerialAuto : public SerialGeneric {
         public:
             using SerialGeneric::SerialGeneric;
+            void config_mode(u8 mode);  // Manually set SPI/UART mode
             void config_spi(u8 mode, u8 gfilt=1);
             void config_uart(unsigned baud, bool ignore_cts=false);
+            u8 read_mode();             // Report current SPI/UART mode
+
+            // Constants for config_mode() and read_mode().
+            static constexpr u8 MODE_AUTO   = 0;
+            static constexpr u8 MODE_SPI    = 1;
+            static constexpr u8 MODE_UART1  = 2;
+            static constexpr u8 MODE_UART2  = 3;
         };
 
         class SerialI2cController : public SerialGeneric {

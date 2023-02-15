@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -74,8 +74,8 @@ void LedActivity::update(satcat5::cfg::NetworkStats* stats)
     static const unsigned ACTIVITY_SUSTAIN = 3;
 
     // New activity since last update?
-    volatile satcat5::cfg::TrafficStats* port = stats->get_port(m_stats_idx);
-    u32 active = port->rcvd_frames + port->sent_frames;
+    const satcat5::cfg::TrafficStats port = stats->get_port(m_stats_idx);
+    u32 active = port.rcvd_frames + port.sent_frames;
 
     // Update LED based on new and recent activity:
     if (m_state > ACTIVITY_SUSTAIN) {

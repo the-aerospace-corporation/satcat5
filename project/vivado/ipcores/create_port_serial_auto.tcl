@@ -26,7 +26,7 @@ set ip_vers "1.0"
 set ip_disp "SatCat5 4-Wire SPI/UART PHY"
 set ip_desc "Mixed-media Ethernet-over-SPI / Ethernet-over-UART auto-detecting port."
 
-set ip_root [file normalize [file dirname [info script]]]
+variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl
 
 # Add all required source files:

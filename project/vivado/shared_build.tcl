@@ -47,9 +47,13 @@ proc satcat5_scan_logs {} {
     puts {Log scan starting...}
     variable proj_dir [get_property DIRECTORY [current_project]]
     foreach log_file [glob "${proj_dir}/*/*/runme.log"] {
-        puts Reading ${log_file}...
-        variable log_data [read $log_file]
-        foreach line [split $log_data "\n"] {
+        # Read the file contents...
+        puts "Reading ${log_file}..."
+        variable log_fd [open "$log_file"]
+        variable log_data [read $log_fd]
+        close $log_fd
+        # Iterate through each line...
+        foreach line [split "$log_data" "\n"] {
             variable is_err [string match "ERROR:*" $line]
             variable is_crw [string match "CRITICAL WARNING:*" $line]
             if { $is_err || $is_crw} {puts "$line"}
@@ -70,22 +74,22 @@ proc satcat5_write_hdf { outfile } {
     if {$run_mmi == ""} {error "Bitfile generation failed: Missing .MMI file."}
 
     # Derived filenames. Note "outfile" may or may not include extension.
-    variable run_hwd [file rootname $run_bit].hwdef
-    variable out_hdf [file rootname $outfile].hdf
+    variable run_hwd [file rootname "$run_bit"].hwdef
+    variable out_hdf [file rootname "$outfile"].hdf
 
     # Write out the hardware definition
     puts "Writing SYSDEF:"
     puts "    BIT: $run_bit"
     puts "    MMI: $run_mmi"
 
-    write_hwdef -force -file $run_hwd
+    write_hwdef -force -file "$run_hwd"
     write_sysdef -force \
-        -hwdef $run_hwd \
-        -bitfile $run_bit \
-        -meminfo $run_mmi \
-        -file $out_hdf
+        -hwdef "$run_hwd" \
+        -bitfile "$run_bit" \
+        -meminfo "$run_mmi" \
+        -file "$out_hdf"
 
-    variable sysdef_size [file size $out_hdf]
+    variable sysdef_size [file size "$out_hdf"]
     puts "SYSDEF Ready ($sysdef_size bytes)"
 }
 
@@ -96,15 +100,15 @@ proc satcat5_write_bin { outfile {interface SPIx4} {size 16} } {
     variable run_dir [get_property DIRECTORY [current_run]]
     variable run_bit [lindex [glob -nocomplain $run_dir/*.bit] 0]
 
-    if {$run_bit == ""} {error "Bitfile generation failed: Missing .BIT file."}
+    if {"$run_bit" == ""} {error "Bitfile generation failed: Missing .BIT file."}
 
     # Derived filenames. Note "outfile" may or may not include extension.
-    variable out_bin [file rootname $outfile].bin
+    variable out_bin [file rootname "$outfile"].bin
 
     # Write out the corresponding .bin file.
     write_cfgmem -force -format BIN \
         -interface $interface \
         -size $size \
         -loadbit "up 0x0 ${run_bit}" \
-        ${out_bin}
+        "${out_bin}"
 }

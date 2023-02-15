@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -164,7 +164,7 @@ public:
         // Optionally log the SatCat5 port status register.
         // (Refer to port_rmii and port_statistics for more info.)
         if (DEBUG_PORT_STATUS) {
-            u32 status = traffic_stats.get_port(PORT_IDX_RMII)->status;
+            u32 status = traffic_stats.get_port(PORT_IDX_RMII).status;
             Log(satcat5::log::DEBUG, "RMII status").write(status);
         }
     }

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -69,6 +69,7 @@ TEST_CASE("cfgbus_led") {
         // Simulated network statistics.
         satcat5::test::MockConfigBusMmap mmap;
         satcat5::cfg::NetworkStats stats(&mmap, NET_DEVADDR);
+        satcat5::cfg::Register stats_reg = mmap.get_register(NET_DEVADDR);
 
         // Unit under test.
         LedActivityCtrl uut(&stats, 1);     // Accelerated animation
@@ -82,9 +83,10 @@ TEST_CASE("cfgbus_led") {
             // Clear all port traffic counters.
             mmap.clear_dev(NET_DEVADDR);
             // Occasionally mark activity on a randomly selected port.
+            // (The "rcvd_frames" register is index 2 of 8 within each port.)
             unsigned sel = (unsigned)rng() % 2;
             unsigned prt = (unsigned)rng() % 4;
-            if (sel == 0) stats.get_port(prt)->rcvd_frames = 1;
+            if (sel == 0) stats_reg[8*prt + 3] = 1;
             // Run animation
             satcat5::poll::service();
         }

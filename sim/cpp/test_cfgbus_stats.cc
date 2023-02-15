@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,7 +25,7 @@
 class MockStats : public satcat5::test::MockConfigBusMmap {
 public:
     MockStats() {
-        refresh_regs(0);    // Clear initial state
+        refresh_regs(1);    // Set initial state
     }
 
     void refresh_regs(u32 val) {
@@ -40,29 +40,56 @@ TEST_CASE("NetworkStats") {
 
     SECTION("refresh") {
         // Confirm UUT writes to refresh register on demand.
-        CHECK(uut.get_port(0)->status != 0);
+        CHECK(uut.get_port(0).bcast_bytes != 0);
         uut.refresh_now();
-        CHECK(uut.get_port(0)->status == 0);
+        CHECK(uut.get_port(0).bcast_bytes == 0);
+    }
+
+    SECTION("port0") {
+        // Confirm Port 0 returns the expected initial state.
+        satcat5::cfg::TrafficStats stats = uut.get_port(0);
+        CHECK(stats.bcast_bytes     == 1);
+        CHECK(stats.bcast_frames    == 2);
+        CHECK(stats.rcvd_bytes      == 3);
+        CHECK(stats.rcvd_frames     == 4);
+        CHECK(stats.sent_bytes      == 5);
+        CHECK(stats.sent_frames     == 6);
+        CHECK(stats.errct_mac       == 7);
+        CHECK(stats.errct_ovr_tx    == 0);
+        CHECK(stats.errct_ovr_rx    == 0);
+        CHECK(stats.errct_pkt       == 0);
+        CHECK(stats.status          == 8);
     }
 
     SECTION("port1") {
         // Confirm Port 1 returns the expected initial state.
-        volatile satcat5::cfg::TrafficStats* stats = uut.get_port(1);
-        CHECK(stats->bcast_bytes    == 8);
-        CHECK(stats->bcast_frames   == 9);
-        CHECK(stats->rcvd_bytes     == 10);
-        CHECK(stats->rcvd_frames    == 11);
-        CHECK(stats->sent_bytes     == 12);
-        CHECK(stats->sent_frames    == 13);
-        CHECK(stats->errct_mac      == 14);
-        CHECK(stats->errct_ovr_tx   == 0);
-        CHECK(stats->errct_ovr_rx   == 0);
-        CHECK(stats->errct_pkt      == 0);
-        CHECK(stats->status         == 15);
+        satcat5::cfg::TrafficStats stats = uut.get_port(1);
+        CHECK(stats.bcast_bytes     == 9);
+        CHECK(stats.bcast_frames    == 10);
+        CHECK(stats.rcvd_bytes      == 11);
+        CHECK(stats.rcvd_frames     == 12);
+        CHECK(stats.sent_bytes      == 13);
+        CHECK(stats.sent_frames     == 14);
+        CHECK(stats.errct_mac       == 15);
+        CHECK(stats.errct_ovr_tx    == 0);
+        CHECK(stats.errct_ovr_rx    == 0);
+        CHECK(stats.errct_pkt       == 0);
+        CHECK(stats.status          == 16);
     }
 
     SECTION("port999") {
-        // Out-of-bounds access should return null pointer.
-        CHECK(uut.get_port(999) == 0);
+        // Out-of-bounds access should return null object.
+        satcat5::cfg::TrafficStats stats = uut.get_port(999);
+        CHECK(stats.bcast_bytes     == 0);
+        CHECK(stats.bcast_frames    == 0);
+        CHECK(stats.rcvd_bytes      == 0);
+        CHECK(stats.rcvd_frames     == 0);
+        CHECK(stats.sent_bytes      == 0);
+        CHECK(stats.sent_frames     == 0);
+        CHECK(stats.errct_mac       == 0);
+        CHECK(stats.errct_ovr_tx    == 0);
+        CHECK(stats.errct_ovr_rx    == 0);
+        CHECK(stats.errct_pkt       == 0);
+        CHECK(stats.status          == 0);
     }
 }

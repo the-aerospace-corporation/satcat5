@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -123,7 +123,7 @@ public:
         if (DEBUG_PORT_STATUS) {
             Log log(LOG_DEBUG, "Port status");
             for (unsigned a = 0 ; a < eth_switch.port_count() ; ++a) {
-                log.write(traffic_stats.get_port(a)->status);
+                log.write(traffic_stats.get_port(a).status);
             }
         }
     }

@@ -38,7 +38,7 @@ use     work.common_primitives.all;
 use     work.io_leds.all;
 use     work.ptp_types.all;
 
-entity clock_synth is
+entity vc707_clksynth is
     generic (
     SYNTH_HZ    : integer := 25_000_000;
     STATUS_SEL  : integer := -1);   -- Debug mode for status_led
@@ -59,9 +59,9 @@ entity clock_synth is
     gtx1_ref_n  : in  std_logic;    -- GTX1 reference (125 MHz nominal)
     gtx1_out_p  : out std_logic;    -- GTX1 output (synthesized clock)
     gtx1_out_n  : out std_logic);   -- GTX1 output (differential)
-end clock_synth;
+end vc707_clksynth;
 
-architecture clock_synth of clock_synth is
+architecture vc707_clksynth of vc707_clksynth is
 
 constant SYS_CLK_HZ     : positive := 200_000_000;
 constant GTX_TXCLK_HZ   : positive := 156_250_000;
@@ -367,4 +367,4 @@ u_gtx : entity work.gtx_wrapper
     gtx1_out_p  => gtx1_out_p,
     gtx1_out_n  => gtx1_out_n);
 
-end clock_synth;
+end vc707_clksynth;

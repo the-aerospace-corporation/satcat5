@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -52,6 +52,13 @@
 --      Bits 31-08: Reserved (zeros)
 --      Bits 09-08: SPI mode (0 / 1 / 2 / 3)
 --      Bits 07-00: Glitch filter setting (see "io_spi_peripheral")
+--  REGADDR = 4: SPI/UART autodetect (read-write)
+--      Bits 31-02: Reserved (zeros)
+--      Bits 01-00: Interface mode
+--          0x0 = Autodetect (default)
+--          0x1 = SPI
+--          0x2 = UART (normal)
+--          0x3 = UART (swapped)
 --
 -- I/O is assigned as follows in each mode:
 --     Idx  Name         Pin 0       Pin 1       Pin 2       Pin 3
@@ -92,6 +99,7 @@ entity port_serial_auto is
     SPI_GDLY    : natural := 1;         -- SPI glitch-detection threshold
     SPI_MODE    : natural := 3;         -- SPI clock phase & polarity
     UART_BAUD   : positive := 921600;   -- Default UART baud rate
+    TIMEOUT_SEC : positive := 15;       -- Activity timeout, in seconds
     -- Other I/O parameters
     PULLUP_EN   : boolean := true;      -- Enable FPGA pullups on ext_pads?
     FORCE_SHDN  : boolean := false;     -- In shutdown, drive ext_pads to zero?
@@ -118,11 +126,11 @@ end port_serial_auto;
 architecture port_serial_auto of port_serial_auto is
 
 -- Define internal mode-detection states.
-type mode_t is (
-    MODE_AUTO,
-    MODE_SPI,
-    MODE_UART1,
-    MODE_UART2);
+subtype mode_t is std_logic_vector(1 downto 0);
+constant MODE_AUTO  : mode_t := "00";
+constant MODE_SPI   : mode_t := "01";
+constant MODE_UART1 : mode_t := "10";
+constant MODE_UART2 : mode_t := "11";
 
 -- Default clock-divider ratios and other settings:
 constant UART_RATE_DEFAULT  : cfgbus_word :=
@@ -133,7 +141,7 @@ constant SPI_CFG_DEFAULT    : cfgbus_word :=
     resize(SPI_MODE_DEFAULT & SPI_GDLY_DEFAULT, CFGBUS_WORD_SIZE);
 
 -- ConfigBus interface.
-signal cfg_acks     : cfgbus_ack_array(0 to 3);
+signal cfg_acks     : cfgbus_ack_array(0 to 4);
 signal cfg_u_word   : cfgbus_word := UART_RATE_DEFAULT;
 signal cfg_u_ovr    : std_logic;
 signal cfg_u_rate   : unsigned(15 downto 0);
@@ -141,6 +149,10 @@ signal cfg_s_word   : cfgbus_word := SPI_CFG_DEFAULT;
 signal cfg_s_mode   : integer range 0 to 3;
 signal cfg_s_gdly   : byte_u;
 signal status_word  : cfgbus_word;
+signal detect_wrval : mode_t := MODE_AUTO;
+signal detect_rdval : mode_t;
+signal detect_wr_t  : std_logic := '0'; -- Toggle in CfgBus domain
+signal detect_wr_s  : std_logic;        -- Strobe in RefClk domain
 
 -- Top-level bidirectional pins.
 signal ext_din      : std_logic_vector(3 downto 0);
@@ -190,6 +202,10 @@ signal dec_write    : std_logic := '0';
 signal enc_data     : byte_t;
 signal enc_valid    : std_logic;
 signal enc_ready    : std_logic;
+
+-- Clock-crossing constraints.
+attribute satcat5_cross_clock_src : boolean;
+attribute satcat5_cross_clock_src of detect_wrval : signal is (DEVADDR >= 0);
 
 begin
 
@@ -272,6 +288,45 @@ u_cfg_reg3 : cfgbus_register_sync
     cfg_ack     => cfg_acks(3),
     sync_clk    => refclk,
     sync_val    => cfg_s_word);
+
+p_cfg_reg4 : process(cfg_cmd.clk)
+    -- Reg4 = SPI/UART autodetect (read/write).
+    constant REGADDR : natural := 4;
+begin
+    if rising_edge(cfg_cmd.clk) then
+        -- Respond to ConfigBus writes.
+        if (cfg_cmd.reset_p = '1') then
+            -- ConfigBus reset reverts setting to autodetect mode.
+            -- Otherwise, the setting persists across port reset.
+            detect_wrval <= MODE_AUTO;
+        elsif cfgbus_wrcmd(cfg_cmd, DEVADDR, REGADDR) then
+            -- Mode change triggered by ConfigBus command.
+            detect_wrval <= cfg_cmd.wdata(1 downto 0);
+            detect_wr_t  <= not detect_wr_t;
+        end if;
+
+        -- Respond to ConfigBus reads:
+        if cfgbus_rdcmd(cfg_cmd, DEVADDR, REGADDR) then
+            cfg_acks(4) <= cfgbus_reply(resize(detect_rdval, 32));
+        else
+            cfg_acks(4) <= cfgbus_idle;
+        end if;
+    end if;
+end process;
+
+-- Clock-domain transitions relating to the ConfigBus interface.
+u_detect_wr : sync_toggle2pulse
+    port map(
+    in_toggle   => detect_wr_t,
+    out_strobe  => detect_wr_s,
+    out_clk     => refclk);
+
+u_detect_rd : sync_buffer_slv
+    generic map(IO_WIDTH => det_mode'length)
+    port map(
+    in_flag     => det_mode,
+    out_flag    => detect_rdval,
+    out_clk     => cfg_cmd.clk);
 
 -- Instantiate each top-level bidirectional pin.
 gen_pads : for n in ext_pads'range generate
@@ -387,10 +442,11 @@ lock_uart2  <= bool2bit(uart2_write = '1' and uart2_data = SLIP_FEND);
 p_detect : process(refclk)
 begin
     if rising_edge(refclk) then
-        -- Update the active mode.
-        if (reset_sync = '1' or wdog_rst_p = '1') then
-            -- Global or watchdog reset
-            det_mode <= MODE_AUTO;
+        -- Update the active mode?
+        if (reset_sync = '1' or wdog_rst_p = '1' or detect_wr_s = '1') then
+            -- Reset or ConfigBus command, revert to specified mode.
+            -- (The commanded mode persists across a port reset.)
+            det_mode <= detect_wrval;
         elsif (det_mode = MODE_AUTO) then
             -- Autodetect mode: Accept the first SLIP frame token.
             if (lock_spi = '1') then
@@ -402,10 +458,15 @@ begin
             end if;
         end if;
 
-        -- Reset SLIP encoder and decoder while in AUTO mode.
-        if (reset_sync = '1' or wdog_rst_p = '1') then
+        -- Reset SLIP encoder and decoder?
+        if (reset_sync = '1' or detect_wr_s = '1') then
+            -- Global reset or command -> SLIP reset.
             codec_reset <= '1';
+        elsif (wdog_rst_p = '1') then
+            -- Activity timeout -> Reset only in AUTO mode.
+            codec_reset <= bool2bit(detect_wrval = MODE_AUTO);
         elsif (lock_any = '1') then
+            -- Exiting AUTO mode -> Release from reset.
             codec_reset <= '0';
         end if;
 
@@ -444,7 +505,7 @@ enc_ready    <= spi_tx_ready when (det_mode = MODE_SPI)
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
 p_wdog : process(refclk)
-    constant TIMEOUT : integer := 2*CLKREF_HZ;
+    constant TIMEOUT : integer := TIMEOUT_SEC * CLKREF_HZ;
     variable wdog_ctr : integer range 0 to TIMEOUT := TIMEOUT;
 begin
     if rising_edge(refclk) then
