@@ -81,7 +81,7 @@ This log will be updated for each new release, but may not reflect the latest de
 ## v2.3.0
 
 * New "zcu208_clksynth" example design and associated device drivers.
-* New "sgmii_lvds" IP-core.
+* New `sgmii_lvds` IP-core.
 * Port mode (port_serial_auto) is now CPU-configurable.
 * Refactor C++ test utilities for better code-reuse.
 * Update cfg::NetworkStats driver to allow remote access.
