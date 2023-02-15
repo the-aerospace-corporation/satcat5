@@ -95,7 +95,7 @@ Note that this design requires the "AVB" license for the Xilinx TEMAC IP-core, d
 
 Target: [Xilinx ZCU208 development board](https://www.xilinx.com/products/boards-and-kits/zcu208.html)
 
-Like the "vc707_clksynth" demo, this example design is used to verify performance of the Vernier-PLL system.
+Like the `vc707_clksynth` demo, this example design is used to verify performance of the Vernier-PLL system.
 In this demo, a Vernier-PLL is used to synthesize a 125 MHz sine wave.
 Use of sine waves instead of discrete-sampled square waves avoids discrete-time quantization error.
 In theory, this allows accuracy and jitter measurements on picosecond time-scales.
