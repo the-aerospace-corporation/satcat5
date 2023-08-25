@@ -106,6 +106,9 @@ p_ref : process(ref_time.vclka)
     constant ONE_CYCLE : tstamp_t := get_tstamp_incr(VCLKA_HZ);
 begin
     if rising_edge(ref_time.vclka) then
+        assert (1 ps > 0 ps)
+            report "Insufficient time resolution. Decrease simulation timestep to 1 ps."
+            severity failure;
         if (ref_time.tnext = '1') then
             ref_tstamp  <= ref_time.tstamp + ONE_CYCLE + ONE_CYCLE;
             ref_simtime <= integer(now / 1 ps);

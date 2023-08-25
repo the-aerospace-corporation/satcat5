@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022 The Aerospace Corporation
+-- Copyright 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -54,6 +54,7 @@ use     work.tcam_constants.all;
 
 entity mac_lookup is
     generic (
+    ALLOW_RUNT      : boolean;          -- Allow undersize frames?
     IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Max stored MAC addresses
@@ -106,6 +107,15 @@ end mac_lookup;
 
 architecture mac_lookup of mac_lookup is
 
+-- Do we need a second TCAM unit?  This allows us to search for destination
+-- and source addresses in the same clock cycle, for higher throughput.
+constant DUAL_TCAM : boolean :=
+    (ALLOW_RUNT and IO_BYTES >= 18) or (IO_BYTES >= 64);
+
+-- Do we need to offset the source address search?  Adding a one-cycle delay
+-- is required for destination/source time-sharing if IO_BYTES >= 12.
+constant DELAY_SOURCE : boolean := IO_BYTES >= 12 and not DUAL_TCAM;
+
 -- Convert integer indices to std_logic_vector.
 constant PIDX_WIDTH : natural := log2_ceil(PORT_COUNT);
 constant TIDX_WIDTH : natural := log2_ceil(TABLE_SIZE);
@@ -139,6 +149,7 @@ signal pkt_dst_mac  : mac_addr_t := (others => '0');
 signal pkt_dst_rdy  : std_logic := '0';
 signal pkt_src_mac  : mac_addr_t := (others => '0');
 signal pkt_src_rdy  : std_logic := '0';
+signal pkt_src_dly  : std_logic := '0';
 
 -- TCAM search results
 signal find_psrc    : port_idx_t := (others => '0');
@@ -186,6 +197,15 @@ p_pkt : process(clk)
     variable temp : byte_t := (others => '0');
 begin
     if rising_edge(clk) then
+        -- Sanity checks on allowed search sequencing.
+        if DUAL_TCAM then
+            assert (pkt_dst_rdy = pkt_src_rdy and pkt_src_dly = '0');
+        elsif DELAY_SOURCE then
+            assert (pkt_dst_rdy = '0' or pkt_src_dly = '0');
+        else
+            assert (pkt_dst_rdy = '0' or pkt_src_rdy = '0');
+        end if;
+
         -- Confirm each field as it passes through on the main stream.
         -- (Depending on bus width, these might happen in sequence or all at once.)
         for n in 0 to 5 loop
@@ -203,11 +223,14 @@ begin
         pkt_psrc    <= i2s(in_psrc, PIDX_WIDTH);
         pkt_dst_rdy <= in_write and bool2bit(strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+5, in_wcount));
         pkt_src_rdy <= in_write and bool2bit(strm_byte_present(IO_BYTES, ETH_HDR_SRCMAC+5, in_wcount));
+
+        -- Delayed source search, if applicable.
+        pkt_src_dly <= pkt_src_rdy and bool2bit(DELAY_SOURCE);
     end if;
 end process;
 
 -- Instantiate either one or two TCAM units.
-gen_tcam1 : if (IO_BYTES < 12) generate
+gen_tcam1 : if not DUAL_TCAM generate
     local : block
         signal pkt_addr     : mac_addr_t;
         signal pkt_rdy      : std_logic;
@@ -221,7 +244,7 @@ gen_tcam1 : if (IO_BYTES < 12) generate
     begin
         -- Search destination, then source.
         pkt_addr <= pkt_dst_mac when (pkt_dst_rdy = '1') else pkt_src_mac;
-        pkt_rdy  <= pkt_dst_rdy or pkt_src_rdy;
+        pkt_rdy  <= pkt_dst_rdy or pkt_src_rdy or pkt_src_dly;
 
         u_tcam : entity work.tcam_table
             generic map(
@@ -292,7 +315,7 @@ gen_tcam1 : if (IO_BYTES < 12) generate
     end block;
 end generate;
 
-gen_tcam2 : if (IO_BYTES >= 12) generate
+gen_tcam2 : if DUAL_TCAM generate
     local : block
         signal tsrc_err     : std_logic;
         signal tdst_err     : std_logic;
@@ -389,7 +412,7 @@ gen_dst_mask : for n in dst_pmask'range generate
                else bool2bit(n = u2i(find_dst_idx));        -- Hit
 end generate;
 
--- Final output FIFO 
+-- Final output FIFO
 out_psrc <= u2i(to_01_vec(out_pvec));
 
 u_dst_fifo : entity work.fifo_smol_sync

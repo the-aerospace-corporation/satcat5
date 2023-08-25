@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -157,7 +157,7 @@ bool ProtoIcmp::send_error(u16 type, satcat5::io::Readable* src, u32 arg)
     return write_icmp(wr, wcount, buff);
 }
 
-bool ProtoIcmp::send_ping(const ip::Address& dst)
+bool ProtoIcmp::send_ping(ip::Address& dst)
 {
     // Embed current time in the request packet.
     u32 now = m_iface->m_timer->now();
@@ -174,7 +174,7 @@ bool ProtoIcmp::send_ping(const ip::Address& dst)
     return write_icmp(wr, ECHO_WORDS, buff);
 }
 
-bool ProtoIcmp::send_timereq(const ip::Address& dst)
+bool ProtoIcmp::send_timereq(ip::Address& dst)
 {
     // "Originate" timestamp uses the arbitrary-units flag.
     u32 now = m_iface->m_timer->now() | TIMESTAMP_ARB;

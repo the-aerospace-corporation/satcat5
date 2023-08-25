@@ -1,4 +1,4 @@
-# Copyright 2019, 2021 The Aerospace Corporation
+# Copyright 2019, 2021, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -27,31 +27,33 @@ add wave -noupdate /switch_core_tb/pkt_expect
 add wave -noupdate /switch_core_tb/pkt_rcvd
 add wave -noupdate -radix unsigned /switch_core_tb/pkt_dst
 add wave -noupdate -divider UUT
-add wave -noupdate /switch_core_tb/uut/eth_chk_write
-add wave -noupdate /switch_core_tb/uut/eth_chk_commit
-add wave -noupdate /switch_core_tb/uut/eth_chk_revert
 add wave -noupdate /switch_core_tb/uut/scrub_req
 add wave -noupdate /switch_core_tb/uut/pktin_valid
 add wave -noupdate /switch_core_tb/uut/pktin_ready
 add wave -noupdate /switch_core_tb/uut/sched_select
-add wave -noupdate /switch_core_tb/uut/sched_bcount
-add wave -noupdate /switch_core_tb/uut/sched_write
-add wave -noupdate /switch_core_tb/uut/sched_last
 add wave -noupdate /switch_core_tb/uut/pktout_hipri
-add wave -noupdate /switch_core_tb/uut/pktout_bcount
 add wave -noupdate /switch_core_tb/uut/pktout_write
-add wave -noupdate /switch_core_tb/uut/pktout_last
 add wave -noupdate /switch_core_tb/uut/pktout_pdst
 add wave -noupdate -divider {Source 0}
 add wave -noupdate /switch_core_tb/gen_ports(0)/u_src/p_src/pkt_rem
 add wave -noupdate /switch_core_tb/gen_ports(0)/u_src/p_src/pkt_usr
-add wave -noupdate -divider {Frame Check 0}
-add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_frmchk/reg_last
-add wave -noupdate -radix hexadecimal /switch_core_tb/uut/gen_input(0)/u_frmchk/len_count
-add wave -noupdate -radix hexadecimal /switch_core_tb/uut/gen_input(0)/u_frmchk/crc_sreg
-add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_frmchk/frame_ok
+add wave -noupdate -divider {Input 0}
+add wave -noupdate -radix hexadecimal /switch_core_tb/uut/gen_input(0)/u_input/rx_data
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/rx_last
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/rx_write
+add wave -noupdate -radix hexadecimal /switch_core_tb/uut/gen_input(0)/u_input/chk_data
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/chk_nlast
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/chk_write
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/chk_commit
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/chk_revert
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/chk_error
+add wave -noupdate -radix hexadecimal /switch_core_tb/uut/gen_input(0)/u_input/out_data
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/out_nlast
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/out_last
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/out_valid
+add wave -noupdate /switch_core_tb/uut/gen_input(0)/u_input/out_ready
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {420000000 ps} 0}
+WaveRestoreCursors {{Cursor 1} {199695 ns} 0}
 configure wave -namecolwidth 322
 configure wave -valuecolwidth 100
 configure wave -justifyvalue left
@@ -66,4 +68,4 @@ configure wave -griddelta 40
 configure wave -timeline 0
 configure wave -timelineunits ps
 update
-WaveRestoreZoom {1001 us} {1421 us}
+WaveRestoreZoom {199609 ns} {200021 ns}

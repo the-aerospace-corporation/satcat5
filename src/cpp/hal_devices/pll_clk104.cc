@@ -33,17 +33,17 @@ constexpr u8        I2C_SW_PORT = 5;    // CLK104 port on the I2C switch
 constexpr u8        DEV_LMK_ALL = 1;    // LMK04828B affects ADC and DAC
 constexpr u8        DEV_LMX_ADC = 3;    // LMX2594 for ADC
 constexpr u8        DEV_LMX_DAC = 2;    // LMX2594 for DAC
-constexpr unsigned  RETRY_MAX   = 5;    // Max retries per step
+constexpr u8        RETRY_MAX   = 5;    // Max retries per step
 constexpr unsigned  RETRY_MSEC  = 100;  // Delay after I2C/SPI error
-constexpr unsigned  STEP_START  = 0;
-constexpr unsigned  STEP_DONE   = (unsigned)(-1);
+constexpr u32       STEP_START  = 0;
+constexpr u32       STEP_DONE   = (u32)(-1);
 
 Clk104::Clk104(I2cGeneric* i2c, GpoRegister* gpo)
     : m_i2c(i2c, ADDR_SWITCH)
     , m_spi(&m_i2c, ADDR_BRIDGE)
     , m_gpo(gpo)
-    , m_retry(0)
     , m_step(STEP_START)
+    , m_retry(0)
     , m_verbose(0)
     , m_lmk_refsel(0)
     , m_lmk_refdiv(0)
@@ -53,7 +53,7 @@ Clk104::Clk104(I2cGeneric* i2c, GpoRegister* gpo)
 
 void Clk104::configure(u8 ref_sel, u32 ref_hz, bool verbose)
 {
-    m_verbose = verbose;
+    m_verbose = verbose ? 1 : 0;
 
     // Configure LMK input stage: PLL1 divider and input select.
     m_lmk_refsel = 0x0A | (ref_sel << 4);   // Register 0x147

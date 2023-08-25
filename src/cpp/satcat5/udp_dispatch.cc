@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -88,7 +88,7 @@ satcat5::io::Writeable* Dispatch::open_reply(
 }
 
 satcat5::io::Writeable* Dispatch::open_write(
-    const satcat5::ip::Address& addr,   // Destination IP+MAC
+    satcat5::ip::Address& addr,         // Destination IP+MAC
     const satcat5::udp::Port& src,      // Source port
     const satcat5::udp::Port& dst,      // Destination port
     unsigned len)                       // User data length

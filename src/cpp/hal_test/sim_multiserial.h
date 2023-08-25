@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -41,7 +41,7 @@ namespace satcat5 {
         // Emulated "cfgbus_multiserial" block.
         class MultiSerial : public satcat5::cfg::ConfigBus {
         public:
-            explicit MultiSerial(unsigned cmd_max = 8);
+            explicit MultiSerial(unsigned cmd_max = 32);
 
             // Load next expected command into queue.
             void load_refcmd(u16 next, u8 flags = 0);
@@ -57,6 +57,10 @@ namespace satcat5 {
 
             // Force the BUSY flag to help reach certain edge-cases.
             void force_busy(bool busy) {m_busy = busy;}
+
+            // Simulate a delayed reply with of N bytes.
+            // (Prompt replies should set the MST_READ flag.)
+            void reply_rcvd(unsigned count);
 
         protected:
             // Basic read and write operations (for ConfigBus API).

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
+-- Copyright 2020, 2021, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -36,6 +36,7 @@ use     work.common_functions.all;
 entity fifo_priority_tb is
     generic (
     INPUT_BYTES     : positive := 1;
+    OUTPUT_BYTES    : positive := 1;
     BUFF_HI_KBYTES  : positive := 1;
     BUFF_LO_KBYTES  : positive := 1;
     BUFF_FAILOVER   : boolean := true;
@@ -50,7 +51,11 @@ architecture tb of fifo_priority_tb is
 -- Define convenience types
 subtype in_nlast_t is integer range 0 to INPUT_BYTES;
 subtype in_word_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
-subtype out_word_t is std_logic_vector(7 downto 0);
+subtype out_word_t is std_logic_vector(8*OUTPUT_BYTES-1 downto 0);
+
+-- Calculate maximum data-rate of input and output streams.
+constant INPUT_MAXBPS   : real := real(8*INPUT_BYTES) * real(100_000_000);
+constant OUTPUT_MAXBPS  : real := real(8*INPUT_BYTES) * real(104_000_000);
 
 -- Shared PRNG functions
 constant INIT_SEED1_A   : positive := 15871507;
@@ -82,6 +87,8 @@ begin
             uniform(seed1, seed2, rand);
             result(n) := bool2bit(rand < 0.5);
         end loop;
+    else
+        result := (others => '0');
     end if;
 end procedure;
 
@@ -119,10 +126,11 @@ signal in_data      : in_word_t := (others => '0');
 signal in_nlast     : in_nlast_t := 0;
 signal in_hipri     : std_logic := '0';
 signal in_write     : std_logic := '0';
+signal in_precommit : std_logic;
 
 -- Unit under test
 signal in_overflow  : std_logic;
-signal out_data     : std_logic_vector(7 downto 0);
+signal out_data     : out_word_t;
 signal out_last     : std_logic;
 signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
@@ -214,13 +222,17 @@ begin
 
         -- On demand, generate new bytes.
         if (reset_p = '1' or ref0_ready = '1') then
-            rand_byte(ref0_seed1, ref0_seed2, ref0_count, temp_byte);
-            ref0_data <= temp_byte;
+            for n in OUTPUT_BYTES-1 downto 0 loop   -- MSB-first
+                rand_byte(ref0_seed1, ref0_seed2, ref0_count, temp_byte);
+                ref0_data(8*n+7 downto 8*n) <= temp_byte;
+            end loop;
             ref0_last <= bool2bit(ref0_count = 0);
         end if;
         if (reset_p = '1' or ref1_ready = '1') then
-            rand_byte(ref1_seed1, ref1_seed2, ref1_count, temp_byte);
-            ref1_data <= temp_byte;
+            for n in OUTPUT_BYTES-1 downto 0 loop   -- MSB-first
+                rand_byte(ref1_seed1, ref1_seed2, ref1_count, temp_byte);
+                ref1_data(8*n+7 downto 8*n) <= temp_byte;
+            end loop;
             ref1_last <= bool2bit(ref1_count = 0);
         end if;
     end if;
@@ -270,6 +282,9 @@ begin
     end if;
 end process;
 
+-- Safe to enable pre-commit / cut-through mode?
+in_precommit <= bool2bit(in_rate * INPUT_MAXBPS >= 2.0 * out_rate * OUTPUT_MAXBPS);
+
 -- Unit under test.
 uut : entity work.fifo_priority
     generic map(
@@ -283,6 +298,7 @@ uut : entity work.fifo_priority
     in_clk          => in_clk,
     in_data         => in_data,
     in_nlast        => in_nlast,
+    in_precommit    => in_precommit,
     in_last_keep    => '1',     -- Not tested
     in_last_hipri   => in_hipri,
     in_write        => in_write,

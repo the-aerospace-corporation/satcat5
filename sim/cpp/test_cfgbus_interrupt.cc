@@ -59,6 +59,17 @@ TEST_CASE("cfgbus_interrupt") {
         CHECK(uut3.count() == 1);
     }
 
+    SECTION("disable-enable") {
+        uut1.irq_disable();
+        uut1.fire();
+        uut1.fire();
+        CHECK(uut1.count() == 0);
+        uut1.irq_enable();
+        uut1.fire();
+        uut1.fire();
+        CHECK(uut1.count() == 2);
+    }
+
     SECTION("double-register") {
         log.disable();              // Suppress error message
         cfg.register_irq(&uut1);    // Duplicate registration!?

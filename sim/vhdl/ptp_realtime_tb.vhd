@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
+-- Copyright 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -23,7 +23,7 @@
 -- with realtime PTP timestamps.  It confirms that the RTC responds correctly
 -- to all supported ConfigBus commands.
 --
--- The complete test takes 0.3 milliseconds.
+-- The complete test takes 0.6 milliseconds.
 --
 
 library ieee;
@@ -227,9 +227,12 @@ p_test : process
 
     -- Adjust RTC frequency offset.
     procedure rtc_adjust(offset: integer) is
-        constant tmp : signed(31 downto 0) := to_signed(offset, 32);
+        variable tmp : std_logic_vector(63 downto 0)
+            := std_logic_vector(shift_left(to_signed(offset, 64), 8));
     begin
-        cfgbus_write(cfg_cmd, DEV_ADDR, REG_TIME_RATE, std_logic_vector(tmp));
+        cfgbus_write(cfg_cmd, DEV_ADDR, REG_TIME_RATE, tmp(63 downto 32));
+        cfgbus_write(cfg_cmd, DEV_ADDR, REG_TIME_RATE, tmp(31 downto 0));
+        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, REG_TIME_RATE);
     end procedure;
 begin
     -- Initial setup.

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -57,7 +57,7 @@ TEST_CASE("cfgbus_gpio") {
     SECTION("gpo") {
         satcat5::cfg::GpoRegister gpo(&regs, CFG_DEVADDR, CFG_REG_GPO);
 
-        // Put the register in "echo" mode and seed PRNG.
+        // Put the register in "echo" mode.
         regs[CFG_REG_GPO].read_default_echo();
 
         // Test each possible operation a few times.
@@ -73,10 +73,36 @@ TEST_CASE("cfgbus_gpio") {
         }
     }
 
-    SECTION("WrappedRegister") {
-        regs[42].read_default_echo();
-        satcat5::cfg::WrappedRegister uut(&regs, 42);
-        uut = 123;
-        CHECK((u32)uut == 123);
+    SECTION("gpio") {
+        satcat5::cfg::GpioRegister gpio(&regs, CFG_DEVADDR);
+
+        // Set the mode for each control register.
+        regs[0].read_default_echo();    // Mode
+        regs[1].read_default_echo();    // Output
+        regs[2].read_default_none();    // Input
+        regs[2].read_push(0x1234);
+        regs[2].read_push(0x5678);
+
+        // Test the read() function.
+        CHECK(gpio.read() == 0x1234);
+        CHECK(gpio.read() == 0x5678);
+
+        // Test each mode and output operation a few times.
+        // (Read-back after each operation to check expected value.)
+        for (unsigned a = 0 ; a < 10 ; ++a) {
+            u32 x = rng(), y = rng(), z = rng();
+            gpio.mode(x);       // Set initial mode
+            gpio.write(y);      // Set initial output
+            CHECK(regs[0].write_pop() == x);
+            CHECK(regs[1].write_pop() == y);
+            gpio.mode_clr(z);
+            gpio.out_clr(z);
+            CHECK(regs[0].write_pop() == (x & ~z));
+            CHECK(regs[1].write_pop() == (y & ~z));
+            gpio.mode_set(z);
+            gpio.out_set(z);
+            CHECK(regs[0].write_pop() == (x | z));
+            CHECK(regs[1].write_pop() == (y | z));
+        }
     }
 }

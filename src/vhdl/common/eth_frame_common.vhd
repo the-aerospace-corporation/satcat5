@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -136,6 +136,7 @@ package eth_frame_common is
 
     -- Type definitions for 802.1Q tags:
     constant VLAN_HDR_WIDTH : integer := 16;
+    constant VLAN_VID_WIDTH : integer := 12;
     subtype vlan_hdr_t is std_logic_vector(15 downto 0);
     subtype vlan_pcp_t is unsigned(2 downto 0);     -- Priority code point (PCP)
     subtype vlan_dei_t is std_logic;                -- Drop-eligible indicator (DEI)

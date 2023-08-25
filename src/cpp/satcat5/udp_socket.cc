@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -62,12 +62,11 @@ void SocketCore::connect(
 
 void SocketCore::connect(
     const satcat5::udp::Addr& dstaddr,
-    const satcat5::udp::Addr& gateway,
     const satcat5::udp::Port& dstport,
     satcat5::udp::Port srcport)
 {
     if (srcport == satcat5::udp::PORT_NONE)
         srcport = m_addr.m_iface->next_free_port();
-    m_addr.connect(dstaddr, gateway, dstport, srcport);
+    m_addr.connect(dstaddr, dstport, srcport);
     m_filter = Type(srcport.value);     // Rebind Rx
 }

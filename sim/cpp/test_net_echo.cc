@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -75,7 +75,7 @@ TEST_CASE("net-echo") {
         // Configure server and client.
         satcat5::udp::ProtoEcho uut(&udp_server);
         satcat5::udp::Socket sock(&udp_client);
-        sock.connect(IP_SERVER, IP_SERVER, satcat5::udp::PORT_ECHO);
+        sock.connect(IP_SERVER, satcat5::udp::PORT_ECHO);
 
         // Send a request and check reply.
         sock.write_u32(0xCAFED00D);

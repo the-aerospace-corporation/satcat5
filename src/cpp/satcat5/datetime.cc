@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -21,9 +21,26 @@
 #include <satcat5/timer.h>
 
 namespace date = satcat5::datetime;
+namespace ptp = satcat5::ptp;
 using satcat5::datetime::Clock;
 using satcat5::datetime::GpsTime;
 using satcat5::datetime::RtcTime;
+
+// The offset from GPS to PTP is fixed by the IEEE1588 standard.
+constexpr s64 PTP_EPOCH = 1000LL * 315964819;
+
+// Convert a millisecond timestamp to or from PTP format.
+s64 date::from_ptp(const ptp::Time& time)
+{
+    return time.delta_msec() - PTP_EPOCH;
+}
+
+ptp::Time date::to_ptp(s64 time)
+{
+    s64 secs = s64((time + PTP_EPOCH) / 1000);
+    u32 msec = u32((time + PTP_EPOCH) % 1000);
+    return ptp::Time(secs, msec * ptp::NSEC_PER_MSEC);
+}
 
 // The core "Clock" functions don't require any fancy conversions.
 Clock::Clock(satcat5::util::GenericTimer* timer)

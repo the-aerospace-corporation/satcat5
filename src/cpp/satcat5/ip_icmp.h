@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -102,11 +102,11 @@ namespace satcat5 {
 
             // Initiate a ping (Echo request = Type 8.0)
             // Returns true if frame sent successfully, false otherwise.
-            bool send_ping(const satcat5::ip::Address& dst);
+            bool send_ping(satcat5::ip::Address& dst);
 
             // Initiate a timestamp request.
             // Returns true if frame sent successfully, false otherwise.
-            bool send_timereq(const satcat5::ip::Address& dst);
+            bool send_timereq(satcat5::ip::Address& dst);
 
             // Add/remove callback handlers for Ping responses.
             inline void add(satcat5::ip::PingListener* cb)

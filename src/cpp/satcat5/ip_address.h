@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -45,10 +45,9 @@ namespace satcat5 {
             Address(satcat5::ip::Dispatch* iface, u8 proto);
             ~Address() SATCAT5_OPTIONAL_DTOR;
 
-            // Automatic address resolution (user supplies IP + gateway)
+            // Automatic address resolution using routing table + ARP.
             void connect(
-                const satcat5::ip::Addr& dstaddr,
-                const satcat5::ip::Addr& gateway);
+                const satcat5::ip::Addr& dstaddr);
 
             // Manual address resolution (user supplies IP + MAC)
             void connect(
@@ -66,7 +65,7 @@ namespace satcat5 {
             satcat5::ip::Addr dstaddr() const {return m_dstaddr;}
             satcat5::ip::Addr gateway() const {return m_gateway;}
             satcat5::net::Dispatch* iface() const override;
-            satcat5::io::Writeable* open_write(unsigned len) const override;
+            satcat5::io::Writeable* open_write(unsigned len) override;
 
         protected:
             void arp_event(

@@ -54,6 +54,9 @@ namespace satcat5 {
                 const satcat5::eth::MacType& lcltype = satcat5::eth::ETYPE_NONE,
                 const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
+            // Useful inherited methods from net::SocketCore:
+            //  close(), ready_rx(), ready_tx()
+
         protected:
             SocketCore(
                 satcat5::eth::Dispatch* iface,
@@ -67,6 +70,9 @@ namespace satcat5 {
         public:
             Socket(satcat5::eth::Dispatch* iface);
             ~Socket() {}
+
+            // Useful inherited methods from eth::SocketCore:
+            //  bind(...), connect(...), close(), ready_rx(), ready_tx()
 
         private:
             u8 m_txbuff[SATCAT5_ESOCK_BUFFSIZE];

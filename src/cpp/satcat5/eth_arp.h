@@ -41,10 +41,10 @@ namespace satcat5 {
                 const satcat5::ip::Addr& ip) = 0;
 
             // Callback for changes to gateway configuration.
-            // Child class MUST override this method.
+            // Child class MAY override this method.
             virtual void gateway_change(
                 const satcat5::ip::Addr& dstaddr,
-                const satcat5::ip::Addr& gateway) = 0;
+                const satcat5::ip::Addr& gateway) {}
 
         private:
             // Linked list to the next listener object.
@@ -66,13 +66,17 @@ namespace satcat5 {
                 {m_listeners.remove(evt);}
 
             // Set the local IP address.
-            void set_ipaddr(const satcat5::ip::Addr& ipaddr);
+            inline void set_ipaddr(const satcat5::ip::Addr& ipaddr)
+                {m_ipaddr = ipaddr;}
 
             // Send an unsolicited ARP announcement.
             bool send_announce() const;
 
+            // Send a probe to test if a given address is occupied.
+            bool send_probe(const satcat5::ip::Addr& target);
+
             // Send a query for a given IP address.
-            bool send_query(const satcat5::ip::Addr& ipaddr);
+            bool send_query(const satcat5::ip::Addr& target);
 
             // Notify all listeners of a change in gateway configuration.
             void gateway_change(
@@ -83,6 +87,7 @@ namespace satcat5 {
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
             bool send_internal(u16 opcode,
                 const satcat5::eth::MacAddr& dst,
+                const satcat5::ip::Addr& spa,
                 const satcat5::eth::MacAddr& tha,
                 const satcat5::ip::Addr& tpa) const;
 

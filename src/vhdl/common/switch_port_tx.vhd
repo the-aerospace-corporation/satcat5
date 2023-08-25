@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022 The Aerospace Corporation
+-- Copyright 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -56,6 +56,7 @@ entity switch_port_tx is
     in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
     in_meta         : in  switch_meta_t;
     in_nlast        : in  integer range 0 to INPUT_BYTES;
+    in_precommit    : in  std_logic;
     in_keep         : in  std_logic;
     in_hipri        : in  std_logic;
     in_write        : in  std_logic;
@@ -174,6 +175,7 @@ u_fifo : entity work.fifo_priority
     in_data         => in_data,
     in_meta         => meta_vec_in,
     in_nlast        => in_nlast,
+    in_precommit    => in_precommit,
     in_last_keep    => in_keep,
     in_last_hipri   => in_hipri,
     in_write        => in_write,

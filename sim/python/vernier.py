@@ -115,7 +115,8 @@ def vernier_diff(fsamp, fref, df, dt, jitter=0.0, alg='ctr', npts=250000):
     return score
 
 @jit(nopython=True)
-def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
+def vernier_pll(npts, fsamp, fref, df, dt,
+    jitter=0.0, pha_lsb=None, tau_lsb=None, tau_sec=0.004):
     """
     Fixed-point simulation of a Vernier PLL, comparing the synthesized clock
     pair against the received signal to update PLL state at each increment.
@@ -126,6 +127,9 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
         df (float)      Initial frequency offset (Hz)
         dt (float)      Initial phase offset (sec)
         jitter (float)  One-sigma jitter of user clock (sec)
+        pha_lsb (int)   Bits per nanosecond, phase accumulator (None = auto)
+        tau_lsb (int)   Bits per nanosecond, period accumulator (None = auto)
+        tau_sec (float) Filter time-constant (sec)
     Returns: Tuple containing:
         (vec-float)     Estimated REFA clock-phase at each timestep (sec)
         (vec-float)     Error from actual clock-phase (sec)
@@ -140,14 +144,28 @@ def vernier_pll(npts, fsamp, fref, df, dt, jitter=0.0):
     ctra = count_consecutive(refa)
     ctrb = count_consecutive(refb)
     ctr_thresh = 0.25 * fsamp / fref[0]
+    # Effective VPED gain is estimated empirically.
+    # TODO: There seems to be a small variation with fsamp.
+    ped_gain = 128
     # Set PLL loop-gain parameters.
-    # Parameters below give a time constant of ~2 msec and overshoot ~20%.
-    # TODO: Derive these from a bandwidth argument?
-    pha_scale = (1e9 * 2**20)       # Each phase LSB is (1/scale) seconds
-    tau_scale = (1e9 * 2**30)       # Each period LSB is (1/scale) seconds
-    gain_acc = 256                  # Gain for phase accumulator
-    gain_tau = 1                    # Gain for period accumulator
-    tau_0 = int(tau_scale / fsamp)  # Initial period estimate
+    # Reference: Stephens & Thomas 1995, "Controlled-root formulation for digital
+    # phase-locked loops." https://ieeexplore.ieee.org/abstract/document/366295/
+    trk_dmpsq = 0.50                    # Damping factor squared
+    trk_dmod  = 0.25 / trk_dmpsq        # Modified damping factor
+    trk_alpha = 4.0 / (np.pi*tau_sec*fsamp) / (1.0 + trk_dmod)
+    trk_beta  = trk_dmod * trk_alpha * trk_alpha
+    # Autodetect required scaling?
+    auto_bits = lambda x: max(16, round(np.log2(64 / x)))
+    if pha_lsb is None: pha_lsb = auto_bits(ped_gain * trk_alpha)
+    if tau_lsb is None: tau_lsb = auto_bits(ped_gain * trk_beta)
+    # Final fixed-point coefficients.
+    pha_scale = (1e9 * 2**pha_lsb)      # Each phase LSB is (1/scale) seconds
+    tau_scale = (1e9 * 2**tau_lsb)      # Each period LSB is (1/scale) seconds
+    gain_acc = int(ped_gain * trk_alpha * 2**pha_lsb) # Gain for phase accumulator
+    gain_tau = int(ped_gain * trk_beta * 2**tau_lsb)  # Gain for period accumulator
+    tau_0 = int(tau_scale / fsamp)      # Initial period estimate
+    if gain_acc == 0 or gain_tau == 0:
+        raise ValueError('Gain rounded to zero!')
     # Set PLL initial state.
     # There are separate phase accumulators for CLKA and CLKB, but they
     # share a common estimate of the user-clock period (tau).
@@ -287,6 +305,7 @@ if __name__ == '__main__':
         sys.exit(-1)
     # Set default parameters, may be overriden later.
     device = clkgen_limits('7series')
+    fsamp = 125e6
     refin = 25e6
     # Parse each command-line argument:
     for cmd in sys.argv[1:]:
@@ -294,12 +313,14 @@ if __name__ == '__main__':
             print_help()
         elif is_float(cmd):
             refin = 1e6 * float(cmd)
+        elif cmd.startswith('fs'):
+            fsamp = 1e6 * float(cmd[2:])
         elif clkgen_limits(cmd) is not None:
             limits = clkgen_limits(cmd)
         elif cmd == 'scurve':
-            plot_scurves(device, refin, show=False)
+            plot_scurves(device, refin, fsamp, show=False)
         elif cmd == 'vpll':
-            plot_vernier_pll(device, refin, show=False)
+            plot_vernier_pll(device, refin, fsamp, show=False)
         else:
             print('Unrecognized command: ' + cmd)
     # Display all accumulated output plots.

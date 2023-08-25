@@ -16,6 +16,7 @@
 # along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 
 # Ignore compiled Python and C files
+*.bin
 *.pyc
 *.o
 
@@ -29,8 +30,10 @@ backups
 build_tmp
 .vscode/settings.json
 .vscode/settings.json
+sim/cpp/coverage*
 
 # Ignore test reports.
+*.csv
 cppcheck.xml
 cpplint.log
 
@@ -52,10 +55,13 @@ project/libero/*/
 project/modelsim/*.ini
 project/modelsim/*.mti
 project/modelsim/*.mpf
+project/modelsim/*.vstf
 project/modelsim/*.wlf
+project/modelsim/wlf*
 project/modelsim/work
 
 # Ignore all Vivado-created subfolders
+*.bin
 *.bit
 *.cache
 *.dmp
@@ -63,14 +69,23 @@ project/modelsim/work
 *.hw
 *.ip_user_files
 *.metadata
+*.prm
 *.project
 *.runs
 *.srcs
+*.xpr
 .Xil
 examples/*/*/*.xdc
 satcat5_ip
 sdk_hw
 sdk_bsp
+sim/satcat5_sims
+webtalk/
 
 # Ignore all Yosys-created subfolders
 project/yosys/*/
+
+# Ignore local installations of NPCAP.
+npcap/
+/.vs/pico_ethernet/v17
+/.vs

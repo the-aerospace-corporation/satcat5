@@ -23,19 +23,27 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/cfgbus_core.h>
 #include <satcat5/port_mailmap.h>
+#include <satcat5/ptp_time.h>
+#include <satcat5/cfgbus_ptpref.h>
+#include <iostream>
 
 namespace cfg   = satcat5::cfg;
 namespace io    = satcat5::io;
+namespace ptp   = satcat5::ptp;
 
 // Define register map (see "port_mailmap.vhd")
-static const unsigned CFG_DEVADDR = 42;
-static const unsigned REG_RXFRAME = 0;      //   0 - 399
-static const unsigned REG_RXRSVD  = 400;    // 400 - 509
-static const unsigned REG_IRQCTRL = 510;
-static const unsigned REG_RXCTRL  = 511;
-static const unsigned REG_TXFRAME = 512;    // 512 - 911
-static const unsigned REG_TXRSVD  = 912;    // 912 - 1022
-static const unsigned REG_TXCTRL  = 1023;
+static const unsigned CFG_DEVADDR   = 42;
+static const unsigned REG_RXFRAME   = 0;      //    0 - 399
+static const unsigned REG_RXRSVD    = 400;    //  400 - 505
+static const unsigned REG_RXPTPTIME = 506;    //  506 - 509
+static const unsigned REG_IRQCTRL   = 510;
+static const unsigned REG_RXCTRL    = 511;
+static const unsigned REG_TXFRAME   = 512;    //  512 - 911
+static const unsigned REG_TXRSVD    = 912;    //  912 - 1011
+static const unsigned REG_RTCLKCTRL = 1012;   // 1012 - 1017
+static const unsigned REG_TXPTPTIME = 1018;   // 1018 - 1021
+static const unsigned REG_PTPSTATUS = 1022;
+static const unsigned REG_TXCTRL    = 1023;
 
 // Simulate the single-register Mailbox interface.
 class MockMailmap : public satcat5::test::MockConfigBusMmap {
@@ -51,6 +59,19 @@ public:
         if (m_dev[REG_RXCTRL]) return false;    // Still occupied?
         memcpy(m_dev + REG_RXFRAME, frm.c_str(), frm.length());
         m_dev[REG_RXCTRL] = frm.length();       // Store the new length.
+        m_dev[REG_IRQCTRL] = -1;                // Interrupt ready for service
+        irq_event();                            // Notify interrupt handler
+        m_dev[REG_IRQCTRL] = 0;                 // Revert to idle
+        return true;                            // Success
+    }
+
+    // Need to overload buf_wr so that zeros can be written to the buffer
+    bool buf_wr(const u64* frm, size_t length) {
+        if (m_dev[REG_RXCTRL]) return false;    // Still occupied?
+        for (size_t i = 0; i < length / sizeof(frm[0]); ++i) {
+            satcat5::util::write_be_u64((u8*) (m_dev + REG_RXFRAME + 2*i), frm[i]);
+        }
+        m_dev[REG_RXCTRL] = length;             // Store the new length.
         m_dev[REG_IRQCTRL] = -1;                // Interrupt ready for service
         irq_event();                            // Notify interrupt handler
         m_dev[REG_IRQCTRL] = 0;                 // Revert to idle
@@ -87,6 +108,11 @@ TEST_CASE("port_mailmap") {
     // Create the hardware-emulator and the driver under test.
     MockMailmap mock(CFG_DEVADDR);
     satcat5::port::Mailmap uut(&mock, CFG_DEVADDR);
+
+    // PtpRealtime objects for setting timestamps for testing PTP functions
+    satcat5::cfg::PtpRealtime rt_clk_ctrl_ptprealtime = satcat5::cfg::PtpRealtime(&mock, CFG_DEVADDR, REG_RTCLKCTRL);
+    satcat5::cfg::PtpRealtime tx_ptp_time_ptprealtime = satcat5::cfg::PtpRealtime(&mock, CFG_DEVADDR, REG_TXPTPTIME);
+    satcat5::cfg::PtpRealtime rx_ptp_time_ptprealtime = satcat5::cfg::PtpRealtime(&mock, CFG_DEVADDR, REG_RXPTPTIME);
 
     // Sanity check on initial state.
     CHECK(uut.get_write_space() > 1500);
@@ -177,6 +203,72 @@ TEST_CASE("port_mailmap") {
         CHECK(uut.get_read_ready() > 0);            // Expect one more byte
         CHECK(!uut.read_bytes(sizeof(temp), temp)); // Underflow
         CHECK(uut.get_read_ready() == 0);
+    }
+
+    SECTION("PTP") {
+        // ptp_tx_start()
+        ptp::Time test_time1 = ptp::Time(4660, 86, 120);
+        rt_clk_ctrl_ptprealtime.clock_set(test_time1);
+        CHECK(uut.ptp_tx_start() == test_time1);
+
+        // ptp_tx_timestamp()
+        ptp::Time test_time2 = ptp::Time(1242000, 628, 2009);
+        tx_ptp_time_ptprealtime.clock_set(test_time2);
+        CHECK(uut.ptp_tx_timestamp() == test_time2);
+
+        // ptp_rx_peak()
+        // PTP - L2
+        CHECK(mock.buf_wr("abcdefghijkl""\x88\xF7"));
+        satcat5::poll::service();
+        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::PTPL2);
+        read_str(&uut);     // Read to clear the buffer for the next test
+
+        // PTP - L3
+        // Test message downloaded from https://wiki.wireshark.org/Protocols/ptp
+        u64 message1[12] = {
+            0x01005e00006b0080, 0x630009ba08004500, 0x005245a200000111, 0xd0dfc0a80206e000,
+            0x006b013f013f003e, 0x0000120200360000, 0x0000000000000000, 0x0000000000000080,
+            0x63ffff0009ba0001, 0x9e4b050f000045b1, 0x11522825d2fb0000, 0x0000000000000000
+        };
+        mock.buf_wr(message1, sizeof(message1));
+        satcat5::poll::service();
+        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::PTPL3);
+        uut.read_finalize();     // Clear the buffer for the next test
+
+        // non-PTP (IPv4 ether type but wrong protocol)
+        // Test message adapted from https://wiki.wireshark.org/Protocols/ptp
+        u64 message2[12] = {
+            0x01005e00006b0080, 0x630009ba08004500, 0x005245a200000110, 0xd0dfc0a80206e000,
+            0x006b013f013f003e, 0x0000120200360000, 0x0000000000000000, 0x0000000000000080,
+            0x63ffff0009ba0001, 0x9e4b050f000045b1, 0x11522825d2fb0000, 0x0000000000000000
+        };
+        mock.buf_wr(message2, sizeof(message2));
+        satcat5::poll::service();
+        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::nonPTP);
+        uut.read_finalize();     // Clear the buffer for the next test
+
+        // non-PTP (IPv4 ether type and UDP protocol but wrong ports)
+        // Test message adapted from https://wiki.wireshark.org/Protocols/ptp
+        u64 message3[12] = {
+            0x01005e00006b0080, 0x630009ba08004500, 0x005245a200000111, 0xd0dfc0a80206e000,
+            0x006baaaaaaaa003e, 0x0000120200360000, 0x0000000000000000, 0x0000000000000080,
+            0x63ffff0009ba0001, 0x9e4b050f000045b1, 0x11522825d2fb0000, 0x0000000000000000
+        };
+        mock.buf_wr(message3, sizeof(message3));
+        satcat5::poll::service();
+        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::nonPTP);
+        uut.read_finalize();     // Clear the buffer for the next test
+
+        // non-PTP (wrong ether type)
+        CHECK(mock.buf_wr("\x01\x02\x03\x04\x05\x06\x07\x08\x09\x10\x11\x12\x99\x99"));
+        satcat5::poll::service();
+        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::nonPTP);
+        read_str(&uut);     // Read to clear the buffer for the next test
+
+        // ptp_rx_timestamp()
+        ptp::Time test_time3 = ptp::Time(1234567890, 321, 456);
+        rx_ptp_time_ptprealtime.clock_set(test_time3);
+        CHECK(uut.ptp_rx_timestamp() == test_time3);
     }
 
     SECTION("Rx-underflow") {

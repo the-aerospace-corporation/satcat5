@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -62,7 +62,6 @@ void Ping::arping(
 
 void Ping::ping(
     const satcat5::ip::Addr& dstaddr,
-    const satcat5::ip::Addr& gateway,
     unsigned qty)
 {
     stop();                         // Reset internal state.
@@ -73,7 +72,7 @@ void Ping::ping(
         timer_every(1000);          // Timer for follow-up
         m_iface->m_icmp.add(this);  // Register for callback
         // Start address resolution.
-        m_addr.connect(dstaddr, gateway);
+        m_addr.connect(dstaddr);
     }
 }
 
@@ -98,13 +97,6 @@ void Ping::arp_event(
         log::Log(log::INFO, "Ping: Reply from").write(ip.value)
             .write(", elapsed usec").write(elapsed_usec);
     }
-}
-
-void Ping::gateway_change(
-    const satcat5::ip::Addr& dstaddr,
-    const satcat5::ip::Addr& gateway)
-{
-    // No need to handle this event for ARPING.
 }
 
 void Ping::ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec)

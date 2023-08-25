@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -36,6 +36,11 @@ static const u32 MS_RD_READY    = (1u << 0);
 static const u32 MS_CMD_FULL    = (1u << 1);
 static const u32 MS_BUSY        = (1u << 2);
 static const u32 MS_ERROR       = (1u << 3);
+
+// Skip the block copy process if we're in direct mode.
+// Otherwise, max size is limited by the hardware FIFO size.
+static const unsigned HW_COPY_MAX =
+    SATCAT5_CFGBUS_DIRECT ? 1 : 32;
 
 satcat5::cfg::MultiSerial::MultiSerial(
         ConfigBus* cfg, unsigned devaddr,
@@ -164,9 +169,23 @@ void satcat5::cfg::MultiSerial::poll_demand()
 
     // Write each opcode to the hardware FIFO.
     while (m_irq_wrrem) {
+        // Determine how much data we can write safely.
+        unsigned num_copy = SATCAT5_CFGBUS_DIRECT ? 1 :
+            util::min_unsigned(HW_COPY_MAX, m_irq_wrrem);
         u32 status = m_ctrl[REGADDR_STATUS];
         if (status & MS_CMD_FULL) break;
-        m_ctrl[REGADDR_DATA] = (u32)m_tx.read_u16();
-        --m_irq_wrrem;
+        if (status & MS_BUSY) num_copy = 1;
+        // Pull that data from the transmit buffer...
+        u32 temp[HW_COPY_MAX];
+        for (unsigned a = 0 ; a < num_copy ; ++a) {
+            temp[a] = (u32)m_tx.read_u16();
+        }
+        // ...and copy it to the hardware FIFO.
+        #if SATCAT5_CFGBUS_DIRECT
+            m_ctrl[REGADDR_DATA] = temp[0];
+        #else
+            m_ctrl[REGADDR_DATA].write_repeat(num_copy, temp);
+        #endif
+        m_irq_wrrem -= num_copy;
     }
 }

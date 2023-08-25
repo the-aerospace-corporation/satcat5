@@ -18,6 +18,7 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "sim_utils.h"
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <hal_test/sim_cfgbus.h>
@@ -29,6 +30,7 @@ using satcat5::test::ConstantTimer;
 using satcat5::test::LogProtocol;
 using satcat5::test::MockConfigBusMmap;
 using satcat5::test::MockInterrupt;
+using satcat5::test::Statistics;
 
 bool satcat5::test::write(
     satcat5::io::Writeable* dst,
@@ -126,7 +128,9 @@ MockInterrupt::MockInterrupt(satcat5::cfg::ConfigBus* cfg)
     // Nothing else to initialize.
 }
 
-// Poll the designated register to see if interrupt flag is set.
+static constexpr u32 MOCK_IRQ_ENABLE    = (1u << 0);
+static constexpr u32 MOCK_IRQ_REQUEST   = (1u << 1);
+
 MockInterrupt::MockInterrupt(satcat5::cfg::ConfigBus* cfg, unsigned regaddr)
     : satcat5::cfg::Interrupt(cfg, 0, regaddr)
     , m_cfg(cfg)
@@ -137,12 +141,57 @@ MockInterrupt::MockInterrupt(satcat5::cfg::ConfigBus* cfg, unsigned regaddr)
 }
 
 void MockInterrupt::fire() {
-    if (m_regaddr) m_cfg->write(m_regaddr, 0x03);
-    m_cfg->irq_poll();
+    u32 rdval;
+    if (m_regaddr) {
+        // Register mode -> Always set request bit, fire only if enabled.
+        m_cfg->read(m_regaddr, rdval);
+        m_cfg->write(m_regaddr, rdval | MOCK_IRQ_REQUEST);
+        if (rdval & MOCK_IRQ_ENABLE) m_cfg->irq_poll();
+    } else {
+        // No-register mode -> Always fire as if enabled.
+        m_cfg->irq_poll();
+    }
 }
+
+Statistics::Statistics()
+    : m_count(0)
+    , m_sum(0.0)
+    , m_sumsq(0.0)
+    , m_min(0.0)
+    , m_max(0.0)
+{
+    // Nothing else to initialize.
+}
+
+void Statistics::add(double x)
+{
+    if ((m_count == 0) || (x < m_min)) m_min = x;
+    if ((m_count == 0) || (x > m_max)) m_max = x;
+    ++m_count;
+    m_sum += x;
+    m_sumsq += x*x;
+}
+
+double Statistics::mean() const
+    { return m_sum / m_count; }
+double Statistics::msq() const
+    { return m_sumsq / m_count; }
+double Statistics::rms() const
+    { return sqrt(msq()); }
+double Statistics::std() const
+    { return sqrt(var()); }
+double Statistics::var() const
+    { return msq() - mean()*mean(); }
+double Statistics::min() const
+    { return m_min; }
+double Statistics::max() const
+    { return m_max; }
 
 void satcat5::test::TimerAlways::sim_wait(unsigned dly_msec)
 {
+    // Without a reference (timekeeper::set_clock), each call
+    // to service_all() represents one elapsed millisecond.
+    satcat5::poll::timekeeper.set_clock(0);
     for (unsigned a = 0 ; a < dly_msec ; ++a)
         satcat5::poll::service_all();
 }

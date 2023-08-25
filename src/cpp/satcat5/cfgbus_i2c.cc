@@ -64,8 +64,7 @@ bool cfg::I2c::read(
     u8 regbytes, u32 regaddr, u8 nread,
     cfg::I2cEventListener* callback)
 {
-    bool ok = enqueue_cmd(
-            devaddr.m_addr, regbytes, regaddr, 0, 0, nread, callback);
+    bool ok = enqueue_cmd(devaddr, regbytes, regaddr, 0, 0, nread, callback);
 
     if (ok && DEBUG_VERBOSE > 0)
         log::Log(log::DEBUG, "I2C: Read").write(devaddr.m_addr).write(nread);
@@ -78,8 +77,7 @@ bool cfg::I2c::write(
     u8 regbytes, u32 regaddr, u8 nwrite, const u8* data,
     cfg::I2cEventListener* callback)
 {
-    bool ok = enqueue_cmd(
-            devaddr.m_addr, regbytes, regaddr, nwrite, data, 0, callback);
+    bool ok = enqueue_cmd(devaddr, regbytes, regaddr, nwrite, data, 0, callback);
 
     if (ok && DEBUG_VERBOSE > 0)
         log::Log(log::DEBUG, "I2C: Write").write(devaddr.m_addr).write(nwrite);
@@ -87,19 +85,29 @@ bool cfg::I2c::write(
     return ok;
 }
 
-bool cfg::I2c::enqueue_cmd(u8 devaddr,
+bool cfg::I2c::enqueue_cmd(
+    const util::I2cAddr& devaddr,
     u8 regbytes, u32 regaddr,
     u8 nwrite, const u8* data, u8 nread,
     cfg::I2cEventListener* callback)
 {
+    // Sanity check on inputs.
+    if (regbytes > 4) return false;
+
     // How many opcodes required for this command?
-    unsigned ncmd = 3;                      // Start + devaddr + stop
+    unsigned ndev = 1;                      // Bytes per device address
+    if (devaddr.is_10b()) ++ndev;           // 10-bit address?
+    unsigned ncmd = 2 + ndev;               // Start + devaddr + stop
     ncmd += regbytes + nwrite + nread;      // Requested I/O
     if ((regbytes || nwrite) && nread)      // Extra for restart?
-        ncmd += 2;
+        ncmd += 1 + ndev;                   // Restart + devaddr
 
     // Can we queue this command now?
     if (!write_check(ncmd, nread)) return false;
+
+    // Split device address into individual bytes.
+    u16 dev_msb = (devaddr.m_addr >> 8) & 0xFF;
+    u16 dev_lsb = (devaddr.m_addr >> 0) & 0xFF;
 
     // Queue up each opcode.
     m_tx.write_u16(CMD_START);
@@ -109,7 +117,12 @@ bool cfg::I2c::enqueue_cmd(u8 devaddr,
         util::write_be_u32(regarray, regaddr);
         const u8* regptr = regarray + 4 - regbytes;
         // Write command with device register address.
-        m_tx.write_u16(CMD_TXBYTE | devaddr);
+        if (devaddr.is_10b()) {
+            m_tx.write_u16(CMD_TXBYTE | dev_msb);
+            m_tx.write_u16(CMD_TXBYTE | dev_lsb);
+        } else {
+            m_tx.write_u16(CMD_TXBYTE | dev_lsb);
+        }
         for (unsigned a = 0 ; a < regbytes ; ++a)
             m_tx.write_u16(CMD_TXBYTE | regptr[a]);
         for (unsigned a = 0 ; a < nwrite ; ++a)
@@ -119,7 +132,12 @@ bool cfg::I2c::enqueue_cmd(u8 devaddr,
     }
     if (nread) {
         // Read command with device address.
-        m_tx.write_u16(CMD_TXBYTE | (devaddr + 1));
+        if (devaddr.is_10b()) {
+            m_tx.write_u16(CMD_TXBYTE | dev_msb | 1);
+            m_tx.write_u16(CMD_TXBYTE | dev_lsb);
+        } else {
+            m_tx.write_u16(CMD_TXBYTE | dev_lsb | 1);
+        }
         for (unsigned a = 1 ; a < nread ; ++a)
             m_tx.write_u16(CMD_RXBYTE);
         m_tx.write_u16(CMD_RXFINAL);
@@ -129,7 +147,7 @@ bool cfg::I2c::enqueue_cmd(u8 devaddr,
     // Finalize write and note metadata for later.
     unsigned idx = write_finish();
     m_callback[idx] = callback;
-    m_devaddr[idx]  = devaddr;
+    m_devaddr[idx]  = devaddr.m_addr;
     m_regaddr[idx]  = regaddr;
     return true;    // Success!
 }
@@ -150,8 +168,9 @@ void cfg::I2c::read_done(unsigned idx)
         }
         // Notify callback.
         if (m_callback[idx]) {
+            auto devaddr = util::I2cAddr::native(m_devaddr[idx]);
             m_callback[idx]->i2c_done(
-                noack, m_devaddr[idx], m_regaddr[idx], nread-1, rxbuff);
+                noack, devaddr, m_regaddr[idx], nread-1, rxbuff);
         }
     }
 }

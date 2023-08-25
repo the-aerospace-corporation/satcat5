@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -24,6 +24,7 @@
 #include <satcat5/udp_socket.h>
 #include <vector>
 
+using satcat5::ip::ADDR_NONE;
 using satcat5::udp::PORT_CFGBUS_CMD;
 using satcat5::udp::PORT_CFGBUS_ACK;
 using satcat5::udp::PORT_NONE;
@@ -56,10 +57,18 @@ TEST_CASE("UDP-socket") {
     CHECK_FALSE(uut_controller.ready_rx());
     CHECK_FALSE(uut_peripheral.ready_rx());
 
+    SECTION("accessors") {
+        CHECK(net_controller.m_ip.arp() == net_controller.m_udp.arp());
+        CHECK(net_controller.m_ip.iface() == &net_controller.m_eth);
+        CHECK(net_controller.m_ip.ipaddr() == net_controller.m_udp.ipaddr());
+        CHECK(net_controller.m_ip.macaddr() == net_controller.m_udp.macaddr());
+        CHECK(net_controller.m_ip.reply_ip() == net_controller.m_udp.reply_ip());
+        CHECK(net_controller.m_ip.reply_mac() == net_controller.m_udp.reply_mac());
+    }
+
     SECTION("basic") {
         // Setup a one-way connection.
-        uut_controller.connect(
-            IP_PERIPHERAL, IP_PERIPHERAL, PORT_CFGBUS_CMD);
+        uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
         uut_peripheral.bind(PORT_CFGBUS_CMD);   // Listening port
         // Execute ARP handshake.
         CHECK_FALSE(uut_controller.ready_tx());
@@ -80,6 +89,16 @@ TEST_CASE("UDP-socket") {
         uut_controller.close();
         CHECK_FALSE(uut_controller.ready_tx());
         CHECK_FALSE(uut_controller.ready_rx());
+    }
+
+    SECTION("connect-none") {
+        // Attempt connection to a null address.
+        uut_controller.connect(ADDR_NONE, PORT_CFGBUS_CMD);
+        CHECK_FALSE(uut_controller.ready_tx());
+        CHECK(uut_controller.ready_rx());
+        // Confirm no ARP request was sent.
+        CHECK(c2p.get_read_ready() == 0);
+        CHECK(p2c.get_read_ready() == 0);
     }
 
     SECTION("full") {
@@ -196,8 +215,7 @@ TEST_CASE("UDP-socket") {
 
     SECTION("error") {
         // Setup Tx but no Rx.
-        uut_controller.connect(
-            IP_PERIPHERAL, IP_PERIPHERAL, PORT_CFGBUS_CMD);
+        uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
         // Execute ARP handshake.
         satcat5::poll::service_all();
         CHECK(uut_controller.ready_tx());
@@ -213,8 +231,7 @@ TEST_CASE("UDP-socket") {
     SECTION("lost-arp") {
         // Tamper with the first ARP response during link setup.
         p2c.write_str("BadHeader");
-        uut_controller.connect(
-            IP_PERIPHERAL, IP_PERIPHERAL, PORT_CFGBUS_CMD);
+        uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
         // Attempt to execute ARP handshake.
         satcat5::poll::service_all();
         CHECK_FALSE(uut_controller.ready_tx());
@@ -243,8 +260,7 @@ TEST_CASE("UDP-socket") {
 
     SECTION("broadcast") {
         // Setup a UDP broadcast.
-        uut_controller.connect(
-            IP_BROADCAST, IP_BROADCAST, PORT_CFGBUS_CMD);
+        uut_controller.connect(IP_BROADCAST, PORT_CFGBUS_CMD);
         uut_peripheral.bind(PORT_CFGBUS_CMD);   // Listening port
         // No ARP query required.
         CHECK(uut_controller.ready_tx());
@@ -258,8 +274,7 @@ TEST_CASE("UDP-socket") {
 
     SECTION("multicast") {
         // Setup a UDP multicast.
-        uut_controller.connect(
-            IP_MULTICAST, IP_MULTICAST, PORT_CFGBUS_CMD);
+        uut_controller.connect(IP_MULTICAST, PORT_CFGBUS_CMD);
         uut_peripheral.bind(PORT_CFGBUS_CMD);   // Listening port
         // No ARP query required.
         CHECK(uut_controller.ready_tx());
@@ -273,8 +288,7 @@ TEST_CASE("UDP-socket") {
 
     SECTION("throughput") {
         // Setup a one-way connection.
-        uut_controller.connect(
-            IP_PERIPHERAL, IP_PERIPHERAL, PORT_CFGBUS_CMD);
+        uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
         uut_peripheral.bind(PORT_CFGBUS_CMD);   // Listening port
         // Execute ARP handshake.
         satcat5::poll::service_all();

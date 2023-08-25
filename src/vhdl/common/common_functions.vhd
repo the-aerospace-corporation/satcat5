@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -53,6 +53,9 @@ package COMMON_FUNCTIONS is
 
     -- Add the two inputs, with saturation on overflow.
     function saturate_add(a, b: unsigned; w: natural) return unsigned;
+
+    -- Add the two inputs, sizing the result to prevent overflow.
+    function extend_add(a, b: unsigned) return unsigned;
 
     -- Perform an XOR reduction
     -- (i.e., Return '1' if an odd number of input bits are '1')
@@ -233,12 +236,17 @@ package body COMMON_FUNCTIONS is
     end function;
 
     function saturate_add(a, b: unsigned; w: natural) return unsigned is
+    begin
+        -- Calculate saturated output from the overflow-free sum.
+        return saturate(extend_add(a, b), w);
+    end;
+
+    function extend_add(a, b: unsigned) return unsigned is
         -- Calculate sum with enough width to never overflow.
         constant ws  : natural := 1 + int_max(a'length, b'length);
         variable sum : unsigned(ws-1 downto 0) := resize(a, ws) + resize(b, ws);
     begin
-        -- Return the saturated output:
-        return saturate(sum, w);
+        return sum;
     end;
 
     function xor_reduce(a: std_logic_vector) return std_logic is

@@ -1,6 +1,6 @@
 #!/bin/bash -f
 # ------------------------------------------------------------------------
-# Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+# Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -146,6 +146,7 @@ simulate_all()
     simulate_one mac_priority_tb 1ms
     simulate_one mac_query_tb 1ms
     simulate_one mac_vlan_mask_tb 2ms
+    simulate_one mac_vlan_rate_tb 2ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_inject_tb 15ms
     simulate_one packet_round_robin_tb 20ms
@@ -166,6 +167,8 @@ simulate_all()
     simulate_one ptp_clksynth_tb 2ms
     simulate_one ptp_counter_tb 40ms
     simulate_one ptp_egress_tb 3ms
+    simulate_one ptp_filter_tb 5ms
+    simulate_one ptp_realsync_tb 7ms
     simulate_one ptp_realtime_tb 1ms
     simulate_one router_arp_cache_tb 2ms
     simulate_one router_arp_proxy_tb 2ms

@@ -49,6 +49,7 @@ namespace satcat5 {
         public:
             // Read current time in arbitrary "ticks".
             // Tick-count MUST roll-over from UINT32_MAX to zero.
+            // Roll-over MUST NOT occur more than once per second.
             // (Child class MUST define this method.)
             virtual u32 now() = 0;
 

@@ -142,4 +142,3 @@ update_compile_order -fileset sources_1
 # Execute the build and write out the .bin file.
 source ../../project/vivado/shared_build.tcl
 satcat5_launch_run
-satcat5_write_bin $target_top.bin

@@ -231,6 +231,7 @@ u_core : entity work.switch_core
     generic map(
     CORE_CLK_HZ     => 100_000_000,
     ALLOW_RUNT      => true,
+    ALLOW_PRECOMMIT => true,
     PORT_COUNT      => PORTS_TOTAL,
     DATAPATH_BYTES  => 1,
     IBUF_KBYTES     => 2,

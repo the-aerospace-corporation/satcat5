@@ -36,16 +36,20 @@
 -- 10*tau due to the multi-step acquisition process, including retries.
 --
 -- Default parameters are tested for user clocks from 50-200 MHz.
--- Increasing the filter time-constant (LOOP_TAU_MS) may require an
--- increase to accumulator precision (TAU_SCALE) to prevent fixed-point
--- gain coefficients from rounding to zero.  Use of the "positive" type
--- ensures that such problems result in a build-time error.  Adjustments
--- to secondary accumulator precision (PHA_SCALE) are less common but
--- may impact output performance.
+-- Internal accumulators use automatic fixed-point scaling to prevent gain
+-- coefficients from rounding to zero.  If this causes excess quantization
+-- effects, override the default by setting PHA_SCALE (phase accumulator)
+-- or TAU_SCALE (slope or frequency accumulator) to a positive value.  In
+-- both cases, the internal fixed-point scale is 1 LSB = 2^-N nanoseconds.
 --
 -- An optional ConfigBus register can be used to add an adjustable time
 -- offset to the output counter.  Scale matches PTP format (i.e., one
 -- LSB = 1 / 2^16 nanoseconds).
+--
+-- An optional auxiliary filter can be added to smooth the final output.
+-- This mitigates high-frequency jitter in the raw NCO output, at the cost
+-- of additional FPGA resources.  Since the jitter magnitude is typically
+-- less than one picosecond, the filter is disabled by default.
 --
 -- A multi-step acquisition process helps to enhance pull-in range and
 -- prevent false-lock conditions.  Effective pull-in depends on the
@@ -67,9 +71,10 @@ entity ptp_counter_sync is
     generic (
     VCONFIG     : vernier_config;   -- Vernier configuration
     USER_CLK_HZ : positive;         -- User clock frequency (Hz)
+    AUX_FILTER  : boolean := false; -- Enable secondary filter?
     LOOP_TAU_MS : real := 4.0;      -- Loop time-constant (msec)
-    PHA_SCALE   : integer := 28;    -- Phase scale (1 nsec = 2^N units)
-    TAU_SCALE   : natural := 32;    -- Period scale (1 nsec = 2^N units)
+    PHA_SCALE   : natural := 0;     -- Phase scale (0=auto, 1+ override)
+    TAU_SCALE   : natural := 0;     -- Slope scale (0=auto, 1+ override)
     WAIT_LOCKED : boolean := true;  -- Supress output until locked?
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
     REGADDR     : integer := CFGBUS_ADDR_NONE);
@@ -103,12 +108,30 @@ subtype ped_count_t is integer range 0 to CTR_THRESH;
 constant PHA_MAX_NS : integer := integer(ceil(2.0e9 / VCONFIG.vclka_hz));
 constant USR_MAX_NS : integer := integer(ceil(1.1e9 / real(USER_CLK_HZ)));
 
+-- Effective VPED gain is estimated empirically.
+-- TODO: There seems to be a small variation with fsamp.
+constant PED_GAIN   : real := 128.0;
+
+-- Calculate normalized loop constants for an underdamped second-order loop.
+-- Reference: Stephens & Thomas 1995, "Controlled-root formulation for digital
+-- phase-locked loops." https://ieeexplore.ieee.org/abstract/document/366295/
+constant TRK_DAMPSQ : real := 0.50;                 -- Damping factor squared
+constant TRK_DMOD   : real := 0.25 / TRK_DAMPSQ;    -- Modified damping factor
+constant TRK_TAU    : real := (0.001 * LOOP_TAU_MS) * real(USER_CLK_HZ);
+constant TRK_ALPHA  : real := 4.0 / (MATH_PI * TRK_TAU * (1.0 + TRK_DMOD));
+constant TRK_BETA   : real := TRK_DMOD * TRK_ALPHA * TRK_ALPHA;
+
+-- Automatic or manual coefficient scaling?
+-- (Never use fewer than 2^TSTAMP_SCALE units per nanosecond.)
+constant PHA_SCALE2 : positive := auto_scale(PED_GAIN * TRK_ALPHA, TSTAMP_SCALE, PHA_SCALE);
+constant TAU_SCALE2 : positive := auto_scale(PED_GAIN * TRK_BETA, TSTAMP_SCALE, TAU_SCALE);
+
 -- Calculate required accumulator width.
 -- * PHA_SCALE sets the phase accumulator precision (1 nsec = 2^N units).
 -- * TAU_SCALE sets the period accumulator precision (1 nsec = 2^N units).
-constant PHA_WIDTH  : integer := PHA_SCALE + log2_ceil(PHA_MAX_NS + USR_MAX_NS);
-constant TAU_WIDTH  : integer := TAU_SCALE + log2_ceil(USR_MAX_NS);
-constant SUB_WIDTH  : integer := TAU_SCALE - PHA_SCALE;
+constant PHA_WIDTH  : integer := PHA_SCALE2 + log2_ceil(PHA_MAX_NS + USR_MAX_NS);
+constant TAU_WIDTH  : integer := TAU_SCALE2 + log2_ceil(USR_MAX_NS);
+constant SUB_WIDTH  : integer := TAU_SCALE2 - PHA_SCALE2;
 subtype phase_t is unsigned(PHA_WIDTH-1 downto 0);
 subtype period_t is unsigned(TAU_WIDTH-1 downto 0);
 subtype subclk_t is unsigned(SUB_WIDTH-1 downto 0);
@@ -116,13 +139,13 @@ subtype subclk_t is unsigned(SUB_WIDTH-1 downto 0);
 -- Convert frequency to accumulator units.
 -- (Some care required to avoid VHDL'93 integer overflow.)
 function freq2phase(freq_hz: real) return phase_t is
-    constant ONE_SEC : real := real(1e9) * (2.0 ** PHA_SCALE);
+    constant ONE_SEC : real := real(1e9) * (2.0 ** PHA_SCALE2);
 begin
     return r2u(ONE_SEC / freq_hz, PHA_WIDTH);
 end function;
 
 function freq2period(freq_hz: real) return period_t is
-    constant ONE_SEC : real := real(1e9) * (2.0 ** TAU_SCALE);
+    constant ONE_SEC : real := real(1e9) * (2.0 ** TAU_SCALE2);
 begin
     return r2u(ONE_SEC / freq_hz, TAU_WIDTH);
 end function;
@@ -135,28 +158,22 @@ begin
     return 2**LOCK_TLOG - 1;
 end function;
 
--- Calculate normalized loop constants for an underdamped second-order loop.
--- Reference: Stephens & Thomas 1995, "Controlled-root formulation for digital
--- phase-locked loops." https://ieeexplore.ieee.org/abstract/document/366295/
-constant TRK_DAMPSQ : real := 0.25;                 -- Damping factor squared
-constant TRK_DMOD   : real := 0.25 / TRK_DAMPSQ;    -- Modified damping factor
-constant TRK_TAU    : real := (0.001 * LOOP_TAU_MS) * real(USER_CLK_HZ);
-constant TRK_ALPHA  : real := 4.0 / (TRK_TAU * (1.0 + TRK_DMOD));
-constant TRK_BETA   : real := TRK_DMOD * TRK_ALPHA * TRK_ALPHA;
-
 -- Calculate gain coefficients to achieve the specified bandwidth.
--- ("K" parameter is scales user-specified settling time by 1/K.)
+-- Use of "positive" type ensures a synth error if gain rounds to zero.
+-- ("K" parameter scales the user-specified settling time by 1/K.)
 function lpt(k : positive) return positive is       -- Loop gain (Period)
-    constant TRK_GAIN : real := 64.0 * (2.0 ** TAU_SCALE);
+    constant TRK_GAIN : real := PED_GAIN * (2.0 ** TAU_SCALE2);
 begin
     -- Set the "P" gain for the PLL's proportional-integral control law.
+    -- Note: If this rounds to zero, try increasing TAU_SCALE.
     return integer(round(TRK_GAIN * TRK_BETA * real(k*k)));
 end function;
 
 function lpp(k : positive) return positive is       -- Loop gain (Phase-sum)
-    constant TRK_GAIN : real := 64.0 * (2.0 ** PHA_SCALE);
+    constant TRK_GAIN : real := PED_GAIN * (2.0 ** PHA_SCALE2);
 begin
     -- Set the "I" gain for the PLL's proportional-integral control law.
+    -- Note: If this rounds to zero, try increasing PHA_SCALE.
     return integer(round(TRK_GAIN * TRK_ALPHA * real(k)));
 end function;
 
@@ -164,6 +181,7 @@ function lpd(k : positive) return positive is       -- Settling time (msec)
     constant MIN_MSEC : positive := 1;
     constant TRK_MSEC : real := 3.0 * LOOP_TAU_MS / real(k);
 begin
+    -- Set the minimum expected settling time, in milliseconds.
     if (TRK_MSEC < real(MIN_MSEC)) then
         return MIN_MSEC;
     else    
@@ -183,15 +201,16 @@ end record;
 -- Set loop bandwidth during each acquisition and tracking mode.
 -- Early phases uses a very wide loop bandwidth for the broader frequency
 -- pull-in range, then get progressively finer with each stage.
-constant MODE_FIRST : integer := 3;     -- Number of acquisition modes
+constant MODE_FIRST : integer := 4;     -- Number of acquisition modes
 type pll_mode_array is array(MODE_FIRST downto 0) of mode_t;
 
---      Dly     Pha     Tau  Sub  Freq?
+--       Dly      Pha      Tau  Sub  Freq?
 constant PLL_MODES : pll_mode_array := (
-    (lpd(8), lpp(8), lpt(8),   4, false),   -- Coarse freq+phase
-    (lpd(4), lpp(4), lpt(4),   8, false),   -- Progressively finer
-    (lpd(2), lpp(2), lpt(2),  16, false),   -- Progressively finer
-    (lpd(1), lpp(1), lpt(1),  16, false));  -- Normal operation
+    (lpd(16), lpp(16), lpt(16),   2, false),   -- Coarse freq+phase
+    (lpd( 8), lpp( 8),  lpt(8),   4, false),   -- Progressively finer
+    (lpd( 4), lpp( 4),  lpt(4),   8, false),   -- Progressively finer
+    (lpd( 2), lpp( 2),  lpt(2),  16, false),   -- Progressively finer
+    (lpd( 1), lpp( 1),  lpt(1),  16, false));  -- Normal operation
 
 -- Calculate accumulator frequency hints and initial values.
 -- (Initial values are scaled to match average delay of the DDMTD strobe.)
@@ -251,14 +270,16 @@ signal ctr_base     : tstamp_t := (others => '0');
 signal ctr_incr     : tstamp_t := (others => '0');
 signal ctr_phase    : tstamp_t;
 signal ctr_offset   : tstamp_t;
-signal ctr_total    : tstamp_t := (others => '0');
+signal ctr_total    : tstamp_t;
+signal ctr_filter   : tstamp_t := (others => '0');
+signal ctr_outreg   : tstamp_t := (others => '0');
 
 -- ConfigBus interface.
 signal cfg_offset   : cfgbus_word;
 
 -- Force register duplication for tight routing of critical signals.
 attribute async_reg : boolean;
-attribute async_reg of ref_ddmtd : signal is true;
+attribute async_reg of ctr_base, ref_ddmtd : signal is true;
 attribute dont_touch : boolean;
 attribute dont_touch of ctr_base, ref_ddmtd, ref_toga, ref_togb : signal is true;
 attribute keep : boolean;
@@ -274,7 +295,7 @@ attribute satcat5_cross_clock_src of ref_ddmtd, ref_toga, ref_togb : signal is t
 begin
 
 -- Drive top-level outputs.
-user_ctr    <= ctr_total;
+user_ctr    <= ctr_outreg;
 user_lock   <= lock_final;
 
 -- Sanity check on clock configuration.
@@ -484,10 +505,12 @@ begin
         if (pll_run = '0') then
             pll_phi <= PHI_INIT;                -- Global reset
             pll_sub <= (others => '0');
-        else
+        elsif (SUB_WIDTH > 0) then
             pll_phi <= resize(pll_tau(TAU_WIDTH-1 downto SUB_WIDTH), PHA_WIDTH)
                      + u2i(next_sub < pll_sub); -- +1 on overflow/wraparound
             pll_sub <= next_sub;                -- Modulo accumulator
+        else
+            pll_phi <= resize(pll_tau(TAU_WIDTH-1 downto SUB_WIDTH), PHA_WIDTH);
         end if;
 
         -- Drift compenstation nudges the effective period of PHA_MOD_A or
@@ -574,20 +597,25 @@ begin
 end process;
 
 -- Unit conversion: PLL phase indicates the time offset between clocks.
-ctr_phase   <= resize(shift_right(pll_pha, PHA_SCALE - TSTAMP_SCALE), TSTAMP_WIDTH);
+-- This is added to the latched value from the global reference (see below).
+ctr_phase   <= resize(shift_right(pll_pha, PHA_SCALE2 - TSTAMP_SCALE), TSTAMP_WIDTH);
 ctr_offset  <= unsigned(resize(signed(cfg_offset), TSTAMP_WIDTH));
+ctr_total   <= ctr_base + ctr_incr;
 
 -- Output counter generation.
 p_ctr : process(user_clk)
     constant FIXED_DELAY : tstamp_t := get_tstamp_incr(USER_CLK_HZ / 3);
-    variable subtotal : tstamp_t := (others => '0');
 begin
     if rising_edge(user_clk) then
-        -- Pipeline stage 2: Final summation.
-        if (user_cken = '1' and WAIT_LOCKED and lock_final = '0') then
-            ctr_total <= TSTAMP_DISABLED;       -- Not locked
-        elsif (user_cken = '1') then
-            ctr_total <= ctr_base + ctr_incr;   -- Normal output
+        -- Pipeline stage 2: Final output selection.
+        if (user_cken = '0') then
+            ctr_outreg <= ctr_outreg;           -- Freeze output
+        elsif (WAIT_LOCKED and lock_final = '0') then
+            ctr_outreg <= TSTAMP_DISABLED;      -- Not locked
+        elsif (AUX_FILTER) then
+            ctr_outreg <= ctr_filter;           -- Filtered output
+        else
+            ctr_outreg <= ctr_total;            -- Direct output
         end if;
 
         -- Pipeline stage 1: Pre-add inputs + Cross-clock latch.
@@ -597,6 +625,21 @@ begin
         end if;
     end if;
 end process;
+
+-- Optional auxiliary filter for high-frequency jitter reduction.
+gen_filter : if AUX_FILTER generate
+    u_filter : entity work.ptp_filter
+        generic map(
+        LOOP_TAU    => 0.01 * TRK_TAU,
+        USER_CLK_HZ => USER_CLK_HZ,
+        PHA_SCALE   => PHA_SCALE,
+        TAU_SCALE   => TAU_SCALE)
+        port map(
+        in_locked   => pll_run,
+        in_tstamp   => ctr_total,
+        out_tstamp  => ctr_filter,
+        user_clk    => user_clk);
+end generate;
 
 -- ConfigBus interface sets a fixed time-offset.
 -- (Simplifies to constant zero if ConfigBus is disconnected or disabled.)

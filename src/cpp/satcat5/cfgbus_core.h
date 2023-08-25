@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -49,6 +49,7 @@
 #define SATCAT5_CFGBUS_DIRECT   0
 #endif
 
+
 namespace satcat5 {
     namespace cfg {
         // Fixed ConfigBus parameters:
@@ -67,6 +68,7 @@ namespace satcat5 {
             WrappedRegister(ConfigBus* cfg, unsigned reg);
             operator u32();                             // Read from register
             void operator=(u32 wrval);                  // Write to register
+            void write_repeat(unsigned count, const u32* data);
         protected:
             satcat5::cfg::ConfigBus* const m_cfg;       // Parent interface
             const unsigned m_reg;                       // Device + register index
@@ -80,6 +82,7 @@ namespace satcat5 {
             bool operator!() const;                     // Valid register?
             satcat5::cfg::WrappedRegister operator*();  // Pointer dereference
             satcat5::cfg::WrappedRegister operator[](unsigned idx);
+            satcat5::cfg::WrappedRegisterPtr operator+(unsigned idx);
         protected:
             satcat5::cfg::ConfigBus* const m_cfg;       // Parent interface
             const unsigned m_reg;                       // Device + register index
@@ -95,25 +98,48 @@ namespace satcat5 {
         #endif
 
         // Status codes for ConfigBus read/write operations.
-        enum IoStatus {
-            IOSTATUS_OK = 0,        // Operation successful
-            IOSTATUS_BUSERROR,      // ConfigBus error
-            IOSTATUS_CMDERROR,      // Invalid command
-            IOSTATUS_TIMEOUT,       // Network timeout
+        enum class IoStatus {
+            OK = 0,         // Operation successful
+            BUSERROR,       // ConfigBus error
+            CMDERROR,       // Invalid command
+            TIMEOUT,        // Network timeout
         };
+
+        // Constants for legacy compatibility (deprecated).
+        constexpr auto IOSTATUS_OK =
+            satcat5::cfg::IoStatus::OK;
+        constexpr auto IOSTATUS_BUSERROR =
+            satcat5::cfg::IoStatus::BUSERROR;
+        constexpr auto IOSTATUS_CMDERROR =
+            satcat5::cfg::IoStatus::CMDERROR;
+        constexpr auto IOSTATUS_TIMEOUT =
+            satcat5::cfg::IoStatus::TIMEOUT;
 
         // Generic ConfigBus interface.
         class ConfigBus
         {
         public:
             // Basic read and write operations.
-            virtual satcat5::cfg::IoStatus read(unsigned regaddr, u32& wrval) = 0;
-            virtual satcat5::cfg::IoStatus write(unsigned regaddr, u32 rdval) = 0;
+            virtual satcat5::cfg::IoStatus read(unsigned regaddr, u32& rdval) = 0;
+            virtual satcat5::cfg::IoStatus write(unsigned regaddr, u32 wrval) = 0;
 
-            // TODO: Add I/O operations to match "cfgbus_host_eth":
-            //  * Maskable write (single byte, etc.)
-            //  * Read no-increment
-            //  * Read auto-increment
+            // Bulk read and write operations.
+            // "Array" indicates auto-increment mode (regaddr, regaddr+1, ...)
+            // "Repeat" indicates no-increment mode (same register N times)
+            // Basic implementation is one-at-a-time passthrough to read()
+            // and write() methods; override as needed for efficiency.
+            virtual satcat5::cfg::IoStatus read_array(
+                unsigned regaddr, unsigned count, u32* result);
+            virtual satcat5::cfg::IoStatus read_repeat(
+                unsigned regaddr, unsigned count, u32* result);
+            virtual satcat5::cfg::IoStatus write_array(
+                unsigned regaddr, unsigned count, const u32* data);
+            virtual satcat5::cfg::IoStatus write_repeat(
+                unsigned regaddr, unsigned count, const u32* data);
+
+            // Convert device + register to combined address.
+            inline unsigned get_regaddr(unsigned dev, unsigned reg) const
+                {return satcat5::cfg::REGS_PER_DEVICE * dev + reg;}
 
             // Add or remove an interrupt handler.
             void register_irq(satcat5::cfg::Interrupt* obj);
@@ -138,7 +164,7 @@ namespace satcat5 {
             ~ConfigBus() {}
 
             // Direct-access pointer, if applicable.
-            volatile u32* const m_base_ptr;
+            volatile u32* m_base_ptr;
 
             // Linked-list of interrupt handlers.
             satcat5::util::List<satcat5::cfg::Interrupt> m_irq_list;
@@ -153,6 +179,7 @@ namespace satcat5 {
             // Constructor accepts the base pointer for the memory-map interface,
             // and the interrupt-index for the shared ConfigBus interrupt, if any.
             ConfigBusMmap(void* base_ptr, int irq);
+            ~ConfigBusMmap() {}
 
             // Basic read and write operations.
             satcat5::cfg::IoStatus read(unsigned regaddr, u32& val) override;

@@ -19,9 +19,11 @@
 
 #include <cstring>
 #include <satcat5/port_mailmap.h>
+#include <satcat5/cfgbus_ptpref.h>
 
 using satcat5::irq::AtomicLock;
 using satcat5::port::Mailmap;
+using satcat5::ptp::Time;
 
 static const char* LBL_MAP = "MAP";
 static const unsigned REGADDR_IRQ = 510;    // Matches position in ctrl_reg
@@ -143,4 +145,65 @@ void Mailmap::irq_event()
 {
     m_rdlen = m_ctrl->rx_ctrl;              // Refresh Rx-buffer state
     if (m_rdlen) request_poll();            // Schedule follow-up?
+}
+
+Time Mailmap::ptp_tx_start()
+{
+    // Initiate an outgoing PTP message
+    m_ctrl->ptp_status = 0x01;                  // Freeze the RTC
+    return get_timestamp(m_ctrl->rt_clk_ctrl);  // Read the current time
+}
+
+Time Mailmap::ptp_tx_timestamp()
+{
+    // Returns the timestamp for the previous outgoing message as ptp::Time
+    return get_timestamp(m_ctrl->tx_ptp_time);
+}
+
+Mailmap::PtpType Mailmap::ptp_rx_peek()
+{
+    // Peek at the contents of an incoming message and determine if it is a PTP message.
+    // Returns an enum that indicates whether it is non - PTP, PTP - L2(raw), or PTP - L3(UDP)
+
+    satcat5::eth::MacType ether_type = {util::extract_be_u16(m_ctrl->rx_buff + 12)};
+
+    if (ether_type == satcat5::eth::ETYPE_PTP)        // PTP - L2 if etherType is 0x88F7
+    {
+        return PtpType::PTPL2;
+    }
+
+    if (ether_type == satcat5::eth::ETYPE_IPV4)        // might be PTP - L3 if ether_type is 0x0800
+    {
+        // Get protocol type, check if it's UDP i.e. protocol = 17 = 0x11.
+        u8 protocol = m_ctrl->rx_buff[23];
+
+        if (protocol == satcat5::ip::PROTO_UDP)
+        {
+            // Get the header length
+            u16 version_and_length = util::extract_be_u16(&(m_ctrl->rx_buff[14]));
+            u16 header_length = (version_and_length >> (8)) & 0x000f;
+
+            // Find the source and destination ports (their position depends on the header length)
+            u16 src_port_index = 14 + header_length * 4;
+            u16 dst_port_index = 16 + header_length * 4;
+            satcat5::ip::Port src_port = util::extract_be_u16(m_ctrl->rx_buff + src_port_index);
+            satcat5::ip::Port dst_port = util::extract_be_u16(m_ctrl->rx_buff + dst_port_index);
+
+            // If source or destination port is 319 or 320, message is PTP - L3
+            if (src_port == satcat5::udp::PORT_PTP_EVENT || src_port == satcat5::udp::PORT_PTP_GENERAL ||
+                dst_port == satcat5::udp::PORT_PTP_EVENT || dst_port == satcat5::udp::PORT_PTP_GENERAL)
+            {
+                return PtpType::PTPL3;
+            }
+        }
+    }
+
+    // Message is not PTP
+    return PtpType::nonPTP;
+}
+
+Time Mailmap::ptp_rx_timestamp()
+{
+    // Returns the timestamp for the current received message as ptp::Time
+    return get_timestamp(m_ctrl->rx_ptp_time);
 }

@@ -187,6 +187,7 @@ uut : entity work.switch_core
     CORE_CLK_HZ     => 125_000_000,
     SUPPORT_PAUSE   => false,
     ALLOW_RUNT      => false,
+    ALLOW_PRECOMMIT => true,
     PORT_COUNT      => PORT_COUNT,
     DATAPATH_BYTES  => 4,
     IBUF_KBYTES     => 2,

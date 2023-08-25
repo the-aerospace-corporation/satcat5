@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -24,7 +24,9 @@ namespace cfg   = satcat5::cfg;
 namespace irq   = satcat5::irq;
 namespace util  = satcat5::util;
 
-static const char* LBL_GPO = "GPO";
+static constexpr unsigned REG_MODE = 0;
+static constexpr unsigned REG_OUT  = 1;
+static constexpr unsigned REG_IN   = 2;
 
 cfg::GpiRegister::GpiRegister(cfg::ConfigBus* cfg,
         unsigned devaddr, unsigned regaddr)
@@ -49,18 +51,66 @@ cfg::GpoRegister::GpoRegister(cfg::ConfigBus* cfg,
     // No other initialization required.
 }
 
-void cfg::GpoRegister::mask_clr(u32 mask)
+void cfg::GpoRegister::out_clr(u32 mask)
 {
-    irq::AtomicLock lock(LBL_GPO);
     u32 tmp = *m_reg;
     util::clr_mask_u32(tmp, mask);
     *m_reg = tmp;
 }
 
-void cfg::GpoRegister::mask_set(u32 mask)
+void cfg::GpoRegister::out_set(u32 mask)
 {
-    irq::AtomicLock lock(LBL_GPO);
     u32 tmp = *m_reg;
     util::set_mask_u32(tmp, mask);
     *m_reg = tmp;
+}
+
+cfg::GpioRegister::GpioRegister(
+        cfg::ConfigBus* cfg, unsigned devaddr)
+    : m_reg(cfg->get_register(devaddr))
+{
+    // No other initialization required.
+}
+
+void cfg::GpioRegister::mode(u32 val)
+{
+    m_reg[REG_MODE] = val;
+}
+
+void cfg::GpioRegister::write(u32 val)
+{
+    m_reg[REG_OUT] = val;
+}
+
+u32 cfg::GpioRegister::read()
+{
+    return m_reg[REG_IN];
+}
+
+void cfg::GpioRegister::mode_clr(u32 mask)
+{
+    u32 tmp = m_reg[REG_MODE];
+    util::clr_mask_u32(tmp, mask);
+    m_reg[REG_MODE] = tmp;
+}
+
+void cfg::GpioRegister::mode_set(u32 mask)
+{
+    u32 tmp = m_reg[REG_MODE];
+    util::set_mask_u32(tmp, mask);
+    m_reg[REG_MODE] = tmp;
+}
+
+void cfg::GpioRegister::out_clr(u32 mask)
+{
+    u32 tmp = m_reg[REG_OUT];
+    util::clr_mask_u32(tmp, mask);
+    m_reg[REG_OUT] = tmp;
+}
+
+void cfg::GpioRegister::out_set(u32 mask)
+{
+    u32 tmp = m_reg[REG_OUT];
+    util::set_mask_u32(tmp, mask);
+    m_reg[REG_OUT] = tmp;
 }

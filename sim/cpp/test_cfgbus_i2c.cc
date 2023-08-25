@@ -40,32 +40,54 @@ static const u16 CMD_RXFINAL    = 0x0600u;
 static const u32 CFG_NOSTRETCH  = (1u << 31);
 
 // Shortcuts for device address
-static const I2cAddr I2C_DEVADDR = I2cAddr::addr8(42);
-#define CMD_ADDR_WR (CMD_TXBYTE | I2C_DEVADDR.m_addr | 0)
-#define CMD_ADDR_RD (CMD_TXBYTE | I2C_DEVADDR.m_addr | 1)
+static constexpr I2cAddr I2C_DEVADDR = I2cAddr::addr8(42);
+static constexpr u16 CMD_ADDR_WR = (CMD_TXBYTE | I2C_DEVADDR.m_addr | 0);
+static constexpr u16 CMD_ADDR_RD = (CMD_TXBYTE | I2C_DEVADDR.m_addr | 1);
 
 TEST_CASE("i2c_addr") {
-    I2cAddr a7 = I2cAddr::addr7(21);
-    I2cAddr a8 = I2cAddr::addr8(42);
-    REQUIRE(a7.m_addr == a8.m_addr);
+    // Use each of the constructor modes.
+    I2cAddr a7 = I2cAddr::addr7(21);        // 0x15  = 0b0101001
+    I2cAddr a8 = I2cAddr::addr8(42);        // 0x2A  = 0b0101001x
+    I2cAddr a10 = I2cAddr::addr10(345);     // 0x159 = 0b0101011001
+
+    // A7 and A8 are alternate notations for the same address.
+    CHECK(a7.m_addr  == 0x002A);
+    CHECK(a8.m_addr  == 0x002A);
+
+    // A10 is a 10-bit address with additional fields:
+    //  https://www.i2c-bus.org/addressing/10-bit-addressing/
+    //  * 0xF000 is the standardized marker for a 10-bit address.
+    //  * 0x0200 are shifted address bits 9 and 8 (now bits 10 and 9).
+    //  * 0x0059 are unmodified address bits 7 through 0.
+    CHECK(a10.m_addr == 0xF259);
+
+    // Check the comparison operators.
+    CHECK(a7 == a8);
+    CHECK(a7 != a10);
+    CHECK(a8 != a10);
 }
 
 // Confirm that read data matches expected sequence.
 class I2cEventCheck : public satcat5::cfg::I2cEventListener {
 public:
-    I2cEventCheck(unsigned nread, u32 regaddr, bool noack)
-        : m_nread(nread), m_regaddr(regaddr), m_noack(noack), m_count(0) {}
+    I2cEventCheck(const I2cAddr& devaddr,
+            unsigned nread, u32 regaddr, bool noack)
+        : m_nread(nread)
+        , m_devaddr(devaddr)
+        , m_regaddr(regaddr)
+        , m_noack(noack)
+        , m_count(0) {}
 
     void i2c_done(
-        u8 noack,           // Missing ACK during this command?
-        u8 devaddr,         // Device address
-        u32 regaddr,        // Register address (if applicable)
-        unsigned nread,     // Number of bytes read (if applicable)
-        const u8* rdata)    // Pointer to read buffer
+        bool noack,             // Missing ACK during this command?
+        const I2cAddr& devaddr, // Device address
+        u32 regaddr,            // Register address (if applicable)
+        unsigned nread,         // Number of bytes read (if applicable)
+        const u8* rdata)        // Pointer to read buffer
     {
         ++m_count;          // Count event callbacks
         CHECK(!!noack == m_noack);
-        CHECK(devaddr == I2C_DEVADDR.m_addr);
+        CHECK(devaddr == m_devaddr);
         CHECK(regaddr == m_regaddr);
         REQUIRE(nread == m_nread);
         for (unsigned n = 0 ; n < nread ; ++n) {
@@ -74,6 +96,7 @@ public:
     }
 
     const unsigned m_nread;
+    const I2cAddr m_devaddr;
     const u32 m_regaddr;
     const bool m_noack;
     unsigned m_count;
@@ -103,7 +126,7 @@ TEST_CASE("cfgbus_i2c") {
 
     SECTION("read-short") {
         // Expect 3-byte read
-        I2cEventCheck evt(3, 0, false);
+        I2cEventCheck evt(I2C_DEVADDR, 3, 0, false);
         // Load the reference sequence.
         mst.load_refcmd(CMD_START,      MST_START);
         mst.load_refcmd(CMD_ADDR_RD);
@@ -122,7 +145,7 @@ TEST_CASE("cfgbus_i2c") {
 
     SECTION("read-noack") {
         // Expect 3-byte read + noack
-        I2cEventCheck evt(3, 0, true);
+        I2cEventCheck evt(I2C_DEVADDR, 3, 0, true);
         // Load the reference sequence.
         mst.load_refcmd(CMD_START,      MST_START);
         mst.load_refcmd(CMD_ADDR_RD);
@@ -141,8 +164,8 @@ TEST_CASE("cfgbus_i2c") {
 
     SECTION("read-long") {
         // Expect 16-byte read w/ regaddr, followed by 3-byte read.
-        I2cEventCheck evt1(16, 42, false);
-        I2cEventCheck evt2(3, 0, false);
+        I2cEventCheck evt1(I2C_DEVADDR, 16, 42, false);
+        I2cEventCheck evt2(I2C_DEVADDR, 3, 0, false);
         // Load the first reference sequence.
         mst.load_refcmd(CMD_START,      MST_START);
         mst.load_refcmd(CMD_ADDR_WR);
@@ -171,10 +194,39 @@ TEST_CASE("cfgbus_i2c") {
         CHECK(evt2.m_count == 1);
     }
 
+    SECTION("read-10b") {
+        // Create a 10-bit device address.
+        // https://www.i2c-bus.org/addressing/10-bit-addressing/
+        I2cAddr addr10 = I2cAddr::addr10(0x234);
+        REQUIRE(addr10.is_10b());
+        CHECK(addr10.m_addr == 0xF434);
+        // Expect 3-byte read from regaddr = 42.
+        I2cEventCheck evt(addr10, 3, 42, false);
+        // Load the reference sequence.
+        mst.load_refcmd(CMD_START,      MST_START);
+        mst.load_refcmd(CMD_TXBYTE | 0xF4); // DevAddr upper (WR)
+        mst.load_refcmd(CMD_TXBYTE | 0x34); // DevAddr lower
+        mst.load_refcmd(CMD_TXBYTE | 42);   // RegAddr
+        mst.load_refcmd(CMD_RESTART);
+        mst.load_refcmd(CMD_TXBYTE | 0xF5); // DevAddr upper (RD)
+        mst.load_refcmd(CMD_TXBYTE | 0x34); // DevAddr lower
+        mst.load_refcmd(CMD_RXBYTE,     MST_READ);
+        mst.load_refcmd(CMD_RXBYTE,     MST_READ);
+        mst.load_refcmd(CMD_RXFINAL,    MST_READ);
+        mst.load_refcmd(CMD_STOP);
+        // Issue the command.
+        uut.read(addr10, 1, 42, 3, &evt);
+        // Process to completion.
+        for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
+        // Confirm test completed.
+        CHECK(mst.done());
+        CHECK(evt.m_count == 1);
+    }
+
     SECTION("write-long") {
         // Expect two writes, first has regaddr.
-        I2cEventCheck evt1(0, 42, false);
-        I2cEventCheck evt2(0, 0, false);
+        I2cEventCheck evt1(I2C_DEVADDR, 0, 42, false);
+        I2cEventCheck evt2(I2C_DEVADDR, 0, 0, false);
         // Load the first reference sequence.
         mst.load_refcmd(CMD_START,      MST_START);
         mst.load_refcmd(CMD_ADDR_WR);

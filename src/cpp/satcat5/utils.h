@@ -130,6 +130,16 @@ namespace satcat5 {
             return (a % b < 0) ? (a % b + b) : (a % b);
         }
 
+        // Round a floating-point value to the nearest integer.
+        // Behavior at the boundary is indeterminate (e.g., 1.5 -> 1 or 2).
+        // Note: The round() in <cmath> isn't always marked as constexpr.
+        template <typename T> inline constexpr s64 round_s64(T x) {
+            return static_cast<s64>(x + (T)(x < 0 ? -0.5 : 0.5));
+        }
+        template <typename T> inline constexpr u64 round_u64(T x) {
+            return static_cast<u64>(x + (T)0.5);
+        }
+
         // Integer division functions with various rounding options:
         template <typename T> inline constexpr T div_floor(T a, T b)
             {return divide(a, b);}
@@ -171,10 +181,22 @@ namespace satcat5 {
         // Extract fields from a big-endian byte array.
         u16 extract_be_u16(const u8* src);
         u32 extract_be_u32(const u8* src);
+        u64 extract_be_u64(const u8* src);
 
         // Store fields into a big-endian byte array.
         void write_be_u16(u8* dst, u16 val);
         void write_be_u32(u8* dst, u32 val);
+        void write_be_u64(u8* dst, u64 val);
+
+        // Simple cross-platform psuedorandom number generator (PRNG).
+        // Generates uniform psuedorandom outputs in the range [0..2^32).
+        class Prng {
+        public:
+            explicit Prng(u64 seed = 123456789ull) : m_state(seed) {}
+            u32 next();
+        protected:
+            u64 m_state;
+        };
 
         // A simple class for tracking the record-holder for any unsigned
         // integer (e.g., elapsed microseconds, buffer size, etc.)
@@ -194,7 +216,7 @@ namespace satcat5 {
         };
 
         // Cross-platform determination of native byte-order.
-        // https://stackoverflow.com/questions/2100331/c-macro-definition-to-determine-big-endian-or-little-endian-machine
+        // https://stackoverflow.com/questions/2100331/
         enum {SATCAT5_LITTLE_ENDIAN = 0x03020100ul, SATCAT5_BIG_ENDIAN = 0x00010203ul};
         constexpr union {u8 bytes[4]; u32 value;} HOST_ORDER_CANARY = {{0,1,2,3}};
         inline constexpr u32 HOST_BYTE_ORDER() {return HOST_ORDER_CANARY.value;}
@@ -206,7 +228,7 @@ namespace satcat5 {
             // Note: Using "memcpy" for type-punning is preferred safe-ish method.
             // Most compilers will optimize this to a no-op, as desired.  See also:
             //  https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8
-            //  https://stackoverflow.com/questions/48803363/bitwise-casting-uint32-t-to-float-in-c-c
+            //  https://stackoverflow.com/questions/48803363/
             T2 y;
             std::memcpy(&y, &x, sizeof(T1));
             return y;

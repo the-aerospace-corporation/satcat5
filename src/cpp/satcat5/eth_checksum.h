@@ -40,6 +40,12 @@
 
 namespace satcat5 {
     namespace eth {
+        // Directly calculate CRC32 on a block of data.
+        u32 crc32(unsigned nbytes, const void* data);
+
+        // Read data from source and calculate CRC32.
+        u32 crc32(satcat5::io::Readable* src);
+
         // Append FCS to each outgoing frame.
         class ChecksumTx : public satcat5::io::Writeable
         {

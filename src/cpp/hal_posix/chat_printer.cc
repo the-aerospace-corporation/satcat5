@@ -52,8 +52,10 @@ void ChatPrinter::frame_rcvd(satcat5::io::LimitedRead& rd)
 void ChatPrinter::print_message(
     const satcat5::eth::MacAddr& from, const std::string& msg)
 {
-    std::cout << "From " << satcat5::log::format(from) << std::endl
-        << msg << std::endl << std::endl;
+    // Cross-platform: printf(...) works in cases where cout fails
+    // silently, even after calling cout.flush().  May be unicode-related?
+    std::string from_str = satcat5::log::format(from);
+    printf("From: %s\n%s\n\n", from_str.c_str(), msg.c_str());
 }
 
 void ChatPrinter::send_message(const std::string& msg)

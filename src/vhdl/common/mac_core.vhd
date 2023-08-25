@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022 The Aerospace Corporation
+-- Copyright 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -38,6 +38,12 @@
 -- If enabled, the configuration register map follows the definitions
 -- from "switch_types.vhd".
 --
+-- If ALLOW_PRECOMMIT is enabled, generate a pre-commit flag for the
+-- output FIFO associated with each port.  (See also: fifo_packet)
+-- Since the MAC pipeline always uses 100% duty-cycle and should always
+-- be designed to exceed the bandwidth of any one port, this satisfies
+-- all prerequisites for reduced latency "cut-through" mode.
+--
 -- Unit-test coverage for this block is provided by "switch_core_tb".
 --
 
@@ -62,8 +68,11 @@ entity mac_core is
     MAC_TABLE_EDIT  : boolean;          -- Manual read/write of MAC table?
     MAC_TABLE_SIZE  : positive;         -- Max cached MAC addresses
     PRI_TABLE_SIZE  : natural;          -- Max high-priority EtherTypes (0 = disable)
+    ALLOW_RUNT      : boolean;          -- Allow undersize frames?
+    ALLOW_PRECOMMIT : boolean;          -- Allow output FIFO cut-through?
     SUPPORT_PTP     : boolean;          -- Support Precision Time Protocol?
-    SUPPORT_VLAN    : boolean;          -- Support virtual-LAN?
+    SUPPORT_VPORT   : boolean;          -- Support virtual-LAN port control?
+    SUPPORT_VRATE   : boolean;          -- Support virtual-LAN rate control?
     MISS_BCAST      : std_logic := '1'; -- Broadcast or drop unknown MAC?
     IGMP_TIMEOUT    : positive := 63;   -- IGMP timeout (0 = disable)
     PTP_MIXED_STEP  : boolean := true;  -- Support PTP format conversion?
@@ -83,6 +92,7 @@ entity mac_core is
     out_meta        : out switch_meta_t;
     out_nlast       : out integer range 0 to IO_BYTES;
     out_write       : out std_logic;
+    out_precommit   : out std_logic;
     out_priority    : out std_logic;
     out_keep        : out std_logic_vector(PORT_COUNT-1 downto 0);
 
@@ -139,10 +149,10 @@ signal tbl_wr_psrc  : port_idx_t := 0;
 signal tbl_wr_valid : std_logic := '0';
 signal tbl_wr_ready : std_logic;
 
--- Packet-priority lookup (optional)
-signal pri_hipri    : std_logic := '0';
-signal pri_valid    : std_logic := '1';
-signal pri_error    : std_logic := '0';
+-- Packet-priority lookup by EtherType (optional)
+signal epri_hipri   : std_logic := '0';
+signal epri_valid   : std_logic := '1';
+signal epri_error   : std_logic := '0';
 
 -- IGMP-snooping (optional)
 signal igmp_mask    : port_mask := (others => '1');
@@ -156,10 +166,13 @@ signal ptpf_tstamp  : tstamp_t := TSTAMP_DISABLED;
 signal ptpf_valid   : std_logic := '1';
 
 -- VLAN lookup (optional)
-signal vlan_mask    : port_mask := (others => '1');
-signal vlan_vtag    : vlan_hdr_t := (others => '0');
-signal vlan_hipri   : std_logic := '0';
-signal vlan_valid   : std_logic := '1';
+signal vport_mask   : port_mask := (others => '1');
+signal vport_vtag   : vlan_hdr_t := (others => '0');
+signal vport_hipri  : std_logic := '0';
+signal vport_valid  : std_logic := '1';
+signal vrate_mask   : port_mask := (others => '1');
+signal vrate_allow  : std_logic := '1';
+signal vrate_valid  : std_logic := '1';
 
 -- Per-port configuration masks.
 -- MB = Miss-as-broadcast, PR = Promiscuous, STP = PTP-2step
@@ -172,7 +185,7 @@ signal cfg_stpword  : cfgbus_word := (others => '0');
 signal cfg_stpmask  : port_mask := (others => '0');
 
 -- ConfigBus combining.
-signal cfg_acks     : cfgbus_ack_array(0 to 11) := (others => cfgbus_idle);
+signal cfg_acks     : cfgbus_ack_array(0 to 12) := (others => cfgbus_idle);
 
 begin
 
@@ -394,18 +407,23 @@ u_delay : entity work.packet_delay
 -- Final "KEEP" flag is the bitwise-AND of all port masks.
 out_meta.pmode  <= ptpf_pmode;
 out_meta.tstamp <= ptpf_tstamp;
-out_meta.vtag   <= vlan_vtag;
+out_meta.vtag   <= vport_vtag;
 out_write       <= dly_write;
 out_nlast       <= dly_nlast;
-out_priority    <= pri_hipri or vlan_hipri;
-out_keep        <= lookup_mask and igmp_mask and ptpf_mask and vlan_mask;
-error_other     <= igmp_error or pri_error;
+out_precommit   <= bool2bit(ALLOW_PRECOMMIT)
+               and lookup_valid and igmp_valid and epri_valid
+               and ptpf_valid and vport_valid and vrate_valid;
+out_priority    <= (epri_hipri or vport_hipri) and vrate_allow;
+out_keep        <= lookup_mask and igmp_mask and ptpf_mask
+               and vport_mask and vrate_mask;
+error_other     <= igmp_error or epri_error;
 packet_done     <= dly_write and bool2bit(dly_nlast > 0);
 port_2step      <= cfg_stpmask;
 
 -- MAC-address lookup
 u_lookup : entity work.mac_lookup
     generic map(
+    ALLOW_RUNT      => ALLOW_RUNT,
     IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => MAC_TABLE_SIZE,
@@ -462,7 +480,7 @@ gen_igmp : if (IGMP_TIMEOUT > 0) generate
         reset_p         => reset_p);
 end generate;
 
--- Packet-priority lookup (optional)
+-- Packet-priority lookup by EtherType (optional)
 gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
                and PRI_TABLE_SIZE > 0) generate
     u_priority : entity work.mac_priority
@@ -476,10 +494,10 @@ gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
         in_data     => buf_data,
         in_last     => buf_last,
         in_write    => buf_write,
-        out_pri     => pri_hipri,
-        out_valid   => pri_valid,
+        out_pri     => epri_hipri,
+        out_valid   => epri_valid,
         out_ready   => packet_done,
-        out_error   => pri_error,
+        out_error   => epri_error,
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(10),
         clk         => clk,
@@ -487,8 +505,8 @@ gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
 end generate;
 
 -- Virtual-LAN lookup (optional)
-gen_vlan : if SUPPORT_VLAN generate
-    u_vlan : entity work.mac_vlan_mask
+gen_vport : if SUPPORT_VPORT generate
+    u_vport : entity work.mac_vlan_mask
         generic map(
         DEV_ADDR    => DEV_ADDR,
         REG_ADDR_V  => REGADDR_VLAN_VID,
@@ -499,13 +517,35 @@ gen_vlan : if SUPPORT_VLAN generate
         in_vtag     => buf_meta.vtag,
         in_last     => buf_last,
         in_write    => buf_write,
-        out_vtag    => vlan_vtag,
-        out_pmask   => vlan_mask,
-        out_hipri   => vlan_hipri,
-        out_valid   => vlan_valid,
+        out_vtag    => vport_vtag,
+        out_pmask   => vport_mask,
+        out_hipri   => vport_hipri,
+        out_valid   => vport_valid,
         out_ready   => packet_done,
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(11),
+        clk         => clk,
+        reset_p     => reset_p);
+end generate;
+
+gen_vrate : if SUPPORT_VRATE generate
+    u_vrate : entity work.mac_vlan_rate
+        generic map(
+        DEV_ADDR    => DEV_ADDR,
+        REG_ADDR    => REGADDR_VLAN_RATE,
+        IO_BYTES    => IO_BYTES,
+        PORT_COUNT  => PORT_COUNT,
+        CORE_CLK_HZ => CORE_CLK_HZ)
+        port map(
+        in_vtag     => buf_meta.vtag,
+        in_nlast    => buf_nlast,
+        in_write    => buf_write,
+        out_pmask   => vrate_mask,
+        out_himask  => vrate_allow,
+        out_valid   => vrate_valid,
+        out_ready   => packet_done,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(12),
         clk         => clk,
         reset_p     => reset_p);
 end generate;
@@ -522,12 +562,14 @@ begin
                 report "LATE Lookup" severity error;
             assert (igmp_valid = '1')
                 report "LATE IGMP" severity error;
-            assert (pri_valid = '1')
+            assert (epri_valid = '1')
                 report "LATE Priority" severity error;
             assert (ptpf_valid = '1')
                 report "LATE PTPF" severity error;
-            assert (vlan_valid = '1')
-                report "LATE VLAN" severity error;
+            assert (vport_valid = '1')
+                report "LATE VPORT" severity error;
+            assert (vrate_valid = '1')
+                report "LATE VRATE" severity error;
         end if;
     end if;
 end process;

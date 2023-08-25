@@ -22,7 +22,7 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/cfgbus_stats.h>
 
-class MockStats : public satcat5::test::MockConfigBusMmap {
+class MockStats final : public satcat5::test::MockConfigBusMmap {
 public:
     MockStats() {
         refresh_regs(1);    // Set initial state
@@ -35,8 +35,8 @@ public:
 };
 
 TEST_CASE("NetworkStats") {
-    MockStats mock;
-    satcat5::cfg::NetworkStats uut(&mock, 0);
+    MockStats* mock = new MockStats();
+    satcat5::cfg::NetworkStats uut(mock, 0);
 
     SECTION("refresh") {
         // Confirm UUT writes to refresh register on demand.
@@ -92,4 +92,6 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.errct_pkt       == 0);
         CHECK(stats.status          == 0);
     }
+
+    delete mock;
 }

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <satcat5/ip_dispatch.h>
 #include <satcat5/udp_core.h>
 
 namespace satcat5 {
@@ -40,13 +41,24 @@ namespace satcat5 {
             satcat5::io::Writeable* open_reply(
                 const satcat5::net::Type& type, unsigned nbytes) override;
             satcat5::io::Writeable* open_write(
-                const satcat5::ip::Address& addr,   // Destination IP+MAC
+                satcat5::ip::Address& addr,         // Destination IP+MAC
                 const satcat5::udp::Port& src,      // Source port
                 const satcat5::udp::Port& dst,      // Destination port
                 unsigned len);                      // Length after UDP header
 
             // Other accessors.
-            inline satcat5::ip::Dispatch* iface() const {return m_iface;}
+            inline satcat5::eth::ProtoArp* arp() const
+                {return &m_iface->m_arp;}
+            inline satcat5::ip::Dispatch* iface() const
+                {return m_iface;}
+            inline satcat5::ip::Addr ipaddr() const
+                {return m_iface->ipaddr();}
+            inline satcat5::eth::MacAddr macaddr() const
+                {return m_iface->macaddr();}
+            inline satcat5::eth::MacAddr reply_mac() const
+                {return m_iface->reply_mac();}
+            inline satcat5::ip::Addr reply_ip() const
+                {return m_iface->reply_ip();}
 
             // Get the next unclaimed dynamically-allocated port index.
             satcat5::udp::Port next_free_port();

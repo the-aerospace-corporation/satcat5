@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,6 +25,7 @@ namespace eth = satcat5::eth;
 namespace log = satcat5::log;
 namespace util = satcat5::util;
 using satcat5::eth::SwitchConfig;
+using satcat5::eth::VlanRate;
 
 // Define ConfigBus register map (see also: switch_types.vhd)
 constexpr unsigned REG_PORTCOUNT    = 0;    // Number of ports (read-only)
@@ -43,6 +44,7 @@ constexpr unsigned REG_MACTBL_MSB   = 12;   // MAC-table control (read-write)
 constexpr unsigned REG_MACTBL_CTRL  = 13;   // MAC-table control (read-write)
 constexpr unsigned REG_MISS_BCAST   = 14;   // Miss-as-broadcast port mask (read-write)
 constexpr unsigned REG_PTP_2STEP    = 15;   // PTP "twoStep" mode flag (read-write)
+constexpr unsigned REG_VLAN_RATE    = 16;   // VLAN rate-control configuration (write-only)
 
 // Additional ConfigBus registers for each port.
 static constexpr unsigned REG_PORT(unsigned idx)       {return 512 + 16*idx;}
@@ -208,17 +210,24 @@ void SwitchConfig::vlan_reset(bool lockdown)
     // Set default policy and port-mask.
     u32 policy = lockdown ? eth::VTAG_RESTRICT : eth::VTAG_ADMIT_ALL;
     u32 mask   = lockdown ? eth::VLAN_CONNECT_NONE : eth::VLAN_CONNECT_ALL;
+    VlanRate rate = lockdown ? eth::VRATE_8KBPS : eth::VRATE_UNLIMITED;
 
     // Reset each port with default policy and VID = 1.
     u32 pcount = m_reg[REG_PORTCOUNT];
-    for (unsigned a = 0 ; a < pcount ; ++a)
-        m_reg[REG_VLAN_PORT] = vlan_portcfg(a, policy, eth::VTAG_DEFAULT);
+    for (unsigned port = 0 ; port < pcount ; ++port)
+        m_reg[REG_VLAN_PORT] = vlan_portcfg(port, policy, eth::VTAG_DEFAULT);
 
     // Reset every VID so it connects the designated ports.
     // (Write base address, then repeated masks with auto-increment.)
     m_reg[REG_VLAN_VID] = (u32)eth::VID_MIN;
-    for (u16 a = eth::VID_MIN ; a <= eth::VID_MAX ; ++a)
+    for (u16 vid = eth::VID_MIN ; vid <= eth::VID_MAX ; ++vid)
         m_reg[REG_VLAN_MASK] = mask;
+
+    // If rate limiter is enabled, reset policy for each VID.
+    if (m_reg[REG_VLAN_RATE] > 0) {
+        for (u16 vid = eth::VID_MIN ; vid <= eth::VID_MAX ; ++vid)
+            vlan_set_rate(vid, rate);
+    }
 }
 
 u32 SwitchConfig::vlan_get_mask(u16 vid)
@@ -236,6 +245,14 @@ void SwitchConfig::vlan_set_mask(u16 vid, u32 mask)
 void SwitchConfig::vlan_set_port(u32 cfg)
 {
     m_reg[REG_VLAN_PORT] = cfg;
+}
+
+void SwitchConfig::vlan_set_rate(u16 vid, const VlanRate& cfg)
+{
+    // Three consecutive writes sets the new rate-limit.
+    m_reg[REG_VLAN_RATE] = cfg.tok_rate;
+    m_reg[REG_VLAN_RATE] = cfg.tok_max;
+    m_reg[REG_VLAN_RATE] = cfg.tok_policy | vid;
 }
 
 void SwitchConfig::vlan_join(u16 vid, unsigned port)

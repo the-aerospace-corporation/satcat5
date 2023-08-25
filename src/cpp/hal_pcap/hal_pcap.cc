@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -268,8 +268,9 @@ void spcap::Socket::data_rcvd()
         m_tx.read_bytes(nread, temp);
         // ...then write to the PCAP socket.
         int result = pcap_sendpacket(m_device->m_device, temp, nread);
-        if (result <= 0)
-            log::Log(log::WARNING, m_device->name(), "Tx failed.");
+        if (result < 0)
+            log::Log(log::WARNING, m_device->name(), "Tx failed:\n")
+                .write(pcap_geterr(m_device->m_device));
     }
 
     // Cleanup for the next packet, if any.
@@ -290,6 +291,7 @@ void spcap::Socket::poll_always()
         m_rx.write_bytes(pkt_header->len, pkt_data);
         m_rx.write_finalize();
     } else if (result < 0 && DEBUG_VERBOSE > 0) {
-        log::Log(log::WARNING, m_device->name(), "Rx error.");
+        log::Log(log::WARNING, m_device->name(), "Rx error:\n")
+            .write(pcap_geterr(m_device->m_device));
     }
 }

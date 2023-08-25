@@ -319,7 +319,6 @@ class ConfigMDIO:
     configure attached Ethernet PHY ASIC(s).  Includes support for
     indirect registers (Debug, MMD3, MMD7, etc.)
     """
-    # TODO: Add support for reads.
     CMD_WRITE       = (0x01 << 26)  # Read = 0b01
     CMD_READ        = (0x02 << 26)  # Read = 0b10
     STATUS_FULL     = (1 << 31)     # Command FIFO is full

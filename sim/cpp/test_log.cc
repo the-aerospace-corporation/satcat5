@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -46,6 +46,7 @@ const LogEvent MSG_E = {LOG_CRITICAL,   "MsgE: Test1234 = 0x1234567890ABCDEF"};
 const LogEvent MSG_F = {LOG_INFO,       "MsgF: Var1 = 1, Var2 = 0, Var3 = 0x4321"};
 const LogEvent MSG_G = {LOG_WARNING,    "MsgG: Var1 = 0, Var2 = 80, Var3 = 4294967295"};
 const LogEvent MSG_H = {LOG_WARNING,    "MsgH: Var1 = +0, Var2 = -2147483648, Var3 = +2147483647"};
+const LogEvent MSG_I = {LOG_WARNING,    "MsgI = DE:AD:BE:EF:CA:FE = 192.168.1.42"};
 const u8 MSG_D_BYTES[] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0};
 
 // Helper class for storing each Log message in a queue, then cross-checking
@@ -114,6 +115,11 @@ TEST_CASE("log") {
             .write(", Var2").write10(INT32_MIN)
             .write(", Var3").write10(INT32_MAX);}
 
+        // Fixed message with MAC and IP addresses.
+        {Log(LOG_WARNING,   "MsgI")
+            .write(satcat5::eth::MacAddr {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE})
+            .write(satcat5::ip::Addr(192, 168, 1, 42));}
+
         // Check each one against the expected reference.
         log.check_next(MSG_A);
         log.check_next(MSG_B);
@@ -123,6 +129,12 @@ TEST_CASE("log") {
         log.check_next(MSG_F);
         log.check_next(MSG_G);
         log.check_next(MSG_H);
+        log.check_next(MSG_I);
+    }
+
+    SECTION("fixed-len") {
+        Log(LOG_DEBUG, "MsgA", 4).write((u8)0x12);
+        log.check_next(MSG_A);
     }
 
     SECTION("overflow") {

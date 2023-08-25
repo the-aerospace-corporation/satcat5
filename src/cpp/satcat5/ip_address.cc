@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -21,6 +21,7 @@
 #include <satcat5/ip_dispatch.h>
 
 using satcat5::eth::MACADDR_BROADCAST;
+using satcat5::eth::MACADDR_NONE;
 using satcat5::eth::MacAddr;
 using satcat5::ip::Addr;
 using satcat5::ip::Address;
@@ -46,29 +47,32 @@ Address::~Address()
 }
 #endif
 
-void Address::connect(const Addr& dstaddr, const Addr& gateway)
+void Address::connect(const Addr& dstaddr)
 {
     // Set destination MAC to a placeholder for now.
     m_dstmac    = MACADDR_BROADCAST;
     m_dstaddr   = dstaddr;
-    m_gateway   = gateway;
+    m_gateway   = m_iface->route_lookup(dstaddr);
 
     // Do we need to issue an ARP query?
-    if (m_dstaddr.is_multicast()) {
-        m_ready = 1;
+    if (m_gateway.is_multicast()) {
+        m_ready = 1;    // Multicast IP = Broadcast MAC
+    } else if (m_gateway != ip::ADDR_NONE) {
+        m_ready = 0;    // Unicast IP = Query for MAC
+        m_iface->m_arp.send_query(m_gateway);
     } else {
-        m_ready = 0;
-        m_iface->m_arp.send_query(gateway);
+        m_ready = 0;    // Invalid IP = Halt
     }
 }
 
 void Address::connect(const Addr& dstaddr, const MacAddr& dstmac)
 {
     // User has provided all required parameters.
+    // Note: DHCP requires dstaddr = 0 for some edge-cases.
     m_dstmac    = dstmac;
     m_dstaddr   = dstaddr;
     m_gateway   = ip::ADDR_NONE;
-    m_ready     = 1;
+    m_ready     = (dstmac != MACADDR_NONE) ? 1 : 0;
 }
 
 void Address::retry()
@@ -89,7 +93,7 @@ void Address::close()
 satcat5::net::Dispatch* Address::iface() const
     {return m_iface;}
 
-satcat5::io::Writeable* Address::open_write(unsigned len) const
+satcat5::io::Writeable* Address::open_write(unsigned len)
 {
     if (!m_ready) {
         // If we haven't gotten an ARP reply, try again.

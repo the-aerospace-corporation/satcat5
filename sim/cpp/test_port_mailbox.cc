@@ -67,7 +67,7 @@ protected:
         } else {
             rdval = 0;
         }
-        return cfg::IOSTATUS_OK;
+        return cfg::IoStatus::OK;
     }
 
     cfg::IoStatus write(unsigned regaddr, u32 wrval) override {
@@ -87,7 +87,7 @@ protected:
         } else {
             CATCH_ERROR("Unexpected opcode");
         }
-        return cfg::IOSTATUS_OK;
+        return cfg::IoStatus::OK;
     }
 
     // Working buffers for BufferedIO.

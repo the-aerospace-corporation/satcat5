@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
+-- Copyright 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -31,15 +31,16 @@
 -- IEEE-1588, Section 7.2.3 (i.e., 1970 January 1, 00:00:00 TAI).
 --
 -- The rate-control register offsets the time increment that is applied on
--- each ConfigBus clock cycle.  It is a 32-bit signed integer N that offsets
--- the nominal increment N / 2^32 nanoseconds:
+-- each ConfigBus clock cycle.  It is a signed integer N that offsets the
+-- nominal increment by N / 2^TFINE_SCALE nanoseconds per clock:
 --  * Tnom(nsec)        = 1e9 / CFG_CLK_HZ
---  * Toffset(nsec)     = Register value / 2^32
+--  * Toffset(nsec)     = Register value / 2^TFINE_SCALE
 --  * Timestamp[n+1]    = Timestamp[n] + Tnom + Toffset
 --
 -- The resulting dynamic range depends on CFG_CLK_HZ.  For a typical rate of
--- 100 MHz, this gives an overall drift-rate resolution of 0.02 nanoseconds
--- per second and a full-scale tuning range of +/-500 kHz (5.0% = 50,000 ppm).
+-- 100 MHz, this gives an overall drift-rate resolution of 0.09 picoseconds
+-- per second.  The full-scale tuning range is fixed at +/- 16 nanoseconds per
+-- clock, which usually exceeds the nominal clock rate.
 --
 -- The ConfigBus interface uses six consecutive registers:
 --  * Base + 0: Seconds MSBs
@@ -71,9 +72,13 @@
 --              Increment current time by register contents.
 --          All other opcodes reserved.
 --      Bits 23..00: Reserved (write zeros)
---  * Base + 5: Rate (read/write)
---      Immediately read or write the current rate-control offset
---      Bits 31..00: Rate offset per ConfigBus clock (1 LSB = 2^-32 nsec)
+--  * Base + 5: Rate (write-only)
+--      "Wide" register that sets the new rate-control offset.
+--      Requires multiple writes to set the new configuration:
+--      * 1st write: MSBs (signed bits 63..32)
+--      * 2nd write: LSBs (signed bits 31..00)
+--      * Read from the register to latch the new value.
+--      (The read-value is zero and should be discarded.)
 --
 -- Example usage:
 --  * Read current time:
@@ -86,7 +91,7 @@
 --      Write registers 0, 1, 2, and 3 with the desired incremental amount.
 --      Write opcode 0x04 to register 4.
 --  * Adjust PLL rate (e.g., closed-loop software PLL):
---      Write regsiter 5 with the new frequency offset.
+--      Update register 5 (write, write, read) with the new frequency offset.
 --
 
 library ieee;
@@ -101,7 +106,8 @@ entity ptp_realtime is
     generic (
     CFG_CLK_HZ  : positive;     -- ConfigBus clock frequency
     DEV_ADDR    : integer;      -- ConfigBus device address
-    REG_BASE    : integer);     -- Note: Six consecutive registers
+    REG_BASE    : integer;      -- Note: Six consecutive registers
+    TFINE_SCALE : positive := 40);
     port (
     -- Current estimated time.
     time_now    : out ptp_time_t;
@@ -130,9 +136,9 @@ constant TSEC_WIDTH     : integer := 48;
 subtype tsec_t is signed(TSEC_WIDTH-1 downto 0);
 
 -- Internal counters use a finer resolution than the final timestamp.
-constant TFINE_SCALE    : integer := CFGBUS_WORD_SIZE;
-constant TFINE_EXTRA    : integer := TFINE_SCALE - TSTAMP_SCALE;
-constant TFINE_WIDTH    : integer := TSTAMP_WIDTH + TFINE_EXTRA;
+constant RATE_WIDTH     : positive := TFINE_SCALE + 5;  -- +/- 16 nsec/clk
+constant TFINE_EXTRA    : natural  := TFINE_SCALE - TSTAMP_SCALE;
+constant TFINE_WIDTH    : positive := TSTAMP_WIDTH + TFINE_EXTRA;
 subtype tfine_t is unsigned(TFINE_WIDTH-1 downto 0);
 
 function reg2fine(x: cfgbus_word; scale: natural) return tfine_t is
@@ -188,7 +194,7 @@ signal cfg_sec_msb  : cfgbus_word := (others => '0');
 signal cfg_sec_lsb  : cfgbus_word := (others => '0');
 signal cfg_nsec     : cfgbus_word := (others => '0');
 signal cfg_subns    : cfgbus_word := (others => '0');
-signal cfg_rate     : cfgbus_word := (others => '0');
+signal cfg_rate     : std_logic_vector(RATE_WIDTH-1 downto 0) := (others => '0');
 
 begin
 
@@ -270,10 +276,6 @@ begin
             cfg_subns   <= cfg_cmd.wdata;
         end if;
 
-        if (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REG_BASE+5)) then
-            cfg_rate    <= cfg_cmd.wdata;
-        end if;
-
         -- Register reads.
         if (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REG_BASE+0)) then
             cfg_ack_i <= cfgbus_reply(cfg_sec_msb);
@@ -284,11 +286,22 @@ begin
         elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REG_BASE+3)) then
             cfg_ack_i <= cfgbus_reply(cfg_subns);
         elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REG_BASE+5)) then
-            cfg_ack_i <= cfgbus_reply(cfg_rate);
+            cfg_ack_i <= cfgbus_reply(CFGBUS_WORD_ZERO);
         else
             cfg_ack_i <= cfgbus_idle;
         end if;
     end if;
 end process;
+
+u_rate : cfgbus_register_wide
+    generic map(
+    DWIDTH      => RATE_WIDTH,
+    DEVADDR     => DEV_ADDR,
+    REGADDR     => REG_BASE + 5)
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => open,
+    sync_clk    => cfg_cmd.clk,
+    sync_val    => cfg_rate);
 
 end ptp_realtime;

@@ -155,6 +155,17 @@ u32 util::extract_be_u32(const u8* src)
          +      256 * (u32)src[2]
          +        1 * (u32)src[3];
 }
+u64 util::extract_be_u64(const u8* src)
+{
+    return 72057594037927936ull * (u64)src[0]
+         +   281474976710656ull * (u64)src[1]
+         +     1099511627776ull * (u64)src[2]
+         +        4294967296ull * (u64)src[3]
+         +          16777216ull * (u64)src[4]
+         +             65536ull * (u64)src[5]
+         +               256ull * (u64)src[6]
+         +                 1ull * (u64)src[7];
+}
 
 // Store fields into a big-endian byte array.
 void util::write_be_u16(u8* dst, u16 val)
@@ -168,6 +179,27 @@ void util::write_be_u32(u8* dst, u32 val)
     dst[1] = (u8)(val >> 16);
     dst[2] = (u8)(val >> 8);
     dst[3] = (u8)(val >> 0);
+}
+void util::write_be_u64(u8* dst, u64 val)
+{
+    dst[0] = (u8)(val >> 56);
+    dst[1] = (u8)(val >> 48);
+    dst[2] = (u8)(val >> 40);
+    dst[3] = (u8)(val >> 32);
+    dst[4] = (u8)(val >> 24);
+    dst[5] = (u8)(val >> 16);
+    dst[6] = (u8)(val >> 8);
+    dst[7] = (u8)(val >> 0);
+}
+
+u32 util::Prng::next()
+{
+    // Marsaglia's XORSHIFT algorithm:
+    m_state ^= (m_state >> 12);
+    m_state ^= (m_state << 25);
+    m_state ^= (m_state >> 27);
+    u64 next = m_state * 0x2545F4914F6CDD1Dull;
+    return (u32)(next >> 32);
 }
 
 static const char* LABEL_NONE = "None";

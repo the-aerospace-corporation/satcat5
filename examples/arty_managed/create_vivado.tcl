@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021, 2022 The Aerospace Corporation
+# Copyright 2021, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -36,6 +36,18 @@ if {($BOARD_OPTION in $VALID_BOARDS)} {
     puts "Targeting Arty Artix7-$BOARD_OPTION"
 } else {
     error "Must choose BOARD_OPTION from [list $VALID_BOARDS]"
+}
+
+# Enable additional features on the 100T build only.
+# (35T doesn't have enough slices to enable every option.)
+if {$BOARD_OPTION == "100t"} {
+    set HBUF_KBYTES {2}
+    set MAC_TABLE_SIZE {64}
+    set PTP_MIXED_STEP {true}
+} else {
+    set HBUF_KBYTES {0}
+    set MAC_TABLE_SIZE {32}
+    set PTP_MIXED_STEP {false}
 }
 
 # Change to example project folder.
@@ -82,11 +94,17 @@ set rmii_mode [ create_bd_port -dir O rmii_mode ]
 set rmii_resetn [ create_bd_port -dir O rmii_resetn ]
 set mdio_clk [ create_bd_port -dir O mdio_clk ]
 set mdio_data [ create_bd_port -dir IO mdio_data ]
+set i2c_sck [ create_bd_port -dir IO i2c_sck ]
+set i2c_sda [ create_bd_port -dir IO i2c_sda ]
 set leds [ create_bd_port -dir O -from 15 -to 0 leds ]
 set pmod1 [ create_bd_port -dir IO -from 3 -to 0 pmod1 ]
 set pmod2 [ create_bd_port -dir IO -from 3 -to 0 pmod2 ]
 set pmod3 [ create_bd_port -dir IO -from 3 -to 0 pmod3 ]
 set pmod4 [ create_bd_port -dir IO -from 3 -to 0 pmod4 ]
+set spi_csb [ create_bd_port -dir O spi_csb ]
+set spi_sck [ create_bd_port -dir O spi_sck ]
+set spi_sdi [ create_bd_port -dir I spi_sdi ]
+set spi_sdo [ create_bd_port -dir O spi_sdo ]
 set text_lcd [ create_bd_intf_port -mode Master -vlnv aero.org:satcat5:TextLCD_rtl:1.0 text ]
 
 # Hierarchical cell: ublaze/mem
@@ -239,12 +257,14 @@ current_bd_instance ..
 
 set cfgbus_split_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:cfgbus_split cfgbus_split_0 ]
 set_property -dict [ list \
-    CONFIG.PORT_COUNT {9} \
+    CONFIG.PORT_COUNT {11} \
 ] $cfgbus_split_0
 
 set port_mailmap_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_mailmap port_mailmap_0 ]
 set_property -dict [ list \
     CONFIG.DEV_ADDR {0} \
+    CONFIG.PTP_ENABLE {true} \
+    CONFIG.PTP_REF_HZ {100000000} \
 ] $port_mailmap_0
 
 set pmod1 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_serial_auto pmod1 ]
@@ -273,13 +293,16 @@ set_property -dict [ list \
 
 set switch_core_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:switch_core switch_core_0 ]
 set_property -dict [ list \
+    CONFIG.ALLOW_PRECOMMIT {true} \
     CONFIG.ALLOW_RUNT {true} \
     CONFIG.CFG_DEV_ADDR {5} \
     CONFIG.CFG_ENABLE {true} \
     CONFIG.CORE_CLK_HZ {100000000} \
     CONFIG.DATAPATH_BYTES {1} \
-    CONFIG.HBUF_KBYTES {2} \
+    CONFIG.HBUF_KBYTES $HBUF_KBYTES \
+    CONFIG.MAC_TABLE_SIZE $MAC_TABLE_SIZE \
     CONFIG.PORT_COUNT {6} \
+    CONFIG.PTP_MIXED_STEP $PTP_MIXED_STEP \
     CONFIG.STATS_DEVADDR {6} \
     CONFIG.STATS_ENABLE {true} \
     CONFIG.SUPPORT_PTP {true} \
@@ -303,12 +326,27 @@ set_property -dict [list \
     CONFIG.EVT_ENABLE {false} \
 ] $cfgbus_timer_0
 
+set cfgbus_i2c_0 [ create_bd_cell -type ip \
+    -vlnv aero.org:satcat5:cfgbus_i2c_controller:1.0 cfgbus_i2c_0 ]
+set_property -dict [list \
+    CONFIG.DEV_ADDR {10} \
+] $cfgbus_i2c_0
+
+set cfgbus_spi_0 [ create_bd_cell -type ip \
+    -vlnv aero.org:satcat5:cfgbus_spi_controller:1.0 cfgbus_spi_0 ]
+set_property -dict [list \
+    CONFIG.DEV_ADDR {11} \
+] $cfgbus_spi_0
+
 set port_adapter_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_adapter port_adapter_0 ]
+set ptp_reference_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:ptp_reference ptp_reference_0 ]
 set rmii_mode_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant rmii_mode_0 ]
 set rmii_reset_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:reset_hold rmii_reset_0 ]
 set port_rmii_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_rmii port_rmii_0 ]
 set_property -dict [ list \
     CONFIG.MODE_CLKOUT {true} \
+    CONFIG.PTP_ENABLE {true} \
+    CONFIG.PTP_REF_HZ {100000000} \
 ] $port_rmii_0
 
 set switch_aux_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:switch_aux switch_aux_0 ]
@@ -322,6 +360,8 @@ connect_bd_intf_net -intf_net cfgbus_split_0_Port05 [get_bd_intf_pins cfgbus_spl
 connect_bd_intf_net -intf_net cfgbus_split_0_Port06 [get_bd_intf_pins cfgbus_split_0/Port06] [get_bd_intf_pins cfgbus_mdio_0/Cfg]
 connect_bd_intf_net -intf_net cfgbus_split_0_Port07 [get_bd_intf_pins cfgbus_split_0/Port07] [get_bd_intf_pins cfgbus_led_0/Cfg]
 connect_bd_intf_net -intf_net cfgbus_split_0_Port08 [get_bd_intf_pins cfgbus_split_0/Port08] [get_bd_intf_pins cfgbus_timer_0/Cfg]
+connect_bd_intf_net -intf_net cfgbus_split_0_Port09 [get_bd_intf_pins cfgbus_split_0/Port09] [get_bd_intf_pins cfgbus_i2c_0/Cfg]
+connect_bd_intf_net -intf_net cfgbus_split_0_Port10 [get_bd_intf_pins cfgbus_split_0/Port10] [get_bd_intf_pins cfgbus_spi_0/Cfg]
 connect_bd_intf_net -intf_net pmod1_Eth [get_bd_intf_pins pmod1/Eth] [get_bd_intf_pins switch_core_0/Port01]
 connect_bd_intf_net -intf_net pmod2_Eth [get_bd_intf_pins pmod2/Eth] [get_bd_intf_pins switch_core_0/Port02]
 connect_bd_intf_net -intf_net pmod3_Eth [get_bd_intf_pins pmod3/Eth] [get_bd_intf_pins switch_core_0/Port03]
@@ -330,6 +370,8 @@ connect_bd_intf_net -intf_net port_adapter_0_SwPort [get_bd_intf_pins port_adapt
 connect_bd_intf_net -intf_net port_mailmap_0_Eth [get_bd_intf_pins port_mailmap_0/Eth] [get_bd_intf_pins switch_core_0/Port00]
 connect_bd_intf_net -intf_net port_rmii_0_Eth [get_bd_intf_pins port_adapter_0/MacPort] [get_bd_intf_pins port_rmii_0/Eth]
 connect_bd_intf_net -intf_net port_rmii_0_RMII [get_bd_intf_ports rmii] [get_bd_intf_pins port_rmii_0/RMII]
+connect_bd_intf_net -intf_net ptpref [get_bd_intf_pins ptp_reference_0/PtpRef] [get_bd_intf_pins port_mailmap_0/PtpRef] 
+connect_bd_intf_net -intf_net ptpref [get_bd_intf_pins ptp_reference_0/PtpRef] [get_bd_intf_pins port_rmii_0/PtpRef]
 connect_bd_intf_net -intf_net ublaze_CfgBus [get_bd_intf_pins cfgbus_split_0/Cfg] [get_bd_intf_pins ublaze/CfgBus]
 connect_bd_net -net Net [get_bd_ports pmod1] [get_bd_pins pmod1/ext_pads]
 connect_bd_net -net Net1 [get_bd_ports pmod4] [get_bd_pins pmod4/ext_pads]
@@ -341,6 +383,7 @@ connect_bd_net -net ext_reset_in_0_1 [get_bd_ports ext_reset_n] \
 connect_bd_net -net microblaze_0_Clk [get_bd_ports ext_clk100] \
     [get_bd_pins rmii_reset_0/clk] \
     [get_bd_pins port_rmii_0/ctrl_clkin] \
+    [get_bd_pins ptp_reference_0/ref_clk] \
     [get_bd_pins switch_aux_0/scrub_clk] \
     [get_bd_pins ublaze/ext_clk100]
 connect_bd_net -net port_rmii_0_rmii_clkout [get_bd_ports rmii_clkout] [get_bd_pins port_rmii_0/rmii_clkout]
@@ -363,10 +406,19 @@ connect_bd_net -net ublaze_resetp [get_bd_pins pmod1/reset_p] \
     [get_bd_pins switch_aux_0/reset_p] \
     [get_bd_pins switch_core_0/reset_p] \
     [get_bd_pins ublaze/resetp]
-connect_bd_net [get_bd_pins port_rmii_0/reset_p] [get_bd_pins rmii_reset_0/reset_p]
+connect_bd_net \
+    [get_bd_pins port_rmii_0/reset_p] \
+    [get_bd_pins ptp_reference_0/reset_p] \
+    [get_bd_pins rmii_reset_0/reset_p]
 connect_bd_net -net ublaze_uart_txd [get_bd_ports uart_txd] [get_bd_pins ublaze/uart_txd]
 connect_bd_net [get_bd_pins /cfgbus_mdio_0/mdio_clk] [get_bd_ports mdio_clk]
 connect_bd_net [get_bd_pins /cfgbus_mdio_0/mdio_data] [get_bd_ports mdio_data]
+connect_bd_net [get_bd_ports i2c_sck] [get_bd_pins cfgbus_i2c_0/i2c_sclk]
+connect_bd_net [get_bd_ports i2c_sda] [get_bd_pins cfgbus_i2c_0/i2c_sdata]
+connect_bd_net [get_bd_ports spi_csb] [get_bd_pins cfgbus_spi_0/spi_csb]
+connect_bd_net [get_bd_ports spi_sck] [get_bd_pins cfgbus_spi_0/spi_sck]
+connect_bd_net [get_bd_ports spi_sdi] [get_bd_pins cfgbus_spi_0/spi_sdi]
+connect_bd_net [get_bd_ports spi_sdo] [get_bd_pins cfgbus_spi_0/spi_sdo]
 connect_bd_net [get_bd_ports leds] [get_bd_pins cfgbus_led_0/led_out]
 connect_bd_intf_net [get_bd_intf_ports text] [get_bd_intf_pins switch_aux_0/text_lcd]
 

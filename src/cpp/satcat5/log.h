@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -98,6 +98,37 @@ namespace satcat5 {
         // (May include emoji or plaintext labels, depending on build flags.)
         const char* priority_label(s8 priority);
 
+        // Internal buffer used by the Log class, and by classes with
+        // custom formatting methods. See also: Log::write_obj(...)
+        class LogBuffer final {
+        public:
+            // Constructor for an empty buffer.
+            LogBuffer() : m_wridx(0) {}
+
+            // Write formatted elements to the internal buffer.
+            void wr_fix(const char* str, unsigned len);     // Fixed-len string
+            void wr_str(const char* str);                   // Null-term string
+            void wr_hex(u32 val, unsigned nhex);            // Hexadecimal int
+            void wr_dec(u32 val);                           // Decimal int
+
+            // Current string length.
+            unsigned len() const {return m_wridx;}
+
+        private:
+            friend satcat5::log::Log;
+
+            // Forbid use of copy constructor.
+            LogBuffer(const LogBuffer&) = delete;
+            LogBuffer& operator=(const LogBuffer&) = delete;
+
+            // Null-terminate the working buffer.
+            inline void terminate() {m_buff[m_wridx] = 0;}
+
+            // Internal buffer.
+            unsigned m_wridx;
+            char m_buff[SATCAT5_LOG_MAXLEN+1];
+        };
+
         // Ephemeral Log class.
         class Log final {
         public:
@@ -105,12 +136,14 @@ namespace satcat5 {
             explicit Log(s8 priority);
             Log(s8 priority, const char* str);
             Log(s8 priority, const char* str1, const char* str2);
+            Log(s8 priority, const void* str, unsigned nbytes);
 
             // Destructor sends the message.
             ~Log();
 
             // Formatting methods for various data types.
             // All integer types print as fixed-width hexadecimal values.
+            // Network types use conventional form (e.g., "192.168.1.42").
             // Returns reference to itself to make chaining easy.
             Log& write(const char* str);
             Log& write(bool val);
@@ -119,23 +152,25 @@ namespace satcat5 {
             Log& write(u32 val);
             Log& write(u64 val);
             Log& write(const u8* val, unsigned nbytes);
+            Log& write(const satcat5::eth::MacAddr& mac);
+            Log& write(const satcat5::ip::Addr& ip);
 
             // Print integer as a decimal value with no leading zeros.
             Log& write10(s32 val);  // Signed (e.g., "+1234" or "-1234")
             Log& write10(u32 val);  // Unsigned (e.g., "1234")
 
+            // Templated wrapper for any object with the following method:
+            //  void log_to(satcat5::log::LogBuffer& wr) const;
+            template <class T> inline Log& write_obj(const T& obj)
+                {obj.log_to(m_buff); return *this;}
+
         private:
             // Forbid use of copy constructor.
-            Log(const Log&);                // Note: No implementation!
-            Log& operator=(const Log&);     // Note: No implementation!
-
-            // Internal formatting functions.
-            void wr_str(const char* str);
-            void wr_hex(u32 val, unsigned nhex);
+            Log(const Log&) = delete;
+            Log& operator=(const Log&) = delete;
 
             const s8 m_priority;
-            unsigned m_wridx;
-            char m_buff[SATCAT5_LOG_MAXLEN+1];
+            satcat5::log::LogBuffer m_buff;
         };
     }
 }

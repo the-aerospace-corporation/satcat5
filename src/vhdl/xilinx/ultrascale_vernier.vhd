@@ -77,7 +77,7 @@ begin
 -- Instantiate the MMCM.
 u_mmcm : MMCME3_ADV
     generic map (
-    BANDWIDTH               => "LOW",       -- string
+    BANDWIDTH               => "HIGH",      -- string
     CLKIN1_PERIOD           => 1.0e9 / real(VCONFIG.input_hz),
     CLKIN2_PERIOD           => 1.0e9 / real(VCONFIG.input_hz),
     REF_JITTER1             => 0.010,       -- real

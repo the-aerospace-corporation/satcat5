@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -244,10 +244,23 @@ void poll::Timer::timer_stop()
 void poll::Timer::query(unsigned elapsed_msec)
 {
     if (m_trem > elapsed_msec) {
-        m_trem -= elapsed_msec;     // Continue countdown...
+        // Continue countdown...
+        m_trem -= elapsed_msec;
     } else if (m_trem) {
-        timer_event();              // Countdown just elapsed!
-        m_trem = m_tnext;           // Reset time to next event.
+        // Countdown just elapsed!
+        timer_event();
+        // Adjust next interval to minimize cumulative drift.
+        // e.g., If timer scheduled every 1000 msec fires 5 msec late,
+        // then next interval should be 995 msec to get back on schedule.
+        // If overshoot is too large to fix, minimum delay is 1 msec.
+        unsigned ovr = elapsed_msec - m_trem;
+        if (m_tnext > ovr) {    // Adjust next interval
+            m_trem = m_tnext - ovr;
+        } else if (m_tnext) {   // Too large, use minimum
+            m_trem = 1;
+        } else {                // Stop after one-time event
+            m_trem = 0;
+        }
     }
 }
 

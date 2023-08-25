@@ -363,6 +363,7 @@ set_property -dict [ list \
 
 set switch_core_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:switch_core:1.0 switch_core_0 ]
 set_property -dict [ list \
+    CONFIG.ALLOW_PRECOMMIT {true} \
     CONFIG.CFG_DEV_ADDR {8} \
     CONFIG.CFG_ENABLE {true} \
     CONFIG.CORE_CLK_HZ {125000000} \

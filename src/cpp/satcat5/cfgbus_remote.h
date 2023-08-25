@@ -57,13 +57,13 @@ namespace satcat5 {
             // "Array" indicates auto-increment mode (regaddr, regaddr+1, ...)
             // "Repeat" indicates no-increment mode (same register N times)
             satcat5::cfg::IoStatus read_array(
-                unsigned regaddr, unsigned count, u32* result);
+                unsigned regaddr, unsigned count, u32* result) override;
             satcat5::cfg::IoStatus read_repeat(
-                unsigned regaddr, unsigned count, u32* result);
+                unsigned regaddr, unsigned count, u32* result) override;
             satcat5::cfg::IoStatus write_array(
-                unsigned regaddr, unsigned count, const u32* data);
+                unsigned regaddr, unsigned count, const u32* data) override;
             satcat5::cfg::IoStatus write_repeat(
-                unsigned regaddr, unsigned count, const u32* data);
+                unsigned regaddr, unsigned count, const u32* data) override;
 
             // Adjust read/write timeout (0 = Non-blocking)
             void set_timeout_rd(unsigned usec) {m_timeout_rd = usec;}
@@ -120,7 +120,7 @@ namespace satcat5 {
 
     // Wrappers for commonly used network interfaces:
     namespace eth {
-        class ConfigBus
+        class ConfigBus final
             : protected satcat5::eth::AddressContainer
             , public satcat5::cfg::ConfigBusRemote
         {
@@ -137,7 +137,7 @@ namespace satcat5 {
     }
 
     namespace udp {
-        class ConfigBus
+        class ConfigBus final
             : protected satcat5::udp::AddressContainer
             , public satcat5::cfg::ConfigBusRemote
         {
@@ -146,8 +146,7 @@ namespace satcat5 {
                 satcat5::udp::Dispatch* udp);           // UDP interface
 
             void connect(
-                const satcat5::ip::Addr& dstaddr,       // Remote address
-                const satcat5::ip::Addr& gateway);      // Next-hop address
+                const satcat5::ip::Addr& dstaddr);      // Remote address
 
             inline void close()             {m_addr.close();}
             inline bool ready() const       {return m_addr.ready();}

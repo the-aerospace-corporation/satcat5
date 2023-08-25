@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,6 +25,7 @@
 // Allow safe destruction of SatCat5 objects?
 // Many embedded systems never need to delete anything, and disabling this
 // feature can save several kilobytes of code-size.  Use with caution.
+// For GCC/G++: compiler flag "-DSATCAT5_ALLOW_DELETION=0" to disable.
 #ifndef SATCAT5_ALLOW_DELETION
 #define SATCAT5_ALLOW_DELETION  1
 #endif
@@ -33,6 +34,12 @@
 #define SATCAT5_OPTIONAL_DTOR       // Full function defined elsewhere
 #else
 #define SATCAT5_OPTIONAL_DTOR {}    // Null inline placeholder
+#endif
+
+// Enable use of the QCBOR library?
+// For GCC/G++: compiler flag "-DSATCAT5_QCBOR_ENABLE=1" to enable.
+#ifndef SATCAT5_QCBOR_ENABLE
+#define SATCAT5_QCBOR_ENABLE 0
 #endif
 
 // Shortcuts for fixed-size integer types.
@@ -65,6 +72,8 @@ namespace satcat5 {
         class MdioWrapper;          // satcat5/cfgbus_mdio.h
         class MultiSerial;          // satcat5/cfgbus_multiserial.h
         class NetworkStats;         // satcat5/cfgbus_stats.h
+        class PtpRealtime;          // satcat5/cfgbus_ptpref.h
+        class PtpReference;         // satcat5/cfgbus_ptpref.h
         class Spi;                  // satcat5/cfgbus_spi.h
         class SpiEventListener;     // satcat5/cfgbus_spi.h
         class Timer;                // satcat5/cfgbus_timer.h
@@ -81,48 +90,54 @@ namespace satcat5 {
     }
 
     namespace eth {                 // Ethernet networking
-        struct Header;              // satcat5/ethernet.h
-        struct MacAddr;             // satcat5/ethernet.h
-        struct MacType;             // satcat5/ethernet.h
-        struct VlanTag;             // satcat5/ethernet.h
-        class Address;              // satcat5/ethernet.h
+        struct Header;              // satcat5/eth_header.h
+        struct MacAddr;             // satcat5/eth_header.h
+        struct MacType;             // satcat5/eth_header.h
+        struct VlanTag;             // satcat5/eth_header.h
+        class Address;              // satcat5/eth_address.h
         class ArpListener;          // satcat5/eth_arp.h
         class ChecksumRx;           // satcat5/eth_checksum.h
         class ChecksumTx;           // satcat5/eth_checksum.h
         class ConfigBus;            // satcat5/cfgbus_remote.h
         class Dispatch;             // satcat5/eth_dispatch.h
-        class Protocol;             // satcat5/ethernet.h
+        class Protocol;             // satcat5/eth_protocol.h
         class ProtoArp;             // satcat5/eth_arp.h
         class ProtoConfig;          // satcat5/net_cfgbus.h
         class ProtoEcho;            // satcat5/net_echo.h
         class SlipCodec;            // satcat5/eth_checksum.h
         class Socket;               // satcat5/eth_socket.h
+        class SocketCore;           // satcat5/eth_socket.h
         class SwitchConfig;         // satcat5/switch_cfg.h
+        class Telemetry;            // satcat5/net_telemetry.h
     };
 
     namespace io {                  // Input and output streams
-        class ArrayRead;            // satcat5/io_core.h
-        class ArrayWrite;           // satcat5/io_core.h
+        class ArrayRead;            // satcat5/io_readable.h
+        class ArrayWrite;           // satcat5/io_writeable.h
         class BufferedCopy;         // satcat5/io_buffer.h
         class BufferedIO;           // satcat5/io_buffer.h
         class BufferedWriter;       // satcat5/io_buffer.h
-        class EventListener;        // satcat5/io_core.h
-        class LimitedRead;          // satcat5/io_core.h
+        class EventListener;        // satcat5/io_readable.h
+        class LimitedRead;          // satcat5/io_readable.h
         class PacketBuffer;         // satcat5/pkt_buffer.h
-        class Readable;             // satcat5/io_core.h
-        class ReadableRedirect;     // satcat5/io_core.h
+        class Readable;             // satcat5/io_readable.h
+        class ReadableRedirect;     // satcat5/io_readable.h
         class SlipCodec;            // satcat5/slip.h
         class SlipDecoder;          // satcat5/slip.h
         class SlipEncoder;          // satcat5/slip.h
-        class Writeable;            // satcat5/io_core.h
-        class WriteableRedirect;    // satcat5/io_core.h
+        class Writeable;            // satcat5/io_writeable.h
+        class WriteableRedirect;    // satcat5/io_writeable.h
     }
 
     namespace ip {                  // Internet Protocol v4
         struct Addr;                // satcat5/ip_core.h
         struct Header;              // satcat5/ip_core.h
+        struct Mask;                // satcat5/ip_core.h
         struct Port;                // satcat5/ip_core.h
+        struct Subnet;              // satcat5/ip_core.h
         class Address;              // satcat5/ip_address.h
+        class DhcpClient;           // satcat5/ip_dhcp.h
+        class DhcpServer;           // satcat5/ip_dhcp.h
         class Dispatch;             // satcat5/ip_dispatch.h
         class Ping;                 // satcat5/ip_ping.h
         class ProtoIcmp;            // satcat5/ip_icmp.h
@@ -138,18 +153,22 @@ namespace satcat5 {
     }
 
     namespace log {                 // Logging
-        class Log;                  // satcat5/log.h
         class EventHandler;         // satcat5/log.h
+        class Log;                  // satcat5/log.h
+        class LogBuffer;            // satcat5/log.h
         class ToWriteable;          // satcat5/log.h
     }
 
     namespace net {                 // Generic networking
-        struct Type;                // satcat5/net_core.h
-        class Address;              // satcat5/net_core.h
-        class Dispatch;             // satcat5/net_core.h
-        class Protocol;             // satcat5/net_core.h
+        struct Type;                // satcat5/net_type.h
+        class Address;              // satcat5/net_address.h
+        class Dispatch;             // satcat5/net_dispatch.h
+        class Protocol;             // satcat5/net_protocol.h
         class ProtoConfig;          // satcat5/net_cfgbus.h
         class SocketCore;           // satcat5/net_socket.h
+        class TelemetryAggregator;  // satcat5/net_telemetry.h
+        class TelemetrySource;      // satcat5/net_telemetry.h
+        class TelemetryTier;        // satcat5/net_telemetry.h
     }
 
     namespace poll {                // Queued-task servicing
@@ -173,6 +192,10 @@ namespace satcat5 {
 
     namespace ptp {                 // Precision Time Protocol (PTP)
         class Time;                 // satcat5/ptp_time.h
+        class TrackingClock;        // satcat5/ptp_tracking.h
+        struct TrackingCoeff;       // satcat5/ptp_tracking.h
+        class TrackingDither;       // satcat5/ptp_tracking.h
+        class TrackingController;   // satcat5/ptp_tracking.h
     }
 
     namespace udp {                 // UDP networking
@@ -182,6 +205,8 @@ namespace satcat5 {
         class ProtoConfig;          // satcat5/net_cfgbus.h
         class ProtoEcho;            // satcat5/net_echo.h
         class Socket;               // satcat5/udp_socket.h
+        class SocketCore;           // satcat5/udp_socket.h
+        class Telemetry;            // satcat5/net_telemetry.h
     }
 
     namespace util {                // Other utilities
@@ -190,9 +215,10 @@ namespace satcat5 {
         class ListCore;             // satcat5/list.h
         template <class T>
             class List;             // satcat5/list.h
+        class Prng;                 // satcat5/utils.h
         class RunningMax;           // satcat5/utils.h
         class TimerRegister;        // satcat5/timer.h
-        struct uint128;             // satcat5/uint_wide.h
-        struct uint256;             // satcat5/uint_wide.h
+        template <unsigned W>
+            struct UintWide;        // satcat5/uint_wide.h
     }
 }

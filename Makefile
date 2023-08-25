@@ -36,11 +36,15 @@ CPPCHECK_RUN := cppcheck \
     --std=c++11 --enable=all --xml --xml-version=2 \
     -DSATCAT5_VLAN_ENABLE=1 \
     -i src/cpp/hal_ublaze/overrides.cc \
+    -i src/cpp/qcbor \
+    --suppress=knownConditionTrueFalse \
     --suppress=missingInclude \
     --suppress=unusedFunction
 CPPLINT_RUN := cpplint \
-    --filter=-build/include_order,-build/include_subdir,-readability/casting,-readability/namespace,-runtime/indentation_namespace,-whitespace,+whitespace/end_of_line \
-    --verbose=3 --recursive --exclude=src/cpp/hal_test/catch.hpp
+    --filter=-build/include_order,-build/include_what_you_use,-build/include_subdir,-readability/casting,-readability/namespace,-runtime/indentation_namespace,-whitespace,+whitespace/end_of_line \
+    --exclude=src/cpp/hal_test/catch.hpp \
+    --exclude=src/cpp/qcbor/* \
+    --verbose=3 --recursive
 
 # Set working folders
 SIMS_DIR := ./sim/vhdl/
@@ -134,6 +138,7 @@ log_viewer:
 # Build each of the C++ example tools.
 .PHONY: sw_tools
 sw_tools:
+	@cd examples/arty_managed/oled_demo && make all
 	@cd examples/zcu208_clksynth/config_tool && make all
 	@cd test/log_viewer && make all
 
@@ -145,6 +150,7 @@ sw_test:
 # Run software tests and then generate coverage reports
 .PHONY: sw_coverage
 sw_coverage:
+	@cd ${SW_TEST_DIR} && make clean
 	@cd ${SW_TEST_DIR} && make coverage
 
 # Run software tests and pass/fail based on code coverage

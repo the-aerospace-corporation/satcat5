@@ -76,12 +76,11 @@ end zcu208_clksynth;
 
 architecture zcu208_clksynth of zcu208_clksynth is
 
--- VPLL configuration.  Some known-good combinations:
---  * TAU = 4.0 msec,  SC_PHA = 28, SC_TAU = 32 (generic default)
---  * TAU = 50.0 msec, SC_PHA = 28, SC_TAU = 40 (tuned for ZCU208)
+-- VPLL configuration is tuned for the ZCU208.
 constant PLL_TAU_MS : real := 50.0;     -- VPLL time-constant (msec)
 constant PLL_SC_PHA : natural := 28;    -- VPLL phase precision
 constant PLL_SC_TAU : natural := 40;    -- VPLL frequency precision
+constant PLL_FILTER : boolean := true;  -- Enable auxiliary filter?
 
 -- Configuration constants.
 constant REF_CLK_HZ : integer := 125_000_000;
@@ -280,6 +279,7 @@ u_vpll_dac : entity work.ptp_counter_sync
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => DAC_CLK_HZ,
+    AUX_FILTER  => PLL_FILTER,
     LOOP_TAU_MS => PLL_TAU_MS,
     PHA_SCALE   => PLL_SC_PHA,
     TAU_SCALE   => PLL_SC_TAU,
@@ -309,6 +309,7 @@ u_vpll_aux : entity work.ptp_counter_sync
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => REF_CLK_HZ,
+    AUX_FILTER  => PLL_FILTER,
     LOOP_TAU_MS => PLL_TAU_MS,
     PHA_SCALE   => PLL_SC_PHA,
     TAU_SCALE   => PLL_SC_TAU,

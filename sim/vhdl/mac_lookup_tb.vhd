@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -50,6 +50,7 @@ use     work.tcam_constants.all;
 entity mac_lookup_tb_single is
     generic (
     UUT_LABEL       : string;           -- Human-readable label
+    ALLOW_RUNT      : boolean;          -- Allow undersize frames?
     IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Max stored MAC addresses
@@ -72,6 +73,7 @@ subtype port_mask_t is std_logic_vector(PORT_COUNT-1 downto 0);
 
 -- Overall source state
 signal in_rate      : real := 0.0;
+signal out_rate     : real := 0.0;
 signal pkt_count    : natural := 0;
 signal pkt_delay    : natural := 0;
 signal pkt_mode     : natural := 0;
@@ -336,7 +338,11 @@ begin
                 mac_known(to_integer(pkt_src)) := '1';
                 -- Randomize packet length (bytes including header)
                 uniform(seed1, seed2, rand);
-                pkt_len := 64 + integer(floor(rand * 64.0));
+                if ALLOW_RUNT then
+                    pkt_len := 18 + integer(floor(rand * 32.0));
+                else
+                    pkt_len := 64 + integer(floor(rand * 32.0));
+                end if;
             end if;
             -- Generate the next data word, one byte at a time.
             in_data <= (others => '0');
@@ -476,15 +482,17 @@ begin
 
         -- Output flow-control randomization.
         uniform(seed1, seed2, rand);
-        out_ready <= bool2bit(rand < 0.5) and not reset_p;
+        out_ready <= bool2bit(rand < out_rate) and not reset_p;
     end if;
 end process;
 
--- Drive the input rate
+-- Select the input and output flow-control rates.
 in_rate <= 0.0 when (pkt_delay > 0)     -- Wait before sending packet
       else 0.0 when (cfg_delay > 0)     -- Wait after configuration change
       else 0.8 when (pkt_mode < 5)      -- 80% for Modes 0-4
       else 1.0;                         -- 100% for random traffic gen.
+
+out_rate <= 0.7 when IO_BYTES < 18 else 0.95;
 
 -- A small FIFO for reference data (including timing).
 -- Note: Includes first word fall-through.
@@ -508,6 +516,7 @@ ref_rd <= out_valid and out_ready;
 -- Unit under test. (One of several configurations.)
 uut : entity work.mac_lookup
     generic map(
+    ALLOW_RUNT      => ALLOW_RUNT,
     IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => TABLE_SIZE,
@@ -644,6 +653,7 @@ end process;
 uut0 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit0",
+    ALLOW_RUNT      => true,
     IO_BYTES        => 1,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 12,
@@ -657,6 +667,7 @@ uut0 : entity work.mac_lookup_tb_single
 uut1 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit1",
+    ALLOW_RUNT      => true,
     IO_BYTES        => 6,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 16,
@@ -669,6 +680,7 @@ uut1 : entity work.mac_lookup_tb_single
 uut2 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit2",
+    ALLOW_RUNT      => false,
     IO_BYTES        => 12,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 32,
@@ -681,7 +693,8 @@ uut2 : entity work.mac_lookup_tb_single
 uut3 : entity work.mac_lookup_tb_single
     generic map(
     UUT_LABEL       => "Unit3",
-    IO_BYTES        => 16,
+    ALLOW_RUNT      => true,
+    IO_BYTES        => 18,
     PORT_COUNT      => 12,
     TABLE_SIZE      => 32,
     MISS_BCAST      => '1')

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -22,6 +22,8 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/ptp_time.h>
 
+using satcat5::ptp::MSEC_PER_SEC;
+using satcat5::ptp::USEC_PER_SEC;
 using satcat5::ptp::NSEC_PER_SEC;
 using satcat5::ptp::SUBNS_PER_SEC;
 using satcat5::ptp::SUBNS_PER_NSEC;
@@ -63,22 +65,34 @@ TEST_CASE("ptp_time") {
 
     SECTION("Delta") {
         Time t1(1e5, 0);
+        CHECK(t1.delta_msec() == 1e5 * MSEC_PER_SEC);
+        CHECK(t1.delta_usec() == 1e5 * USEC_PER_SEC);
         CHECK(t1.delta_nsec() == 1e5 * NSEC_PER_SEC);
         CHECK(t1.delta_subns() == 1e5 * SUBNS_PER_SEC);
         CHECK((-t1).delta_nsec() == -1e5 * NSEC_PER_SEC);
         CHECK((-t1).delta_subns() == -1e5 * SUBNS_PER_SEC);
 
         Time t2(1e6, 0);
+        CHECK(t2.delta_msec() == 1e6 * MSEC_PER_SEC);
+        CHECK(t2.delta_usec() == 1e6 * USEC_PER_SEC);
         CHECK(t2.delta_nsec() == 1e6 * NSEC_PER_SEC);
         CHECK(t2.delta_subns() == INT64_MAX);
         CHECK((-t2).delta_nsec() == -1e6 * NSEC_PER_SEC);
         CHECK((-t2).delta_subns() == INT64_MIN);
 
         Time t3(1e10, 0);
+        CHECK(t3.delta_msec() == 1e10 * MSEC_PER_SEC);
+        CHECK(t3.delta_usec() == 1e10 * USEC_PER_SEC);
         CHECK(t3.delta_nsec() == INT64_MAX);
         CHECK(t3.delta_subns() == INT64_MAX);
         CHECK((-t3).delta_nsec() == INT64_MIN);
         CHECK((-t3).delta_subns() == INT64_MIN);
+
+        Time t4(1, 234567890);
+        CHECK(t4.delta_msec() == 1235ll);
+        CHECK(t4.delta_usec() == 1234568ll);
+        CHECK(t4.delta_nsec() == 1234567890ll);
+        CHECK(t4.delta_subns() == 80908641239040ll);
     }
 
     SECTION("ReadFrom") {

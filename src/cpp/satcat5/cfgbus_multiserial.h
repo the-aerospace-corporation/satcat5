@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -37,7 +37,7 @@ namespace satcat5 {
         class MultiSerial
             : public    satcat5::cfg::Interrupt
             , protected satcat5::io::EventListener
-            , protected satcat5::poll::OnDemand
+            , public    satcat5::poll::OnDemand
         {
         public:
             // How full is the transmit queue? (0-100%)

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -40,6 +40,7 @@ static const unsigned REG_MAC_MSB   = 12;   // MAC-table queries (read-write)
 static const unsigned REG_MAC_CTRL  = 13;   // MAC-table queries (read-write)
 static const unsigned REG_MISSFLAG  = 14;   // Miss-as-broadcast port mask (read-write)
 static const unsigned REG_PTP_2STEP = 15;   // PTP "twoStep" mode flag (read-write)
+static const unsigned REG_VLAN_RATE = 16;   // VLAN rate-control configuration (write-only)
 static unsigned REG_PORT(unsigned idx)      {return 512 + 16*idx;}
 static unsigned REG_PTP_RX(unsigned idx)    {return REG_PORT(idx) + 8;}
 static unsigned REG_PTP_TX(unsigned idx)    {return REG_PORT(idx) + 9;}
@@ -73,6 +74,7 @@ TEST_CASE("switch_cfg") {
     regs[REG_MAC_CTRL].read_default(0);             // Default = Idle/done
     regs[REG_MISSFLAG].read_default_echo();         // Miss-as-broadcast port mask
     regs[REG_PTP_2STEP].read_default_echo();        // PTP twoStep = echo
+    regs[REG_VLAN_RATE].read_default(16);           // Rate-limiter ACCUM_WIDTH
 
     for (unsigned a = 0 ; a < PORT_COUNT ; ++a) {
         regs[REG_PTP_RX(a)].read_default_echo();    // PTP time offset (Rx)
@@ -84,7 +86,7 @@ TEST_CASE("switch_cfg") {
 
     // Confirm startup process clears the priority table.
     // (This also implicitly tests the "priority_reset" method.)
-    CHECK(regs[REG_PRIORITY].write_count() == TBL_PRIORITY);
+    CHECK(regs[REG_PRIORITY].write_queue() == TBL_PRIORITY);
     for (unsigned a = 0 ; a < TBL_PRIORITY ; ++a) {
         CHECK(regs[REG_PRIORITY].write_pop() == (a << 24));
     }
@@ -96,7 +98,7 @@ TEST_CASE("switch_cfg") {
         //  CC = EtherType
         bool ok;
         ok = uut.priority_set(0x1234, 17);  // Invalid length
-        CHECK(!ok); CHECK(regs[REG_PRIORITY].write_count() == 0);
+        CHECK(!ok); CHECK(regs[REG_PRIORITY].write_queue() == 0);
         ok = uut.priority_set(0x1234, 16);  // 0x1234 only
         CHECK(ok);  CHECK(regs[REG_PRIORITY].write_pop() == 0x00001234u);
         ok = uut.priority_set(0x2340, 12);  // 0x2340 - 0x234F
@@ -106,7 +108,7 @@ TEST_CASE("switch_cfg") {
         ok = uut.priority_set(0x4000, 4);   // 0x4000 - 0x4FFF
         CHECK(ok);  CHECK(regs[REG_PRIORITY].write_pop() == 0x030C4000u);
         ok = uut.priority_set(0x5678, 16);  // Table overflow
-        CHECK(!ok); CHECK(regs[REG_PRIORITY].write_count() == 0);
+        CHECK(!ok); CHECK(regs[REG_PRIORITY].write_queue() == 0);
     }
 
     SECTION("miss-broadcast") {
@@ -250,6 +252,17 @@ TEST_CASE("switch_cfg") {
             uut.vlan_set_port(a);
             CHECK(regs[REG_VLAN_PORT].write_pop() == a);
         }
+    }
+
+    SECTION("vlan_rates") {
+        uut.vlan_set_rate(0x123, satcat5::eth::VRATE_UNLIMITED);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 0);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 0);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 0x80000123u);
+        uut.vlan_set_rate(0x234, satcat5::eth::VRATE_1GBPS);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 500);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 500);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 0xA8000234u);
     }
 
     SECTION("mactbl_read") {

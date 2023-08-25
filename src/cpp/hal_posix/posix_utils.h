@@ -76,7 +76,8 @@ namespace satcat5 {
         class PosixTimer : public satcat5::util::GenericTimer {
         public:
             PosixTimer();
-            u32 now() override;
+            u32 now() override;     // Monotonic millisecond counter
+            s64 gps() const;        // Milliseconds since GPS epoch
         };
 
         // Link a PosixTimer to the main polling timekeeper.
@@ -85,6 +86,9 @@ namespace satcat5 {
         public:
             PosixTimekeeper();
             ~PosixTimekeeper();
+
+            inline s64 gps() {return m_timer.gps();}
+            inline u32 now() {return m_timer.now();}
 
             satcat5::util::GenericTimer* timer() {return &m_timer;}
 

@@ -167,12 +167,32 @@ This can save several kilobytes of code-space.
 
 Many embedded systems should also set "SATCAT5_CFGBUS_DIRECT=1" to minimize code size.
 
+# QCBOR library
+
+The "qcbor" folder contains Laurence Lundblade's
+[QCBOR library](https://github.com/laurencelundblade/QCBOR).
+It is derived from version 1.2, but with a flattened folder structure,
+no support code, and minimal compatibility fixes for specific compilers.
+
+QCBOR is redistributed alongside SatCat5 under the terms of its
+[open-source license](qcbor/README.md),
+which is essentially the 3-clause BSD license.
+
+The QCBOR library is used for encoding of CBOR key-value dictionaries as part of the 
+`eth::Telemetry` and `udp::Telemetry` classes; see satcat5/net_telemetry.h" for details.
+
+To use this library, set the following compiler options:
+* SATCAT5_CBOR_ENABLE=1 (required to use CBOR-related features)
+* QCBOR_DISABLE_FLOAT_HW_USE (recommended for embedded platforms)
+* QCBOR_DISABLE_PREFERRED_FLOAT (drop support for half-precision floats)
+
 # Unit tests
 
 Unit tests for many functions are [included here](../../sim/cpp).
 We attempt to maintain 100% code-coverage of all files in the "src/cpp/satcat5" subfolder.
 
-These tests use the open-source ["Catch2" library](https://github.com/catchorg/Catch2), which is redistributed under the terms of the Boost license.
+These tests use the open-source ["Catch2" library](https://github.com/catchorg/Catch2),
+which is redistributed under the terms of the Boost license.
 
 # Copyright Notice
 

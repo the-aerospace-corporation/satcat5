@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -17,10 +17,8 @@
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
 
-#include <satcat5/ethernet.h>
-#include <satcat5/eth_dispatch.h>
+#include <satcat5/eth_header.h>
 
-using satcat5::eth::Address;
 using satcat5::eth::Header;
 using satcat5::eth::MacAddr;
 
@@ -77,91 +75,3 @@ bool Header::read_from(io::Readable* rd)
         return true;                // Success
     }
 }
-
-Address::Address(satcat5::eth::Dispatch* iface)
-    : m_iface(iface)
-    , m_addr(satcat5::eth::MACADDR_NONE)
-    , m_type(satcat5::eth::ETYPE_NONE)
-    , m_vtag(satcat5::eth::VTAG_NONE)
-{
-    // Nothing else to initialize.
-}
-
-#if SATCAT5_VLAN_ENABLE
-void Address::connect(
-    const satcat5::eth::MacAddr& addr,
-    const satcat5::eth::MacType& type,
-    const satcat5::eth::VlanTag& vtag)
-{
-    m_addr = addr;
-    m_type = type;
-    m_vtag = vtag;
-}
-#else
-void Address::connect(
-    const satcat5::eth::MacAddr& addr,
-    const satcat5::eth::MacType& type)
-{
-    m_addr = addr;
-    m_type = type;
-}
-#endif
-
-satcat5::net::Dispatch* Address::iface() const
-{
-    return m_iface;
-}
-
-satcat5::io::Writeable* Address::open_write(unsigned len) const
-{
-    #if SATCAT5_VLAN_ENABLE
-    return m_iface->open_write(m_addr, m_type, m_vtag);
-    #else
-    return m_iface->open_write(m_addr, m_type);
-    #endif
-}
-
-void Address::close()
-{
-    m_addr = satcat5::eth::MACADDR_NONE;
-    m_type = satcat5::eth::ETYPE_NONE;
-    #if SATCAT5_VLAN_ENABLE
-    m_vtag = satcat5::eth::VTAG_NONE;
-    #endif
-}
-
-bool Address::ready() const
-{
-    return !(m_addr == satcat5::eth::MACADDR_NONE)
-        && !(m_type == satcat5::eth::ETYPE_NONE);
-}
-
-satcat5::eth::Protocol::Protocol(
-        eth::Dispatch* dispatch,
-        const eth::MacType& ethertype)
-    : satcat5::net::Protocol(satcat5::net::Type(ethertype.value))
-    , m_iface(dispatch)
-    , m_etype(ethertype)
-{
-    m_iface->add(this);
-}
-
-#if SATCAT5_VLAN_ENABLE
-satcat5::eth::Protocol::Protocol(
-        eth::Dispatch* dispatch,
-        const eth::MacType& ethertype,
-        const eth::VlanTag& vtag)
-    : satcat5::net::Protocol(satcat5::net::Type(vtag.vid(), ethertype.value))
-    , m_iface(dispatch)
-    , m_etype(ethertype)
-{
-    m_iface->add(this);
-}
-#endif
-
-#if SATCAT5_ALLOW_DELETION
-satcat5::eth::Protocol::~Protocol()
-{
-    m_iface->remove(this);
-}
-#endif

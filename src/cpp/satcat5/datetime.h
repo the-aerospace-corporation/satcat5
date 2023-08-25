@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -40,6 +40,7 @@
 
 #include <satcat5/io_core.h>
 #include <satcat5/polling.h>
+#include <satcat5/ptp_time.h>
 
 namespace satcat5 {
     namespace datetime {
@@ -53,32 +54,15 @@ namespace satcat5 {
         // A time of zero indicates an error.
         static constexpr s64 TIME_ERROR = 0;
 
-        // Real-time clock tracking.  Defaults to T = 0 (unknown).  To use:
-        //  * Instantiate this object and provide a reference timer.
-        //    (The timer is used to self-correct for irregular updates.)
-        //  * Obtain the current clock time from an external source.
-        //  * Convert to GPS time (see functions below) and call set(...).
-        //  * Call get() at any point to obtain the current GPS time.
-        class Clock : protected satcat5::poll::Timer {
-        public:
-            // Constructor requires a reference timer to prevent drift.
-            explicit Clock(satcat5::util::GenericTimer* timer);
+        // Convert an internal timestamp into other formats:
+        satcat5::datetime::GpsTime to_gps(s64 time);
+        satcat5::ptp::Time to_ptp(s64 time);
+        satcat5::datetime::RtcTime to_rtc(s64 time);
 
-            // Get elapsed time since startup (e.g., for ICMP timestamps)
-            inline u32 uptime() const {return m_tcount;}
-
-            // Set/get current GPS time. (0 = Unknown)
-            void set(s64 gps);
-            inline s64 now() const {return m_gps;}
-
-        protected:
-            void timer_event() override;
-
-            satcat5::util::GenericTimer* const m_timer;
-            unsigned m_frac;
-            u32 m_tref, m_tcount;
-            s64 m_gps;
-        };
+        // Convert other formats to an internal timestamp:
+        s64 from_gps(const satcat5::datetime::GpsTime& time);
+        s64 from_ptp(const satcat5::ptp::Time& time);
+        s64 from_rtc(const satcat5::datetime::RtcTime& time);
 
         // GPS week-number and time-of-week:
         //  * Week number
@@ -100,9 +84,6 @@ namespace satcat5 {
                 {wr->write_u32((u32)wkn); wr->write_u32(tow);}
             bool read_from(satcat5::io::Readable* rd);
         };
-
-        satcat5::datetime::GpsTime to_gps(s64 time);
-        s64 from_gps(const satcat5::datetime::GpsTime& time);
 
         // Hardware RTC (e.g., Renesas ISL12082)
         // This format mimics the eight-byte timestamp used by many real-time
@@ -135,10 +116,45 @@ namespace satcat5 {
             bool read_from(satcat5::io::Readable* rd);
         };
 
-        satcat5::datetime::RtcTime to_rtc(s64 time);
-        s64 from_rtc(const satcat5::datetime::RtcTime& time);
-
         static const datetime::RtcTime RTC_ERROR = {0, 0, 0, 0, 0, 0, 0, 0};
         static const u8 RTC_MIL_BIT = 0x80; // Indicates 24-HOUR clock format
+
+        // Real-time clock tracking.  Defaults to T = 0 (unknown).  To use:
+        //  * Instantiate this object and provide a reference timer.
+        //    (The timer is used to self-correct for irregular updates.)
+        //  * Obtain the current clock time from an external source.
+        //  * Convert to GPS time (see functions below) and call set(...).
+        //  * Call now(), gps(), or ptp() at any point to obtain the current
+        //    time in the designated format.
+        class Clock : protected satcat5::poll::Timer {
+        public:
+            // Constructor requires a reference timer to prevent drift.
+            explicit Clock(satcat5::util::GenericTimer* timer);
+
+            // Get elapsed time since startup (e.g., for ICMP timestamps)
+            inline u32 uptime() const {return m_tcount;}
+
+            // Set/get current GPS time. (0 = Unknown)
+            //  now() = Milliseconds since GPS epoch.
+            //  gps() = GPS week number and time-of-week.
+            //  ptp() = Precision Time Protocol timestamp.
+            //  rtc() = ISL12082 real-time clock.
+            void set(s64 gps);
+            inline s64 now() const {return m_gps;}
+            inline satcat5::datetime::GpsTime gps() const
+                { return satcat5::datetime::to_gps(m_gps); }
+            inline satcat5::ptp::Time ptp() const
+                { return satcat5::datetime::to_ptp(m_gps); }
+            inline satcat5::datetime::RtcTime rtc() const
+                { return satcat5::datetime::to_rtc(m_gps); }
+
+        protected:
+            void timer_event() override;
+
+            satcat5::util::GenericTimer* const m_timer;
+            unsigned m_frac;
+            u32 m_tref, m_tcount;
+            s64 m_gps;
+        };
     }
 }

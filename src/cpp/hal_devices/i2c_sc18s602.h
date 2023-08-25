@@ -59,8 +59,8 @@ namespace satcat5 {
             protected:
                 // I2C callback handler.
                 void i2c_done(
-                    u8 noack, u8 devaddr, u32 regaddr,
-                    unsigned nread, const u8* rdata) override;
+                    bool noack, const satcat5::util::I2cAddr& devaddr,
+                    u32 regaddr, unsigned nread, const u8* rdata) override;
 
                 // Execute a series of I2C commands.
                 bool execute(u8 devidx, const u8* wrdata, u8 rwbytes, u8 skip);

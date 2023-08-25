@@ -62,6 +62,11 @@ package PTP_TYPES is
     function get_time_sec(t: tstamp_t) return real;
     function get_time_nsec(t: tstamp_t) return real;
 
+    -- Auto-scaling for tracking loop coefficients.
+    -- Given floating-point gain, return recommended fixed-point scaling.
+    -- Optional hint parameter can be used to override automatic mode.
+    function auto_scale(gain: real; bmin, hint: natural := 0) return natural;
+
     -- PTP timestamp for real-time clocks referenced to the PTP epoch.
     -- As defined IEEE-1588 Section 5.3.3, plus a "subnanoseconds" field.
     type ptp_time_t is record
@@ -190,4 +195,18 @@ package body PTP_TYPES is
     begin
         return s2r(signed(t)) / ONE_NSEC;
     end function;
+
+    function auto_scale(gain: real; bmin, hint: natural := 0) return natural is
+        -- How many fixed-point bits required to represent gain accurately?
+        variable bits : integer := integer(round(log(64.0 / gain) / log(2.0)));
+    begin
+        if (hint > 0) then
+            return hint;    -- User-specified width
+        elsif (bits > bmin) then
+            return bits;    -- Automatic width
+        else
+            return bmin;    -- Minimum width
+        end if;
+    end function;
+
 end package body;
