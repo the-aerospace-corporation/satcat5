@@ -18,13 +18,17 @@
 //////////////////////////////////////////////////////////////////////////
 // Test cases for misc math utilities.
 
+#include <cmath>
 #include <cstring>
 #include <hal_posix/file_io.h>
 #include <hal_test/catch.hpp>
+#include <hal_test/sim_utils.h>
 #include <satcat5/build_date.h>
 #include <satcat5/utils.h>
+#include <set>
 
 using namespace satcat5::util;
+using satcat5::test::Statistics;
 
 TEST_CASE("build_date.h") {
     // Get the two build-date macros.
@@ -139,6 +143,38 @@ TEST_CASE("utils.h") {
         CHECK(div_round_s32(9, 3) == 3);
         CHECK(div_ceil_u32 (9, 3) == 3);
         CHECK(div_ceil_s32 (9, 3) == 3);
+    }
+    SECTION("round") {
+        // Rounding for signed doubles.
+        CHECK(round_s64(-1.51) == -2);
+        CHECK(round_s64(-1.49) == -1);
+        CHECK(round_s64(-0.51) == -1);
+        CHECK(round_s64(-0.49) == 0);
+        CHECK(round_s64( 0.49) == 0);
+        CHECK(round_s64( 0.51) == 1);
+        CHECK(round_s64( 1.49) == 1);
+        CHECK(round_s64( 1.51) == 2);
+        // Rounding for signed floats.
+        CHECK(round_s64(-1.51f) == -2);
+        CHECK(round_s64(-1.49f) == -1);
+        CHECK(round_s64(-0.51f) == -1);
+        CHECK(round_s64(-0.49f) == 0);
+        CHECK(round_s64( 0.49f) == 0);
+        CHECK(round_s64( 0.51f) == 1);
+        CHECK(round_s64( 1.49f) == 1);
+        CHECK(round_s64( 1.51f) == 2);
+        // Rounding for unsigned doubles.
+        CHECK(round_u64( 0.01) == 0);
+        CHECK(round_u64( 0.49) == 0);
+        CHECK(round_u64( 0.51) == 1);
+        CHECK(round_u64( 1.49) == 1);
+        CHECK(round_u64( 1.51) == 2);
+        // Rounding for unsigned floats.
+        CHECK(round_u64( 0.01f) == 0);
+        CHECK(round_u64( 0.49f) == 0);
+        CHECK(round_u64( 0.51f) == 1);
+        CHECK(round_u64( 1.49f) == 1);
+        CHECK(round_u64( 1.51f) == 2);
     }
     SECTION("max") {
         CHECK(max_u8 (3, 5) == 5);
@@ -256,6 +292,21 @@ TEST_CASE("utils.h") {
         CHECK(extract_be_u16(test+0) == 0x1234u);
         CHECK(extract_be_u16(test+2) == 0x5678u);
     }
+    SECTION("be_u64") {
+        u8 test[8];
+        write_be_u64(test, 0x123456789ABCDEF0ull);
+        CHECK(test[0] == 0x12u);
+        CHECK(test[1] == 0x34u);
+        CHECK(test[2] == 0x56u);
+        CHECK(test[3] == 0x78u);
+        CHECK(test[4] == 0x9Au);
+        CHECK(test[5] == 0xBCu);
+        CHECK(test[6] == 0xDEu);
+        CHECK(test[7] == 0xF0u);
+        CHECK(extract_be_u64(test) == 0x123456789ABCDEF0ull);
+        CHECK(extract_be_u32(test+0) == 0x12345678u);
+        CHECK(extract_be_u32(test+4) == 0x9ABCDEF0u);
+    }
     SECTION("xor_reduce") {
         CHECK(!xor_reduce_u8(0x12));        // 2 set bits
         CHECK(xor_reduce_u8(0x34));         // 3 set bits
@@ -265,6 +316,16 @@ TEST_CASE("utils.h") {
         CHECK(!xor_reduce_u32(0x1234567));  // 12 set bits
         CHECK(xor_reduce_u64(0x123456789ABCDull));      // 25 set bits
         CHECK(!xor_reduce_u64(0x123456789ABCDEull));    // 28 set bits
+    }
+    SECTION("Prng") {
+        // Confirm no repeats in the first N outputs.
+        std::set<u32> history;
+        Prng uut;
+        for (unsigned a = 0 ; a < 10000 ; ++a) {
+            u32 next = uut.next();
+            REQUIRE(history.find(next) == history.end());
+            history.insert(next);
+        }
     }
     SECTION("RunningMax") {
         RunningMax uut;                 // Max = "None"
@@ -282,6 +343,26 @@ TEST_CASE("utils.h") {
         uut.clear();                    // Max = "None"
         CHECK(uut.m_label[0] == 'N');
         CHECK(uut.m_maximum == 0);
+    }
+    SECTION("Statistics") {
+        Statistics uut;
+        uut.add(1.0);
+        uut.add(2.0);
+        uut.add(3.0);
+        uut.add(4.0);
+        // Test each function with four data points.
+        CHECK(abs(uut.mean() - 2.5) < 1e-9);
+        CHECK(abs(uut.msq() - 7.5) < 1e-9);
+        CHECK(abs(uut.rms() - sqrt(7.5)) < 1e-9);
+        CHECK(abs(uut.std() - sqrt(1.25)) < 1e-9);
+        CHECK(abs(uut.var() - 1.25) < 1e-9);
+        // Repeat after adding another data point.
+        uut.add(5.0);
+        CHECK(abs(uut.mean() - 3.0) < 1e-9);
+        CHECK(abs(uut.msq() - 11.0) < 1e-9);
+        CHECK(abs(uut.rms() - sqrt(11.0)) < 1e-9);
+        CHECK(abs(uut.std() - sqrt(2.0)) < 1e-9);
+        CHECK(abs(uut.var() - 2.0) < 1e-9);
     }
     SECTION("Endian") {
         const char* lbl = "Unknown";

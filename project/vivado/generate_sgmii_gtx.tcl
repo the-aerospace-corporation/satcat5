@@ -56,8 +56,8 @@ proc generate_sgmii_gtx {gt_loc {core_name sgmii_gtx0} {include_shared_logic 1} 
     }
     # Some additional properties are only set if present.
     # (Depends on installed LogiCORE IP version.)
-    catch -quiet {set_property CONFIG.Physical_Interface Transceiver $ip_obj}
-    catch -quiet {set_property CONFIG.GT_Location $gt_loc $ip_obj}
+    catch {set_property CONFIG.Physical_Interface Transceiver $ip_obj}
+    catch {set_property CONFIG.GT_Location $gt_loc $ip_obj}
     # Generate files for the new core.
     generate_target {instantiation_template} [get_files $core_name.xci]
     generate_target all [get_files $core_name.xci]

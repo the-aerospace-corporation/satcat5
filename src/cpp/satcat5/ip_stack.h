@@ -59,6 +59,14 @@ namespace satcat5 {
             // User services.
             satcat5::udp::ProtoEcho     m_echo;         // Echo on UDP port 7
             satcat5::ip::Ping           m_ping;         // Ping+Arping utilities
+
+            // Other accessors:
+            inline satcat5::ip::Addr ipaddr() const
+                {return m_ip.ipaddr();}
+            inline satcat5::eth::MacAddr macaddr() const
+                {return m_ip.macaddr();}
+            inline void set_addr(const satcat5::ip::Addr& addr)
+                {m_ip.set_addr(addr);}
         };
     }
 }

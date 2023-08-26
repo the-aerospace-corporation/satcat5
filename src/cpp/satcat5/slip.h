@@ -83,9 +83,9 @@ namespace satcat5 {
             void write_next(u8 data) override;
 
             // Internal state:
-            enum decode_state {DECODE_RDY, DECODE_ESC, DECODE_EOF, DECODE_ERR};
-            satcat5::io::Writeable* const m_dst;    // Output object
-            decode_state m_state;                   // Decoder state
+            enum class State {SLIP_RDY, SLIP_ESC, SLIP_EOF, SLIP_ERR};
+            satcat5::io::Writeable* const m_dst;        // Output object
+            satcat5::io::SlipDecoder::State m_state;    // Decoder state
         };
 
         // Buffered SLIP encoder / decoder pair.

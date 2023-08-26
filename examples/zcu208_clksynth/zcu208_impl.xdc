@@ -46,3 +46,4 @@ set_clock_groups -asynchronous \
 # Explicit delay constraints on clock-crossing signals.
 set_max_delay -datapath_only 5.0 -from [get_cells -hier -filter {satcat5_cross_clock_src > 0}]
 set_max_delay -datapath_only 5.0 -to   [get_cells -hier -filter {satcat5_cross_clock_dst > 0}]
+set_max_delay -datapath_only 5.0 -from [get_cells {u_vref/u_ctr/tstamp*[*]}]

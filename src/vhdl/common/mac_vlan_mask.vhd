@@ -84,7 +84,7 @@ entity mac_vlan_mask is
     out_valid   : out std_logic;
     out_ready   : in  std_logic;
 
-    -- Configuration interface (write-only)
+    -- Configuration interface (writes required, reads optional)
     cfg_cmd     : in  cfgbus_cmd;
     cfg_ack     : out cfgbus_ack;
 
@@ -154,7 +154,7 @@ end process;
 -- (Concurrent with pipeline stage 2, above.)
 u_table : dpram
     generic map(
-    AWIDTH      => 12,
+    AWIDTH      => VLAN_VID_WIDTH,
     DWIDTH      => PORT_COUNT,
     TRIPORT     => READBACK_EN)
     port map(

@@ -69,7 +69,8 @@ namespace satcat5 {
 
         protected:
             // Shared logic for for read() and write() methods.
-            bool enqueue_cmd(u8 devaddr,
+            bool enqueue_cmd(
+                const satcat5::util::I2cAddr& devaddr,
                 u8 regbytes, u32 regaddr,
                 u8 nwrite, const u8* data, u8 nread,
                 satcat5::cfg::I2cEventListener* callback = 0);
@@ -79,7 +80,7 @@ namespace satcat5 {
 
             // Metadata for queued commands.
             satcat5::cfg::I2cEventListener* m_callback[SATCAT5_I2C_MAXCMD];
-            u8  m_devaddr[SATCAT5_I2C_MAXCMD];
+            u16 m_devaddr[SATCAT5_I2C_MAXCMD];
             u32 m_regaddr[SATCAT5_I2C_MAXCMD];
 
             // Working buffer for transmit and receive data.

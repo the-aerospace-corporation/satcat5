@@ -42,6 +42,7 @@ but even more useful for things like small satellites and cubesats,
 which typically pack many microcontroller-based subsystems into a small volume.
 
 SatCat5 is used for the modular payload interface on [the Slingshot-1 cubesat mission](https://aerospace.org/article/slingshot-platform-showcase-advantages-modular-payload-architecture).
+For more details, please refer to the [full interface specification](../examples/slingshot).
 
 ### Can I customize it?
 

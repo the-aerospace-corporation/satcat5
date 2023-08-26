@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -47,12 +47,14 @@ entity wrap_switch_core is
     MISS_BCAST      : boolean;  -- Broadcast or drop unknown MAC?
     ALLOW_JUMBO     : boolean;  -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;  -- Allow runt frames? (Size < 64 bytes)
+    ALLOW_PRECOMMIT : boolean;  -- Allow output FIFO cut-through?
     PORT_COUNT      : integer;  -- Total standard Ethernet ports
     PORTX_COUNT     : integer;  -- Total 10-gigabit Ethernet ports
     DATAPATH_BYTES  : integer;  -- Width of shared pipeline
     IBUF_KBYTES     : integer;  -- Input buffer size (kilobytes)
     HBUF_KBYTES     : integer;  -- High-priority output buffer (kilobytes)
     OBUF_KBYTES     : integer;  -- Output buffer size (kilobytes)
+    PTP_MIXED_STEP  : boolean;  -- Support PTP format conversion?
     MAC_TABLE_EDIT  : boolean;  -- Manual read/write of MAC table?
     MAC_TABLE_SIZE  : integer); -- Max stored MAC addresses
     port (
@@ -1929,12 +1931,14 @@ u_wrap : entity work.switch_core
     MISS_BCAST      => MISS_BCAST,
     ALLOW_JUMBO     => ALLOW_JUMBO,
     ALLOW_RUNT      => ALLOW_RUNT,
+    ALLOW_PRECOMMIT => ALLOW_PRECOMMIT,
     PORT_COUNT      => PORT_COUNT,
     PORTX_COUNT     => PORTX_COUNT,
     DATAPATH_BYTES  => DATAPATH_BYTES,
     IBUF_KBYTES     => IBUF_KBYTES,
     HBUF_KBYTES     => HBUF_KBYTES,
     OBUF_KBYTES     => OBUF_KBYTES,
+    PTP_MIXED_STEP  => PTP_MIXED_STEP,
     MAC_TABLE_EDIT  => MAC_TABLE_EDIT,
     MAC_TABLE_SIZE  => MAC_TABLE_SIZE)
     port map(

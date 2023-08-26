@@ -27,6 +27,8 @@
 #pragma once
 
 #include <climits>
+#include <satcat5/io_core.h>
+#include <satcat5/log.h>
 #include <satcat5/types.h>
 
 namespace satcat5 {
@@ -40,9 +42,19 @@ namespace satcat5 {
             // Note: Nested templates are used to allow size conversion.
             UintWide() = default;
             constexpr explicit UintWide(u32 rhs)
-                : m_data{rhs} {}
+                : m_data{u32(rhs)} {}
             constexpr explicit UintWide(u64 rhs)
                 : m_data{u32(rhs >> 0), u32(rhs >> 32)} {}
+            explicit UintWide(s32 rhs)
+                : m_data{u32(rhs)} {
+                for (unsigned a = 1 ; a < W ; ++a)
+                    m_data[a] = sign_extend(rhs);
+            }
+            explicit UintWide(s64 rhs)
+                : m_data{u32(rhs >> 0), u32(rhs >> 32)} {
+                for (unsigned a = 2 ; a < W ; ++a)
+                    m_data[a] = sign_extend(rhs);
+            }
             constexpr UintWide(u32 hi, u32 lo)
                 : m_data{lo, hi} {}
             template <unsigned W2> explicit UintWide(const UintWide<W2>& rhs) {
@@ -63,6 +75,10 @@ namespace satcat5 {
                 }
                 return *this;
             }
+
+            // Total width in bits or in words.
+            inline unsigned width_bits() const { return 32 * W; }
+            inline unsigned width_words() const { return W; }
 
             // Index of most significant '1' bit.
             unsigned msb() const {
@@ -133,7 +149,7 @@ namespace satcat5 {
                 for (unsigned a = 0 ; a+1 < W ; ++a) {
                     if (tmp.m_data[a] < rhs.m_data[a]) {
                         ++tmp.m_data[a+1]; carry = true;
-                    } else if (carry && rhs.m_data[a] == UINT32_MAX) {
+                    } else if (carry && tmp.m_data[a] == rhs.m_data[a]) {
                         ++tmp.m_data[a+1]; carry = true;
                     } else {
                         carry = false;
@@ -152,7 +168,7 @@ namespace satcat5 {
                 for (unsigned a = 0 ; a+1 < W ; ++a) {
                     if (m_data[a] < rhs.m_data[a]) {
                         ++m_data[a+1]; carry = true;
-                    } else if (carry && rhs.m_data[a] == UINT32_MAX) {
+                    } else if (carry && m_data[a] == rhs.m_data[a]) {
                         ++m_data[a+1]; carry = true;
                     } else {
                         carry = false;
@@ -176,7 +192,7 @@ namespace satcat5 {
                 for (unsigned a = 0 ; a+1 < W ; ++a) {
                     if (tmp.m_data[a] > m_data[a]) {
                         --tmp.m_data[a+1]; carry = true;
-                    } else if (carry && rhs.m_data[a] == UINT32_MAX) {
+                    } else if (carry && tmp.m_data[a] == rhs.m_data[a]) {
                         --tmp.m_data[a+1]; carry = true;
                     } else {
                         carry = false;
@@ -191,7 +207,7 @@ namespace satcat5 {
             UintWide<W> operator*(const UintWide<W>& rhs) const {
                 // Calculate, scale, and sum each of the inner-product terms.
                 // (Skip any that fall outside the useful dynamic range.)
-                UintWide<W> sum(0u);
+                UintWide<W> sum(u32(0));
                 for (unsigned a = 0 ; a < W ; ++a) {
                     for (unsigned b = 0 ; a + b < W ; ++b) {
                         u64 aa = (u64)m_data[a];
@@ -331,14 +347,49 @@ namespace satcat5 {
                 }
                 return (any > 0);
             }
-            operator uint32_t() const {
+            constexpr operator int32_t() const {
+                return (int32_t)uint32_t(*this);
+            }
+            constexpr operator int64_t() const {
+                return (int64_t)uint64_t(*this);
+            }
+            constexpr operator uint32_t() const {
                 return (W > 0) ? m_data[0] : 0;
             }
-            operator uint64_t() const {
-                u64 lo = (W > 0) ? m_data[0] : 0;
-                u64 hi = (W > 1) ? m_data[1] : 0;
-                return (hi << 32) | lo;
+            constexpr operator uint64_t() const {
+                return u64((W > 1) ? m_data[1] : 0) << 32
+                     | u64((W > 0) ? m_data[0] : 0);
             }
+
+            // Binary and human-readable I/O methods.
+            void log_to(satcat5::log::LogBuffer& obj) const {
+                obj.wr_str(" = 0x");
+                for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
+                    obj.wr_hex(m_data[a], 8);
+                }
+            }
+
+            bool read_from(satcat5::io::Readable* rd) {
+                if (rd->get_read_ready() >= 4*W) {
+                    for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
+                        m_data[a] = rd->read_u32();
+                    }
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+
+            void write_to(satcat5::io::Writeable* wr) const {
+                for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
+                    wr->write_u32(m_data[a]);
+                }
+            }
+
+        private:
+            // Helper function for sign-extension.
+            template <typename T> inline constexpr u32 sign_extend(T x)
+                { return u32((x < 0) ? -1 : 0); }
         };
 
         // Shorthand for commonly used sizes.
@@ -347,11 +398,11 @@ namespace satcat5 {
         typedef satcat5::util::UintWide<16> uint512_t;
 
         // Shorthand for commonly used constants.
-        constexpr satcat5::util::uint128_t UINT128_ZERO(0u);
-        constexpr satcat5::util::uint256_t UINT256_ZERO(0u);
-        constexpr satcat5::util::uint512_t UINT512_ZERO(0u);
-        constexpr satcat5::util::uint128_t UINT128_ONE(1u);
-        constexpr satcat5::util::uint256_t UINT256_ONE(1u);
-        constexpr satcat5::util::uint512_t UINT512_ONE(1u);
+        constexpr satcat5::util::uint128_t UINT128_ZERO(u32(0));
+        constexpr satcat5::util::uint256_t UINT256_ZERO(u32(0));
+        constexpr satcat5::util::uint512_t UINT512_ZERO(u32(0));
+        constexpr satcat5::util::uint128_t UINT128_ONE(u32(1));
+        constexpr satcat5::util::uint256_t UINT256_ONE(u32(1));
+        constexpr satcat5::util::uint512_t UINT512_ONE(u32(1));
     }
 }

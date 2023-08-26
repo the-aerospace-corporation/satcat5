@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -85,7 +85,7 @@ TEST_CASE("ICMP") {
 
     // Open a connection and execute ARP handshake.
     satcat5::ip::Address addr(&ip_controller, satcat5::ip::PROTO_ICMP);
-    addr.connect(IP_PERIPHERAL, IP_PERIPHERAL);
+    addr.connect(IP_PERIPHERAL);
     satcat5::poll::service_all();
     REQUIRE(addr.iface() == &ip_controller);
     REQUIRE(addr.ready());

@@ -74,8 +74,8 @@ bool Tca9548::write(const I2cAddr& devaddr,
 }
 
 void Tca9548::i2c_done(
-    u8 noack, u8 devaddr, u32 regaddr,
-    unsigned nread, const u8* rdata)
+    bool noack, const I2cAddr& devaddr,
+    u32 regaddr, unsigned nread, const u8* rdata)
 {
     // Pop callback off the circular buffer.
     I2cEventListener* cb = m_cb_queue[m_cb_rdidx];

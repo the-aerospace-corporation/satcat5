@@ -130,8 +130,8 @@ bool Sc18is602::execute(u8 devidx, const u8* wrdata, u8 rwbytes, u8 skip)
 }
 
 void Sc18is602::i2c_done(
-    u8 noack, u8 devaddr, u32 regaddr,
-    unsigned nread, const u8* rdata)
+    bool noack, const I2cAddr& devaddr,
+    u32 regaddr, unsigned nread, const u8* rdata)
 {
     // Sanity check before proceeding...
     if (m_busy == 0) {

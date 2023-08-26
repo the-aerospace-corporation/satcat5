@@ -346,7 +346,7 @@ TEST_CASE("cfgbus-remote-udp") {
     udp::ProtoConfig uut_peripheral(&udp_peripheral, &cfg);
 
     // Connect to remote host and run ARP handshake.
-    uut_controller.connect(IP_PERIPHERAL, IP_PERIPHERAL);
+    uut_controller.connect(IP_PERIPHERAL);
     satcat5::poll::service_all();
     REQUIRE(uut_controller.ready());
 

@@ -114,6 +114,7 @@ project addfile ../../src/vhdl/common/packet_delay.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_inject.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_round_robin.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realsof.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_realsync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realtime.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_timestamp.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/tcam_constants.vhd VHDL common_sw
@@ -137,12 +138,14 @@ project addfile ../../src/vhdl/common/eth_statistics.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_traffic_src.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_clksynth.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_filter.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_free.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_gen.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_sync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_egress.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_wavesynth.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_fifo.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/cfgbus_gpio.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_host_apb.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_host_axi.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_host_eth.vhd VHDL common_sw
@@ -170,6 +173,7 @@ project addfile ../../src/vhdl/common/mac_lookup.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_priority.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_query.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_vlan_mask.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/mac_vlan_rate.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_core.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_adapter.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/port_cfgbus.vhd VHDL common_sw
@@ -280,6 +284,7 @@ project addfile ../../sim/vhdl/mac_lookup_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_priority_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_query_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_vlan_mask_tb.vhd VHDL test
+project addfile ../../sim/vhdl/mac_vlan_rate_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_delay_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_inject_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_round_robin_tb.vhd VHDL test
@@ -300,6 +305,8 @@ project addfile ../../sim/vhdl/ptp_adjust_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_clksynth_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_counter_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_egress_tb.vhd VHDL test
+project addfile ../../sim/vhdl/ptp_filter_tb.vhd VHDL test
+project addfile ../../sim/vhdl/ptp_realsync_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_realtime_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_cache_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_proxy_tb.vhd VHDL test

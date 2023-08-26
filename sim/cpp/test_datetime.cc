@@ -1,5 +1,5 @@
 // //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -26,11 +26,14 @@
 using satcat5::datetime::GpsTime;
 using satcat5::datetime::RtcTime;
 using satcat5::datetime::from_gps;
+using satcat5::datetime::from_ptp;
 using satcat5::datetime::from_rtc;
 using satcat5::datetime::to_gps;
+using satcat5::datetime::to_ptp;
 using satcat5::datetime::to_rtc;
 using satcat5::datetime::RTC_ERROR;
 using satcat5::datetime::TIME_ERROR;
+typedef satcat5::ptp::Time PtpTime;
 
 // Direct access for functions that aren't in the public API.
 extern u8 bcd_convert_24hr(u8 val);
@@ -92,6 +95,29 @@ static void check_equivalent(
     CHECK(rtc_uut.sc == rtc_ref.sc);
     CHECK(rtc_uut.ss == rtc_ref.ss);
     CHECK(rtc_uut == rtc_ref);
+}
+
+static void check_equivalent(
+    const PtpTime& ptp_ref,
+    const GpsTime& gps_ref)
+{
+    GpsTime gps_uut = to_gps(from_ptp(ptp_ref));
+    PtpTime ptp_uut = to_ptp(from_gps(gps_ref));
+
+    // Check that converted PTP->GPS time matches GPS reference.
+    CHECK(gps_uut.wkn == gps_ref.wkn);
+    CHECK(gps_uut.tow == gps_ref.tow);
+    CHECK(gps_uut == gps_ref);
+
+    // Check that converted GPS->PTP time matches PTP reference.
+    CHECK(ptp_uut.secs() == ptp_ref.secs());
+    CHECK(ptp_uut.nsec() == ptp_ref.nsec());
+    CHECK(ptp_uut == ptp_ref);
+}
+
+u64 gps_seconds(const GpsTime& gps)
+{
+    return u64(7 * 86400 * gps.wkn + gps.tow / 1000);
 }
 
 TEST_CASE("DateTime-Clock") {
@@ -168,6 +194,17 @@ TEST_CASE("DateTime-Conversions") {
         s64 tick2 = from_rtc(make_rtc(0, 20, 5, 12, 22, 00, 01));
         CHECK(tick1 - tick0 == 36000);
         CHECK(tick2 - tick0 == 38000);
+    }
+
+    // PTP conversions follow guidance from IEEE1588-2019 Section B.3.
+    SECTION("PTP Conversions") {
+        const u64 GPS_OFFSET = 315964819;
+        GpsTime gps1 = {1042, 518400000};
+        GpsTime gps2 = {1891, 432000000};
+        satcat5::ptp::Time ptp1(gps_seconds(gps1) + GPS_OFFSET, 0, 0);
+        satcat5::ptp::Time ptp2(gps_seconds(gps2) + GPS_OFFSET, 0, 0);
+        check_equivalent(ptp1, gps1);
+        check_equivalent(ptp2, gps2);
     }
 
     // Check various off-nominal RTC strings.

@@ -28,6 +28,7 @@ using satcat5::test::read;
 // Known-good reference packet #1:
 // (Original 60 bytes / 64 with FCS / 65 with FCS+SLIP)
 // https://www.cl.cam.ac.uk/research/srg/han/ACS-P35/ethercrc/
+static const u32 REF1_CRC = 0x9ED2C2AF;
 static const u8 REF1A[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x20,
     0xAF, 0xB7, 0x80, 0xB8, 0x08, 0x06, 0x00, 0x01,
@@ -60,6 +61,7 @@ static const u8 REF1C[] = {
 // Known-good reference packet #2:
 // (Original 60 bytes / 64 with FCS / 66 with FCS+SLIP)
 // https://electronics.stackexchange.com/questions/170612/fcs-verification-of-ethernet-frame
+static const u32 REF2_CRC = 0x9BF6D0FD;
 static const u8 REF2A[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00,
     0x00, 0x04, 0x14, 0x13, 0x08, 0x00, 0x45, 0x00,
@@ -88,6 +90,22 @@ static const u8 REF2C[] = {
     0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,
     0x42, 0x42, 0x42, 0x42, 0x42, 0x9B, 0xF6, 0xD0,
     0xFD, 0xC0};
+
+TEST_CASE("eth-checksum-raw") {
+    SECTION("crc32-array") {
+        // Call crc32() on each raw example array.
+        CHECK(satcat5::eth::crc32(sizeof(REF1A), REF1A) == REF1_CRC);
+        CHECK(satcat5::eth::crc32(sizeof(REF2A), REF2A) == REF2_CRC);
+    }
+
+    SECTION("crc32-readable") {
+        // Call crc32() on a Readable object for each example.
+        auto ref1 = satcat5::io::ArrayRead(REF1A, sizeof(REF1A));
+        auto ref2 = satcat5::io::ArrayRead(REF2A, sizeof(REF2A));
+        CHECK(satcat5::eth::crc32(&ref1) == REF1_CRC);
+        CHECK(satcat5::eth::crc32(&ref2) == REF2_CRC);
+    }
+}
 
 TEST_CASE("eth-checksum-tx") {
     satcat5::log::ToConsole log;

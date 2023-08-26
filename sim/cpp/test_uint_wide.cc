@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -18,7 +18,9 @@
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the wide-integer arithmetic class
 
+#include <hal_posix/posix_utils.h>
 #include <hal_test/catch.hpp>
+#include <satcat5/io_core.h>
 #include <satcat5/uint_wide.h>
 
 using namespace satcat5::util;
@@ -43,6 +45,29 @@ void debug(const uint128_t& x) {
 
 TEST_CASE("uint_wide.h") {
     Catch::SimplePcg32 rng;
+
+    SECTION("assignment") {
+        uint128_t a = uint128_t((u32)1234);
+        uint128_t b = uint128_t((u64)1234);
+        uint128_t c; c = a;
+        uint128_t d; d = 1234;
+        CHECK(a == b);
+        CHECK(a == c);
+        CHECK(a == d);
+    }
+
+    SECTION("negatives") {
+        uint128_t a = uint128_t((s32)1234);
+        uint128_t b = uint128_t((s64)1234);
+        uint128_t c = uint128_t((s32)-1234);
+        uint128_t d = uint128_t((s64)-1234);
+        CHECK(a == b);
+        CHECK(c == d);
+        CHECK(a == -c);
+        CHECK(a == -d);
+        CHECK(a + c == UINT128_ZERO);
+        CHECK(a + d == UINT128_ZERO);
+    }
 
     SECTION("constants") {
         CHECK(UINT128_ZERO.m_data[0] == 0);
@@ -79,6 +104,8 @@ TEST_CASE("uint_wide.h") {
     SECTION("conversion") {
         uint256_t ref = make256(1, 2, 3, 4, 5, 6, 7, 8);
         CHECK(bool(ref));           // Boolean (x != 0)
+        CHECK(int32_t(ref) == 8);   // Convert to s32 / s64
+        CHECK(int64_t(ref) == 0x700000008ll);
         CHECK(uint32_t(ref) == 8);  // Convert to u32 / u64
         CHECK(uint64_t(ref) == 0x700000008ull);
         uint128_t uut1(ref);        // Truncate
@@ -134,6 +161,29 @@ TEST_CASE("uint_wide.h") {
         CHECK(h == make128(4, 7, 0xFFFFFFFFu, 4));
     }
 
+    SECTION("addition3") {
+        // Define three constants and their sum.
+        const uint128_t a((s64)-985604758632441288ll);
+        const uint128_t b((s64)1007229118000000000ll);
+        const uint128_t c((s64)104235472715776ll);
+        const uint128_t isum((s64)21728594840274488ll);
+        // Test all permutations of "+" operator.
+        // (Addition is commutative, but is our implementation?)
+        CHECK(a + b + c == isum);
+        CHECK(a + c + b == isum);
+        CHECK(b + a + c == isum);
+        CHECK(b + c + a == isum);
+        CHECK(c + a + b == isum);
+        CHECK(c + b + a == isum);
+        // Test all permutations of "+=" operator.
+        {uint128_t x = a; x += b; x += c; CHECK(x == isum);}
+        {uint128_t x = a; x += c; x += b; CHECK(x == isum);}
+        {uint128_t x = b; x += a; x += c; CHECK(x == isum);}
+        {uint128_t x = b; x += c; x += a; CHECK(x == isum);}
+        {uint128_t x = c; x += a; x += b; CHECK(x == isum);}
+        {uint128_t x = c; x += b; x += a; CHECK(x == isum);}
+    }
+
     SECTION("subtraction") {
         CHECK(-make128(0, 0, 0, 0) == make128(0, 0, 0, 0));
         CHECK(-make128(0, 0, 0, 1) == make128(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu));
@@ -146,6 +196,29 @@ TEST_CASE("uint_wide.h") {
         CHECK(b == make128(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 2));
         uint128_t c = make128(4, 5, 0xFFFFFFFFu, 5); c -= make128(4, 5, 0xFFFFFFFFu, 6);
         CHECK(c == make128(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu));
+    }
+
+    SECTION("subtract3") {
+        // Define three constants and their sum.
+        const uint128_t a((s64)-985604758632441288ll);
+        const uint128_t b((s64)1007229118000000000ll);
+        const uint128_t c((s64)104235472715776ll);
+        const uint128_t isum((s64)-21728594840274488ll);
+        // Test all permutations of "-" operator.
+        // (Addition is commutative, but is our implementation?)
+        CHECK(-a - b - c == isum);
+        CHECK(-a - c - b == isum);
+        CHECK(-b - a - c == isum);
+        CHECK(-b - c - a == isum);
+        CHECK(-c - a - b == isum);
+        CHECK(-c - b - a == isum);
+        // Test all permutations of "-=" operator.
+        {uint128_t x = -a; x -= b; x -= c; CHECK(x == isum);}
+        {uint128_t x = -a; x -= c; x -= b; CHECK(x == isum);}
+        {uint128_t x = -b; x -= a; x -= c; CHECK(x == isum);}
+        {uint128_t x = -b; x -= c; x -= a; CHECK(x == isum);}
+        {uint128_t x = -c; x -= a; x -= b; CHECK(x == isum);}
+        {uint128_t x = -c; x -= b; x -= a; CHECK(x == isum);}
     }
 
     SECTION("multiplication") {
@@ -194,5 +267,34 @@ TEST_CASE("uint_wide.h") {
         a |= make128(0, 0, 0, 1); CHECK(a == make128(1, 2, 3, 5));
         a ^= make128(0, 0, 1, 0); CHECK(a == make128(1, 2, 2, 5));
         a &= make128(1, 1, 1, 1); CHECK(a == make128(1, 0, 0, 1));
+    }
+
+    SECTION("logging") {
+        satcat5::log::ToConsole logger;
+        logger.disable();   // Don't echo to screen.
+        uint128_t a = make128(1, 2, 3, 4);
+        satcat5::log::Log(satcat5::log::INFO, "Test").write_obj(a);
+        CHECK(logger.contains("0x00000001000000020000000300000004"));
+    }
+
+    SECTION("read-write") {
+        u8 buff[64];
+        satcat5::io::ArrayWrite uut(buff, sizeof(buff));
+        uint128_t a = make128(1, 2, 3, 4);
+        uint256_t b = make256(1, 2, 3, 4, 5, 6, 7, 8);
+        
+        uut.write_obj(a);
+        uut.write_obj(b);
+        uut.write_finalize();
+        CHECK(uut.written_len() == 48);
+
+        uint128_t c;
+        uint256_t d, e;
+        satcat5::io::ArrayRead rd(buff, uut.written_len());
+        CHECK(rd.read_obj(c));          // Should succeed
+        CHECK(rd.read_obj(d));          // Should succeed
+        CHECK_FALSE(rd.read_obj(e));    // Intentional underflow
+        CHECK(a == c);
+        CHECK(b == d);
     }
 }

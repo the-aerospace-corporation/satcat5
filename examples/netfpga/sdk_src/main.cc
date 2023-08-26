@@ -29,6 +29,7 @@
 #include <satcat5/cfgbus_timer.h>
 #include <satcat5/cfgbus_uart.h>
 #include <satcat5/eth_chat.h>
+#include <satcat5/ip_dhcp.h>
 #include <satcat5/ip_stack.h>
 #include <satcat5/log.h>
 #include <satcat5/port_mailmap.h>
@@ -38,11 +39,14 @@
 
 using satcat5::cfg::LedWave;
 using satcat5::log::Log;
+namespace ip = satcat5::ip;
 
 // Enable diagnostic options?
-static const bool DEBUG_MAC_TABLE   = true;
-static const bool DEBUG_PING_HOST   = true;
-static const bool DEBUG_PORT_STATUS = false;
+#define DEBUG_DHCP_CLIENT   false
+#define DEBUG_DHCP_SERVER   false
+#define DEBUG_MAC_TABLE     true
+#define DEBUG_PING_HOST     true
+#define DEBUG_PORT_STATUS   false
 
 // Global interrupt controller.
 static XIntc irq_xilinx;
@@ -74,14 +78,24 @@ LedWave led_status[] = {
 constexpr unsigned LED_COUNT = sizeof(led_status) / sizeof(led_status[0]);
 
 // UDP network stack
-static const satcat5::eth::MacAddr local_mac
+static constexpr satcat5::eth::MacAddr LOCAL_MAC
     = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-static const satcat5::ip::Addr local_ip
-    = {192, 168, 1, 42};
-static const satcat5::ip::Addr gateway_ip
-    = {192, 168, 1, 1};
+static constexpr ip::Addr LOCAL_IP
+    = DEBUG_DHCP_CLIENT ? ip::ADDR_NONE : ip::Addr(192, 168, 1, 42);
+static constexpr ip::Addr PING_TARGET
+    = DEBUG_PING_HOST ? ip::ADDR_NONE : ip::Addr(192, 168, 1, 1);
 
-satcat5::ip::Stack ip_stack(local_mac, local_ip, &eth_port, &eth_port, &timer);
+ip::Stack ip_stack(LOCAL_MAC, LOCAL_IP, &eth_port, &eth_port, &timer);
+
+// DHCP client is dormant if user sets a static IP.
+ip::DhcpClient ip_dhcp(&ip_stack.m_udp);
+
+// Optional DHCP server for range 192.168.1.64 to 192.168.1.95
+// (Do not enable client and server simultaneously.)
+#if DEBUG_DHCP_SERVER && !DEBUG_DHCP_CLIENT
+    ip::DhcpPoolStatic<32> ip_dhcp_pool(ip::Addr(192, 168, 1, 64));
+    ip::DhcpServer ip_dhcp_server(&ip_stack.m_udp, &ip_dhcp_pool);
+#endif
 
 // Connect logging system to the MDM's virtual UART
 satcat5::ublaze::UartLite   uart_mdm("UART",
@@ -156,7 +170,7 @@ int main()
 
     // Ping the default gateway every second?
     if (DEBUG_PING_HOST) {
-         ip_stack.m_ping.ping(gateway_ip, gateway_ip);
+         ip_stack.m_ping.ping(PING_TARGET);
     }
 
     // Set up the status LEDs.

@@ -14,9 +14,9 @@ Once all prerequisites are installed, run "make run".
 
 # Usage
 
-Run "build_tmp/config_tool.bin [uart_name]", where uart_name is the name
-of a USB-UART attached to the ZCU208.  (e.g., Something similar to "COM4"
-on Windows or "/dev/ttyusb0" on Linux.
+Run "config_tool.bin [uart_name]",
+where uart_name is the name of a USB-UART attached to the ZCU208.
+(e.g., Something similar to "COM4" on Windows or "/dev/ttyusb0" on Linux.)
 
 # Copyright Notice
 

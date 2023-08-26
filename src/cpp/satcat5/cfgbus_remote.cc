@@ -73,11 +73,10 @@ satcat5::udp::ConfigBus::ConfigBus(
 }
 
 void satcat5::udp::ConfigBus::connect(
-    const satcat5::ip::Addr& dstaddr,           // Remote address
-    const satcat5::ip::Addr& gateway)           // Next-hop address
+    const satcat5::ip::Addr& dstaddr)           // Remote address
 {
     m_addr.connect(
-        dstaddr, gateway,                       // New IP address
+        dstaddr,                                // New IP address
         satcat5::udp::PORT_CFGBUS_CMD,          // Dst = Cmd port
         satcat5::udp::PORT_CFGBUS_ACK);         // Src = Ack port
 }
@@ -97,7 +96,7 @@ ConfigBusRemote::ConfigBusRemote(
     , m_response_opcode(0)
     , m_response_ptr(0)
     , m_response_len(0)
-    , m_response_status(cfg::IOSTATUS_OK)
+    , m_response_status(cfg::IoStatus::OK)
 {
     // Register to receive traffic.
     m_dst->iface()->add(this);
@@ -183,11 +182,11 @@ void ConfigBusRemote::frame_rcvd(satcat5::io::LimitedRead& src)
         u8 errflag = src.read_u8();
         if (errflag) {
             log::Log(log::WARNING, "CfgRemote: Read error");
-            m_response_status = cfg::IOSTATUS_BUSERROR;
+            m_response_status = cfg::IoStatus::BUSERROR;
         }
     } else if (m_response_ptr) {
         log::Log msg(log::ERROR, "CfgRemote: Invalid response");
-        m_response_status = cfg::IOSTATUS_CMDERROR;
+        m_response_status = cfg::IoStatus::CMDERROR;
         if (DEBUG_VERBOSE > 1) {
             msg.write((u16)src.get_read_ready());
             msg.write(", expected").write((u16)rdbytes);
@@ -221,11 +220,11 @@ cfg::IoStatus ConfigBusRemote::send_and_wait(
 
     // Wait for response?
     if (!ok) {
-        return cfg::IOSTATUS_CMDERROR;
+        return cfg::IoStatus::CMDERROR;
     } else if (timeout) {
         return wait_response(timeout);
     } else {
-        return cfg::IOSTATUS_OK;
+        return cfg::IoStatus::OK;
     }
 }
 
@@ -286,7 +285,7 @@ bool ConfigBusRemote::send_command(
 
 cfg::IoStatus ConfigBusRemote::wait_response(unsigned timeout)
 {
-    m_response_status = IOSTATUS_OK;
+    m_response_status = cfg::IoStatus::OK;
 
     // Set the busy and response-pending flag.
     util::set_mask_u32(m_status, STATUS_BUSY | STATUS_PENDING);
@@ -299,7 +298,7 @@ cfg::IoStatus ConfigBusRemote::wait_response(unsigned timeout)
             break;                  // Response received
         } else if (m_timer->elapsed_usec(tref) > timeout) {
             log::Log(log::ERROR, "CfgRemote: Timeout");
-            m_response_status = cfg::IOSTATUS_TIMEOUT;
+            m_response_status = cfg::IoStatus::TIMEOUT;
             break;                  // Timeout
         }
     }

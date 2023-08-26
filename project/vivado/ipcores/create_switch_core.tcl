@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021, 2022 The Aerospace Corporation
+# Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -65,12 +65,16 @@ ipcore_add_param ALLOW_JUMBO bool false \
     {Allow Ethernet frames with a length longer than 1522 bytes? (Total including FCS)}
 ipcore_add_param ALLOW_RUNT bool false \
     {Allow Ethernet frames witha  length shorter than 64 bytes? (Total including FCS)}
+ipcore_add_param ALLOW_PRECOMMIT bool false \
+    {Allow output FIFO cut-through? (Slightly reduced latency)}
 ipcore_add_param IBUF_KBYTES long 2 \
     {Size of each port's input buffer, in kilobytes}
 ipcore_add_param HBUF_KBYTES long 0 \
     {Size of each port's high-priority output buffer, in kilobytes (0 = disabled)}
 ipcore_add_param OBUF_KBYTES long 6 \
     {Size of each port's output buffer, in kilobytes}
+ipcore_add_param PTP_MIXED_STEP bool true \
+    {Support PTP two-step conversion? (One-step vs two-step mode on different ports.)}
 ipcore_add_param MAC_TABLE_EDIT bool true \
     {Allow manual read/write of the MAC-address cache?}
 ipcore_add_param MAC_TABLE_SIZE long 64 \
@@ -95,6 +99,7 @@ set_property value_validation_range_maximum $PORTX_COUNT_MAX $xcount
 # Enable ports and parameters depending on configuration.
 set_property enablement_dependency {$CFG_ENABLE || $STATS_ENABLE} [ipx::get_bus_interfaces Cfg -of_objects $ip]
 set_property enablement_tcl_expr {$STATS_ENABLE} [ipx::get_user_parameters STATS_DEVADDR -of_objects $ip]
+set_property enablement_tcl_expr {$SUPPORT_PTP} [ipx::get_user_parameters PTP_MIXED_STEP -of_objects $ip]
 set_property enablement_tcl_expr {$CFG_ENABLE} [ipx::get_user_parameters MAC_TABLE_EDIT -of_objects $ip]
 
 # Add each of the Ethernet ports with logic to show/hide.

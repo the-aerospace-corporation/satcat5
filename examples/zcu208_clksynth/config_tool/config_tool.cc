@@ -31,8 +31,12 @@
 #include <hal_posix/posix_utils.h>
 #include <satcat5/cfgbus_gpio.h>
 #include <satcat5/cfgbus_i2c.h>
+#include <satcat5/cfgbus_ptpref.h>
 #include <satcat5/cfgbus_remote.h>
+#include <satcat5/datetime.h>
 #include <satcat5/ip_stack.h>
+#include <satcat5/ptp_time.h>
+#include <satcat5/ptp_tracking.h>
 
 using namespace satcat5;
 
@@ -42,6 +46,7 @@ unsigned verbosity = 1;
 // Global background services.
 log::ToConsole logger;          // Print Log messages to console
 util::PosixTimekeeper timer;    // Link system time to internal timers
+datetime::Clock sysclock(timer.timer());
 
 // MAC and IP address for the Ethernet-over-UART interface.
 eth::MacAddr LOCAL_MAC  = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
@@ -64,10 +69,19 @@ const unsigned REG_VCMP     = 7;    // VREF phase reporting
 const u32 RESET_DAC = (1u << 0);
 
 // Scaling for the phase-shift register.
-const int ONE_NSEC = (1u << 16);
+const s32 ONE_NSEC = (1u << 16);
 
 // Polling rate for util::poll_msec.
 const unsigned POLL_MSEC = 10;
+
+// Set control parameters for phase-locking the reference.
+// Note: Each LSB of the slew rate is about 0.01 ps/sec
+const unsigned PHASE_LOCK_SLEW  = 512;  // Slew-rate (bang-bang mode)
+const double PHASE_LOCK_TAU     = 2.0;  // Time-constant (linear mode)
+const double PHASE_LOCK_SCALE   = cfg::ptpref_scale(10e6);
+
+inline ptp::TrackingCoeff trk_coeff(double tau)
+    { return ptp::TrackingCoeff(PHASE_LOCK_SCALE, tau); }
 
 // Configuration of ZCU208 design.
 class Zcu208 final
@@ -81,11 +95,14 @@ public:
         , m_ledmode(cfg, DEV_OTHER, REG_LEDMODE)
         , m_reset(cfg, DEV_OTHER, REG_RESET)
         , m_vlock(cfg, DEV_OTHER, REG_VLOCK)
-        , m_vref(cfg, DEV_OTHER, REG_VREF)
+        , m_vref_raw(cfg, DEV_OTHER, REG_VREF)
+        , m_vref(&m_vref_raw)
         , m_vcmp(cfg, DEV_OTHER, REG_VCMP)
         , m_clk104(&m_i2c, &m_spimux)
+        , m_coeff(trk_coeff(PHASE_LOCK_TAU))
+        , m_track(&m_vref, m_coeff)
     {
-        slew_adjust(0);
+        m_vref.clock_rate(0);
     }
 
     // Use the IDENT register as a connectivity test.
@@ -115,7 +132,7 @@ public:
         m_reset.write(0);
 
         // Rapid slew to the expected clock phase.
-        phase_slew();
+        phase_slew(false);
 
         return m_clk104.ready();
     }
@@ -123,7 +140,7 @@ public:
     // Idle loop closes the loop on the vernier reference counter.
     // (This prevents ~1 ps/sec drift in the final output phase.)
     // Returns true if user should reset the coarse alignment.
-    bool idle_loop(unsigned duration_msec, unsigned slew_rate = 1) {
+    bool idle_loop(unsigned duration_msec, unsigned slew_rate) {
         u32 err_count = 0;
         u32 usec = duration_msec * 1000;
         u32 tref = timer.timer()->now();
@@ -155,15 +172,35 @@ public:
         m_vphase.write((u32)(phase + delta));
     }
 
+    // Set time-constant for linear-mode phase-tracking.
+    void phase_lock_tau(double tau) {
+        m_coeff = trk_coeff(tau);
+        m_track.reconfigure(m_coeff);
+    }
+
     // Rapid slew to the expected clock phase.
-    void phase_slew() {
-        std::cout << "VREF slew starting..." << std::endl;
-        idle_loop(800, 2000);   // Coarse adjust, then finer...
-        idle_loop(200, 500);
-        idle_loop(200, 125);
-        idle_loop(200, 25);
-        idle_loop(200, 10);
-        std::cout << "VREF slew completed." << std::endl;
+    void phase_slew(bool slew_mode) {
+        if (slew_mode) {
+            // Bang-bang control mode: Operate the control loop with
+            // a very coarse slew rate, then get progressively finer.
+            std::cout << "VREF slew starting..." << std::endl;
+            idle_loop(800, 2000000);
+            idle_loop(200, 500000);
+            idle_loop(200, 125000);
+            idle_loop(200, 33000);
+            idle_loop(200, 10000);
+            idle_loop(200, 3300);
+            idle_loop(200, 1000);
+            std::cout << "VREF slew completed." << std::endl;
+        } else {
+            // Linear control mode: Temporarily increase loop bandwidth.
+            std::cout << "VREF fast-track starting..." << std::endl;
+            m_track.reconfigure(trk_coeff(1.0));
+            m_track.reset();
+            idle_loop(2000, 0);
+            m_track.reconfigure(m_coeff);
+            std::cout << "VREF fast-track completed." << std::endl;
+        }
     }
 
     // Report lock/unlock events since the last query.
@@ -176,27 +213,37 @@ public:
     }
 
 private:
-    // Proportional rate adjustment for the vernier reference.
+    // Rate adjustment for the vernier reference.
     // Returns true if error exceeds normal operating tolerances.
-    // Rate scale: 1 LSB = Drift ~2 picoseconds per second.
     // Note: Cannot use a timer because of ConfigBusRemote conflicts.
-    bool slew_adjust(u32 rate) {
+    bool slew_adjust(s64 slew) {
         // Calculate difference from ideal phase, modulo 8 nsec.
-        const u32 MASK = 8 * ONE_NSEC - 1;  // e.g., 0x7FFFF
-        s32 diff = (s32)(m_vcmp.read() & MASK) - MASK/2;
-        if (verbosity > 1) {
-            std::cout << "VREF Diff = " << std::setw(8) << diff << std::endl;
-        }
+        const u32 MASK = u32(8 * ONE_NSEC - 1);  // e.g., 0x7FFFF
+        s32 diff_subns = (s32)(m_vcmp.read() & MASK) - MASK/2;
 
-        // Simple bang-bang control loop with a constant slew rate.
-        // (Normal operating rate is only ~2 ps/sec, so this is fine.)
-        if (diff > 0) {
-            m_vref.write(+rate);
+        // Choose control mode...
+        if (slew) {
+            // Bang-bang control loop with a constant slew rate.
+            // (Normal operating rate is only ~2 ps/sec, so this is fine.)
+            if (diff_subns > 0) {
+                m_vref.clock_rate(+slew);
+            } else {
+                m_vref.clock_rate(-slew);
+            }
         } else {
-            m_vref.write(-rate);
+            // Update the linear 2nd-order control loop.
+            m_track.update(sysclock.ptp(), ptp::Time(diff_subns));
         }
 
-        return abs(diff) > 100000;
+        // Optional diagnostic output.
+        if (verbosity > 1) {
+            std::cout << "VREF Diff = " << std::setw(8) << diff_subns 
+                      << ", Rate = " << std::setw(8) << m_vref.clock_rate()
+                      << std::endl;
+        }
+
+        // A large error indicates we are not locked.
+        return abs(diff_subns) > 100000;
     }
 
     // Poll CLK104 driver until it is finished or stuck.
@@ -234,11 +281,16 @@ private:
     cfg::GpoRegister m_ledmode;
     cfg::GpoRegister m_reset;
     cfg::GpiRegister m_vlock;
-    cfg::GpoRegister m_vref;
+    cfg::PtpReference m_vref_raw;
+    ptp::TrackingClockDebug m_vref;
     cfg::GpiRegister m_vcmp;
 
     // Driver for the CLK104 board.
     device::pll::Clk104 m_clk104;
+
+    // Linear-mode offset tracking.
+    ptp::TrackingCoeff m_coeff;
+    ptp::TrackingController m_track;
 };
 
 // Interactive menu for controlling the ZCU208.
@@ -248,6 +300,7 @@ public:
         : m_key_rcvd()
         , m_key_stream(&m_key_rcvd, false)
         , m_auto_slew(true)
+        , m_slew_mode(0)
         , m_board(board)
     {
         // Nothing else to initialize.
@@ -258,16 +311,19 @@ public:
             << "  ?     To print this help menu." << std::endl
             << "  q     To exit the program." << std::endl
             << "  \\     To perform initial setup." << std::endl
+            << "  `     To cycle verbosity level (0/1/2)." << std::endl
             << "  1-5   To select LED mode." << std::endl
             << "  v     To report VPLL lock/unlock counts." << std::endl
             << "  b     To recenter the VREF output phase." << std::endl
             << "  r     To toggle automatic recentering." << std::endl
+            << "  t     To toggle automatic tracking mode." << std::endl
+            << "  w     To adjust tracking time-constant." << std::endl
             << "  J     To shift output phase left 1000 ps." << std::endl
             << "  j     To shift output phase left 100 ps." << std::endl
-            << "  K     To shift output phase left 10 ps." << std::endl
-            << "  k     To shift output phase left 1 ps." << std::endl
-            << "  l     To shift output phase right 1 ps." << std::endl
-            << "  L     To shift output phase right 10 ps." << std::endl
+            << "  k     To shift output phase left 10 ps." << std::endl
+            << "  K     To shift output phase left 1 ps." << std::endl
+            << "  L     To shift output phase right 1 ps." << std::endl
+            << "  l     To shift output phase right 10 ps." << std::endl
             << "  ;     To shift output phase right 100 ps." << std::endl
             << "  :     To shift output phase right 1000 ps." << std::endl;
     }
@@ -282,6 +338,9 @@ public:
         } else if (key == '\\') {
             std::cout << "Clock setup (internal)..." << std::endl;
             m_board->configure(0);
+        } else if (key == '`') {
+            verbosity = (verbosity + 1) % 3;
+            std::cout << "Verbosity = " << verbosity << std::endl;
         } else if (key == '|') {
             unsigned ref_hz = prompt("External reference (Hz)?");
             if (ref_hz) {
@@ -308,22 +367,29 @@ public:
         } else if (key == 'v' || key == 'V') {
             m_board->vlock_report();
         } else if (key == 'b' || key == 'B') {
-            m_board->phase_slew();
+            m_board->phase_slew(m_slew_mode);
         } else if (key == 'r' || key == 'R') {
             m_auto_slew = !m_auto_slew;
             const char* status = m_auto_slew ? "On" : "Off";
             std::cout << "Auto-slew: " << status << std::endl;
+        } else if (key == 't' || key == 'T') {
+            m_slew_mode = !m_slew_mode;
+            const char* status = m_slew_mode ? "Bang-bang" : "Linear";
+            std::cout << "Tracking mode: " << status << std::endl;
+        } else if (key == 'w' || key == 'W') {
+            unsigned tau = prompt("Tracking time-constant (sec)");
+            m_board->phase_lock_tau(double(tau));
         } else if (key == 'J') {
             m_board->phase_incr(ONE_NSEC);
         } else if (key == 'j') {
             m_board->phase_incr(ONE_NSEC / 10);
-        } else if (key == 'K') {
-            m_board->phase_incr(ONE_NSEC / 100);
         } else if (key == 'k') {
+            m_board->phase_incr(ONE_NSEC / 100);
+        } else if (key == 'K') {
             m_board->phase_incr(ONE_NSEC / 1000);
-        } else if (key == 'l') {
-            m_board->phase_incr(-ONE_NSEC / 1000);
         } else if (key == 'L') {
+            m_board->phase_incr(-ONE_NSEC / 1000);
+        } else if (key == 'l') {
             m_board->phase_incr(-ONE_NSEC / 100);
         } else if (key == ';') {
             m_board->phase_incr(-ONE_NSEC / 10);
@@ -341,9 +407,10 @@ public:
         // Prompt and wait for keypress.
         std::cout << "Command? (? = help)" << std::endl;
         while (!m_key_rcvd.get_read_ready()) {
-            if (m_board->idle_loop(50) && m_auto_slew) {
+            unsigned slew_mode = m_slew_mode ? PHASE_LOCK_SLEW : 0;
+            if (m_board->idle_loop(50, slew_mode) && m_auto_slew) {
                 std::cout << "Automatic recentering..." << std::endl;
-                m_board->phase_slew();
+                m_board->phase_slew(m_slew_mode);
             }
         }
         return (char)(m_key_rcvd.read_u8());
@@ -361,6 +428,7 @@ private:
     io::PacketBufferHeap m_key_rcvd;
     io::KeyboardStream m_key_stream;
     bool m_auto_slew;
+    bool m_slew_mode;
     Zcu208* m_board;
 };
 
@@ -383,6 +451,9 @@ void config_tool(cfg::ConfigBus* cfg)
 
 int main(int argc, const char* argv[])
 {
+    // Set SatCat5 clock to system time.
+    sysclock.set(timer.gps());
+
     // Set console mode for UTF-8 support.
     setlocale(LC_ALL, SATCAT5_WIN32 ? ".UTF8" : "");
 

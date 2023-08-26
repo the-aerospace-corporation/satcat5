@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -49,6 +49,23 @@ namespace satcat5 {
         constexpr u32 VTAG_PRIORITY     = 0x00110000u;
         constexpr u32 VTAG_MANDATORY    = 0x00220000u;
 
+        // Define VLAN rate-limiter modes for each VID:
+        //  UNLIMITED: Default, rate-limits are ignored.
+        //  DEMOTE: Excess packets are low-priority.
+        //  STRICT: Excess packets are dropped immediately.
+        //  AUTO: Excess packet policy set by DEI flag.
+        //      If the VLAN header sets the "drop eligible indicator" (DEI)
+        //      flag, use the STRICT policy, otherwise use the DEMOTE policy.
+        constexpr u32 VPOL_UNLIMITED    = 0x80000000u;
+        constexpr u32 VPOL_DEMOTE       = 0x90000000u;
+        constexpr u32 VPOL_STRICT       = 0xA0000000u;
+        constexpr u32 VPOL_AUTO         = 0xB0000000u;
+
+        // Define unit scaling for VLAN rate-limiter configuration.
+        constexpr u32 VRATE_SCALE_1X    = 0x00000000u;  // 1 LSB = 8 kbps
+        constexpr u32 VRATE_SCALE_256X  = 0x08000000u;  // 1 LSB = 2 Mbps
+        constexpr u64 VRATE_THRESHOLD   = 100000000;
+
         // Common port-connection masks for use with "vlan_set_mask".
         constexpr u32 VLAN_CONNECT_ALL  = (u32)(-1);
         constexpr u32 VLAN_CONNECT_NONE = 0;
@@ -61,6 +78,43 @@ namespace satcat5 {
                 | ((port & 0xFF)    << 24)      // Port index (0-255)
                 | (vtag.value);                 // VLAN identifier and/or priority
         }
+
+        // Data structure for configuring VLAN rate-limiter parameters.
+        // See "mac_vlan_rate.vhd" for details on the token-bucket algorithm.
+        struct VlanRate {
+            u32 tok_policy;             // Policy and scaling
+            u32 tok_rate;               // Tokens per millisecond
+            u32 tok_max;                // Maximum accumulated tokens
+
+            constexpr VlanRate(
+                u32 policy,             // Policy (e.g., VPOL_STRICT)
+                u64 rate_bps,           // Rate limit (bits per second)
+                u32 burst_msec=1)       // Burst duration in milliseconds
+                : tok_policy(
+                    rate_bps < VRATE_THRESHOLD
+                    ? (policy | VRATE_SCALE_1X)
+                    : (policy | VRATE_SCALE_256X))
+                , tok_rate(
+                    rate_bps < VRATE_THRESHOLD
+                    ? (rate_bps / 8000)
+                    : (rate_bps / 2000000))
+                , tok_max(tok_rate * burst_msec)
+            {
+                // Nothing else to initialize.
+            }
+        };
+
+        // Define some commonly-used rate-limiter configurations.
+        constexpr satcat5::eth::VlanRate
+            VRATE_ZERO          (VPOL_STRICT, 0),
+            VRATE_8KBPS         (VPOL_STRICT, 8000ull),
+            VRATE_64KBPS        (VPOL_STRICT, 64000ull),
+            VRATE_1MBPS         (VPOL_STRICT, 1000000ull),
+            VRATE_10MBPS        (VPOL_STRICT, 10000000ull),
+            VRATE_100MBPS       (VPOL_STRICT, 100000000ull),
+            VRATE_1GBPS         (VPOL_STRICT, 1000000000ull),
+            VRATE_10GBPS        (VPOL_STRICT, 10000000000ull),
+            VRATE_UNLIMITED     (VPOL_UNLIMITED, 0);
 
         class SwitchConfig {
         public:
@@ -122,6 +176,7 @@ namespace satcat5 {
             void vlan_set_port(u32 cfg);                // Port settings (see vlan_portcfg)
             void vlan_join(u16 vid, unsigned port);     // Port should join VLAN
             void vlan_leave(u16 vid, unsigned port);    // Port should leave VLAN
+            void vlan_set_rate(u16 vid, const satcat5::eth::VlanRate& cfg);
 
             // Read or manipulate the contents of the MAC-address table.
             // All functions return true if successful, false otherwise.

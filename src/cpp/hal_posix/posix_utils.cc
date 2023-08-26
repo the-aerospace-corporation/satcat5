@@ -180,7 +180,8 @@ PosixTimer::PosixTimer()
     // Nothing else to initialize.
 }
 
-u32 PosixTimer::now() {
+u32 PosixTimer::now()
+{
     struct timespec tv;
     int errcode = clock_gettime(CLOCK_MONOTONIC, &tv);
     if (errcode) {
@@ -193,6 +194,24 @@ u32 PosixTimer::now() {
         u32 usec2 = (u32)(tv.tv_nsec / 1000);
         return usec1 + usec2;
     }
+}
+
+s64 PosixTimer::gps() const
+{
+    // Get the POSIX timestamp (sorta-kinda-UTC).
+    // See also: http://www.madore.org/~david/computers/unix-leap-seconds.html
+    struct timespec tv;
+    int errcode = clock_gettime(CLOCK_REALTIME, &tv);
+    if (errcode) return 0;
+    s64 msec1 = s64(tv.tv_sec) * 1000;
+    s64 msec2 = s64(tv.tv_nsec) / 1000000;
+    // Assume this code is being run 2017 or later, so the number of
+    // cumulative leap-seconds is fixed for the foreseeable future.
+    // TODO: Keep this up-to-date if/when leap-seconds resume.
+    // See also: https://stackoverflow.com/questions/16539436/
+    // See also: https://stackoverflow.com/questions/20521750/
+    constexpr s64 GPS_EPOCH = (1000LL) * (315964800 - 18);
+    return msec1 + msec2 - GPS_EPOCH;
 }
 
 PosixTimekeeper::PosixTimekeeper()

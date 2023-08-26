@@ -48,29 +48,39 @@ ProtoArp::ProtoArp(
     // Nothing else to initialize.
 }
 
-void ProtoArp::set_ipaddr(const ip::Addr& addr)
-{
-    m_ipaddr = addr;
-}
-
 bool ProtoArp::send_announce() const
 {
     // Psuedo-request method, preferred per RFC5227:
     //  https://datatracker.ietf.org/doc/html/rfc5227#section-3
     return send_internal(
-        ARP_OPER_QUERY, eth::MACADDR_BROADCAST,
-        MACADDR_ZERO,                       // Query THA = Zero (Required)
-        m_ipaddr);                          // Query TPA = Our IP
+        ARP_OPER_QUERY,                     // ARP query
+        eth::MACADDR_BROADCAST,             // Destination = Broadcast
+        m_ipaddr,                           // Announce SPA = Our IP
+        MACADDR_ZERO,                       // Announce THA = Zero (Required)
+        m_ipaddr);                          // Announce TPA = Our IP
 }
 
-bool ProtoArp::send_query(const ip::Addr& ipaddr)
+bool ProtoArp::send_probe(const ip::Addr& target)
+{
+    // Probe-request method from RFC5227:
+    // https://www.rfc-editor.org/rfc/rfc5227#section-2.1
+    return send_internal(
+        ARP_OPER_QUERY,                     // ARP query
+        eth::MACADDR_BROADCAST,             // Destination = Broadcast
+        ip::ADDR_NONE,                      // Probe SPA = Zero (Required)
+        eth::MACADDR_NONE,                  // Probe THA = Zero (Required)
+        target);                            // Probe TPA = Target IP
+}
+
+bool ProtoArp::send_query(const ip::Addr& target)
 {
     // Send a query for the designated target:
     return send_internal(
         ARP_OPER_QUERY,                     // ARP query
         eth::MACADDR_BROADCAST,             // Destination = Broadcast
+        m_ipaddr,                           // Query SPA = Our IP
         eth::MACADDR_BROADCAST,             // Query THA = Placeholder
-        ipaddr);                            // Query TPA = Target IP
+        target);                            // Query TPA = Target IP
 }
 
 void ProtoArp::gateway_change(
@@ -97,8 +107,6 @@ void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src)
     // Reject anything that's too short to be a valid ARP packet.
     if (src.get_read_ready() < 28)
         return;
-    else if (DEBUG_VERBOSE > 0)
-        log::Log(log::INFO, "ProtoArp: Rcvd");
 
     // Read the packet contents:
     // Reference: IETF-RFC-826 https://datatracker.ietf.org/doc/html/rfc826
@@ -113,6 +121,10 @@ void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src)
     src.read_obj(tha);              // Target hardware address (MAC)
     src.read_obj(tpa);              // Target protocol address (IPv4)
 
+    // Log the received message?
+    if (DEBUG_VERBOSE > 0)
+        log::Log(log::INFO, "ProtoArp: Rcvd from").write(spa.value);
+
     // Ignore anything that's not a IPv4-to-MAC response/query.
     if (htype != ARP_HTYPE_ETHERNET) return;
     if (ptype != ARP_PTYPE_IPV4) return;
@@ -122,14 +134,15 @@ void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src)
     // Sanity check for valid source addresses.
     if (sha == eth::MACADDR_NONE) return;
     if (sha == eth::MACADDR_BROADCAST) return;
-    if (spa == ip::ADDR_NONE) return;
 
-    // Both queries and replies have a valid SHA/SPA pair.
-    // Send notifications to any registered ARP event listeners.
-    ArpListener* item = m_listeners.head();
-    while (item) {
-        item->arp_event(sha, spa);
-        item = m_listeners.next(item);
+    // Does this query have a valid SHA/SPA pair?
+    if (spa.is_unicast()) {
+        // Send notifications to any registered ARP event listeners.
+        ArpListener* item = m_listeners.head();
+        while (item) {
+            item->arp_event(sha, spa);
+            item = m_listeners.next(item);
+        }
     }
     // Note: Replies have a valid THA/TPA pair, but we ignore it.
     //   Normal replies have our own address, which we already know.
@@ -141,12 +154,15 @@ void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src)
         // Note: Per RFC5225 Section 2, reply to the requester only.
         if (DEBUG_VERBOSE > 0)
             log::Log(log::DEBUG, "ProtoArp: Sending reply");
-        send_internal(ARP_OPER_REPLY, sha, sha, spa);
+        send_internal(ARP_OPER_REPLY, sha, m_ipaddr, sha, spa);
+    } else if (DEBUG_VERBOSE > 1) {
+        log::Log(log::DEBUG, "ProtoArp: No reply").write(tpa.value);
     }
 }
 
 bool ProtoArp::send_internal(u16 opcode,
     const satcat5::eth::MacAddr& dst,
+    const satcat5::ip::Addr& spa,
     const satcat5::eth::MacAddr& tha,
     const satcat5::ip::Addr& tpa) const
 {
@@ -161,9 +177,9 @@ bool ProtoArp::send_internal(u16 opcode,
     wr->write_u8(ARP_HLEN_ETHERNET);
     wr->write_u8(ARP_PLEN_IPV4);
     wr->write_u16(opcode);
-    wr->write_obj(m_iface->m_addr); // Query SHA = Our MAC-address
-    wr->write_obj(m_ipaddr);        // Query SPA = Our IP-address
-    wr->write_obj(tha);             // Query THA
-    wr->write_obj(tpa);             // Query TPA
+    wr->write_obj(m_iface->m_addr); // SHA = Our MAC-address
+    wr->write_obj(spa);             // SPA = Source IP (varies)
+    wr->write_obj(tha);             // THA = Target MAC (varies)
+    wr->write_obj(tpa);             // TPA = Target IP (varies)
     return wr->write_finalize();    // Send OK?
 }

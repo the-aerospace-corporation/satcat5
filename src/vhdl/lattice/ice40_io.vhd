@@ -110,6 +110,7 @@ end package;
 library ieee;
 use     ieee.std_logic_1164.all;
 use     work.ice40_sbtice.all;
+use     work.common_functions.all;
 
 entity bidir_io is
     generic (
@@ -124,7 +125,6 @@ end bidir_io;
 
 architecture ice40 of bidir_io is
 
-signal use_pullup : std_logic;
 signal out_en     : std_logic;
 
 begin
@@ -135,12 +135,10 @@ gen_pd : if EN_PULLDN generate
     assert false report "not implemented" severity error;
 end generate;
 
-use_pullup <= '1' when EN_PULLUP else '0';
-
 u_iobuf : SB_IO
     generic map(
         PIN_TYPE => PIN_OUTPUT_EN & PIN_INSIMPLE,
-        PULLUP => use_pullup,
+        PULLUP => bool2bit(EN_PULLUP),
         NEG_TRIGGER => '0')
     port map(
         PACKAGE_PIN => io_pin,

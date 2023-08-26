@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -28,6 +28,7 @@
 #include <satcat5/interrupts.h>
 #include <satcat5/pkt_buffer.h>
 #include <satcat5/ptp_time.h>
+#include <satcat5/ptp_tracking.h>
 #include <satcat5/polling.h>
 
 namespace satcat5 {
@@ -62,6 +63,7 @@ namespace satcat5 {
             , public satcat5::io::ReadableRedirect
             , public satcat5::irq::Handler
             , public satcat5::poll::Always
+            , public satcat5::ptp::TrackingClock
         {
         public:
             TemacAvb(uintptr_t baseaddr, int irq_idx);
@@ -74,13 +76,22 @@ namespace satcat5 {
 
             // Update AVB rate register. Fixed point 6.20 bits, in nanoseconds.
             // (i.e., Set counter increment to N / 2^20 nanoseconds per clock.)
+            // TODO: This may be deprecated in favor of clock_rate(...)
             void avb_set_rate(u32 incr);
 
             // One-time increment of the AVB internal timer.
+            // TODO: This may be deprecated in favor of clock_adjust(...)
             void avb_jump_by(const satcat5::ublaze::TemacTime& delta);
 
-            // Send an arbitrary PTP frame with Ethernet header
+            // Send an arbitrary PTP frame with Ethernet header.
             void send_frame(const u8* buf, unsigned buflen);
+
+            // Clock-adjustment API for ptp::TrackingClock.
+            // Note: Recommend use of ptp::TrackingDither
+            satcat5::ptp::Time clock_adjust(
+                const satcat5::ptp::Time& amount) override;
+            void clock_rate(s64 offset) override;
+            static constexpr double CLOCK_SCALE = 0.125 / (1u << 20);
 
         private:
             void irq_event() override;

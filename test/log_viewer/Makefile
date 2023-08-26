@@ -51,7 +51,8 @@ INC_DIRS := \
 ### flags
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 LDFLAGS := $(PCAP_LIB)
-COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter -DHAVE_REMOTE $(INC_FLAGS)
+COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter \
+	-DHAVE_REMOTE -DSATCAT5_LOG_EMOJI=0 $(INC_FLAGS)
 CFLAGS := $(COMMON_FLAGS)
 CXXFLAGS := $(COMMON_FLAGS) -std=c++11
 

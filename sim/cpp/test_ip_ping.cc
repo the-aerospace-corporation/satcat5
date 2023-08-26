@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -66,7 +66,7 @@ TEST_CASE("Ping") {
 
     SECTION("icmp-simple") {
         // Command Host-A to ping Host-B.
-        net_a.m_ping.ping(IP_B, IP_B, 2);
+        net_a.m_ping.ping(IP_B, 2);
         timer.sim_wait(500);    // Wait for ARP handshake...
         CHECK(log.empty());
         timer.sim_wait(1000);   // Wait for 1st ping + response
@@ -79,7 +79,7 @@ TEST_CASE("Ping") {
 
     SECTION("icmp-badip") {
         // Attempt to ping a nonexistent address.
-        net_a.m_ping.ping(IP_C, IP_C, 2);
+        net_a.m_ping.ping(IP_C, 2);
         timer.sim_wait(3500);   // Attempt ARP 3 times then abort
         CHECK(log.contains("Gateway unreachable"));
     }

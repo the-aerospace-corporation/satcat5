@@ -16,12 +16,15 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
-// Device driver for the Texas Instruments TCA9548A I2C Switch
+// xCA9548A device driver for the several pin-compatible I2C switches:
+//  * NXP Semiconductors PCA9548A
+//  * Texas Instruments TCA9548A
 //
-// The TCA9548A is a bus-selection switch that can connect one I2C bus
+// The xCA9548A are bus-selection switches that can connect one I2C bus
 // to one of eight channels.  This driver allows for channel selection,
 // and then presents an I2C interface for downstream devices to use.
 //
+// Reference: https://www.nxp.com/docs/en/data-sheet/PCA9548A.pdf
 // Reference: https://www.ti.com/product/TCA9548A
 //
 
@@ -64,8 +67,8 @@ namespace satcat5 {
             protected:
                 // Forward callbacks to the original caller.
                 void i2c_done(
-                    u8 noack, u8 devaddr, u32 regaddr,
-                    unsigned nread, const u8* rdata) override;
+                    bool noack, const satcat5::util::I2cAddr& devaddr,
+                    u32 regaddr, unsigned nread, const u8* rdata) override;
 
                 // Calculate write-index for the circular buffer.
                 inline unsigned cb_wridx() const
@@ -80,6 +83,9 @@ namespace satcat5 {
                 unsigned m_cb_rdidx;
                 satcat5::cfg::I2cEventListener* m_cb_queue[SATCAT5_I2C_MAXCMD];
             };
+
+            // Alias for PCA9548A, which has the same control API.
+            typedef satcat5::device::i2c::Tca9548 Pca9548;
         }
     }
 }

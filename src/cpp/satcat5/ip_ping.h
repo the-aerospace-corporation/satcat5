@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -52,7 +52,6 @@ namespace satcat5 {
             // Begin sending PING queries (ICMP echo request).
             void ping(
                 const satcat5::ip::Addr& dstaddr,
-                const satcat5::ip::Addr& gateway,
                 unsigned qty = satcat5::ip::Ping::UNLIMITED);
 
             // Stop any ongoing activities.
@@ -62,9 +61,6 @@ namespace satcat5 {
             void arp_event(
                 const satcat5::eth::MacAddr& mac,
                 const satcat5::ip::Addr& ip) override;
-            void gateway_change(
-                const satcat5::ip::Addr& dstaddr,
-                const satcat5::ip::Addr& gateway) override;
             void ping_event(
                 const satcat5::ip::Addr& from, u32 elapsed_usec) override;
             void send_arping();

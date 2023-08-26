@@ -27,6 +27,9 @@ puts {Running create_all_ipcores.tcl}
 # Call script to generate each IP core.
 variable iproot [file normalize [file dirname [info script]]]
 variable ipcores $iproot/ipcores
+source $ipcores/create_cfgbus_gpi.tcl
+source $ipcores/create_cfgbus_gpio.tcl
+source $ipcores/create_cfgbus_gpo.tcl
 source $ipcores/create_cfgbus_host_axi.tcl
 source $ipcores/create_cfgbus_host_eth.tcl
 source $ipcores/create_cfgbus_host_uart.tcl

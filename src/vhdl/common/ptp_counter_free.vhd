@@ -26,17 +26,24 @@
 -- The optional ConfigBus interface allows runtime adjustments to the counter
 -- rate.  This can be used for software-controlled PLLs.  If this feature is
 -- not needed, leave the ConfigBus interface disconnected.  Otherwise, the
--- control register is a 32-bit signed integer N that offsets the time
--- increment by N / 2^32 nanoseconds:
+-- control register is a signed integer N that offsets the time increment by
+-- N / 2^TFINE_SCALE nanoseconds:
 --  * Tnom(nsec)        = 1e9 * REF_CLK_DIV / REF_CLK_HZ
---  * Toffset(nsec)     = Register value / 2^32
+--  * Toffset(nsec)     = Register value / 2^TFINE_SCALE
 --  * Timestamp[n+1]    = Timestamp[n] + Tnom + Toffset
 --
--- The typical increment rate is ~10 MHz, giving an overall drift-rate
--- resolution of 0.002 nanoseconds per second and a full-scale tuning
--- range of +/-50 kHz (0.5% = 5,000 ppm).
+-- The default value of TFINE_SCALE is 40 bits.  For a 10 MHz reference clock,
+-- this yields a drift-rate resolution of 1 LSB = 0.01 picoseconds per second.
+-- The full-scale tuning range is +/- 16 nanoseconds per clock, which usually
+-- exceeds the nominal clock rate.
 --
 -- See "ptp_counter_gen" for a complete VPLL global reference source.
+--
+-- The ConfigBus interface uses a single write-only register:
+--  * 1st write: MSBs (signed bits 63..32)
+--  * 2nd write: LSBs (signed bits 31..00)
+--  * Read from the register to latch the new value.
+--    (The read-value is zero and should be discarded.)
 --
 
 library ieee;
@@ -51,7 +58,8 @@ entity ptp_counter_free is
     REF_CLK_HZ  : real;
     REF_CLK_DIV : positive := 1;
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
-    REGADDR     : integer := CFGBUS_ADDR_NONE);
+    REGADDR     : integer := CFGBUS_ADDR_NONE;
+    TFINE_SCALE : positive := 40);
     port (
     -- Basic interface.
     ref_clk     : in  std_logic;
@@ -66,11 +74,9 @@ end ptp_counter_free;
 architecture ptp_counter_free of ptp_counter_free is
 
 -- Internal counter uses a finer resolution than the final timestamp.
--- (Note: Scale here isn't intrinsically tied to ConfigBus word size,
---        but this is the finest we can set with a simple register.)
-constant TFINE_SCALE    : integer := CFGBUS_WORD_SIZE;
-constant TFINE_EXTRA    : integer := TFINE_SCALE - TSTAMP_SCALE;
-constant TFINE_WIDTH    : integer := TSTAMP_WIDTH + TFINE_EXTRA;
+constant RATE_WIDTH     : positive := TFINE_SCALE + 5;  -- +/- 16 nsec/clk
+constant TFINE_EXTRA    : natural  := TFINE_SCALE - TSTAMP_SCALE;
+constant TFINE_WIDTH    : positive := TSTAMP_WIDTH + TFINE_EXTRA;
 subtype tfine_t is unsigned(TFINE_WIDTH-1 downto 0);
 
 -- Calculate the nominal increment based on effective clock rate.
@@ -82,7 +88,14 @@ constant INCR_U     : tfine_t := r2u(INCR_R, TFINE_WIDTH);
 signal tnext        : std_logic := bool2bit(REF_CLK_DIV = 1);
 signal tstamp       : tfine_t := (others => '0');
 signal cpu_incr     : tfine_t := (others => '0');
-signal cpu_word     : cfgbus_word := (others => '0');
+signal cpu_word     : std_logic_vector(RATE_WIDTH-1 downto 0) := (others => '0');
+
+-- These counters are frequently used in cross-clock applications.
+-- Setting DONT_TOUCH here mitigates cross-hierarchy naming shenanigans.
+attribute dont_touch : boolean;
+attribute dont_touch of tstamp : signal is true;
+attribute keep : boolean;
+attribute keep of tstamp : signal is true;
 
 begin
 
@@ -118,12 +131,11 @@ cpu_incr <= unsigned(resize(signed(cpu_word), TFINE_WIDTH));
 
 -- Optional ConfigBus register.
 -- Note: This optimizes down to a constant zero if ConfigBus is disconnected.
-u_cpu : cfgbus_register_sync
+u_wide : cfgbus_register_wide
     generic map(
+    DWIDTH      => RATE_WIDTH,
     DEVADDR     => DEVADDR,
-    REGADDR     => REGADDR,
-    WR_ATOMIC   => true,
-    RSTVAL      => (others => '0'))
+    REGADDR     => REGADDR)
     port map(
     cfg_cmd     => cfg_cmd,
     cfg_ack     => cfg_ack,

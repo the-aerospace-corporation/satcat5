@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -82,9 +82,10 @@ TEST_CASE("cfgbus_mdio") {
     satcat5::log::ToConsole log;
 
     // Instantiate emulator and the unit under test.
-    satcat5::test::CfgRegister cfg;
+    satcat5::test::CfgDevice dev;
+    satcat5::test::CfgRegister& cfg = dev[0];
     cfg.read_default(0);
-    Mdio uut(&cfg, CFG_DEVADDR, CFG_REGADDR);
+    Mdio uut(&dev, CFG_DEVADDR, CFG_REGADDR);
 
     SECTION("write-simple") {
         // Execute a few writes...

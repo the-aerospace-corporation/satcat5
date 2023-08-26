@@ -91,7 +91,7 @@ pipeline {
     agent any
 
     options {
-        timeout(time: 240, unit: 'MINUTES')
+        timeout(time: 8, unit: 'HOURS')
         timestamps()              // Prepends timestap to build messages
         buildDiscarder(logRotator(numToKeepStr: '10')) // Limit build history
         disableConcurrentBuilds() // Prevent two concurrent runs
@@ -184,7 +184,7 @@ pipeline {
                         docker_vivado_2016_3 'make proto_v1_sgmii'
                         check_vivado_build 'examples/ac701_proto_v1/ac701_proto_v1/ac701_proto_v1.runs'
                         dir('examples/ac701_proto_v1/switch_proto_v1_sgmii/switch_proto_v1_sgmii.runs/impl_1') {
-                            archive_zip('switch_top_ac701_sgmii.zip', './*.rpt')
+                            archive_zip('switch_top_ac701_sgmii.zip', './*.log ./*.rpt')
                             archiveArtifacts artifacts: 'switch_top_ac701_sgmii.bit'
                         }
                     }
@@ -195,7 +195,7 @@ pipeline {
                         docker_vivado_2016_3 'make arty_35t'
                         check_vivado_build 'examples/arty_a7/switch_arty_a7_35t/switch_arty_a7_35t.runs'
                         dir('examples/arty_a7/switch_arty_a7_35t/switch_arty_a7_35t.runs/impl_1') {
-                            archive_zip('switch_top_arty_a7_rmii.zip', './*.rpt')
+                            archive_zip('switch_top_arty_a7_rmii.zip', './*.log ./*.rpt')
                             archiveArtifacts artifacts: 'switch_top_arty_a7_rmii.bit'
                         }
                     }
@@ -206,7 +206,7 @@ pipeline {
                         docker_vivado_2019_1 'make arty_managed_35t'
                         check_vivado_build 'examples/arty_managed/arty_managed_35t/arty_managed_35t.runs'
                         dir('examples/arty_managed/arty_managed_35t/arty_managed_35t.runs') {
-                            archive_zip('arty_managed.zip', '*/*.rpt')
+                            archive_zip('arty_managed.zip', '*/*.log */*.rpt')
                         }
                         dir('examples/arty_managed') {
                             archiveArtifacts artifacts: 'arty_managed.hdf'
@@ -257,7 +257,7 @@ pipeline {
                             archiveArtifacts artifacts: 'router_ac701/*.svg'
                         }
                         dir('examples/ac701_router/router_ac701/router_ac701.runs') {
-                            archive_zip('router_ac701_wrapper.zip', '*/*.rpt')
+                            archive_zip('router_ac701_wrapper.zip', '*/*.log */*.rpt')
                         }
                         dir('examples/ac701_router/router_ac701/router_ac701.runs/impl_1') {
                             archiveArtifacts artifacts: 'router_ac701_wrapper.bit'
@@ -269,8 +269,8 @@ pipeline {
                     steps {
                         docker_vivado_2019_1 'make netfpga'
                         check_vivado_build 'examples/netfpga/netfpga/netfpga.runs'
-                        dir('examples/netfpga/netfpga') {
-                            archiveArtifacts artifacts: 'netfpga.runs/impl_1/runme.log'
+                        dir('examples/netfpga/netfpga/netfpga.runs') {
+                            archive_zip('netfpga.zip', '*/*.log */*.rpt')
                         }
                         dir('examples/netfpga') {
                             archiveArtifacts artifacts: 'netfpga.hdf'
@@ -286,8 +286,8 @@ pipeline {
                     steps {
                         docker_vivado_2019_1 'make vc707_managed'
                         check_vivado_build 'examples/vc707_managed/vc707_managed/vc707_managed.runs'
-                        dir('examples/vc707_managed/vc707_managed') {
-                            archiveArtifacts artifacts: 'vc707_managed.runs/impl_1/runme.log'
+                        dir('examples/vc707_managed/vc707_managed/vc707_managed.runs') {
+                            archive_zip('vc707_managed.zip', '*/*.log */*.rpt')
                         }
                         dir('examples/vc707_managed') {
                             archiveArtifacts artifacts: 'vc707_managed/*.svg'
@@ -308,8 +308,8 @@ pipeline {
                     steps {
                         docker_vivado_2019_1 'make vc707_clksynth'
                         check_vivado_build 'examples/vc707_clksynth/vc707_clksynth/vc707_clksynth.runs'
-                        dir('examples/vc707_clksynth/vc707_clksynth') {
-                            archiveArtifacts artifacts: 'vc707_clksynth.runs/impl_1/runme.log'
+                        dir('examples/vc707_clksynth/vc707_clksynth/vc707_clksynth.runs') {
+                            archive_zip('vc707_clksynth.zip', '*/*.log */*.rpt')
                         }
                         dir('examples/vc707_clksynth/vc707_clksynth/vc707_clksynth.runs/impl_1') {
                             archiveArtifacts artifacts: 'vc707_clksynth.bit'
@@ -318,12 +318,11 @@ pipeline {
                 }
                 stage('ZCU208-ClkSynth') {
                     agent { label env.BUILD_AGENT }
-                    when { expression { false } }   // Disabled due to licensing issues.
                     steps {
                         docker_vivado_2020_2 'make zcu208_clksynth'
                         check_vivado_build 'examples/zcu208_clksynth/zcu208_clksynth/zcu208_clksynth.runs'
-                        dir('examples/zcu208_clksynth/zcu208_clksynth') {
-                            archiveArtifacts artifacts: 'zcu208_clksynth.runs/impl_1/runme.log'
+                        dir('examples/zcu208_clksynth/zcu208_clksynth/zcu208_clksynth.runs') {
+                            archive_zip('zcu208_clksynth.zip', '*/*.log */*.rpt')
                         }
                         dir('examples/zcu208_clksynth/zcu208_clksynth/zcu208_clksynth.runs/impl_1') {
                             archiveArtifacts artifacts: 'zcu208_clksynth.bit'

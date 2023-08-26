@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -21,6 +21,8 @@
 #include <satcat5/datetime.h>
 #include <satcat5/io_core.h>
 
+using satcat5::ptp::MSEC_PER_SEC;
+using satcat5::ptp::USEC_PER_SEC;
 using satcat5::ptp::NSEC_PER_SEC;
 using satcat5::ptp::SUBNS_PER_SEC;
 using satcat5::ptp::SUBNS_PER_MSEC;
@@ -47,27 +49,30 @@ void Time::normalize() {
     }
 }
 
-s64 Time::delta_subns() const {
-    constexpr s64 MAX_SAFE = INT64_MAX / SUBNS_PER_SEC - 1;
-    if (m_secs < -MAX_SAFE) {
+// All "delta_*" unit-conversion methods follow the same template:
+template<s64 UNITS_PER_SEC>
+inline s64 delta_convert(s64 sec, s64 subns) {
+    constexpr s64 MAX_SAFE = INT64_MAX / UNITS_PER_SEC - 1;
+    constexpr s64 SUBNS_PER_UNIT = SUBNS_PER_SEC / UNITS_PER_SEC;
+    if (sec < -MAX_SAFE) {
         return INT64_MIN;
-    } else if (m_secs > MAX_SAFE) {
+    } else if (sec > MAX_SAFE) {
         return INT64_MAX;
+    } else if (SUBNS_PER_UNIT > 1) {
+        return UNITS_PER_SEC * sec + div_round(subns, SUBNS_PER_UNIT);
     } else {
-        return SUBNS_PER_SEC * m_secs + m_subns;
+        return UNITS_PER_SEC * sec + subns;
     }
 }
 
-s64 Time::delta_nsec() const {
-    constexpr s64 MAX_SAFE = INT64_MAX / NSEC_PER_SEC - 1;
-    if (m_secs < -MAX_SAFE) {
-        return INT64_MIN;
-    } else if (m_secs > MAX_SAFE) {
-        return INT64_MAX;
-    } else {
-        return NSEC_PER_SEC * m_secs + div_round(m_subns, SUBNS_PER_NSEC);
-    }
-}
+s64 Time::delta_subns() const
+    { return delta_convert<SUBNS_PER_SEC>(m_secs, m_subns); }
+s64 Time::delta_nsec() const
+    { return delta_convert<NSEC_PER_SEC>(m_secs, m_subns); }
+s64 Time::delta_usec() const
+    { return delta_convert<USEC_PER_SEC>(m_secs, m_subns); }
+s64 Time::delta_msec() const
+    { return delta_convert<MSEC_PER_SEC>(m_secs, m_subns); }
 
 bool Time::read_from(satcat5::io::Readable* src) {
     if (src->get_read_ready() >= 10) {
@@ -92,7 +97,6 @@ void Time::write_to(satcat5::io::Writeable* dst) const {
 // to the GPS epoch (1980 Jan 6 + 19 leap seconds).
 constexpr s64 GPS_EPOCH = satcat5::datetime::ONE_DAY * 3652LL
                         + satcat5::datetime::ONE_SECOND * 19LL;
-constexpr s64 MSEC_PER_SEC = 1000;
 
 s64 Time::to_datetime() const {
     // Calculate milliseconds since PTP epoch.
@@ -117,11 +121,11 @@ Time Time::abs() const {
         // Simple positive case (no change).
         temp.m_subns = m_subns;
     } else if (m_subns > 0) {
-        // Negative case (-4 + 0.6 --> 3.4)
+        // Negative rollover (-4 + 0.6 --> -3.4)
         temp.m_secs -= 1;
         temp.m_subns = SUBNS_PER_SEC - m_subns;
     } else {
-        // Special case for negative seconds on boundary.
+        // Negative boundary (-4 + 0.0 --> -4.0)
         temp.m_subns = 0;
     }
     return temp;

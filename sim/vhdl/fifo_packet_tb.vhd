@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -65,6 +65,8 @@ subtype meta_t is std_logic_vector(META_WIDTH-1 downto 0);
 -- Clock generation.
 constant OUTER_PERIOD : time := 1 us / OUTER_CLOCK_MHZ;
 constant INNER_PERIOD : time := 1 us / INNER_CLOCK_MHZ;
+constant OUTER_MAXBPS : real := real(8 * OUTER_BYTES) * real(OUTER_CLOCK_MHZ);
+constant INNER_MAXBPS : real := real(8 * INNER_BYTES) * real(INNER_CLOCK_MHZ);
 signal inner_clk    : std_logic := '0';
 signal outer_clk    : std_logic := '0';
 
@@ -87,6 +89,7 @@ signal mid_xfer     : natural := 0; -- Cumulative byte-index
 signal mid_data     : std_logic_vector(8*INNER_BYTES-1 downto 0);
 signal mid_nlast    : integer range 0 to INNER_BYTES;
 signal mid_meta     : meta_t := (others => '0');
+signal mid_precom   : std_logic;
 signal mid_last     : std_logic;
 signal mid_valid    : std_logic;
 signal mid_ready    : std_logic := '0';
@@ -110,6 +113,9 @@ signal out_hfull    : std_logic;
 -- Overall test control
 constant revert_rate : real := 0.1;
 signal test_idx     : integer := 0;
+signal in_bps       : real := 0.0;
+signal mid_bps      : real := 0.0;
+signal out_bps      : real := 0.0;
 signal in_rate      : real := 0.0;
 signal mid_rate     : real := 0.0;
 signal out_rate     : real := 0.0;
@@ -183,6 +189,13 @@ end process;
 
 in_write    <= in_valid and in_ready;
 mid_write   <= mid_valid and mid_ready;
+
+-- Safe to enable pre-commit / cut-through mode?
+-- (Leave plenty of margin to avoid statistical underflows.)
+in_bps      <= OUTER_MAXBPS * in_rate;
+mid_bps     <= INNER_MAXBPS * mid_rate;
+out_bps     <= OUTER_MAXBPS * out_rate;
+mid_precom  <= bool2bit(mid_bps > 2.0*out_bps);
 
 -- Input sequence generation.
 p_input : process(outer_clk)
@@ -345,6 +358,7 @@ uut2 : entity work.fifo_packet
     in_data         => mid_data,
     in_nlast        => mid_nlast,
     in_pkt_meta     => mid_meta,
+    in_precommit    => mid_precom,
     in_last_commit  => mid_last,
     in_last_revert  => '0',
     in_write        => mid_write,
@@ -449,9 +463,9 @@ begin
         end if;
 
         -- Check for unexpected overflow flags.
-        assert (in_overflow = '0' or in_ovr_ok = '1')
+        assert (in_overflow = '0' or in_ovr_ok = '1' or reset_p = '1')
             report "Unexpected 1st input overflow." severity error;
-        assert (mid_overflow = '0' or mid_ovr_ok = '1')
+        assert (mid_overflow = '0' or mid_ovr_ok = '1' or reset_p = '1')
             report "Unexpected 2nd input overflow." severity error;
     end if;
 end process;

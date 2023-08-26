@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -25,11 +25,14 @@
 #include <satcat5/cfgbus_interrupt.h>
 #include <satcat5/log.h>
 
-// Status and command codes for interrupt-control register
-static const u32 IRQ_ENABLE     = (1u << 0);
-static const u32 IRQ_REQUEST    = (1u << 1);
+using satcat5::cfg::Interrupt;
 
-satcat5::cfg::Interrupt::Interrupt(cfg::ConfigBus* cfg)
+// Status and command codes for interrupt-control register
+static constexpr u32 IRQ_DISABLE    = 0;
+static constexpr u32 IRQ_ENABLE     = (1u << 0);
+static constexpr u32 IRQ_REQUEST    = (1u << 1);
+
+Interrupt::Interrupt(cfg::ConfigBus* cfg)
     : m_cfg(cfg)
     , m_ctrl(SATCAT5_NULL_REGISTER)
     , m_next(0)
@@ -37,7 +40,7 @@ satcat5::cfg::Interrupt::Interrupt(cfg::ConfigBus* cfg)
     cfg->register_irq(this);
 }
 
-satcat5::cfg::Interrupt::Interrupt(
+Interrupt::Interrupt(
         cfg::ConfigBus* cfg, unsigned devaddr, unsigned regaddr)
     : m_cfg(cfg)
     , m_ctrl(cfg->get_register(devaddr, regaddr))
@@ -48,14 +51,14 @@ satcat5::cfg::Interrupt::Interrupt(
 }
 
 #if SATCAT5_ALLOW_DELETION
-satcat5::cfg::Interrupt::~Interrupt()
+Interrupt::~Interrupt()
 {
     if (!!m_ctrl) *m_ctrl = 0;
     m_cfg->unregister_irq(this);
 }
 #endif
 
-void satcat5::cfg::Interrupt::irq_check()
+void Interrupt::irq_check()
 {
     // For nonstandard interfaces, always call irq_event().
     // Otherwise, prescreen based on the individual request flag.
@@ -65,4 +68,14 @@ void satcat5::cfg::Interrupt::irq_check()
         irq_event();            // Call designated handler
         *m_ctrl = IRQ_ENABLE;   // Acknowledge interrupt event
     }
+}
+
+void Interrupt::irq_enable()
+{
+    if (!!m_ctrl) *m_ctrl = IRQ_ENABLE;
+}
+
+void Interrupt::irq_disable()
+{
+    if (!!m_ctrl) *m_ctrl = IRQ_DISABLE;
 }

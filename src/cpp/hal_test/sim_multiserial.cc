@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -22,6 +22,7 @@
 #include <satcat5/polling.h>
 #include <cstdio>
 
+using satcat5::cfg::IoStatus;
 using satcat5::test::MultiSerial;
 
 // Debugging verbosity level (0/1/2)
@@ -66,12 +67,19 @@ void MultiSerial::load_refcmd(u16 next, u8 flags)
 
 void MultiSerial::poll()
 {
-    step();                     // Update internal simulation
-    satcat5::poll::service();   // Main polling loop
-    irq_poll();                 // Poll ConfigBus interrupts
+    step();                         // Update internal simulation
+    satcat5::poll::service();       // Main polling loop
+    irq_poll();                     // Poll ConfigBus interrupts
 }
 
-satcat5::cfg::IoStatus MultiSerial::read(unsigned regaddr, u32& rdval)
+void MultiSerial::reply_rcvd(unsigned count)
+{
+    m_irq = true;                   // Set interrupt for new data
+    m_rd_ready += count;            // Increment counter
+    CHECK(m_rd_ready <= m_cmd_max); // Read-data overflow?
+}
+
+IoStatus MultiSerial::read(unsigned regaddr, u32& rdval)
 {
     // Extract register address from the overall address.
     regaddr = (regaddr % satcat5::cfg::REGS_PER_DEVICE);
@@ -104,15 +112,15 @@ satcat5::cfg::IoStatus MultiSerial::read(unsigned regaddr, u32& rdval)
     } else {
         // All other reads are invalid.
         WARN("Read from invalid register address.");
-        return satcat5::cfg::IOSTATUS_BUSERROR;
+        return IoStatus::BUSERROR;
     }
 
     if (DEBUG_VERBOSE > 1)
         printf("MST: Read  @ %2X = 0x%08X\n", regaddr, rdval);
-    return satcat5::cfg::IOSTATUS_OK;
+    return IoStatus::OK;
 }
 
-satcat5::cfg::IoStatus MultiSerial::write(unsigned regaddr, u32 wrval)
+IoStatus MultiSerial::write(unsigned regaddr, u32 wrval)
 {
     // Extract register address from the overall address.
     regaddr = (regaddr % satcat5::cfg::REGS_PER_DEVICE);
@@ -131,10 +139,10 @@ satcat5::cfg::IoStatus MultiSerial::write(unsigned regaddr, u32 wrval)
     } else {
         // All other writes are invalid.
         WARN("Write to invalid register address.");
-        return satcat5::cfg::IOSTATUS_BUSERROR;
+        return IoStatus::BUSERROR;
     }
 
-    return satcat5::cfg::IOSTATUS_OK;
+    return IoStatus::OK;
 }
 
 void MultiSerial::step()

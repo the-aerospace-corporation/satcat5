@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
+-- Copyright 2021, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -25,10 +25,17 @@
 -- the final output, high-priority packets will skip ahead of any queued
 -- low-priority packets, regardless of original order.
 --
--- The "last" strobe is asserted concurrently with the final byte in each
--- frame.  The "keep" and "high-priority" (hipri) flags must be asserted at
--- the same time as "last"; otherwise they are ignored. Output flow control
--- uses standard AXI rules.
+-- The "nlast" indicator is asserted concurrently with the final word in each
+-- frame.  (i.e., Any nonzero value indicates the end of the frame.)  In all
+-- configurations, packet metadata (in_meta), the "keep" flag (in_last_keep),
+-- and the "high-priority" flag (in_last_hipri) must be presented concurrently
+-- with the end of the frame.
+--
+-- The optional "in_precommit" signal allows latency reduction in some cases,
+-- by enabling cut-through.  See "fifo_packet.vhd" for additional requirements.
+--
+-- Output flow control uses standard AXI rules.  Packet metadata is presented
+-- and held constant for the entire duration of each output frame.
 --
 -- Internally, the implementation is a wrapper for two fifo_packet instances,
 -- with priority selection at the output.  Typically, the high-priority queue
@@ -70,6 +77,7 @@ entity fifo_priority is
     in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
     in_meta         : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
     in_nlast        : in  integer range 0 to INPUT_BYTES := INPUT_BYTES;
+    in_precommit    : in  std_logic := '1'; -- Optional early-commit flag
     in_last_keep    : in  std_logic;        -- Keep or revert this packet?
     in_last_hipri   : in  std_logic;        -- High-priority packet?
     in_write        : in  std_logic;
@@ -111,14 +119,15 @@ signal sync_reset_o     : std_logic;
 
 -- Generate KEEP strobes for each input.
 signal in_final         : std_logic;
-signal in_keep_hipri    : std_logic;
-signal in_keep_lopri    : std_logic;
+signal in_prefinal      : std_logic;
+signal hi_precommit     : std_logic;
+signal lo_precommit     : std_logic;
 
 -- One-cycle delay for the input stream.
 signal dly_data         : inword_t := (others => '0');
 signal dly_meta         : meta_t := (others => '0');
 signal dly_nlast        : integer range 0 to INPUT_BYTES := INPUT_BYTES;
-signal dly_lo_keep      : std_logic := '0';
+signal dly_precommit    : std_logic := '0';
 signal dly_final        : std_logic := '0';
 signal dly_write        : std_logic := '0';
 
@@ -151,8 +160,9 @@ u_pause : sync_buffer
 
 -- Generate KEEP strobes for each input.
 in_final      <= in_write and bool2bit(in_nlast > 0);
-in_keep_hipri <= in_last_keep and bool2bit(in_last_hipri = '1' and BUFF_HI_ENABLE);
-in_keep_lopri <= in_last_keep and bool2bit(in_last_hipri = '0' or not BUFF_HI_ENABLE);
+in_prefinal   <= (in_final or in_precommit) and in_last_keep;
+hi_precommit  <= in_prefinal and bool2bit(in_last_hipri = '1' and BUFF_HI_ENABLE);
+lo_precommit  <= in_prefinal and bool2bit(in_last_hipri = '0' or not BUFF_HI_ENABLE);
 
 -- Delay inputs to the low-priority FIFO?
 gen_dly1 : if LO_DLY_ENABLE generate
@@ -164,8 +174,8 @@ gen_dly1 : if LO_DLY_ENABLE generate
             dly_meta    <= in_meta;
             dly_nlast   <= in_nlast;
             dly_final   <= in_final;
-            dly_lo_keep <= in_keep_lopri;
             dly_write   <= in_write;
+            dly_precommit <= lo_precommit;
         end if;
     end process;
 end generate;
@@ -176,19 +186,19 @@ gen_dly0 : if not LO_DLY_ENABLE generate
     dly_meta    <= in_meta;
     dly_nlast   <= in_nlast;
     dly_final   <= in_final;
-    dly_lo_keep <= in_keep_lopri;
     dly_write   <= in_write;
+    dly_precommit <= lo_precommit;
 end generate;
 
 -- Combinational logic for commit/revert and status strobes.
 -- Note optional failover for overflow of the high-priority FIFO.
 in_overflow <= lo_overflow or bool2bit(hi_overflow = '1' and not BUFF_FAILOVER);
-lo_select   <= dly_lo_keep or bool2bit(hi_overflow = '1' and BUFF_FAILOVER);
+lo_select   <= dly_precommit or bool2bit(hi_overflow = '1' and BUFF_FAILOVER);
 lo_commit   <= dly_final and lo_select;
 lo_revert   <= dly_final and not lo_select;
-hi_select   <= in_keep_hipri;
-hi_commit   <= in_final and hi_select;
-hi_revert   <= in_final and not hi_select;
+hi_select   <= hi_precommit;
+hi_commit   <= in_final and hi_precommit;
+hi_revert   <= in_final and not hi_precommit;
 
 -- Always instantiate the FIFO for ordinary traffic.
 u_fifo_lo : entity work.fifo_packet
@@ -204,6 +214,7 @@ u_fifo_lo : entity work.fifo_packet
     in_data         => dly_data,
     in_nlast        => dly_nlast,
     in_pkt_meta     => dly_meta,
+    in_precommit    => dly_precommit,
     in_write        => dly_write,
     in_last_commit  => lo_commit,
     in_last_revert  => lo_revert,
@@ -236,6 +247,7 @@ gen_hi : if BUFF_HI_ENABLE generate
         in_nlast        => in_nlast,
         in_write        => in_write,
         in_pkt_meta     => in_meta,
+        in_precommit    => hi_precommit,
         in_last_commit  => hi_commit,
         in_last_revert  => hi_revert,
         in_overflow     => hi_overflow,

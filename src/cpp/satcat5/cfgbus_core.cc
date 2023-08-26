@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -26,56 +26,72 @@
 #include <satcat5/cfgbus_interrupt.h>
 #include <satcat5/log.h>
 
-namespace cfg   = satcat5::cfg;
-namespace log   = satcat5::log;
+using satcat5::cfg::ConfigBus;
+using satcat5::cfg::ConfigBusMmap;
+using satcat5::cfg::Interrupt;
+using satcat5::cfg::IoStatus;
+using satcat5::cfg::Register;
+using satcat5::cfg::WrappedRegister;
+using satcat5::cfg::WrappedRegisterPtr;
+namespace log = satcat5::log;
 
 // By default, check for duplicate interrupt handlers.
 #ifndef SATCAT5_CHECK_DUPIRQ
 #define SATCAT5_CHECK_DUPIRQ    1
 #endif
 
-cfg::WrappedRegister::WrappedRegister(cfg::ConfigBus* cfg, unsigned reg)
+WrappedRegister::WrappedRegister(ConfigBus* cfg, unsigned reg)
     : m_cfg(cfg)
     , m_reg(reg)
 {
     // Nothing else to initialize.
 }
 
-cfg::WrappedRegister::operator u32()
+WrappedRegister::operator u32()
 {
     u32 tmp;
     m_cfg->read(m_reg, tmp);
     return tmp;
 }
 
-void cfg::WrappedRegister::operator=(u32 wrval)
+void WrappedRegister::operator=(u32 wrval)
 {
     m_cfg->write(m_reg, wrval);
 }
 
-cfg::WrappedRegisterPtr::WrappedRegisterPtr(cfg::ConfigBus* cfg, unsigned reg)
+void WrappedRegister::write_repeat(unsigned count, const u32* data)
+{
+    m_cfg->write_repeat(m_reg, count, data);
+}
+
+WrappedRegisterPtr::WrappedRegisterPtr(ConfigBus* cfg, unsigned reg)
     : m_cfg(cfg)
     , m_reg(reg)
 {
     // Nothing else to initialize.
 }
 
-bool cfg::WrappedRegisterPtr::operator!() const
+bool WrappedRegisterPtr::operator!() const
 {
     return !m_cfg;
 }
 
-cfg::WrappedRegister cfg::WrappedRegisterPtr::operator*()
+WrappedRegister WrappedRegisterPtr::operator*()
 {
-    return cfg::WrappedRegister(m_cfg, m_reg);
+    return WrappedRegister(m_cfg, m_reg);
 }
 
-cfg::WrappedRegister cfg::WrappedRegisterPtr::operator[](unsigned idx)
+WrappedRegister WrappedRegisterPtr::operator[](unsigned idx)
 {
-    return cfg::WrappedRegister(m_cfg, m_reg + idx);
+    return WrappedRegister(m_cfg, m_reg + idx);
 }
 
-void cfg::ConfigBus::register_irq(cfg::Interrupt* obj)
+WrappedRegisterPtr WrappedRegisterPtr::operator+(unsigned idx)
+{
+    return WrappedRegisterPtr(m_cfg, m_reg + idx);
+}
+
+void ConfigBus::register_irq(Interrupt* obj)
 {
     // Traverse the linked list to confirm this entry isn't a duplicate.
     // (Otherwise, this action will create an infinite loop.)
@@ -86,65 +102,110 @@ void cfg::ConfigBus::register_irq(cfg::Interrupt* obj)
     }
 }
 
-void cfg::ConfigBus::unregister_irq(cfg::Interrupt* obj)
+void ConfigBus::unregister_irq(Interrupt* obj)
 {
     m_irq_list.remove(obj);
 }
 
-unsigned cfg::ConfigBus::count_irq() const
+unsigned ConfigBus::count_irq() const
 {
     return m_irq_list.len();
 }
 
-cfg::Register cfg::ConfigBus::get_register(unsigned dev, unsigned reg)
+Register ConfigBus::get_register(unsigned dev, unsigned reg)
 {
-    unsigned idx = REGS_PER_DEVICE * dev + reg;
+    unsigned idx = get_regaddr(dev, reg);
 #if SATCAT5_CFGBUS_DIRECT
     return (volatile u32*)(m_base_ptr + idx);
 #else
-    return cfg::WrappedRegisterPtr(this, idx);
+    return WrappedRegisterPtr(this, idx);
 #endif
 }
 
-void cfg::ConfigBus::irq_poll()
+void ConfigBus::irq_poll()
 {
     // Traverse the linked list and poll each handler.
-    cfg::Interrupt* ptr = m_irq_list.head();
+    Interrupt* ptr = m_irq_list.head();
     while (ptr != 0) {
         ptr->irq_check();
         ptr = ptr->m_next;
     }
 }
 
-cfg::ConfigBus::ConfigBus(void* base_ptr)
+ConfigBus::ConfigBus(void* base_ptr)
     : m_base_ptr((volatile u32*)base_ptr)
 {
     // Nothing else to initialize at this time.
 }
 
-cfg::ConfigBusMmap::ConfigBusMmap(void* base_ptr, int irq)
-    : cfg::ConfigBus(base_ptr)
+IoStatus ConfigBus::read_array(
+    unsigned regaddr, unsigned count, u32* result)
+{
+    IoStatus status = IoStatus::OK;
+    for (unsigned a = 0 ; a < count ; ++a) {
+        IoStatus tmp = read(regaddr+a, result[a]);
+        if (tmp != IoStatus::OK) status = tmp;
+    }
+    return status;
+}
+
+IoStatus ConfigBus::read_repeat(
+    unsigned regaddr, unsigned count, u32* result)
+{
+    IoStatus status = IoStatus::OK;
+    for (unsigned a = 0 ; a < count ; ++a) {
+        IoStatus tmp = read(regaddr, result[a]);
+        if (tmp != IoStatus::OK) status = tmp;
+    }
+    return status;
+}
+
+IoStatus ConfigBus::write_array(
+    unsigned regaddr, unsigned count, const u32* data)
+{
+    IoStatus status = IoStatus::OK;
+    for (unsigned a = 0 ; a < count ; ++a) {
+        IoStatus tmp = write(regaddr+a, data[a]);
+        if (tmp != IoStatus::OK) status = tmp;
+    }
+    return status;
+}
+
+IoStatus ConfigBus::write_repeat(
+    unsigned regaddr, unsigned count, const u32* data)
+{
+    IoStatus status = IoStatus::OK;
+    for (unsigned a = 0 ; a < count ; ++a) {
+        IoStatus tmp = write(regaddr, data[a]);
+        if (tmp != IoStatus::OK) status = tmp;
+    }
+    return status;
+}
+
+IoStatus ConfigBusMmap::read(unsigned regaddr, u32& val) {
+    val = m_base_ptr[regaddr];
+    return IoStatus::OK;
+}
+
+IoStatus ConfigBusMmap::write(unsigned regaddr, u32 val) {
+    m_base_ptr[regaddr] = val;
+    return IoStatus::OK;
+}
+
+ConfigBusMmap::ConfigBusMmap(void* base_ptr, int irq)
+    : ConfigBus(base_ptr)
     , irq::Handler("ConfigBus", irq)
 {
     // Nothing else to initialize at this time.
 }
 
-void* cfg::ConfigBusMmap::get_device_mmap(unsigned dev) const
+void* ConfigBusMmap::get_device_mmap(unsigned dev) const
 {
-    return (void*)(m_base_ptr + REGS_PER_DEVICE * dev);
+    return (void*)(m_base_ptr + get_regaddr(dev,0));
 }
 
-cfg::IoStatus cfg::ConfigBusMmap::read(unsigned regaddr, u32& val) {
-    val = m_base_ptr[regaddr];
-    return cfg::IOSTATUS_OK;
-}
-
-cfg::IoStatus cfg::ConfigBusMmap::write(unsigned regaddr, u32 val) {
-    m_base_ptr[regaddr] = val;
-    return cfg::IOSTATUS_OK;
-}
-
-void cfg::ConfigBusMmap::irq_event() {
+void ConfigBusMmap::irq_event() {
     // Forward interrupt events to parent.
     irq_poll();
 }
+

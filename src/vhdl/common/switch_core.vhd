@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -41,6 +41,85 @@
 -- and independent of the primary output buffer size (OBUF_KBYTES).
 -- This feature is disabled if HBUF_KBYTES = 0.
 --
+-- A brief explanation of each build-time configuration parameter:
+--  * DEV_ADDR (default: CFGBUS_ADDR_NONE)
+--      ConfigBus device address for optional management interface.
+--      See "switch_types.vhd" for a list of defined register addresses.
+--  * CORE_CLK_HZ
+--      Clock rate of the "core_clk" signal, in Hz.
+--      Used to scale various real-time parameters and timeouts.
+--  * SUPPORT_PAUSE (default: true)
+--      Support or ignore 802.3x "PAUSE" frames?
+--      This feature is recommended for compatibility (e.g., many USB-Ethernet
+--      adapters rely on this feature), but may be disabled to save resources.
+--  * SUPPORT_PTP (default: false)
+--      Support precise IEEE-1588 timestamps in transparent clock mode?
+--      Each PTP-enabled port must also be provided with a Vernier reference
+--      (ptp_counter_gen) and set VCONFIG (create_vernier_config).
+--  * SUPPORT_VLAN (default: false)
+--      Support or ignore 802.1q VLAN tags?
+--      VLAN support requires additional BRAM.
+--  * MISS_BCAST (default: true)
+--      Set policy for packets with an uncached destination MAC:
+--      True = Broadcast (guarantees packet delivery)
+--      False = Drop (avoids denial-of-service due to cache overflow)
+--  * ALLOW_JUMBO (default: false)
+--      Accept jumbo Ethernet frames? (Size up to 9038 bytes)
+--      This feature requires IBUF_KBYTES and OBUF_KBYTES to be at least 10.
+--  * ALLOW_RUNT (default: false)
+--      Accept runt Ethernet frames? (Size < 64 bytes)
+--      Many 10/100/1000BASE-T PHYs cannot support runt frames, but they can
+--      be used with SPI and UART ports.  See "port_adapter.vhd" for an inline
+--      adapter that can be used to pad outgoing packets as needed.
+--  * ALLOW_PRECOMMIT (default: false)
+--      Allow output FIFO cut-through?
+--      This reduces latency by 1-5 microseconds in some cases, but requires
+--      additional slices.  Currently experimental, use at your own risk.
+--  * PORT_COUNT (default: 0)
+--      Total standard Ethernet ports (ports_*)
+--  * PORTX_COUNT (default: 0)
+--      Total 10 Gbps Ethernet ports (portx_*)
+--  * DATAPATH_BYTES
+--      Width of shared pipeline, which sets available bandwidth:
+--          TOTAL_BANDWIDTH(bps) = CORE_CLK_HZ * DATAPATH_BYTES * 8
+--      Choose DATAPATH_BYTES such that TOTAL_BANDWIDTH exceeds the sum
+--      of all input ports.  For example, a switch with eight gigabit
+--      ports and CORE_CLK_HZ = 200 MHz requires DATAPATH_BYTES >= 5.
+--      Additional margin can reduce required IBUF_KBYTES.
+--  * IBUF_KBYTES (default: 2)
+--      Input buffer size for each port (kilobytes)
+--      Increase this to at least 4 if DATAPATH_BYTES leaves low margin.
+--      Increase this to at least 10 if ALLOW_JUMBO is enabled.
+--  * HBUF_KBYTES (default: 0)
+--      High-priority output buffer size for each port (kilobytes)
+--      Any value greater than zero enables packet prioritization, which
+--      is is set by VLAN (SUPPORT_VLAN) and/or EtherType (PRI_TABLE_SIZE).
+--  * OBUF_KBYTES
+--      Normal-priority output buffer size for each port (kilobytes)
+--      Recommended setting is at least 8-16, depending on traffic statistics.
+--      Increase this setting if congestion packet losses are excessive.
+--  * IBUF_PACKETS (default: 32)
+--      Maximum allowed packets in each port's input queue.
+--      Decreasing this figure can save slices on some platforms.
+--  * OBUF_PACKETS (default: 32)
+--      Maximum allowed packets in each port's output queue.
+--      Decreasing this figure can save slices on some platforms.
+--  * PTP_MIXED_STEP (default: true)
+--      Support PTP format conversion?  (One-step to two-step conversion.)
+--      Required for full PTP compatibility, disable to save resources.
+--      This parameter has no effect if SUPPORT_PTP = false.
+--  * MAC_TABLE_EDIT (default: true)
+--      Support manual read/write of MAC table?  Disable to save resources.
+--      This parameter has no effect if DEV_ADDR = CFGBUS_ADDR_NONE.
+--  * MAC_TABLE_SIZE (default: 64)
+--      Maximum stored MAC addresses in cache.  This is a major driver of
+--      resource usage for the switch, and should be chosen carefully.
+--      On small LANs, this should match or exceed the number of endpoints.
+--  * PRI_TABLE_SIZE (default: 16)
+--      Maximum number of high-priority EtherTypes.
+--      This feature has no effect if HBUF_KBYTES = 0.
+--      If only VLAN prioritization is required, it can be set to zero.
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -61,6 +140,7 @@ entity switch_core is
     MISS_BCAST      : boolean := true;  -- Broadcast or drop unknown MAC?
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean := false; -- Allow runt frames? (Size < 64 bytes)
+    ALLOW_PRECOMMIT : boolean := false; -- Allow output FIFO cut-through?
     PORT_COUNT      : natural := 0;     -- Total standard Ethernet ports
     PORTX_COUNT     : natural := 0;     -- Total 10 Gbps Ethernet ports
     DATAPATH_BYTES  : positive;         -- Width of shared pipeline
@@ -72,7 +152,7 @@ entity switch_core is
     PTP_MIXED_STEP  : boolean := true;  -- Support PTP format conversion?
     MAC_TABLE_EDIT  : boolean := true;  -- Manual read/write of MAC table?
     MAC_TABLE_SIZE  : positive := 64;   -- Max stored MAC addresses
-    PRI_TABLE_SIZE  : positive := 16);  -- Max high-priority EtherTypes
+    PRI_TABLE_SIZE  : natural := 16);   -- Max high-priority EtherTypes
     port (
     -- Switch ports (0-1 Gbps)
     ports_rx_data   : in  array_rx_m2s(PORT_COUNT-1 downto 0) := (others => RX_M2S_IDLE);
@@ -171,6 +251,7 @@ signal pktout_data      : word_t;
 signal pktout_meta      : switch_meta_t;
 signal pktout_nlast     : nlast_t;
 signal pktout_write     : std_logic;
+signal pktout_precommit : std_logic;
 signal pktout_hipri     : std_logic;
 signal pktout_pdst      : bit_array;
 
@@ -387,8 +468,11 @@ u_mac : entity work.mac_core
     IO_BYTES        => DATAPATH_BYTES,
     PORT_COUNT      => PORT_TOTAL,
     CORE_CLK_HZ     => CORE_CLK_HZ,
+    ALLOW_RUNT      => ALLOW_RUNT,
+    ALLOW_PRECOMMIT => ALLOW_PRECOMMIT,
     SUPPORT_PTP     => SUPPORT_PTP,
-    SUPPORT_VLAN    => SUPPORT_VLAN,
+    SUPPORT_VPORT   => SUPPORT_VLAN,
+    SUPPORT_VRATE   => SUPPORT_VLAN,
     MISS_BCAST      => bool2bit(MISS_BCAST),
     MIN_FRM_BYTES   => get_min_frame,
     MAX_FRM_BYTES   => get_max_frame,
@@ -407,6 +491,7 @@ u_mac : entity work.mac_core
     out_meta        => pktout_meta,
     out_nlast       => pktout_nlast,
     out_write       => pktout_write,
+    out_precommit   => pktout_precommit,
     out_priority    => pktout_hipri,
     out_keep        => pktout_pdst,
     cfg_cmd         => cfg_cmd,
@@ -449,6 +534,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         in_data         => pktout_data,
         in_meta         => pktout_meta,
         in_nlast        => pktout_nlast,
+        in_precommit    => pktout_precommit,
         in_keep         => pktout_pdst(n),
         in_hipri        => pktout_hipri,
         in_write        => pktout_write,
@@ -493,6 +579,7 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         in_data         => pktout_data,
         in_meta         => pktout_meta,
         in_nlast        => pktout_nlast,
+        in_precommit    => pktout_precommit,
         in_keep         => pktout_pdst(PORT_COUNT+n),
         in_hipri        => pktout_hipri,
         in_write        => pktout_write,

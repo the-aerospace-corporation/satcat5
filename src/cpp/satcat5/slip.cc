@@ -93,7 +93,7 @@ void SlipEncoder::write_next(u8 data)
 // Inline SLIP Decoder
 SlipDecoder::SlipDecoder(io::Writeable* dst)
     : m_dst(dst)
-    , m_state(DECODE_RDY)
+    , m_state(State::SLIP_RDY)
 {
     // Nothing else to initialize.
 }
@@ -109,29 +109,29 @@ void SlipDecoder::write_next(u8 data)
     if (data == SLIP_END) {
         // Finalize complete frame, or abort on incomplete data.
         // (This includes back-to-back END tokens, which are harmless.)
-        if (m_state == DECODE_RDY) {
+        if (m_state == State::SLIP_RDY) {
             m_dst->write_finalize();
-        } else if (m_state != DECODE_EOF) {
+        } else if (m_state != State::SLIP_EOF) {
             if (SATCAT5_SLIP_LOG_ERROR)
                 satcat5::log::Log(satcat5::log::WARNING, "SLIP decode error");
             m_dst->write_abort();
         }
-        m_state = DECODE_EOF;
-    } else if (m_state == DECODE_ERR) {
+        m_state = State::SLIP_EOF;
+    } else if (m_state == State::SLIP_ERR) {
         // After error, discard data until next END.
     } else if (data == SLIP_ESC) {
-        m_state = DECODE_ESC;       // Escape next byte
-    } else if (m_state != DECODE_ESC) {
+        m_state = State::SLIP_ESC;  // Escape next byte
+    } else if (m_state != State::SLIP_ESC) {
         m_dst->write_u8(data);      // Normal passthrough
-        m_state = DECODE_RDY;
+        m_state = State::SLIP_RDY;
     } else if (data == SLIP_ESC_END) {
         m_dst->write_u8(SLIP_END);  // Escaped END
-        m_state = DECODE_RDY;
+        m_state = State::SLIP_RDY;
     } else if (data == SLIP_ESC_ESC) {
         m_dst->write_u8(SLIP_ESC);  // Escaped ESC
-        m_state = DECODE_RDY;
+        m_state = State::SLIP_RDY;
     } else {
-        m_state = DECODE_ERR;       // Error
+        m_state = State::SLIP_ERR;  // Error
     }
 }
 

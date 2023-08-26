@@ -63,6 +63,8 @@ signal tstamp   : tstamp_t;
 -- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
 attribute dont_touch : boolean;
 attribute dont_touch of tstamp : signal is true;
+attribute keep : boolean;
+attribute keep of tstamp : signal is true;
 attribute satcat5_cross_clock_src : boolean;
 attribute satcat5_cross_clock_src of tstamp : signal is true;
 

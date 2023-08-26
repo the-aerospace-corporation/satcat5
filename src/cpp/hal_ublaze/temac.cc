@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation
+// Copyright 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -130,6 +130,28 @@ void TemacAvb::avb_jump_by(const TemacTime& delta)
     m_regs[REG_AVB_OFFS_SECH] = (u32)(delta.sec >> 32);
     m_regs[REG_AVB_OFFS_SECL] = (u32)(delta.sec >> 0);
     m_regs[REG_AVB_OFFS_NSEC] = delta.nsec;
+}
+
+Time TemacAvb::clock_adjust(const Time& amount)
+{
+    // Testing indicates that shifts smaller than one second have no effect.
+    // This appears to be a bug in the Xilinx IP, so we need a workaround.
+    if (amount.abs() < satcat5::ptp::ONE_SECOND)
+        return amount;  // Skip adjustment if it would have no effect.
+    TemacTime tmp = {amount.secs(), amount.nsec()};
+    avb_jump_by(tmp);   // Apply adjustment
+    return Time(0);     // Report success (zero residue)
+}
+
+void TemacAvb::clock_rate(s64 offset)
+{
+    // Limit maximum offset from nominal rate.
+    constexpr s32 NOMINAL    = (8 << 20);   // 8.0 nsec per clock
+    constexpr s32 MAX_OFFSET = (1 << 20);   // 1.0 nsec per clock
+    if (offset < -MAX_OFFSET) offset = -MAX_OFFSET;
+    if (offset > MAX_OFFSET) offset = MAX_OFFSET;
+    s32 rate = NOMINAL + (s32)offset;
+    avb_set_rate((u32)rate);
 }
 
 void TemacAvb::irq_event()

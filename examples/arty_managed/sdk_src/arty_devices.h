@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -36,6 +36,8 @@ static const unsigned DEVADDR_TRAFFIC   = 6;    // Traffic statistics
 static const unsigned DEVADDR_MDIO      = 7;    // MDIO for the Ethernet PHY
 static const unsigned DEVADDR_LEDS      = 8;    // LEDs (total 16x)
 static const unsigned DEVADDR_TIMER     = 9;    // Timer functions
+static const unsigned DEVADDR_I2C       = 10;   // I2C controller
+static const unsigned DEVADDR_SPI       = 11;   // SPI controller
 
 // Arty's RMII Ethernet PHY address for MDIO queries.
 static const unsigned RMII_PHYADDR      = 1;

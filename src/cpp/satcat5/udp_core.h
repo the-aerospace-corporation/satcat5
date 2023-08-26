@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -32,6 +32,10 @@ namespace satcat5 {
         // Commonly used UDP port-numbers:
         constexpr satcat5::udp::Port PORT_NONE          = {0};
         constexpr satcat5::udp::Port PORT_ECHO          = {7};
+        constexpr satcat5::udp::Port PORT_DHCP_SERVER   = {67};
+        constexpr satcat5::udp::Port PORT_DHCP_CLIENT   = {68};
+        constexpr satcat5::udp::Port PORT_PTP_EVENT     = {319};
+        constexpr satcat5::udp::Port PORT_PTP_GENERAL   = {320};
         constexpr satcat5::udp::Port PORT_CFGBUS_CMD    = {0x5A61};
         constexpr satcat5::udp::Port PORT_CFGBUS_ACK    = {0x5A62};
 
@@ -48,11 +52,10 @@ namespace satcat5 {
                 const satcat5::udp::Port& dstport,
                 const satcat5::udp::Port& srcport);
 
-            // Automatic address resolution (user supplies IP + gateway)
+            // Automatic address resolution (user supplies IP only)
             // (See "ip_core.h / ip::Address" for more information.
             void connect(
                 const satcat5::udp::Addr& dstaddr,
-                const satcat5::udp::Addr& gateway,
                 const satcat5::udp::Port& dstport,
                 const satcat5::udp::Port& srcport);
 
@@ -63,7 +66,13 @@ namespace satcat5 {
             void close() override {m_addr.close();}
             bool ready() const override {return m_addr.ready();}
             satcat5::net::Dispatch* iface() const override;
-            satcat5::io::Writeable* open_write(unsigned len) const override;
+            satcat5::io::Writeable* open_write(unsigned len) override;
+
+            // Various accessors.
+            inline satcat5::ip::Addr dstaddr() const
+                {return m_addr.dstaddr();}
+            inline satcat5::ip::Addr gateway() const
+                {return m_addr.gateway();}
 
             // Raw interface object is accessible to public.
             satcat5::udp::Dispatch* const m_iface;

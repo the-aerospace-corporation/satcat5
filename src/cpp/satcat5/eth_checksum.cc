@@ -105,6 +105,28 @@ inline void crc_update(u32& crc, u8 next)
     crc = (crc >> 8) ^ CRC_TABLE[index];    // XOR with table
 }
 
+u32 satcat5::eth::crc32(unsigned nbytes, const void* data)
+{
+    // Byte-by-byte CRC32 calculation.
+    const u8* data8 = (const u8*)data;
+    u32 crc = CRC_INIT;
+    for (unsigned a = 0 ; a < nbytes ; ++a)
+        crc_update(crc, data8[a]);
+    // Format result per Ethernet specification.
+    return __builtin_bswap32(crc ^ CRC_MASK);
+}
+
+u32 satcat5::eth::crc32(satcat5::io::Readable* src)
+{
+    // Byte-by-byte CRC32 calculation.
+    u32 crc = CRC_INIT;
+    while (src->get_read_ready())
+        crc_update(crc, src->read_u8());
+    src->read_finalize();
+    // Format result per Ethernet specification.
+    return __builtin_bswap32(crc ^ CRC_MASK);
+}
+
 ChecksumTx::ChecksumTx(satcat5::io::Writeable* dst)
     : m_dst(dst)
     , m_crc(CRC_INIT)

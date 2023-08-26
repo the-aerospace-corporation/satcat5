@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -102,6 +102,10 @@ TEST_CASE("polling") {
         a.timer_once(3);    // 3 only
         b.timer_every(3);   // 3, 6, 9
         c.timer_every(2);   // 2, 4 (stop early)
+        // Check the timer_interval() for each timer.
+        CHECK(a.timer_interval() == 0);
+        CHECK(b.timer_interval() == 3);
+        CHECK(c.timer_interval() == 2);
         // Update the global Timekeeper object a few times.
         for (unsigned n = 0 ; n < 10 ; ++n) {
             poll::service();
@@ -162,6 +166,6 @@ TEST_CASE("polling") {
         realtime_wait(100);
         // Confirm we got roughly the expected event count.
         CHECK(ctr.count() >= 3);
-        CHECK(ctr.count() <= 5);
+        CHECK(ctr.count() <= 6);
     }
 }

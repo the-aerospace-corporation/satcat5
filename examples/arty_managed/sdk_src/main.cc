@@ -27,8 +27,10 @@
 #include <satcat5/cfgbus_stats.h>
 #include <satcat5/cfgbus_timer.h>
 #include <satcat5/eth_chat.h>
+#include <satcat5/ip_dhcp.h>
 #include <satcat5/ip_stack.h>
 #include <satcat5/log.h>
+#include <satcat5/net_cfgbus.h>
 #include <satcat5/port_mailmap.h>
 #include <satcat5/port_serial.h>
 #include <satcat5/switch_cfg.h>
@@ -37,12 +39,18 @@
 using satcat5::cfg::LedActivity;
 using satcat5::cfg::LedWave;
 using satcat5::log::Log;
+namespace ip = satcat5::ip;
 
 // Enable diagnostic options?
-static const bool DEBUG_MAC_TABLE   = true;
-static const bool DEBUG_MDIO_REG    = false;
-static const bool DEBUG_PING_HOST   = true;
-static const bool DEBUG_PORT_STATUS = false;
+#define DEBUG_DHCP_CLIENT   false
+#define DEBUG_DHCP_SERVER   false
+#define DEBUG_MAC_TABLE     true
+#define DEBUG_MDIO_REG      false
+#define DEBUG_PING_HOST     true
+#define DEBUG_PORT_STATUS   false
+#define DEBUG_REMOTE_CTRL   true
+#define DEBUG_VLAN_DEMO     false
+#define DEBUG_VLAN_LOCKDOWN true
 
 // Global interrupt controller.
 static XIntc irq_xilinx;
@@ -101,14 +109,30 @@ constexpr unsigned LED_RGB_COUNT = sizeof(led_rgb) / sizeof(led_rgb[0]);
 constexpr unsigned LED_AUX_COUNT = sizeof(led_aux) / sizeof(led_aux[0]);
 
 // UDP network stack
-static const satcat5::eth::MacAddr local_mac
+static constexpr satcat5::eth::MacAddr LOCAL_MAC
     = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-static const satcat5::ip::Addr local_ip
-    = {192, 168, 1, 42};
-static const satcat5::ip::Addr local_gateway
-    = {192, 168, 1, 1};
+static constexpr ip::Addr LOCAL_IP
+    = DEBUG_DHCP_CLIENT ? ip::ADDR_NONE : ip::Addr(192, 168, 1, 42);
+static constexpr ip::Addr PING_TARGET
+    = DEBUG_PING_HOST ? ip::ADDR_NONE : ip::Addr(192, 168, 1, 1);
 
-satcat5::ip::Stack ip_stack(local_mac, local_ip, &eth_port, &eth_port, &timer);
+ip::Stack ip_stack(LOCAL_MAC, LOCAL_IP, &eth_port, &eth_port, &timer);
+
+// DHCP client is dormant if user sets a static IP.
+ip::DhcpClient ip_dhcp(&ip_stack.m_udp);
+
+// Optional DHCP server for range 192.168.1.64 to 192.168.1.95
+// (Do not enable client and server simultaneously.)
+#if DEBUG_DHCP_SERVER && !DEBUG_DHCP_CLIENT
+    ip::DhcpPoolStatic<32> ip_dhcp_pool(ip::Addr(192, 168, 1, 64));
+    ip::DhcpServer ip_dhcp_server(&ip_stack.m_udp, &ip_dhcp_pool);
+#endif
+
+// Optional remote control of the local ConfigBus.
+#if DEBUG_REMOTE_CTRL
+    satcat5::eth::ProtoConfig cfgbus_server_eth(&ip_stack.m_eth, &cfgbus);
+    satcat5::udp::ProtoConfig cfgbus_server_udp(&ip_stack.m_udp, &cfgbus);
+#endif
 
 // Chat message service with echo, bound to a specific VLAN ID.
 // (The chat-echo service only responds to requests from this VID.)
@@ -120,6 +144,14 @@ satcat5::eth::ChatEcho      chat_echo(&chat_proto);
 // (This is not a realistic network configuration, but works for a demo.)
 static const u32 MAILMAP_MODE   = satcat5::eth::vlan_portcfg(
     PORT_IDX_MAILMAP, satcat5::eth::VTAG_MANDATORY);        // Always specify VID
+static const u32 PMOD1_MODE     = satcat5::eth::vlan_portcfg(
+    PORT_IDX_PMOD1, satcat5::eth::VTAG_RESTRICT, {1});      // Default VID = 1
+static const u32 PMOD2_MODE     = satcat5::eth::vlan_portcfg(
+    PORT_IDX_PMOD2, satcat5::eth::VTAG_RESTRICT, {1});      // Default VID = 1
+static const u32 PMOD3_MODE     = satcat5::eth::vlan_portcfg(
+    PORT_IDX_PMOD3, satcat5::eth::VTAG_RESTRICT, {1});      // Default VID = 1
+static const u32 PMOD4_MODE     = satcat5::eth::vlan_portcfg(
+    PORT_IDX_PMOD4, satcat5::eth::VTAG_RESTRICT, {1});      // Default VID = 1
 static const u32 RMII_ECHO_ON   = satcat5::eth::vlan_portcfg(
     PORT_IDX_RMII, satcat5::eth::VTAG_ADMIT_ALL, {42});     // Default VID = 42
 static const u32 RMII_ECHO_OFF  = satcat5::eth::vlan_portcfg(
@@ -142,9 +174,10 @@ public:
     void timer_event() override {
         // Send something on the UART to show we're still alive.
         Log(satcat5::log::DEBUG, "Heartbeat index").write(m_ctr++);
-        // Every N seconds, toggle the VLAN configuration.
-        static const unsigned VLAN_INTERVAL = 4;    // Must be power of two
-        if (m_ctr % VLAN_INTERVAL == 0) {
+        // Optionally toggle the VLAN configuration every N seconds.
+        // Note: VLAN_INTERVAL must be a power of two.
+        static const unsigned VLAN_INTERVAL = 4;
+        if (DEBUG_VLAN_DEMO && (m_ctr % VLAN_INTERVAL == 0)) {
             if (m_ctr & VLAN_INTERVAL) {
                 Log(satcat5::log::INFO, "Chat-echo enabled.");
                 eth_switch.vlan_set_port(RMII_ECHO_ON);
@@ -192,18 +225,26 @@ public:
 int main()
 {
     // VLAN setup for the managed Ethernet switch.
-    eth_switch.vlan_reset(true);                // Reset in lockdown mode
+    eth_switch.vlan_reset(DEBUG_VLAN_LOCKDOWN); // Lockdown or open mode?
     eth_switch.vlan_set_mask(1,                 // All ports allow VID = 1
         satcat5::eth::VLAN_CONNECT_ALL);
     eth_switch.vlan_set_mask(42,                // Some ports allow VID = 42
         PORT_MASK_MAILMAP | PORT_MASK_RMII);
-    eth_switch.vlan_set_port(RMII_ECHO_ON);     // Configure RMII port
+    eth_switch.vlan_set_rate(1,                 // Rate control for VID = 1
+        satcat5::eth::VRATE_10MBPS);
+    eth_switch.vlan_set_rate(1,                 // Rate control for VID = 42
+        satcat5::eth::VRATE_10MBPS);
     eth_switch.vlan_set_port(MAILMAP_MODE);     // Configure uBlaze port
+    eth_switch.vlan_set_port(PMOD1_MODE);       // Configure PMOD ports 1-4
+    eth_switch.vlan_set_port(PMOD2_MODE);
+    eth_switch.vlan_set_port(PMOD3_MODE);
+    eth_switch.vlan_set_port(PMOD4_MODE);
+    eth_switch.vlan_set_port(RMII_ECHO_OFF);    // Configure RMII port
     ip_stack.m_eth.set_default_vid({1});        // Default outbound VID
 
-    // Ping the default gateway every second?
+    // Ping the specified IP-address every second?
     if (DEBUG_PING_HOST) {
-         ip_stack.m_ping.ping(local_gateway, local_gateway);
+         ip_stack.m_ping.ping(PING_TARGET);
     }
 
     // Set up the status LEDs.

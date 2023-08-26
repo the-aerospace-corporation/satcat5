@@ -30,6 +30,12 @@ bool satcat5::ip::Addr::is_multicast() const
         return false;   // All other addresses
 }
 
+// Is this a valid unicast IP?  (Not zero, not multicast.)
+bool satcat5::ip::Addr::is_unicast() const
+{
+    return value && !is_multicast();
+}
+
 // Calculate or verify checksum using algorithm from RFC 1071:
 // https://datatracker.ietf.org/doc/html/rfc1071
 u16 satcat5::ip::checksum(unsigned wcount, const u16* data)

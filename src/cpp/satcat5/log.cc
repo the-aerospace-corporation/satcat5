@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -17,13 +17,16 @@
 // along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
 //////////////////////////////////////////////////////////////////////////
 
+#include <satcat5/ethernet.h>
 #include <satcat5/io_core.h>
+#include <satcat5/ip_core.h>
 #include <satcat5/log.h>
 #include <satcat5/utils.h>
 
 namespace io    = satcat5::io;
 namespace log   = satcat5::log;
 using log::Log;
+using log::LogBuffer;
 
 // Enable emoji for log priority indicators?
 #ifndef SATCAT5_LOG_EMOJI
@@ -139,118 +142,160 @@ void log::ToWriteable::log_event(
 
 Log::Log(s8 priority)
     : m_priority(priority)
-    , m_wridx(0)
 {
     // Nothing else to do at this time.
 }
 
 Log::Log(s8 priority, const char* str)
     : m_priority(priority)
-    , m_wridx(0)
 {
-    wr_str(str);
+    m_buff.wr_str(str);
 }
 
 Log::Log(s8 priority, const char* str1, const char* str2)
     : m_priority(priority)
-    , m_wridx(0)
 {
-    wr_str(str1);
-    wr_str(": ");
-    wr_str(str2);
+    m_buff.wr_str(str1);
+    m_buff.wr_str(": ");
+    m_buff.wr_str(str2);
+}
+
+Log::Log(s8 priority, const void* str, unsigned nbytes)
+    : m_priority(priority)
+{
+    m_buff.wr_fix((const char*)str, nbytes);
 }
 
 log::Log::~Log()
 {
     // Null-terminate the final message string.
-    m_buff[m_wridx] = 0;
+    m_buff.terminate();
 
     // Deliver it to each handler on the global list.
     log::EventHandler* dst = g_log_dst;
     while (dst) {
-        dst->log_event(m_priority, m_wridx, m_buff);
+        dst->log_event(m_priority, m_buff.len(), m_buff.m_buff);
         dst = satcat5::util::ListCore::next(dst);
     }
 }
 
 Log& Log::write(const char* str) {
-    wr_str(str);
+    m_buff.wr_str(str);
     return *this;
 }
 
 Log& Log::write(bool val) {
-    wr_str(" = ");
-    wr_hex(val ? 1:0, 1);
+    m_buff.wr_str(" = ");
+    m_buff.wr_hex(val ? 1:0, 1);
     return *this;
 }
 
 Log& Log::write(u8 val) {
-    wr_str(" = 0x");
-    wr_hex(val, 2);
+    m_buff.wr_str(" = 0x");
+    m_buff.wr_hex(val, 2);
     return *this;
 }
 
 Log& Log::write(u16 val) {
-    wr_str(" = 0x");
-    wr_hex(val, 4);
+    m_buff.wr_str(" = 0x");
+    m_buff.wr_hex(val, 4);
     return *this;
 }
 
 Log& Log::write(u32 val) {
-    wr_str(" = 0x");
-    wr_hex(val, 8);
+    m_buff.wr_str(" = 0x");
+    m_buff.wr_hex(val, 8);
     return *this;
 }
 
 Log& Log::write(u64 val) {
     u32 msb = (u32)(val >> 32);
     u32 lsb = (u32)(val >> 0);
-    wr_str(" = 0x");
-    wr_hex(msb, 8);
-    wr_hex(lsb, 8);
+    m_buff.wr_str(" = 0x");
+    m_buff.wr_hex(msb, 8);
+    m_buff.wr_hex(lsb, 8);
     return *this;
 }
 
 Log& Log::write(const u8* val, unsigned nbytes) {
-    wr_str(" = 0x");
+    m_buff.wr_str(" = 0x");
     for (unsigned a = 0 ; a < nbytes ; ++a)
-        wr_hex(val[a], 2);
+        m_buff.wr_hex(val[a], 2);
+    return *this;
+}
+
+Log& Log::write(const satcat5::eth::MacAddr& mac)
+{
+    // Convention is six hex bytes with ":" delimeter.
+    // e.g., "DE:AD:BE:EF:CA:FE"
+    m_buff.wr_str(" = ");
+    for (unsigned a = 0 ; a < 6 ; ++a) {
+        if (a) m_buff.wr_str(":");
+        m_buff.wr_hex(mac.addr[a], 2);
+    }
+    return *this;
+}
+
+Log& Log::write(const satcat5::ip::Addr& ip)
+{
+    // Extract individual bytes from the 32-bit IP-address.
+    u32 ip_bytes[] = {
+        (ip.value >> 24) & 0xFF,    // MSB-first
+        (ip.value >> 16) & 0xFF,
+        (ip.value >>  8) & 0xFF,
+        (ip.value >>  0) & 0xFF,
+    };
+
+    // Convention is 4 decimal numbers with "." delimiter.
+    // e.g., "192.168.1.42"
+    m_buff.wr_str(" = ");
+    for (unsigned a = 0 ; a < 4 ; ++a) {
+        if (a) m_buff.wr_str(".");
+        m_buff.wr_dec(ip_bytes[a]);
+    }
     return *this;
 }
 
 Log& Log::write10(s32 val) {
-    // Decimal conversion with absolute value.
-    char temp[LOG_ITOA_BUFFSIZE];
-    log_itoa(temp, satcat5::util::abs_s32(val));
-
-    // Write final string with sign prefix.
-    wr_str(val < 0 ? " = -" : " = +");
-    wr_str(temp);
+    // Decimal string with sign prefix.
+    m_buff.wr_str(val < 0 ? " = -" : " = +");
+    m_buff.wr_dec(satcat5::util::abs_s32(val));
     return *this;
 }
 
 Log& Log::write10(u32 val) {
-    // Decimal conversion.
-    char temp[LOG_ITOA_BUFFSIZE];
-    log_itoa(temp, val);
-
     // Write final string.
-    wr_str(" = ");
-    wr_str(temp);
+    m_buff.wr_str(" = ");
+    m_buff.wr_dec(val);
     return *this;
 }
 
-void Log::wr_str(const char* str)
+void LogBuffer::wr_fix(const char* str, unsigned len)
+{
+    if (!str) return;  // Ignore null pointers
+    const char* end = str + len;
+    while (str != end && m_wridx < SATCAT5_LOG_MAXLEN)
+        m_buff[m_wridx++] = *(str++);
+}
+
+void LogBuffer::wr_str(const char* str)
 {
     if (!str) return;  // Ignore null pointers
     while (*str && m_wridx < SATCAT5_LOG_MAXLEN)
         m_buff[m_wridx++] = *(str++);
 }
 
-void Log::wr_hex(uint32_t val, unsigned nhex)
+void LogBuffer::wr_hex(u32 val, unsigned nhex)
 {
     for (unsigned a = 0 ; m_wridx < SATCAT5_LOG_MAXLEN && a < nhex ; ++a) {
         unsigned shift = 4 * (nhex-a-1);    // Most significant nybble first
         m_buff[m_wridx++] = hex_lookup(val >> shift);
     }
+}
+
+void LogBuffer::wr_dec(u32 val)
+{
+    char temp[LOG_ITOA_BUFFSIZE];
+    log_itoa(temp, val);
+    wr_str(temp);
 }

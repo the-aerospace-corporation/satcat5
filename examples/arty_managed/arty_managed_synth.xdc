@@ -1,4 +1,4 @@
-# Copyright 2021 The Aerospace Corporation
+# Copyright 2021, 2023 The Aerospace Corporation
 #
 # This file is part of SatCat5.
 #
@@ -66,6 +66,10 @@ set_property PACKAGE_PIN D3     [get_ports {pmod4[1]}];
 set_property PACKAGE_PIN F4     [get_ports {pmod4[2]}];
 set_property PACKAGE_PIN F3     [get_ports {pmod4[3]}];
 
+# I2C interface (J3)
+set_property PACKAGE_PIN L18    [get_ports i2c_sck];        # CK_SCL
+set_property PACKAGE_PIN M18    [get_ports i2c_sda];        # CK_SDA
+
 # LED status indicators.
 set_property PACKAGE_PIN E1     [get_ports {leds[0]}];      # LED0_B
 set_property PACKAGE_PIN F6     [get_ports {leds[1]}];      # LED0_G
@@ -83,6 +87,12 @@ set_property PACKAGE_PIN H5     [get_ports {leds[12]}];     # LED4
 set_property PACKAGE_PIN J5     [get_ports {leds[13]}];     # LED5
 set_property PACKAGE_PIN T9     [get_ports {leds[14]}];     # LED6
 set_property PACKAGE_PIN T10    [get_ports {leds[15]}];     # LED7
+
+# SPI interface (J6)
+set_property PACKAGE_PIN C1     [get_ports spi_csb];        # CK_SS
+set_property PACKAGE_PIN F1     [get_ports spi_sck];        # CK_SCK
+set_property PACKAGE_PIN G1     [get_ports spi_sdi];        # CK_MISO
+set_property PACKAGE_PIN H1     [get_ports spi_sdo];        # CK_MOSI
 
 # USB-UART Interface
 set_property PACKAGE_PIN D10    [get_ports uart_txd];
@@ -102,13 +112,15 @@ set_property PACKAGE_PIN T15    [get_ports text_lcd_rs];
 
 # All I/O pins at 3.3V
 set_property IOSTANDARD LVCMOS33 [get_ports ext_clk100];
-set_property IOSTANDARD LVCMOS33 [get_ports text_lcd*];
-set_property IOSTANDARD LVCMOS33 [get_ports leds*];
-set_property IOSTANDARD LVCMOS33 [get_ports rmii*];
-set_property IOSTANDARD LVCMOS33 [get_ports pmod*];
-set_property IOSTANDARD LVCMOS33 [get_ports mdio*];
-set_property IOSTANDARD LVCMOS33 [get_ports uart*];
 set_property IOSTANDARD LVCMOS33 [get_ports ext_reset_n];
+set_property IOSTANDARD LVCMOS33 [get_ports i2c*];
+set_property IOSTANDARD LVCMOS33 [get_ports leds*];
+set_property IOSTANDARD LVCMOS33 [get_ports mdio*];
+set_property IOSTANDARD LVCMOS33 [get_ports pmod*];
+set_property IOSTANDARD LVCMOS33 [get_ports rmii*];
+set_property IOSTANDARD LVCMOS33 [get_ports spi*];
+set_property IOSTANDARD LVCMOS33 [get_ports uart*];
+set_property IOSTANDARD LVCMOS33 [get_ports text_lcd*];
 
 # CFGBVS pin = 3.3V.
 set_property CFGBVS VCCO [current_design];

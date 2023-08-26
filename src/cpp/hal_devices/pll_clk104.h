@@ -82,9 +82,9 @@ namespace satcat5 {
                 satcat5::cfg::GpoRegister* const m_gpo;
 
                 // Configuration parameters.
-                unsigned m_retry;   // Remaining retries?
-                unsigned m_step;    // Next step to execute
-                bool m_verbose;     // Log verbosity
+                u32 m_step;         // Next step to execute
+                u8 m_retry;         // Remaining retries?
+                u8 m_verbose;       // Log verbosity
                 u8 m_lmk_refsel;    // LMK register
                 u8 m_lmk_refdiv;    // LMK register
             };

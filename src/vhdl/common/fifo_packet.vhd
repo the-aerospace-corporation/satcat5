@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -36,10 +36,30 @@
 -- One notable exception: Since a separate "last" strobe is required,
 -- the NLAST input is ignored unless that strobe is asserted.
 --
+-- In most cases, the final bytes of the input packet must be written before
+-- any data is presented at the output.  The optional "in_precommit" signal
+-- can sometimes be used to reduce this latency, allowing packet readout to
+-- start immediately.  The precommit flag may be asserted at any time during
+-- the input frame, and marks a binding promise to rapidly write and commit
+-- the remainder of the packet.  Precommit requires all of the following:
+--  * The remainder of the input frame MUST be written faster than the output
+--    is read in ALL possible outcomes cases.  (Including all effects such as
+--    clock rate, port width, and variable read/write duty cycle.)
+--  * The source MUST NOT assert the "in_last_revert" strobe.
+--  * Packet metadata, if any, MUST be presented concurrently with precommit
+--    and held for the remainder of the input packet.
+--  * Input packet length MUST NOT exceed the user-specified MAX_PKT_BYTES.
+--
+-- If all of these requirements are met, asserting the "in_precommit" flag
+-- allows "cut-through" to reduce latency.  Violating any of the above may
+-- lead to catastrophic malfunction.  If in doubt, leave "in_precommit" tied
+-- to zero.
+--
 -- Optionally, the block can be configured to maintain a single word of
 -- metadata associated with each packet.  At the input, this word is
--- latched concurrently with the in_last_commit strobe.  At the output,
--- it is valid for the entire duration of the packet.
+-- latched concurrently with the in_pre_commit flag or in_last_commit
+-- strobe, whichever comes first.  At the output, the metadata word is
+-- valid for the entire duration of the packet.
 --
 -- The block also supports an optional "pause" flag, sync'd to out_clk.
 -- While asserted, the output will continue a frame-in-progress but will
@@ -68,6 +88,7 @@ entity fifo_packet is
     in_data         : in  std_logic_vector(8*INPUT_BYTES-1 downto 0);
     in_nlast        : in  integer range 0 to INPUT_BYTES := INPUT_BYTES;
     in_pkt_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
+    in_precommit    : in  std_logic := '0'; -- Optional early-commit flag
     in_last_commit  : in  std_logic;
     in_last_revert  : in  std_logic;
     in_write        : in  std_logic;
@@ -137,16 +158,21 @@ signal new_words    : words_i := 1;
 signal in_wcount    : integer range 0 to INPUT_WMAX := 0;
 
 -- Write pipeline going to main FIFO.
-signal wr_words     : words_i := 0;                 -- Allocate N words from FIFO
+signal wr_words     : words_i := 0;                 -- Allocate words from FIFO
 signal wr_meta      : meta_t := (others => '0');    -- Latched metadata
 signal wr_ovrflow   : std_logic := '0';             -- Flag in input clock
+signal wr_preflag   : std_logic := '0';             -- Flag in input clock
+signal wr_preover   : std_logic := '0';             -- Flag in input clock
 signal wr_commit    : std_logic := '0';             -- Strobe in input clock
 signal wr_revert    : std_logic := '0';             -- Strobe in input clock
 signal wr_write     : std_logic := '0';             -- Strobe in input clock
 signal wr_data      : fifo_t := (others => '0');    -- Data to be written
 signal wr_addr      : addr_i := 0;                  -- Current write address
-signal wr_ready     : std_logic;
-signal wr_safe      : std_logic;
+signal wr_ready     : std_logic;                    -- Flow control u_pkt_fifo
+signal wr_safe_pkt  : std_logic;                    -- Flow control u_pkt_fifo
+signal wr_safe_dat  : std_logic;                    -- Combinational logic
+signal wr_precommit : std_logic;                    -- Combinational logic
+signal wr_next_word : std_logic;                    -- Combinational logic
 signal revert_addr  : addr_i := 0;                  -- Start of current packet
 
 -- Back-channel for freeing data as it is read.
@@ -267,8 +293,10 @@ begin
             end if;
         end if;
 
-        -- Latch metadata at end of each valid frame.
-        if (META_WIDTH > 0 and in_write = '1' and in_last_commit = '1') then
+        -- Latch frame metadata just before writing to u_pkt_fifo.
+        -- (End-of-frame or precommit, whichever comes first.)
+        if (META_WIDTH > 0 and in_write = '1'
+            and (in_precommit = '1' or in_last_commit = '1')) then
             wr_meta <= in_pkt_meta;
         end if;
 
@@ -293,7 +321,7 @@ begin
         -- Update the revert-pointer after each commit.
         if (reset_i = '1') then
             revert_addr <= 0;
-        elsif (wr_commit = '1') then
+        elsif (wr_words > 0) then
             revert_addr <= addr_incr(wr_addr);
         end if;
 
@@ -312,9 +340,27 @@ begin
     end if;
 end process;
 
+-- Safe to write the next word to the main buffer?
+-- Note: Updates to "free_words" are one cycle late; count anything we're
+--       currently in the process of allocating during safety checks here.
+wr_safe_dat <= (not wr_preover)
+    and bool2bit(new_words <= MAX_PKT_WORDS)
+    and bool2bit(wr_preflag = '1' or new_words + wr_words <= free_words);
+
+-- Safe to enter precommit mode?
+-- Note: Minimum "new_words" threshold ensures we've written enough data
+--       for prefill of u_out_fifo with adequate margin.  Otherwise, the
+--       bursty read may underflow even if the output duty cycle is low.
+wr_precommit <= in_precommit and wr_safe_dat and wr_safe_pkt
+    and bool2bit(new_words >= 12)
+    and bool2bit(free_words >= MAX_PKT_WORDS);
+
+-- Clock-enable for the input state machine.
+wr_next_word <= in_last_commit or in_last_revert
+    or bool2bit(in_wcount = INPUT_WMAX);
+
 -- Decide whether it is safe to write each input word, and when to revert.
 p_input : process(in_clk)
-    variable ovr_sticky : std_logic := '0';
 begin
     if rising_edge(in_clk) then
         -- Set defaults for various strobes.
@@ -326,48 +372,75 @@ begin
 
         -- Sanity-check on unexpected packet-FIFO overflow.
         if (wr_commit = '1') then
-            assert (wr_ready = '1')
+            assert (wr_ready = '1' or reset_i = '1')
                 report "Internal flow-control violation." severity error;
         end if;
 
         -- Drive the write, commit, and revert strobes.
         if (reset_i = '1') then
             -- Global reset, clear all counters.
+            wr_preflag  <= '0';
+            wr_preover  <= '0';
             wr_revert   <= '1';
-            ovr_sticky  := '0';
-        elsif (in_write = '1') then
+        elsif (in_write = '1' and wr_next_word = '1') then
             -- Sanity-check on inputs.
             assert (in_last_commit = '0' or in_last_revert = '0')
                 report "Cannot simultaneously commit and revert packet." severity error;
-
-            -- Drive the write/commit/revert/overflow strobes.
-            -- Note: Updates to "free_words" are one cycle late; count anything we're
-            --       currently in the process of allocating during safety checks here.
-            if (ovr_sticky = '1' or new_words > MAX_PKT_WORDS or
-                new_words + wr_words > free_words) then
-                -- Packet-length overflow. Stop writing, revert at end-of-frame.
-                wr_revert   <= in_last_commit or in_last_revert;
-                wr_ovrflow  <= in_last_commit;
-            elsif (in_last_commit = '1' and wr_safe = '1') then
-                -- Commit success! Notify output state machine.
-                wr_write    <= '1';
-                wr_commit   <= '1';
-                wr_words    <= new_words;
-            elsif (in_last_commit = '1' or in_last_revert = '1') then
-                -- Metadata overflow or upstream revert.
-                wr_revert   <= '1';
-                wr_ovrflow  <= in_last_commit;
-            else
-                -- Mid-packet, write each completed word.
-                wr_write    <= bool2bit(in_wcount = INPUT_WMAX);
+            if (wr_preflag = '1') then
+                assert (in_last_revert = '0')
+                    report "Precommit packets cannot be reverted." severity error;
+                assert (in_precommit = '1')
+                    report "Precommit flag cannot be withdrawn." severity error;
+                assert (new_words <= MAX_PKT_WORDS)
+                    report "Precommit packet exceeds maximum length." severity error;
             end if;
 
-            -- Overflow flag sticks until end-of-frame.
+            -- Enable write for this word?
+            wr_write <= wr_safe_dat and not in_last_revert;
+
+            -- Deduct incoming data from the free_words counter?
+            if (wr_preflag = '1') then
+                -- Once in precommit mode, deduct each new word immediately.
+                wr_words <= 1;
+            elsif (in_last_commit = '1' and wr_safe_dat = '1' and wr_safe_pkt = '1') then
+                -- Normal mode waits until the entire frame is accepted.
+                wr_words <= new_words;
+            elsif (wr_precommit = '1') then
+                -- Entering precommit mode, deduct previously-written data.
+                wr_words <= new_words;
+            end if;
+
+            -- Drive the commit, revert, and overflow strobes.
+            -- (Note: All three default to '0', omitted for brevity.)
+            if (wr_preflag = '1') then
+                -- No further activity once in precommit mode.
+                wr_commit   <= '0';
+            elsif (in_last_commit = '1' and wr_safe_dat = '1' and wr_safe_pkt = '1') then
+                -- Frame accepted, commit if we haven't done so already.
+                wr_commit   <= not wr_preflag;
+            elsif (in_last_commit = '1' or in_last_revert = '1') then
+                -- Frame rejected, fire the revert and/or overflow strobes.
+                wr_revert   <= '1';
+                wr_ovrflow  <= in_last_commit;
+            elsif (wr_precommit = '1') then
+                -- Commit strobe as we enter precommit mode.
+                wr_commit   <= '1';
+            end if;
+
+            -- Listen for optional precommit requests.  If safe to do so,
+            -- enter precommit mode and set a sticky flag until end-of-frame.
+            if (in_last_commit = '1' or in_last_revert = '1') then
+                wr_preflag <= '0';  -- Reset for next frame
+            elsif (wr_precommit = '1') then
+                wr_preflag <= '1';  -- Precommit mode, set sticky flag.
+            end if;
+
+            -- Pre-overflow flag is sticky until end-of-frame.
             -- (This prevents glitches when additional space is freed mid-frame.)
             if (in_last_commit = '1' or in_last_revert = '1') then
-                ovr_sticky := '0';
-            elsif (new_words + wr_words > free_words) then
-                ovr_sticky := '1';
+                wr_preover <= '0';  -- Reset for next frame
+            elsif (wr_safe_dat = '0') then
+                wr_preover <= '1';  -- Overflow detected, set sticky flag
             end if;
         end if;
     end if;
@@ -405,7 +478,7 @@ u_pkt_fifo : entity work.fifo_smol_async
     in_data     => wr_meta,
     in_valid    => wr_commit,
     in_ready    => wr_ready,
-    in_early    => wr_safe,
+    in_early    => wr_safe_pkt,
     out_clk     => out_clk,
     out_data    => pkt_meta,
     out_valid   => pkt_valid,
@@ -450,7 +523,7 @@ begin
             rd_addr <= addr_incr(rd_addr);
         end if;
 
-        -- Every N words, let the input controller reuse the freed memory.
+        -- Every NFREE_FIXED words, let the buffer reuse the freed memory.
         -- (Using fixed-size blocks greatly simplifies clock-crossing logic.)
         if (reset_o = '1') then
             free_count   := NFREE_FIXED - 1;    -- FIFO reset

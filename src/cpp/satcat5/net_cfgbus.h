@@ -63,7 +63,7 @@ namespace satcat5 {
 
     // Thin wrappers for commonly used protocols:
     namespace eth {
-        class ProtoConfig : public satcat5::net::ProtoConfig {
+        class ProtoConfig final : public satcat5::net::ProtoConfig {
         public:
             ProtoConfig(
                 satcat5::eth::Dispatch* iface,
@@ -73,7 +73,7 @@ namespace satcat5 {
     }
 
     namespace udp {
-        class ProtoConfig : public satcat5::net::ProtoConfig {
+        class ProtoConfig final : public satcat5::net::ProtoConfig {
         public:
             ProtoConfig(
                 satcat5::udp::Dispatch* iface,

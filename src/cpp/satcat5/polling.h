@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -145,6 +145,9 @@ namespace satcat5 {
             void timer_every(unsigned msec);
             void timer_stop();
 
+            // Accessor for recurring timer interval, if one is set.
+            inline unsigned timer_interval() const {return m_tnext;}
+
         protected:
             // Register object in the idle state.
             // (Only children should create or destroy the base class.)
@@ -161,8 +164,8 @@ namespace satcat5 {
             friend satcat5::util::ListCore;
             friend satcat5::poll::Timekeeper;
             satcat5::poll::Timer* m_next;       // Linked list to next object
-            u32 m_trem;                         // Milliseconds to next event
-            u32 m_tnext;                        // Recurring timer interval
+            unsigned m_trem;                    // Milliseconds to next event
+            unsigned m_tnext;                   // Recurring timer interval
         };
 
         // Connect a Timer to any OnDemand object.

@@ -20,6 +20,7 @@
 ### constants
 PROJECT ?= test_main
 BUILD_DIR := build_tmp
+SIM_DIR := simulations
 IGNORE_ERROR := 2>&1 || cd .
 
 ### environment
@@ -43,6 +44,7 @@ SRCS := \
 	$(wildcard ../../src/cpp/hal_devices/*.cc) \
 	$(wildcard ../../src/cpp/hal_posix/*.cc) \
 	$(wildcard ../../src/cpp/hal_test/*.cc) \
+	$(wildcard ../../src/cpp/qcbor/*.c) \
 	$(wildcard ../../src/cpp/satcat5/*.cc)
 BASENAME_SRCS := $(notdir $(SRCS))
 VPATH += $(dir $(SRCS)) 
@@ -64,7 +66,10 @@ NOINLINE := \
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 LDFLAGS := --coverage
 COVERAGE := --coverage -g -O0 $(NOINLINE)
-COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter $(INC_FLAGS) -DSATCAT5_CHECK_DUPIRQ=1 -DSATCAT5_LOG_CONCISE=0
+COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter $(INC_FLAGS) \
+	-DSATCAT5_CBOR_ENABLE=1 \
+	-DSATCAT5_CHECK_DUPIRQ=1 \
+	-DSATCAT5_LOG_CONCISE=0
 CFLAGS := $(COMMON_FLAGS)
 CXXFLAGS := $(COMMON_FLAGS) -std=c++11
 GCOVR := gcovr $(BUILD_DIR) -g -k -r ../.. \
@@ -72,6 +77,7 @@ GCOVR := gcovr $(BUILD_DIR) -g -k -r ../.. \
 	--exclude ../../src/cpp/hal_devices/ \
 	--exclude ../../src/cpp/hal_posix/ \
 	--exclude ../../src/cpp/hal_test/ \
+	--exclude ../../src/cpp/qcbor/ \
 	--object-directory $(BUILD_DIR)
 
 ### targets
@@ -81,15 +87,18 @@ test: build
 	@echo Running tests...
 	@$(BUILD_DIR)/$(PROJECT).bin
 
-build: $(OBJS) $(BUILD_DIR)/$(PROJECT).bin
+build: $(SIM_DIR) $(OBJS) $(BUILD_DIR)/$(PROJECT).bin
 
 clean:
-	$(REMOVE) $(BUILD_DIR)
+	@$(REMOVE) $(BUILD_DIR)
+	@$(REMOVE) $(SIM_DIR)
 
 ### rules
-# Working folder
+# Working folders
 $(BUILD_DIR):
-	$(MKDIR) $(BUILD_DIR)
+	@$(MKDIR) $(BUILD_DIR)
+$(SIM_DIR):
+	@$(MKDIR) $(SIM_DIR)
 
 # Special case for main.cc (disable coverage)
 $(BUILD_DIR)/main.cc.o: main.cc | $(BUILD_DIR)

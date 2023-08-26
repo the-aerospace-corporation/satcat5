@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
+// Copyright 2021, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -54,6 +54,11 @@ namespace satcat5 {
             // Interrupt service routine.
             // (Child class must override this method.)
             virtual void irq_event() = 0;
+
+            // Optionally enable or disable this interrupt.
+            // (Not generally required, but helpful in certain edge cases.)
+            void irq_enable();
+            void irq_disable();
 
         protected:
             // Note: Only children should create or destroy base class.

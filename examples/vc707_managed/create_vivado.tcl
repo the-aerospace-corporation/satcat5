@@ -349,6 +349,7 @@ set_property -dict [ list \
     CONFIG.CFG_DEV_ADDR {0} \
     CONFIG.STATS_ENABLE {true} \
     CONFIG.STATS_DEVADDR {1} \
+    CONFIG.ALLOW_PRECOMMIT {true} \
     CONFIG.ALLOW_RUNT {false} \
     CONFIG.CORE_CLK_HZ {100000000} \
     CONFIG.DATAPATH_BYTES {3} \

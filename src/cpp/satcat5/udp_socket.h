@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
+// Copyright 2021, 2022, 2023 The Aerospace Corporation
 //
 // This file is part of SatCat5.
 //
@@ -60,12 +60,14 @@ namespace satcat5 {
             // Note: If source port is not specified, assign any free port index.
             void connect(
                 const satcat5::udp::Addr& dstaddr,
-                const satcat5::udp::Addr& gateway,
                 const satcat5::udp::Port& dstport,
                 satcat5::udp::Port srcport = satcat5::udp::PORT_NONE);
 
             // Retry automatic address resolution.
             void reconnect() {m_addr.retry();}
+
+            // Useful inherited methods from net::SocketCore:
+            //  close(), ready_rx(), ready_tx()
 
         protected:
             SocketCore(
@@ -80,6 +82,9 @@ namespace satcat5 {
         public:
             explicit Socket(satcat5::udp::Dispatch* iface);
             ~Socket() {}
+
+            // Useful inherited methods from udp::SocketCore:
+            //  bind(...), connect(...), close(), ready_rx(), ready_tx()
 
         private:
             u8 m_txbuff[SATCAT5_UDP_BUFFSIZE];

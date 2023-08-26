@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+-- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
 --
 -- This file is part of SatCat5.
 --
@@ -262,7 +262,9 @@ package SWITCH_TYPES is
     --      Default for all ports is set by the MISS_BCAST parameter.
     --  * REGADDR = 15: Per-port "twoStep" flag for PTP mode conversion.
     --      Ports in this mode enable two-step conversion for PTP messages.
-    --  * REGADDR = 16 - 511: Reserved
+    --  * REGADDR = 16: VLAN rate-control configuration
+    --      Refer to "mac_vlan_rate" for details
+    --  * REGADDR = 17 - 511: Reserved
     --  * REGADDR = 512 - 527: Configuration for Port #0
     --      Each port is allocated a segment of sixteen registers.
     --      The lower eight registers in each segment are reserved for use by
@@ -292,6 +294,7 @@ package SWITCH_TYPES is
     constant REGADDR_QUERY_CTRL     : integer := 13;
     constant REGADDR_MISS_BCAST     : integer := 14;
     constant REGADDR_PTP_2STEP      : integer := 15;
+    constant REGADDR_VLAN_RATE      : integer := 16;
     function REGADDR_PORT_BASE(idx : integer) return natural;
 
     -- Define per-port ConfigBus registers relative to REGADDR_PORT_BASE:

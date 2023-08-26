@@ -111,6 +111,23 @@ namespace satcat5 {
             unsigned m_count;
         };
 
+        // Dummy implementation of net::Address that writes data to a buffer.
+        class DebugAddress : public satcat5::net::Address
+        {
+            // Received-data buffer is directly accessible.
+            satcat5::io::PacketBufferHeap m_rx;
+
+            // Implement the minimum required API.
+            satcat5::net::Dispatch* iface() const override
+                { return 0; }
+            satcat5::io::Writeable* open_write(unsigned len) override
+                { m_rx.write_abort(); return &m_rx; }
+            void close() override
+                { m_rx.write_finalize(); }
+            bool ready() const
+                { return true; }
+        };
+
         // Accelerated version of PosixTimer is 256x real-time.
         class FastPosixTimer : public satcat5::util::GenericTimer {
         public:
@@ -177,6 +194,26 @@ namespace satcat5 {
             satcat5::cfg::ConfigBus* const m_cfg;
             unsigned m_count;
             unsigned m_regaddr;
+        };
+
+        // Measure various statistics of a discrete-time series.
+        class Statistics {
+        public:
+            Statistics();
+            void add(double x);     // Add a new data point
+            double mean() const;    // Mean of all data points
+            double msq() const;     // Mean-square
+            double rms() const;     // Root-mean-square
+            double std() const;     // Standard deviation
+            double var() const;     // Variance
+            double min() const;     // Minimum over all inputs
+            double max() const;     // Maximum over all inputs
+        protected:
+            unsigned m_count;       // Number of data points
+            double m_sum;           // Sum of inputs
+            double m_sumsq;         // Sum of squares
+            double m_min;           // Running minimum
+            double m_max;           // Running maximum
         };
 
         // Timekeeper object that always fires a timer interrupt.
