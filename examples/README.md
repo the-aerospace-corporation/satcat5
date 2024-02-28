@@ -83,10 +83,9 @@ Slingshot uses SatCat5 to link together any number of smallsat payloads on a spa
 
 Target: [Xilinx VC707 development board](https://www.xilinx.com/products/boards-and-kits/ek-v7-vc707-g.html)
 
-This design is a demo used to verify performance of the Vernier-PLL system.
-That system, defined in "ptp_counter_gen" and "ptp_counter_sync", generates a synchronized counter in different clock domains.
-In other example designs, the system is used to measure delay for PTP transparent clock mode.
-In this demo, it is used to synthesize a 25 MHz square wave from four different clock domains.
+This example is used to demonstrate operation of the VERDACT system,
+by synthesizing phase-locked 25 MHz in several asynchronous clock domains.
+It predates the higher-performance "zcu208_clksynth" design and is now obsolete.
 
 # vc707_managed
 
@@ -98,14 +97,27 @@ It also contains a Microblaze processor and several ConfigBus peripherals.
 
 Note that this design requires the "AVB" license for the Xilinx TEMAC IP-core, due to the use of PTP features.
 
+# vc707_ptp_client
+
+Target: [Xilinx VC707 development board](https://www.xilinx.com/products/boards-and-kits/ek-v7-vc707-g.html)
+
+This design is similar to "vc707_managed", but eliminates the proprietary TEMAC IP-core.
+Use of VERDACT timestamps throughout the design allows superior time-transfer accuracy.
+It contains a SatCat5 Ethernet switch that connects the RJ45 port, the SFP port,
+the SMA connectors (used as an additional SGMII port), and the USB-UART.
+It also contains a Microblaze processor running an IP stack and a PTP client.
+GTX lanes attached to the FMC connector synthesize clocks for performance verification.
+
+[Additional documentation here.](vc707_ptp_client/README.md)
+
 # zcu208_clksynth
 
 Target: [Xilinx ZCU208 development board](https://www.xilinx.com/products/boards-and-kits/zcu208.html)
 
-Like the "vc707_clksynth" demo, this example design is used to verify performance of the Vernier-PLL system.
-In this demo, a Vernier-PLL is used to synthesize a 125 MHz sine wave.
+This example is used to demonstrate operation of the VERDACT system,
+by synthesizing a 125 MHz sine wave that is digitally phase-locked to an asynchronous reference.
 Use of sine waves instead of discrete-sampled square waves avoids discrete-time quantization error.
-In theory, this allows accuracy and jitter measurements on picosecond time-scales.
+This design was used to verify that VERDACT timestamps are colinear with sub-picosecond accuracy.
 
 # zed_converter
 
@@ -115,19 +127,14 @@ This design connects the Zynq PS Ethernet port to a PMOD Ethernet-over-SPI/UART 
 
 # Copyright Notice
 
-Copyright 2021, 2022, 2023 The Aerospace Corporation
+Copyright 2021-2024 The Aerospace Corporation.
 
-This file is part of SatCat5.
+This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
-SatCat5 is free software: you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the
-Free Software Foundation, either version 3 of the License, or (at your
-option) any later version.
+You may redistribute and modify SatCat5 and make products using it under
+the weakly reciprocal variant of the CERN Open Hardware License, version 2
+or (at your option) any later weakly reciprocal version.
 
-SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-License for more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with SatCat5.  If not, see [https://www.gnu.org/licenses/](https://www.gnu.org/licenses/).
+SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
+PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.

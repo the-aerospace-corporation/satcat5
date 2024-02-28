@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for misc math utilities.
 
@@ -24,6 +10,7 @@
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
 #include <satcat5/build_date.h>
+#include <satcat5/list.h>
 #include <satcat5/utils.h>
 #include <set>
 
@@ -39,7 +26,7 @@ TEST_CASE("build_date.h") {
 }
 
 TEST_CASE("file_io.h") {
-    const char* TEST_FILE = "~test_file_io.dat";
+    const char* TEST_FILE = "simulations/test_file_io.dat";
 
     SECTION("write") {
         // Create a short test file.
@@ -57,6 +44,16 @@ TEST_CASE("file_io.h") {
         CHECK(uut.get_read_ready() == 4);
         CHECK(uut.read_u32() == 0x12345678);
         uut.read_finalize();
+    }
+}
+
+TEST_CASE("posix_utils.h") {
+    SECTION("log-format") {
+        const satcat5::eth::MacAddr TEST_MAC
+            = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+        const satcat5::ip::Addr TEST_IP(192, 168, 0, 1);
+        CHECK(satcat5::log::format(TEST_MAC) == "DE:AD:BE:EF:00:01");
+        CHECK(satcat5::log::format(TEST_IP) == "192.168.0.1");
     }
 }
 
@@ -90,6 +87,20 @@ TEST_CASE("utils.h") {
         tmp = 0x4444;   clr_mask_u32(tmp, 0x0F0F);      CHECK(tmp == 0x4040);
         tmp = 0x5555;   set_mask_if(tmp, 0x0F0F, 0);    CHECK(tmp == 0x5050);
         tmp = 0x6666;   set_mask_if(tmp, 0x0F0F, 1);    CHECK(tmp == 0x6F6F);
+    }
+    SECTION("mask_lower") {
+        CHECK(mask_lower<u8>(0) == 0x00);
+        CHECK(mask_lower<u8>(1) == 0x01);
+        CHECK(mask_lower<u8>(2) == 0x03);
+        CHECK(mask_lower<u8>(3) == 0x07);
+        CHECK(mask_lower<u8>(4) == 0x0F);
+        CHECK(mask_lower<u8>(5) == 0x1F);
+        CHECK(mask_lower<u8>(6) == 0x3F);
+        CHECK(mask_lower<u8>(7) == 0x7F);
+        CHECK(mask_lower<u8>(8) == 0xFF);
+        CHECK(mask_lower<u64>(0) == 0ull);
+        CHECK(mask_lower<u64>(1) == 1ull);
+        CHECK(mask_lower<u64>(64) == ~0ull);
     }
     SECTION("max3") {
         // Three-argument maximum.
@@ -321,11 +332,13 @@ TEST_CASE("utils.h") {
         // Confirm no repeats in the first N outputs.
         std::set<u32> history;
         Prng uut;
+        unsigned count_repeat = 0;
         for (unsigned a = 0 ; a < 10000 ; ++a) {
             u32 next = uut.next();
-            REQUIRE(history.find(next) == history.end());
-            history.insert(next);
+            if (history.find(next) != history.end()) ++count_repeat;
         }
+        // CHECK at the end to reduce Catch2 verbosity in debug mode.
+        CHECK(count_repeat == 0);
     }
     SECTION("RunningMax") {
         RunningMax uut;                 // Max = "None"

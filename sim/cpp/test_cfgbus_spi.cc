@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus SPI controller
 
@@ -60,6 +46,7 @@ TEST_CASE("cfgbus_spi") {
     // Instantiate emulator and the unit under test.
     satcat5::test::MultiSerial mst;
     satcat5::cfg::Spi uut(&mst, CFG_DEVADDR);
+    CHECK_FALSE(uut.busy());
 
     // Reference data is a simple counter.
     u8 wrdata[16];
@@ -88,6 +75,7 @@ TEST_CASE("cfgbus_spi") {
         // Issue the command.
         uut.query(0, 0, 0, 3, &evt);    // 0wr + 3rd
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -112,6 +100,7 @@ TEST_CASE("cfgbus_spi") {
         uut.query(1, 0, 0, 16, &evt1);  // 0wr + 16rd
         uut.query(2, 0, 0, 3,  &evt2);  // 0wr + 3rd
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -130,6 +119,7 @@ TEST_CASE("cfgbus_spi") {
         // Issue the read-write command.
         uut.exchange(42, wrdata, 7, &evt);
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -156,10 +146,14 @@ TEST_CASE("cfgbus_spi") {
         uut.query(3, wrdata, 14, 0, &evt1); // 14wr + 0rd
         uut.query(4, wrdata,  2, 4, &evt2); // 2wr + 4rd
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
         CHECK(evt1.m_count == 1);
         CHECK(evt2.m_count == 1);
     }
+
+    // End-of-test sanity check;
+    CHECK_FALSE(uut.busy());
 }

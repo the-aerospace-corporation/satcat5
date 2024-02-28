@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2022-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/ip_ping.h>
@@ -94,8 +80,8 @@ void Ping::arp_event(
     if (ip == m_addr.dstaddr()) {
         m_reply_rcvd = true;
         u32 elapsed_usec = m_iface->m_timer->elapsed_usec(m_arp_tref);
-        log::Log(log::INFO, "Ping: Reply from").write(ip.value)
-            .write(", elapsed usec").write(elapsed_usec);
+        log::Log(log::INFO, "Ping: Reply from").write(ip)
+            .write(", elapsed usec").write10(elapsed_usec);
     }
 }
 
@@ -103,8 +89,8 @@ void Ping::ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec)
 {
     if (from == m_addr.dstaddr()) {
         m_reply_rcvd = true;
-        log::Log(log::INFO, "Ping: Reply from").write(from.value)
-            .write(", elapsed usec").write(elapsed_usec);
+        log::Log(log::INFO, "Ping: Reply from").write(from)
+            .write(", elapsed usec").write10(elapsed_usec);
     }
 }
 
@@ -134,7 +120,7 @@ void Ping::send_ping()
         m_addr.retry();
     } else {
         // No ARP response after several attempts.
-        log::Log(log::INFO, "Ping: Gateway unreachable").write(m_addr.gateway().value);
+        log::Log(log::INFO, "Ping: Gateway unreachable").write(m_addr.gateway());
         stop();
     }
 }

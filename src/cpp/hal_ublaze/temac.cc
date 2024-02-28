@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/utils.h>
@@ -138,7 +124,7 @@ Time TemacAvb::clock_adjust(const Time& amount)
     // This appears to be a bug in the Xilinx IP, so we need a workaround.
     if (amount.abs() < satcat5::ptp::ONE_SECOND)
         return amount;  // Skip adjustment if it would have no effect.
-    TemacTime tmp = {amount.secs(), amount.nsec()};
+    TemacTime tmp = {amount.round_secs(), amount.round_nsec()};
     avb_jump_by(tmp);   // Apply adjustment
     return Time(0);     // Report success (zero residue)
 }
@@ -150,6 +136,7 @@ void TemacAvb::clock_rate(s64 offset)
     constexpr s32 MAX_OFFSET = (1 << 20);   // 1.0 nsec per clock
     if (offset < -MAX_OFFSET) offset = -MAX_OFFSET;
     if (offset > MAX_OFFSET) offset = MAX_OFFSET;
+    m_offset = offset;
     s32 rate = NOMINAL + (s32)offset;
     avb_set_rate((u32)rate);
 }

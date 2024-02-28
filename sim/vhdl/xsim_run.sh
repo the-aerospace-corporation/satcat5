@@ -1,21 +1,7 @@
 #!/bin/bash -f
 # ------------------------------------------------------------------------
-# Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2019-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
 # This shell script compiles and runs all VHDL unit tests.
@@ -135,9 +121,11 @@ simulate_all()
     simulate_one fifo_smol_async_tb 5ms
     simulate_one fifo_smol_resize_tb 1ms
     simulate_one fifo_smol_sync_tb 10ms
+    simulate_one io_clock_tolerance_tb 2ms
     simulate_one io_error_reporting_tb 10ms
     simulate_one io_i2c_tb 1ms
     simulate_one io_mdio_readwrite_tb 3ms
+    simulate_one io_resample_fixed_tb 1ms
     simulate_one io_spi_tb 1ms
     simulate_one io_text_lcd_tb 280ms
     simulate_one mac_counter_tb 1ms
@@ -163,10 +151,11 @@ simulate_all()
     simulate_one port_serial_uart_2wire_tb 470ms
     simulate_one port_statistics_tb 2ms
     simulate_one port_stream_tb 1ms
-    simulate_one ptp_adjust_tb 6ms
-    simulate_one ptp_clksynth_tb 2ms
+    simulate_one prng_lfsr_tb 1ms
+    simulate_one ptp_adjust_tb 9ms
+    simulate_one ptp_clksynth_tb 3ms
     simulate_one ptp_counter_tb 40ms
-    simulate_one ptp_egress_tb 3ms
+    simulate_one ptp_egress_tb 5ms
     simulate_one ptp_filter_tb 5ms
     simulate_one ptp_realsync_tb 7ms
     simulate_one ptp_realtime_tb 1ms

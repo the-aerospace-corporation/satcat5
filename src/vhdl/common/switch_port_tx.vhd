@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Per-port transmit/egress logic for the switch pipeline
@@ -46,6 +32,7 @@ entity switch_port_tx is
     SUPPORT_VLAN    : boolean;      -- Support or ignore 802.1q VLAN tags?
     ALLOW_JUMBO     : boolean;      -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;      -- Allow runt frames? (Size < 64 bytes)
+    PTP_STRICT      : boolean;      -- Drop frames with missing timestamps?
     INPUT_BYTES     : positive;     -- Width of shared pipeline
     OUTPUT_BYTES    : positive;     -- Width of output pipeline
     HBUF_KBYTES     : natural;      -- High-priority output buffer (kilobytes)
@@ -68,6 +55,7 @@ entity switch_port_tx is
     tx_last         : out std_logic;
     tx_valid        : out std_logic;
     tx_ready        : in  std_logic;
+    tx_pstart       : in  std_logic;
     tx_tnow         : in  tstamp_t;
     tx_macerr       : in  std_logic;
     tx_reset_p      : in  std_logic;
@@ -79,6 +67,7 @@ entity switch_port_tx is
     -- Error strobes, referenced to core_clk.
     err_overflow    : out std_logic;
     err_txmac       : out std_logic;
+    err_ptp         : out std_logic;
 
     -- Configuration interface
     cfg_cmd         : in  cfgbus_cmd;
@@ -125,7 +114,6 @@ signal meta_vec_in  : switch_meta_v := (others => '0');
 signal meta_vec_out : switch_meta_v;
 signal fifo_data    : byte_t;
 signal fifo_meta    : switch_meta_t;
-signal fifo_last    : std_logic;
 signal fifo_nlast   : last_t;
 signal fifo_valid   : std_logic;
 signal fifo_ready   : std_logic;
@@ -134,13 +122,14 @@ signal fifo_ready   : std_logic;
 signal ptp_data     : byte_t;
 signal ptp_vtag     : vlan_hdr_t;
 signal ptp_nlast    : last_t;
+signal ptp_error    : std_logic;
 signal ptp_valid    : std_logic;
 signal ptp_ready    : std_logic;
 
 -- VLAN tag insertion.
 signal vlan_data    : byte_t;
-signal vlan_vtag    : vlan_hdr_t;
 signal vlan_nlast   : last_t;
+signal vlan_error   : std_logic;
 signal vlan_valid   : std_logic;
 signal vlan_ready   : std_logic;
 
@@ -151,6 +140,7 @@ signal fcs_valid    : std_logic;
 signal fcs_ready    : std_logic;
 
 -- ConfigBus combining.
+signal err_ptp_stb  : std_logic;
 signal cfg_acks     : cfgbus_ack_array(0 to 0) := (others => cfgbus_idle);
 
 begin
@@ -195,10 +185,13 @@ gen_ptp1 : if SUPPORT_PTP generate
     u_ptp : entity work.ptp_egress
         generic map(
         IO_BYTES    => OUTPUT_BYTES,
+        PTP_STRICT  => PTP_STRICT,
         DEVADDR     => DEV_ADDR,
         REGADDR     => REGADDR_PORT_BASE(PORT_INDEX) + REGOFFSET_PORT_PTP_TX)
         port map(
-        in_tnow     => tx_tnow,
+        port_tnow   => tx_tnow,
+        port_pstart => tx_pstart,
+        port_dvalid => fcs_valid,
         in_tref     => fifo_meta.tstamp,
         in_pmode    => fifo_meta.pmode,
         in_vtag     => fifo_meta.vtag,
@@ -208,6 +201,7 @@ gen_ptp1 : if SUPPORT_PTP generate
         in_ready    => fifo_ready,
         out_vtag    => ptp_vtag,
         out_data    => ptp_data,
+        out_error   => ptp_error,
         out_nlast   => ptp_nlast,
         out_valid   => ptp_valid,
         out_ready   => ptp_ready,
@@ -221,6 +215,7 @@ end generate;
 gen_ptp0 : if not SUPPORT_PTP generate
     ptp_data    <= fifo_data;
     ptp_vtag    <= fifo_meta.vtag;
+    ptp_error   <= '0';
     ptp_nlast   <= fifo_nlast;
     ptp_valid   <= fifo_valid;
     fifo_ready  <= ptp_ready;
@@ -237,10 +232,12 @@ gen_vlan1 : if SUPPORT_VLAN generate
         port map(
         in_data     => ptp_data,
         in_vtag     => ptp_vtag,
+        in_error    => ptp_error,
         in_nlast    => ptp_nlast,
         in_valid    => ptp_valid,
         in_ready    => ptp_ready,
         out_data    => vlan_data,
+        out_error   => vlan_error,
         out_nlast   => vlan_nlast,
         out_valid   => vlan_valid,
         out_ready   => vlan_ready,
@@ -251,6 +248,7 @@ end generate;
 
 gen_vlan0 : if not SUPPORT_VLAN generate
     vlan_data   <= ptp_data;
+    vlan_error  <= ptp_error;
     vlan_nlast  <= ptp_nlast;
     vlan_valid  <= ptp_valid;
     ptp_ready   <= vlan_ready;
@@ -266,6 +264,7 @@ gen_adj1 : if SUPPORT_PTP or SUPPORT_VLAN generate
         IO_BYTES    => OUTPUT_BYTES)
         port map(
         in_data     => vlan_data,
+        in_error    => vlan_error,
         in_nlast    => vlan_nlast,
         in_valid    => vlan_valid,
         in_ready    => vlan_ready,
@@ -297,6 +296,23 @@ u_err : sync_toggle2pulse
     port map(
     in_toggle   => tx_macerr,
     out_strobe  => err_txmac,
+    out_clk     => core_clk);
+
+u_ptperr:  process (tx_clk)
+begin
+    if rising_edge(tx_clk) then
+        err_ptp_stb <= '0';
+        if (ptp_valid='1' and ptp_ready='1' and ptp_nlast > 0) then
+            err_ptp_stb <= ptp_error;
+        end if;
+    end if;
+end process;
+
+u_ptp_err_sync: sync_pulse2pulse
+    port map(
+    in_strobe   => err_ptp_stb,
+    in_clk      => tx_clk,
+    out_strobe  => err_ptp,
     out_clk     => core_clk);
 
 -- Combine ConfigBus replies.

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <cstring>
@@ -62,35 +48,70 @@ void satcat5::io::Writeable::write_u64(u64 data)
     } else {write_overflow();}
 }
 
-void satcat5::io::Writeable::write_s8(s8 data)
+void satcat5::io::Writeable::write_u16l(u16 data)
 {
-    write_u8(reinterpret<s8,u8>(data));
+    if (get_write_space() >= 2) {
+        write_next((u8)(data >> 0));    // Little-endian
+        write_next((u8)(data >> 8));
+    } else {write_overflow();}
 }
+
+void satcat5::io::Writeable::write_u32l(u32 data)
+{
+    if (get_write_space() >= 4) {
+        write_next((u8)(data >> 0));    // Little-endian
+        write_next((u8)(data >> 8));
+        write_next((u8)(data >> 16));
+        write_next((u8)(data >> 24));
+    } else {write_overflow();}
+}
+
+void satcat5::io::Writeable::write_u64l(u64 data)
+{
+    if (get_write_space() >= 8) {
+        write_next((u8)(data >> 0));    // Little-endian
+        write_next((u8)(data >> 8));
+        write_next((u8)(data >> 16));
+        write_next((u8)(data >> 24));
+        write_next((u8)(data >> 32));
+        write_next((u8)(data >> 40));
+        write_next((u8)(data >> 48));
+        write_next((u8)(data >> 56));
+    } else {write_overflow();}
+}
+
+void satcat5::io::Writeable::write_s8(s8 data)
+    { write_u8(reinterpret<s8,u8>(data)); }
 
 void satcat5::io::Writeable::write_s16(s16 data)
-{
-    write_u16(reinterpret<s16,u16>(data));
-}
+    { write_u16(reinterpret<s16,u16>(data)); }
 
 void satcat5::io::Writeable::write_s32(s32 data)
-{
-    write_u32(reinterpret<s32,u32>(data));
-}
+    { write_u32(reinterpret<s32,u32>(data)); }
 
 void satcat5::io::Writeable::write_s64(s64 data)
-{
-    write_u64(reinterpret<s64,u64>(data));
-}
+    { write_u64(reinterpret<s64,u64>(data)); }
 
 void satcat5::io::Writeable::write_f32(float data)
-{
-    write_u32(reinterpret<float,u32>(data));
-}
+    { write_u32(reinterpret<float,u32>(data)); }
 
 void satcat5::io::Writeable::write_f64(double data)
-{
-    write_u64(reinterpret<double,u64>(data));
-}
+    { write_u64(reinterpret<double,u64>(data)); }
+
+void satcat5::io::Writeable::write_s16l(s16 data)
+    { write_u16l(reinterpret<s16,u16>(data)); }
+
+void satcat5::io::Writeable::write_s32l(s32 data)
+    { write_u32l(reinterpret<s32,u32>(data)); }
+
+void satcat5::io::Writeable::write_s64l(s64 data)
+    { write_u64l(reinterpret<s64,u64>(data)); }
+
+void satcat5::io::Writeable::write_f32l(float data)
+    { write_u32l(reinterpret<float,u32>(data)); }
+
+void satcat5::io::Writeable::write_f64l(double data)
+    { write_u64l(reinterpret<double,u64>(data)); }
 
 void satcat5::io::Writeable::write_bytes(unsigned nbytes, const void* src)
 {
@@ -124,7 +145,13 @@ satcat5::io::ArrayWrite::ArrayWrite(void* dst, unsigned len)
 
 unsigned satcat5::io::ArrayWrite::get_write_space() const
 {
-    return m_len - m_wridx;
+    return m_len - m_wridx;     // Remaining space in array
+}
+
+void satcat5::io::ArrayWrite::write_abort()
+{
+    m_wrlen = 0;                // Clear prior contents
+    m_wridx = 0;                // Restart at beginning
 }
 
 bool satcat5::io::ArrayWrite::write_finalize()

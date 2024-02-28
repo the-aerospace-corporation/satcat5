@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "switch_core"
@@ -74,6 +60,7 @@ entity wrap_switch_core is
     p00_tx_valid    : out std_logic;
     p00_tx_ready    : in  std_logic;
     p00_tx_error    : in  std_logic;
+    p00_tx_pstart   : in  std_logic;
     p00_tx_tnow     : in  std_logic_vector(47 downto 0);
     p00_tx_reset    : in  std_logic;
 
@@ -92,6 +79,7 @@ entity wrap_switch_core is
     p01_tx_valid    : out std_logic;
     p01_tx_ready    : in  std_logic;
     p01_tx_error    : in  std_logic;
+    p01_tx_pstart   : in  std_logic;
     p01_tx_tnow     : in  std_logic_vector(47 downto 0);
     p01_tx_reset    : in  std_logic;
 
@@ -110,6 +98,7 @@ entity wrap_switch_core is
     p02_tx_valid    : out std_logic;
     p02_tx_ready    : in  std_logic;
     p02_tx_error    : in  std_logic;
+    p02_tx_pstart   : in  std_logic;
     p02_tx_tnow     : in  std_logic_vector(47 downto 0);
     p02_tx_reset    : in  std_logic;
 
@@ -128,6 +117,7 @@ entity wrap_switch_core is
     p03_tx_valid    : out std_logic;
     p03_tx_ready    : in  std_logic;
     p03_tx_error    : in  std_logic;
+    p03_tx_pstart   : in  std_logic;
     p03_tx_tnow     : in  std_logic_vector(47 downto 0);
     p03_tx_reset    : in  std_logic;
 
@@ -146,6 +136,7 @@ entity wrap_switch_core is
     p04_tx_valid    : out std_logic;
     p04_tx_ready    : in  std_logic;
     p04_tx_error    : in  std_logic;
+    p04_tx_pstart   : in  std_logic;
     p04_tx_tnow     : in  std_logic_vector(47 downto 0);
     p04_tx_reset    : in  std_logic;
 
@@ -164,6 +155,7 @@ entity wrap_switch_core is
     p05_tx_valid    : out std_logic;
     p05_tx_ready    : in  std_logic;
     p05_tx_error    : in  std_logic;
+    p05_tx_pstart   : in  std_logic;
     p05_tx_tnow     : in  std_logic_vector(47 downto 0);
     p05_tx_reset    : in  std_logic;
 
@@ -182,6 +174,7 @@ entity wrap_switch_core is
     p06_tx_valid    : out std_logic;
     p06_tx_ready    : in  std_logic;
     p06_tx_error    : in  std_logic;
+    p06_tx_pstart   : in  std_logic;
     p06_tx_tnow     : in  std_logic_vector(47 downto 0);
     p06_tx_reset    : in  std_logic;
 
@@ -200,6 +193,7 @@ entity wrap_switch_core is
     p07_tx_valid    : out std_logic;
     p07_tx_ready    : in  std_logic;
     p07_tx_error    : in  std_logic;
+    p07_tx_pstart   : in  std_logic;
     p07_tx_tnow     : in  std_logic_vector(47 downto 0);
     p07_tx_reset    : in  std_logic;
 
@@ -218,6 +212,7 @@ entity wrap_switch_core is
     p08_tx_valid    : out std_logic;
     p08_tx_ready    : in  std_logic;
     p08_tx_error    : in  std_logic;
+    p08_tx_pstart   : in  std_logic;
     p08_tx_tnow     : in  std_logic_vector(47 downto 0);
     p08_tx_reset    : in  std_logic;
 
@@ -236,6 +231,7 @@ entity wrap_switch_core is
     p09_tx_valid    : out std_logic;
     p09_tx_ready    : in  std_logic;
     p09_tx_error    : in  std_logic;
+    p09_tx_pstart   : in  std_logic;
     p09_tx_tnow     : in  std_logic_vector(47 downto 0);
     p09_tx_reset    : in  std_logic;
 
@@ -254,6 +250,7 @@ entity wrap_switch_core is
     p10_tx_valid    : out std_logic;
     p10_tx_ready    : in  std_logic;
     p10_tx_error    : in  std_logic;
+    p10_tx_pstart   : in  std_logic;
     p10_tx_tnow     : in  std_logic_vector(47 downto 0);
     p10_tx_reset    : in  std_logic;
 
@@ -272,6 +269,7 @@ entity wrap_switch_core is
     p11_tx_valid    : out std_logic;
     p11_tx_ready    : in  std_logic;
     p11_tx_error    : in  std_logic;
+    p11_tx_pstart   : in  std_logic;
     p11_tx_tnow     : in  std_logic_vector(47 downto 0);
     p11_tx_reset    : in  std_logic;
 
@@ -290,6 +288,7 @@ entity wrap_switch_core is
     p12_tx_valid    : out std_logic;
     p12_tx_ready    : in  std_logic;
     p12_tx_error    : in  std_logic;
+    p12_tx_pstart   : in  std_logic;
     p12_tx_tnow     : in  std_logic_vector(47 downto 0);
     p12_tx_reset    : in  std_logic;
 
@@ -308,6 +307,7 @@ entity wrap_switch_core is
     p13_tx_valid    : out std_logic;
     p13_tx_ready    : in  std_logic;
     p13_tx_error    : in  std_logic;
+    p13_tx_pstart   : in  std_logic;
     p13_tx_tnow     : in  std_logic_vector(47 downto 0);
     p13_tx_reset    : in  std_logic;
 
@@ -326,6 +326,7 @@ entity wrap_switch_core is
     p14_tx_valid    : out std_logic;
     p14_tx_ready    : in  std_logic;
     p14_tx_error    : in  std_logic;
+    p14_tx_pstart   : in  std_logic;
     p14_tx_tnow     : in  std_logic_vector(47 downto 0);
     p14_tx_reset    : in  std_logic;
 
@@ -344,6 +345,7 @@ entity wrap_switch_core is
     p15_tx_valid    : out std_logic;
     p15_tx_ready    : in  std_logic;
     p15_tx_error    : in  std_logic;
+    p15_tx_pstart   : in  std_logic;
     p15_tx_tnow     : in  std_logic_vector(47 downto 0);
     p15_tx_reset    : in  std_logic;
 
@@ -362,6 +364,7 @@ entity wrap_switch_core is
     p16_tx_valid    : out std_logic;
     p16_tx_ready    : in  std_logic;
     p16_tx_error    : in  std_logic;
+    p16_tx_pstart   : in  std_logic;
     p16_tx_tnow     : in  std_logic_vector(47 downto 0);
     p16_tx_reset    : in  std_logic;
 
@@ -380,6 +383,7 @@ entity wrap_switch_core is
     p17_tx_valid    : out std_logic;
     p17_tx_ready    : in  std_logic;
     p17_tx_error    : in  std_logic;
+    p17_tx_pstart   : in  std_logic;
     p17_tx_tnow     : in  std_logic_vector(47 downto 0);
     p17_tx_reset    : in  std_logic;
 
@@ -398,6 +402,7 @@ entity wrap_switch_core is
     p18_tx_valid    : out std_logic;
     p18_tx_ready    : in  std_logic;
     p18_tx_error    : in  std_logic;
+    p18_tx_pstart   : in  std_logic;
     p18_tx_tnow     : in  std_logic_vector(47 downto 0);
     p18_tx_reset    : in  std_logic;
 
@@ -416,6 +421,7 @@ entity wrap_switch_core is
     p19_tx_valid    : out std_logic;
     p19_tx_ready    : in  std_logic;
     p19_tx_error    : in  std_logic;
+    p19_tx_pstart   : in  std_logic;
     p19_tx_tnow     : in  std_logic_vector(47 downto 0);
     p19_tx_reset    : in  std_logic;
 
@@ -434,6 +440,7 @@ entity wrap_switch_core is
     p20_tx_valid    : out std_logic;
     p20_tx_ready    : in  std_logic;
     p20_tx_error    : in  std_logic;
+    p20_tx_pstart   : in  std_logic;
     p20_tx_tnow     : in  std_logic_vector(47 downto 0);
     p20_tx_reset    : in  std_logic;
 
@@ -452,6 +459,7 @@ entity wrap_switch_core is
     p21_tx_valid    : out std_logic;
     p21_tx_ready    : in  std_logic;
     p21_tx_error    : in  std_logic;
+    p21_tx_pstart   : in  std_logic;
     p21_tx_tnow     : in  std_logic_vector(47 downto 0);
     p21_tx_reset    : in  std_logic;
 
@@ -470,6 +478,7 @@ entity wrap_switch_core is
     p22_tx_valid    : out std_logic;
     p22_tx_ready    : in  std_logic;
     p22_tx_error    : in  std_logic;
+    p22_tx_pstart   : in  std_logic;
     p22_tx_tnow     : in  std_logic_vector(47 downto 0);
     p22_tx_reset    : in  std_logic;
 
@@ -488,6 +497,7 @@ entity wrap_switch_core is
     p23_tx_valid    : out std_logic;
     p23_tx_ready    : in  std_logic;
     p23_tx_error    : in  std_logic;
+    p23_tx_pstart   : in  std_logic;
     p23_tx_tnow     : in  std_logic_vector(47 downto 0);
     p23_tx_reset    : in  std_logic;
 
@@ -506,6 +516,7 @@ entity wrap_switch_core is
     p24_tx_valid    : out std_logic;
     p24_tx_ready    : in  std_logic;
     p24_tx_error    : in  std_logic;
+    p24_tx_pstart   : in  std_logic;
     p24_tx_tnow     : in  std_logic_vector(47 downto 0);
     p24_tx_reset    : in  std_logic;
 
@@ -524,6 +535,7 @@ entity wrap_switch_core is
     p25_tx_valid    : out std_logic;
     p25_tx_ready    : in  std_logic;
     p25_tx_error    : in  std_logic;
+    p25_tx_pstart   : in  std_logic;
     p25_tx_tnow     : in  std_logic_vector(47 downto 0);
     p25_tx_reset    : in  std_logic;
 
@@ -542,6 +554,7 @@ entity wrap_switch_core is
     p26_tx_valid    : out std_logic;
     p26_tx_ready    : in  std_logic;
     p26_tx_error    : in  std_logic;
+    p26_tx_pstart   : in  std_logic;
     p26_tx_tnow     : in  std_logic_vector(47 downto 0);
     p26_tx_reset    : in  std_logic;
 
@@ -560,6 +573,7 @@ entity wrap_switch_core is
     p27_tx_valid    : out std_logic;
     p27_tx_ready    : in  std_logic;
     p27_tx_error    : in  std_logic;
+    p27_tx_pstart   : in  std_logic;
     p27_tx_tnow     : in  std_logic_vector(47 downto 0);
     p27_tx_reset    : in  std_logic;
 
@@ -578,6 +592,7 @@ entity wrap_switch_core is
     p28_tx_valid    : out std_logic;
     p28_tx_ready    : in  std_logic;
     p28_tx_error    : in  std_logic;
+    p28_tx_pstart   : in  std_logic;
     p28_tx_tnow     : in  std_logic_vector(47 downto 0);
     p28_tx_reset    : in  std_logic;
 
@@ -596,6 +611,7 @@ entity wrap_switch_core is
     p29_tx_valid    : out std_logic;
     p29_tx_ready    : in  std_logic;
     p29_tx_error    : in  std_logic;
+    p29_tx_pstart   : in  std_logic;
     p29_tx_tnow     : in  std_logic_vector(47 downto 0);
     p29_tx_reset    : in  std_logic;
 
@@ -614,6 +630,7 @@ entity wrap_switch_core is
     p30_tx_valid    : out std_logic;
     p30_tx_ready    : in  std_logic;
     p30_tx_error    : in  std_logic;
+    p30_tx_pstart   : in  std_logic;
     p30_tx_tnow     : in  std_logic_vector(47 downto 0);
     p30_tx_reset    : in  std_logic;
 
@@ -632,6 +649,7 @@ entity wrap_switch_core is
     p31_tx_valid    : out std_logic;
     p31_tx_ready    : in  std_logic;
     p31_tx_error    : in  std_logic;
+    p31_tx_pstart   : in  std_logic;
     p31_tx_tnow     : in  std_logic_vector(47 downto 0);
     p31_tx_reset    : in  std_logic;
 
@@ -651,6 +669,7 @@ entity wrap_switch_core is
     x00_tx_valid    : out std_logic;
     x00_tx_ready    : in  std_logic;
     x00_tx_error    : in  std_logic;
+    x00_tx_pstart   : in  std_logic;
     x00_tx_tnow     : in  std_logic_vector(47 downto 0);
     x00_tx_reset    : in  std_logic;
 
@@ -669,6 +688,7 @@ entity wrap_switch_core is
     x01_tx_valid    : out std_logic;
     x01_tx_ready    : in  std_logic;
     x01_tx_error    : in  std_logic;
+    x01_tx_pstart   : in  std_logic;
     x01_tx_tnow     : in  std_logic_vector(47 downto 0);
     x01_tx_reset    : in  std_logic;
 
@@ -687,6 +707,7 @@ entity wrap_switch_core is
     x02_tx_valid    : out std_logic;
     x02_tx_ready    : in  std_logic;
     x02_tx_error    : in  std_logic;
+    x02_tx_pstart   : in  std_logic;
     x02_tx_tnow     : in  std_logic_vector(47 downto 0);
     x02_tx_reset    : in  std_logic;
 
@@ -705,6 +726,7 @@ entity wrap_switch_core is
     x03_tx_valid    : out std_logic;
     x03_tx_ready    : in  std_logic;
     x03_tx_error    : in  std_logic;
+    x03_tx_pstart   : in  std_logic;
     x03_tx_tnow     : in  std_logic_vector(47 downto 0);
     x03_tx_reset    : in  std_logic;
 
@@ -723,6 +745,7 @@ entity wrap_switch_core is
     x04_tx_valid    : out std_logic;
     x04_tx_ready    : in  std_logic;
     x04_tx_error    : in  std_logic;
+    x04_tx_pstart   : in  std_logic;
     x04_tx_tnow     : in  std_logic_vector(47 downto 0);
     x04_tx_reset    : in  std_logic;
 
@@ -741,6 +764,7 @@ entity wrap_switch_core is
     x05_tx_valid    : out std_logic;
     x05_tx_ready    : in  std_logic;
     x05_tx_error    : in  std_logic;
+    x05_tx_pstart   : in  std_logic;
     x05_tx_tnow     : in  std_logic_vector(47 downto 0);
     x05_tx_reset    : in  std_logic;
 
@@ -759,6 +783,7 @@ entity wrap_switch_core is
     x06_tx_valid    : out std_logic;
     x06_tx_ready    : in  std_logic;
     x06_tx_error    : in  std_logic;
+    x06_tx_pstart   : in  std_logic;
     x06_tx_tnow     : in  std_logic_vector(47 downto 0);
     x06_tx_reset    : in  std_logic;
 
@@ -777,6 +802,7 @@ entity wrap_switch_core is
     x07_tx_valid    : out std_logic;
     x07_tx_ready    : in  std_logic;
     x07_tx_error    : in  std_logic;
+    x07_tx_pstart   : in  std_logic;
     x07_tx_tnow     : in  std_logic_vector(47 downto 0);
     x07_tx_reset    : in  std_logic;
 
@@ -853,6 +879,7 @@ gen_p00 : if (PORT_COUNT > 0) generate
     rx_data(0).reset_p  <= p00_rx_reset;
     tx_ctrl(0).clk      <= p00_tx_clk;
     tx_ctrl(0).ready    <= p00_tx_ready;
+    tx_ctrl(0).pstart   <= p00_tx_pstart;
     tx_ctrl(0).tnow     <= unsigned(p00_tx_tnow);
     tx_ctrl(0).txerr    <= p00_tx_error;
     tx_ctrl(0).reset_p  <= p00_tx_reset;
@@ -879,6 +906,7 @@ gen_p01 : if (PORT_COUNT > 1) generate
     rx_data(1).reset_p  <= p01_rx_reset;
     tx_ctrl(1).clk      <= p01_tx_clk;
     tx_ctrl(1).ready    <= p01_tx_ready;
+    tx_ctrl(1).pstart   <= p01_tx_pstart;
     tx_ctrl(1).tnow     <= unsigned(p01_tx_tnow);
     tx_ctrl(1).txerr    <= p01_tx_error;
     tx_ctrl(1).reset_p  <= p01_tx_reset;
@@ -905,6 +933,7 @@ gen_p02 : if (PORT_COUNT > 2) generate
     rx_data(2).reset_p  <= p02_rx_reset;
     tx_ctrl(2).clk      <= p02_tx_clk;
     tx_ctrl(2).ready    <= p02_tx_ready;
+    tx_ctrl(2).pstart   <= p02_tx_pstart;
     tx_ctrl(2).tnow     <= unsigned(p02_tx_tnow);
     tx_ctrl(2).txerr    <= p02_tx_error;
     tx_ctrl(2).reset_p  <= p02_tx_reset;
@@ -931,6 +960,7 @@ gen_p03 : if (PORT_COUNT > 3) generate
     rx_data(3).reset_p  <= p03_rx_reset;
     tx_ctrl(3).clk      <= p03_tx_clk;
     tx_ctrl(3).ready    <= p03_tx_ready;
+    tx_ctrl(3).pstart   <= p03_tx_pstart;
     tx_ctrl(3).tnow     <= unsigned(p03_tx_tnow);
     tx_ctrl(3).txerr    <= p03_tx_error;
     tx_ctrl(3).reset_p  <= p03_tx_reset;
@@ -957,6 +987,7 @@ gen_p04 : if (PORT_COUNT > 4) generate
     rx_data(4).reset_p  <= p04_rx_reset;
     tx_ctrl(4).clk      <= p04_tx_clk;
     tx_ctrl(4).ready    <= p04_tx_ready;
+    tx_ctrl(4).pstart   <= p04_tx_pstart;
     tx_ctrl(4).tnow     <= unsigned(p04_tx_tnow);
     tx_ctrl(4).txerr    <= p04_tx_error;
     tx_ctrl(4).reset_p  <= p04_tx_reset;
@@ -983,6 +1014,7 @@ gen_p05 : if (PORT_COUNT > 5) generate
     rx_data(5).reset_p  <= p05_rx_reset;
     tx_ctrl(5).clk      <= p05_tx_clk;
     tx_ctrl(5).ready    <= p05_tx_ready;
+    tx_ctrl(5).pstart   <= p05_tx_pstart;
     tx_ctrl(5).tnow     <= unsigned(p05_tx_tnow);
     tx_ctrl(5).txerr    <= p05_tx_error;
     tx_ctrl(5).reset_p  <= p05_tx_reset;
@@ -1009,6 +1041,7 @@ gen_p06 : if (PORT_COUNT > 6) generate
     rx_data(6).reset_p  <= p06_rx_reset;
     tx_ctrl(6).clk      <= p06_tx_clk;
     tx_ctrl(6).ready    <= p06_tx_ready;
+    tx_ctrl(6).pstart   <= p06_tx_pstart;
     tx_ctrl(6).tnow     <= unsigned(p06_tx_tnow);
     tx_ctrl(6).txerr    <= p06_tx_error;
     tx_ctrl(6).reset_p  <= p06_tx_reset;
@@ -1035,6 +1068,7 @@ gen_p07 : if (PORT_COUNT > 7) generate
     rx_data(7).reset_p  <= p07_rx_reset;
     tx_ctrl(7).clk      <= p07_tx_clk;
     tx_ctrl(7).ready    <= p07_tx_ready;
+    tx_ctrl(7).pstart   <= p07_tx_pstart;
     tx_ctrl(7).tnow     <= unsigned(p07_tx_tnow);
     tx_ctrl(7).txerr    <= p07_tx_error;
     tx_ctrl(7).reset_p  <= p07_tx_reset;
@@ -1061,6 +1095,7 @@ gen_p08 : if (PORT_COUNT > 8) generate
     rx_data(8).reset_p  <= p08_rx_reset;
     tx_ctrl(8).clk      <= p08_tx_clk;
     tx_ctrl(8).ready    <= p08_tx_ready;
+    tx_ctrl(8).pstart   <= p08_tx_pstart;
     tx_ctrl(8).tnow     <= unsigned(p08_tx_tnow);
     tx_ctrl(8).txerr    <= p08_tx_error;
     tx_ctrl(8).reset_p  <= p08_tx_reset;
@@ -1087,6 +1122,7 @@ gen_p09 : if (PORT_COUNT > 9) generate
     rx_data(9).reset_p  <= p09_rx_reset;
     tx_ctrl(9).clk      <= p09_tx_clk;
     tx_ctrl(9).ready    <= p09_tx_ready;
+    tx_ctrl(9).pstart   <= p09_tx_pstart;
     tx_ctrl(9).tnow     <= unsigned(p09_tx_tnow);
     tx_ctrl(9).txerr    <= p09_tx_error;
     tx_ctrl(9).reset_p  <= p09_tx_reset;
@@ -1113,6 +1149,7 @@ gen_p10 : if (PORT_COUNT > 10) generate
     rx_data(10).reset_p <= p10_rx_reset;
     tx_ctrl(10).clk     <= p10_tx_clk;
     tx_ctrl(10).ready   <= p10_tx_ready;
+    tx_ctrl(10).pstart  <= p10_tx_pstart;
     tx_ctrl(10).tnow    <= unsigned(p10_tx_tnow);
     tx_ctrl(10).txerr   <= p10_tx_error;
     tx_ctrl(10).reset_p <= p10_tx_reset;
@@ -1139,6 +1176,7 @@ gen_p11 : if (PORT_COUNT > 11) generate
     rx_data(11).reset_p <= p11_rx_reset;
     tx_ctrl(11).clk     <= p11_tx_clk;
     tx_ctrl(11).ready   <= p11_tx_ready;
+    tx_ctrl(11).pstart  <= p11_tx_pstart;
     tx_ctrl(11).tnow    <= unsigned(p11_tx_tnow);
     tx_ctrl(11).txerr   <= p11_tx_error;
     tx_ctrl(11).reset_p <= p11_tx_reset;
@@ -1165,6 +1203,7 @@ gen_p12 : if (PORT_COUNT > 12) generate
     rx_data(12).reset_p <= p12_rx_reset;
     tx_ctrl(12).clk     <= p12_tx_clk;
     tx_ctrl(12).ready   <= p12_tx_ready;
+    tx_ctrl(12).pstart  <= p12_tx_pstart;
     tx_ctrl(12).tnow    <= unsigned(p12_tx_tnow);
     tx_ctrl(12).txerr   <= p12_tx_error;
     tx_ctrl(12).reset_p <= p12_tx_reset;
@@ -1191,6 +1230,7 @@ gen_p13 : if (PORT_COUNT > 13) generate
     rx_data(13).reset_p <= p13_rx_reset;
     tx_ctrl(13).clk     <= p13_tx_clk;
     tx_ctrl(13).ready   <= p13_tx_ready;
+    tx_ctrl(13).pstart  <= p13_tx_pstart;
     tx_ctrl(13).tnow    <= unsigned(p13_tx_tnow);
     tx_ctrl(13).txerr   <= p13_tx_error;
     tx_ctrl(13).reset_p <= p13_tx_reset;
@@ -1217,6 +1257,7 @@ gen_p14 : if (PORT_COUNT > 14) generate
     rx_data(14).reset_p <= p14_rx_reset;
     tx_ctrl(14).clk     <= p14_tx_clk;
     tx_ctrl(14).ready   <= p14_tx_ready;
+    tx_ctrl(14).pstart  <= p14_tx_pstart;
     tx_ctrl(14).tnow    <= unsigned(p14_tx_tnow);
     tx_ctrl(14).txerr   <= p14_tx_error;
     tx_ctrl(14).reset_p <= p14_tx_reset;
@@ -1243,6 +1284,7 @@ gen_p15 : if (PORT_COUNT > 15) generate
     rx_data(15).reset_p <= p15_rx_reset;
     tx_ctrl(15).clk     <= p15_tx_clk;
     tx_ctrl(15).ready   <= p15_tx_ready;
+    tx_ctrl(15).pstart  <= p15_tx_pstart;
     tx_ctrl(15).tnow    <= unsigned(p15_tx_tnow);
     tx_ctrl(15).txerr   <= p15_tx_error;
     tx_ctrl(15).reset_p <= p15_tx_reset;
@@ -1269,6 +1311,7 @@ gen_p16 : if (PORT_COUNT > 16) generate
     rx_data(16).reset_p <= p16_rx_reset;
     tx_ctrl(16).clk     <= p16_tx_clk;
     tx_ctrl(16).ready   <= p16_tx_ready;
+    tx_ctrl(16).pstart  <= p16_tx_pstart;
     tx_ctrl(16).tnow    <= unsigned(p16_tx_tnow);
     tx_ctrl(16).txerr   <= p16_tx_error;
     tx_ctrl(16).reset_p <= p16_tx_reset;
@@ -1295,6 +1338,7 @@ gen_p17 : if (PORT_COUNT > 17) generate
     rx_data(17).reset_p <= p17_rx_reset;
     tx_ctrl(17).clk     <= p17_tx_clk;
     tx_ctrl(17).ready   <= p17_tx_ready;
+    tx_ctrl(17).pstart  <= p17_tx_pstart;
     tx_ctrl(17).tnow    <= unsigned(p17_tx_tnow);
     tx_ctrl(17).txerr   <= p17_tx_error;
     tx_ctrl(17).reset_p <= p17_tx_reset;
@@ -1321,6 +1365,7 @@ gen_p18 : if (PORT_COUNT > 18) generate
     rx_data(18).reset_p <= p18_rx_reset;
     tx_ctrl(18).clk     <= p18_tx_clk;
     tx_ctrl(18).ready   <= p18_tx_ready;
+    tx_ctrl(18).pstart  <= p18_tx_pstart;
     tx_ctrl(18).tnow    <= unsigned(p18_tx_tnow);
     tx_ctrl(18).txerr   <= p18_tx_error;
     tx_ctrl(18).reset_p <= p18_tx_reset;
@@ -1347,6 +1392,7 @@ gen_p19 : if (PORT_COUNT > 19) generate
     rx_data(19).reset_p <= p19_rx_reset;
     tx_ctrl(19).clk     <= p19_tx_clk;
     tx_ctrl(19).ready   <= p19_tx_ready;
+    tx_ctrl(19).pstart  <= p19_tx_pstart;
     tx_ctrl(19).tnow    <= unsigned(p19_tx_tnow);
     tx_ctrl(19).txerr   <= p19_tx_error;
     tx_ctrl(19).reset_p <= p19_tx_reset;
@@ -1373,6 +1419,7 @@ gen_p20 : if (PORT_COUNT > 20) generate
     rx_data(20).reset_p <= p20_rx_reset;
     tx_ctrl(20).clk     <= p20_tx_clk;
     tx_ctrl(20).ready   <= p20_tx_ready;
+    tx_ctrl(20).pstart  <= p20_tx_pstart;
     tx_ctrl(20).tnow    <= unsigned(p20_tx_tnow);
     tx_ctrl(20).txerr   <= p20_tx_error;
     tx_ctrl(20).reset_p <= p20_tx_reset;
@@ -1399,6 +1446,7 @@ gen_p21 : if (PORT_COUNT > 21) generate
     rx_data(21).reset_p <= p21_rx_reset;
     tx_ctrl(21).clk     <= p21_tx_clk;
     tx_ctrl(21).ready   <= p21_tx_ready;
+    tx_ctrl(21).pstart  <= p21_tx_pstart;
     tx_ctrl(21).tnow    <= unsigned(p21_tx_tnow);
     tx_ctrl(21).txerr   <= p21_tx_error;
     tx_ctrl(21).reset_p <= p21_tx_reset;
@@ -1425,6 +1473,7 @@ gen_p22 : if (PORT_COUNT > 22) generate
     rx_data(22).reset_p <= p22_rx_reset;
     tx_ctrl(22).clk     <= p22_tx_clk;
     tx_ctrl(22).ready   <= p22_tx_ready;
+    tx_ctrl(22).pstart  <= p22_tx_pstart;
     tx_ctrl(22).tnow    <= unsigned(p22_tx_tnow);
     tx_ctrl(22).txerr   <= p22_tx_error;
     tx_ctrl(22).reset_p <= p22_tx_reset;
@@ -1451,6 +1500,7 @@ gen_p23 : if (PORT_COUNT > 23) generate
     rx_data(23).reset_p <= p23_rx_reset;
     tx_ctrl(23).clk     <= p23_tx_clk;
     tx_ctrl(23).ready   <= p23_tx_ready;
+    tx_ctrl(23).pstart  <= p23_tx_pstart;
     tx_ctrl(23).tnow    <= unsigned(p23_tx_tnow);
     tx_ctrl(23).txerr   <= p23_tx_error;
     tx_ctrl(23).reset_p <= p23_tx_reset;
@@ -1477,6 +1527,7 @@ gen_p24 : if (PORT_COUNT > 24) generate
     rx_data(24).reset_p <= p24_rx_reset;
     tx_ctrl(24).clk     <= p24_tx_clk;
     tx_ctrl(24).ready   <= p24_tx_ready;
+    tx_ctrl(24).pstart  <= p24_tx_pstart;
     tx_ctrl(24).tnow    <= unsigned(p24_tx_tnow);
     tx_ctrl(24).txerr   <= p24_tx_error;
     tx_ctrl(24).reset_p <= p24_tx_reset;
@@ -1503,6 +1554,7 @@ gen_p25 : if (PORT_COUNT > 25) generate
     rx_data(25).reset_p <= p25_rx_reset;
     tx_ctrl(25).clk     <= p25_tx_clk;
     tx_ctrl(25).ready   <= p25_tx_ready;
+    tx_ctrl(25).pstart  <= p25_tx_pstart;
     tx_ctrl(25).tnow    <= unsigned(p25_tx_tnow);
     tx_ctrl(25).txerr   <= p25_tx_error;
     tx_ctrl(25).reset_p <= p25_tx_reset;
@@ -1529,6 +1581,7 @@ gen_p26 : if (PORT_COUNT > 26) generate
     rx_data(26).reset_p <= p26_rx_reset;
     tx_ctrl(26).clk     <= p26_tx_clk;
     tx_ctrl(26).ready   <= p26_tx_ready;
+    tx_ctrl(26).pstart  <= p26_tx_pstart;
     tx_ctrl(26).tnow    <= unsigned(p26_tx_tnow);
     tx_ctrl(26).txerr   <= p26_tx_error;
     tx_ctrl(26).reset_p <= p26_tx_reset;
@@ -1555,6 +1608,7 @@ gen_p27 : if (PORT_COUNT > 27) generate
     rx_data(27).reset_p <= p27_rx_reset;
     tx_ctrl(27).clk     <= p27_tx_clk;
     tx_ctrl(27).ready   <= p27_tx_ready;
+    tx_ctrl(27).pstart  <= p27_tx_pstart;
     tx_ctrl(27).tnow    <= unsigned(p27_tx_tnow);
     tx_ctrl(27).txerr   <= p27_tx_error;
     tx_ctrl(27).reset_p <= p27_tx_reset;
@@ -1581,6 +1635,7 @@ gen_p28 : if (PORT_COUNT > 28) generate
     rx_data(28).reset_p <= p28_rx_reset;
     tx_ctrl(28).clk     <= p28_tx_clk;
     tx_ctrl(28).ready   <= p28_tx_ready;
+    tx_ctrl(28).pstart  <= p28_tx_pstart;
     tx_ctrl(28).tnow    <= unsigned(p28_tx_tnow);
     tx_ctrl(28).txerr   <= p28_tx_error;
     tx_ctrl(28).reset_p <= p28_tx_reset;
@@ -1607,6 +1662,7 @@ gen_p29 : if (PORT_COUNT > 29) generate
     rx_data(29).reset_p <= p29_rx_reset;
     tx_ctrl(29).clk     <= p29_tx_clk;
     tx_ctrl(29).ready   <= p29_tx_ready;
+    tx_ctrl(29).pstart  <= p29_tx_pstart;
     tx_ctrl(29).tnow    <= unsigned(p29_tx_tnow);
     tx_ctrl(29).txerr   <= p29_tx_error;
     tx_ctrl(29).reset_p <= p29_tx_reset;
@@ -1633,6 +1689,7 @@ gen_p30 : if (PORT_COUNT > 30) generate
     rx_data(30).reset_p <= p30_rx_reset;
     tx_ctrl(30).clk     <= p30_tx_clk;
     tx_ctrl(30).ready   <= p30_tx_ready;
+    tx_ctrl(30).pstart  <= p30_tx_pstart;
     tx_ctrl(30).tnow    <= unsigned(p30_tx_tnow);
     tx_ctrl(30).txerr   <= p30_tx_error;
     tx_ctrl(30).reset_p <= p30_tx_reset;
@@ -1659,6 +1716,7 @@ gen_p31 : if (PORT_COUNT > 31) generate
     rx_data(31).reset_p <= p31_rx_reset;
     tx_ctrl(31).clk     <= p31_tx_clk;
     tx_ctrl(31).ready   <= p31_tx_ready;
+    tx_ctrl(31).pstart  <= p31_tx_pstart;
     tx_ctrl(31).tnow    <= unsigned(p31_tx_tnow);
     tx_ctrl(31).txerr   <= p31_tx_error;
     tx_ctrl(31).reset_p <= p31_tx_reset;
@@ -1688,6 +1746,7 @@ gen_xp00 : if (PORTX_COUNT > 0) generate
     xrx_data(0).reset_p <= x00_rx_reset;
     xtx_ctrl(0).clk     <= x00_tx_clk;
     xtx_ctrl(0).ready   <= x00_tx_ready;
+    xtx_ctrl(0).pstart  <= x00_tx_pstart;
     xtx_ctrl(0).tnow    <= unsigned(x00_tx_tnow);
     xtx_ctrl(0).txerr   <= x00_tx_error;
     xtx_ctrl(0).reset_p <= x00_tx_reset;
@@ -1714,6 +1773,7 @@ gen_xp01 : if (PORTX_COUNT > 1) generate
     xrx_data(1).reset_p <= x01_rx_reset;
     xtx_ctrl(1).clk     <= x01_tx_clk;
     xtx_ctrl(1).ready   <= x01_tx_ready;
+    xtx_ctrl(1).pstart  <= x01_tx_pstart;
     xtx_ctrl(1).tnow    <= unsigned(x01_tx_tnow);
     xtx_ctrl(1).txerr   <= x01_tx_error;
     xtx_ctrl(1).reset_p <= x01_tx_reset;
@@ -1740,6 +1800,7 @@ gen_xp02 : if (PORTX_COUNT > 2) generate
     xrx_data(2).reset_p <= x02_rx_reset;
     xtx_ctrl(2).clk     <= x02_tx_clk;
     xtx_ctrl(2).ready   <= x02_tx_ready;
+    xtx_ctrl(2).pstart  <= x02_tx_pstart;
     xtx_ctrl(2).tnow    <= unsigned(x02_tx_tnow);
     xtx_ctrl(2).txerr   <= x02_tx_error;
     xtx_ctrl(2).reset_p <= x02_tx_reset;
@@ -1766,6 +1827,7 @@ gen_xp03 : if (PORTX_COUNT > 3) generate
     xrx_data(3).reset_p <= x03_rx_reset;
     xtx_ctrl(3).clk     <= x03_tx_clk;
     xtx_ctrl(3).ready   <= x03_tx_ready;
+    xtx_ctrl(3).pstart  <= x03_tx_pstart;
     xtx_ctrl(3).tnow    <= unsigned(x03_tx_tnow);
     xtx_ctrl(3).txerr   <= x03_tx_error;
     xtx_ctrl(3).reset_p <= x03_tx_reset;
@@ -1792,6 +1854,7 @@ gen_xp04 : if (PORTX_COUNT > 4) generate
     xrx_data(4).reset_p <= x04_rx_reset;
     xtx_ctrl(4).clk     <= x04_tx_clk;
     xtx_ctrl(4).ready   <= x04_tx_ready;
+    xtx_ctrl(4).pstart  <= x04_tx_pstart;
     xtx_ctrl(4).tnow    <= unsigned(x04_tx_tnow);
     xtx_ctrl(4).txerr   <= x04_tx_error;
     xtx_ctrl(4).reset_p <= x04_tx_reset;
@@ -1818,6 +1881,7 @@ gen_xp05 : if (PORTX_COUNT > 5) generate
     xrx_data(5).reset_p <= x05_rx_reset;
     xtx_ctrl(5).clk     <= x05_tx_clk;
     xtx_ctrl(5).ready   <= x05_tx_ready;
+    xtx_ctrl(5).pstart  <= x05_tx_pstart;
     xtx_ctrl(5).tnow    <= unsigned(x05_tx_tnow);
     xtx_ctrl(5).txerr   <= x05_tx_error;
     xtx_ctrl(5).reset_p <= x05_tx_reset;
@@ -1844,6 +1908,7 @@ gen_xp06 : if (PORTX_COUNT > 6) generate
     xrx_data(6).reset_p <= x06_rx_reset;
     xtx_ctrl(6).clk     <= x06_tx_clk;
     xtx_ctrl(6).ready   <= x06_tx_ready;
+    xtx_ctrl(6).pstart  <= x06_tx_pstart;
     xtx_ctrl(6).tnow    <= unsigned(x06_tx_tnow);
     xtx_ctrl(6).txerr   <= x06_tx_error;
     xtx_ctrl(6).reset_p <= x06_tx_reset;
@@ -1870,6 +1935,7 @@ gen_xp07 : if (PORTX_COUNT > 7) generate
     xrx_data(7).reset_p <= x07_rx_reset;
     xtx_ctrl(7).clk     <= x07_tx_clk;
     xtx_ctrl(7).ready   <= x07_tx_ready;
+    xtx_ctrl(7).pstart  <= x07_tx_pstart;
     xtx_ctrl(7).tnow    <= unsigned(x07_tx_tnow);
     xtx_ctrl(7).txerr   <= x07_tx_error;
     xtx_ctrl(7).reset_p <= x07_tx_reset;

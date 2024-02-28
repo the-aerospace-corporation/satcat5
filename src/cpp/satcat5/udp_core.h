@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Type definitions for UDP datagrams and protocol handlers
 
@@ -29,15 +15,20 @@ namespace satcat5 {
         typedef satcat5::ip::Addr Addr;
         typedef satcat5::ip::Port Port;
 
-        // Commonly used UDP port-numbers:
+        // Well-known UDP port-numbers used by SatCat5:
+        // https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers#Well-known_ports
         constexpr satcat5::udp::Port PORT_NONE          = {0};
         constexpr satcat5::udp::Port PORT_ECHO          = {7};
         constexpr satcat5::udp::Port PORT_DHCP_SERVER   = {67};
         constexpr satcat5::udp::Port PORT_DHCP_CLIENT   = {68};
+        constexpr satcat5::udp::Port PORT_TFTP_SERVER   = {69};
         constexpr satcat5::udp::Port PORT_PTP_EVENT     = {319};
         constexpr satcat5::udp::Port PORT_PTP_GENERAL   = {320};
+
+        // Default UDP port-numbers for SatCat5 services:
         constexpr satcat5::udp::Port PORT_CFGBUS_CMD    = {0x5A61};
         constexpr satcat5::udp::Port PORT_CFGBUS_ACK    = {0x5A62};
+        constexpr satcat5::udp::Port PORT_CBOR_TLM      = {0x5A63};
 
         // Implementation of "net::Address" for IP Dispatch.
         class Address final : public satcat5::net::Address {
@@ -53,7 +44,7 @@ namespace satcat5 {
                 const satcat5::udp::Port& srcport);
 
             // Automatic address resolution (user supplies IP only)
-            // (See "ip_core.h / ip::Address" for more information.
+            // See "ip_core.h / ip::Address" for more information.
             void connect(
                 const satcat5::udp::Addr& dstaddr,
                 const satcat5::udp::Port& dstport,
@@ -71,8 +62,12 @@ namespace satcat5 {
             // Various accessors.
             inline satcat5::ip::Addr dstaddr() const
                 {return m_addr.dstaddr();}
+            inline satcat5::udp::Port dstport() const
+                {return m_dstport;}
             inline satcat5::ip::Addr gateway() const
                 {return m_addr.gateway();}
+            inline satcat5::udp::Port srcport() const
+                {return m_srcport;}
 
             // Raw interface object is accessible to public.
             satcat5::udp::Dispatch* const m_iface;
@@ -92,5 +87,23 @@ namespace satcat5 {
             ~AddressContainer() {}
             satcat5::udp::Address m_addr;
         };
+
+        // Checksum field is not used
+        struct Header {
+            // UDP header fields.
+            satcat5::udp::Port src;
+            satcat5::udp::Port dst;
+            u16 length;
+
+            // Write UDP header to the designated stream.
+            void write_to(satcat5::io::Writeable* wr) const;
+
+            // Read UDP header from the designated stream.
+            // (Returns true on success, false otherwise.)
+            bool read_from(satcat5::io::Readable* rd);
+        };
+
+        constexpr satcat5::udp::Header HEADER_EMPTY =
+            {satcat5::udp::PORT_NONE, satcat5::udp::PORT_NONE, 0};
     }
 }

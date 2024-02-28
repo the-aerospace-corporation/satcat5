@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus I2C controller
 
@@ -109,6 +95,7 @@ TEST_CASE("cfgbus_i2c") {
     // Instantiate emulator and the unit under test.
     satcat5::test::MultiSerial mst;
     satcat5::cfg::I2c uut(&mst, CFG_DEVADDR);
+    CHECK_FALSE(uut.busy());
 
     // Reference data is a simple counter.
     u8 wrdata[16];
@@ -137,6 +124,7 @@ TEST_CASE("cfgbus_i2c") {
         // Issue the command.
         uut.read(I2C_DEVADDR, 0, 0, 3, &evt);
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -156,6 +144,7 @@ TEST_CASE("cfgbus_i2c") {
         // Issue the command.
         uut.read(I2C_DEVADDR, 0, 0, 3, &evt);
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -187,6 +176,7 @@ TEST_CASE("cfgbus_i2c") {
         uut.read(I2C_DEVADDR, 1, 42, 16, &evt1);
         uut.read(I2C_DEVADDR, 0, 0, 3, &evt2);
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -217,6 +207,7 @@ TEST_CASE("cfgbus_i2c") {
         // Issue the command.
         uut.read(addr10, 1, 42, 3, &evt);
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
@@ -244,10 +235,14 @@ TEST_CASE("cfgbus_i2c") {
         uut.write(I2C_DEVADDR, 1, 42, 16, wrdata, &evt1);
         uut.write(I2C_DEVADDR, 0, 0, 3, wrdata, &evt2);
         // Process to completion.
+        CHECK(uut.busy());
         for (unsigned n = 0 ; n < 100 ; ++n) mst.poll();
         // Confirm test completed.
         CHECK(mst.done());
         CHECK(evt1.m_count == 1);
         CHECK(evt2.m_count == 1);
     }
+
+    // End-of-test sanity check;
+    CHECK_FALSE(uut.busy());
 }

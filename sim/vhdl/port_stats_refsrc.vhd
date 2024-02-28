@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Traffic generator/counter for use with other config_stats testbenches.
@@ -103,6 +89,7 @@ ptx_data.last    <= tx_last;
 ptx_data.valid   <= tx_valid;
 ptx_ctrl.clk     <= clk;
 ptx_ctrl.ready   <= tx_ready;
+ptx_ctrl.pstart  <= '1';
 ptx_ctrl.tnow    <= TSTAMP_DISABLED;
 ptx_ctrl.txerr   <= '0';
 ptx_ctrl.reset_p <= reset_p;

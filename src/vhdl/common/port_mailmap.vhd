@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- "MailMap" port for use with ConfigBus
@@ -99,6 +85,7 @@ entity port_mailmap is
     TX_READBACK : boolean := true;      -- Enable readback of Tx buffer?
     MIN_FRAME   : natural := 64;        -- Minimum output frame size
     APPEND_FCS  : boolean := true;      -- Append FCS to each sent frame?
+    CHECK_FCS   : boolean := false;     -- Always check FCS for each frame?
     STRIP_FCS   : boolean := true;      -- Remove FCS from received frames?
     CFG_CLK_HZ  : natural := 0;         -- ConfigBus clock rate (for PTP)
     VCONFIG     : vernier_config := VERNIER_DISABLED);
@@ -150,6 +137,7 @@ signal port_reset_p : std_logic;
 
 -- Precision timestamps
 constant PTP_ENABLE : boolean := (CFG_CLK_HZ > 0 and VCONFIG.input_hz > 0);
+constant CRC_ENABLE : boolean := CHECK_FCS or PTP_ENABLE;
 signal lcl_tsof     : tstamp_t := TSTAMP_DISABLED;
 signal lcl_tnow     : tstamp_t := TSTAMP_DISABLED;
 signal lcl_tvalid   : std_logic := '0';
@@ -164,10 +152,17 @@ signal rx_raw_last  : std_logic;
 signal rx_raw_valid : std_logic;
 signal rx_raw_ready : std_logic;
 signal rx_raw_write : std_logic;
+signal rx_crc_data  : byte_t;
+signal rx_crc_last  : std_logic;
+signal rx_crc_error : std_logic;
+signal rx_crc_valid : std_logic;
+signal rx_crc_ready : std_logic;
 signal rx_adj_data  : byte_t;
 signal rx_adj_last  : std_logic;
+signal rx_adj_error : std_logic;
 signal rx_adj_valid : std_logic;
 signal rx_adj_ready : std_logic;
+signal rx_adj_write : std_logic;
 signal rx_ctrl_wren : cfgbus_wstrb := (others => '0');
 signal rx_ctrl_len  : len_word := (others => '0');
 signal rx_ctrl_rcvd : std_logic := '0';
@@ -220,6 +215,7 @@ rx_raw_valid    <= tx_data.valid;
 rx_raw_write    <= rx_raw_valid and rx_raw_ready;
 tx_ctrl.ready   <= rx_raw_ready;
 tx_ctrl.clk     <= cfg_cmd.clk;
+tx_ctrl.pstart  <= rx_adj_ready and not rx_adj_valid;
 tx_ctrl.tnow    <= lcl_tnow;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= port_reset_p;
@@ -287,8 +283,8 @@ gen_ptp : if PTP_ENABLE generate
         REG_BASE    => 506)     -- Four consecutive registers
         port map(
         in_tnow     => rtc_tnow,
-        in_last     => rx_raw_last,
-        in_write    => rx_raw_write,
+        in_last     => rx_adj_last,
+        in_write    => rx_adj_write,
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(1));
 
@@ -307,19 +303,84 @@ gen_ptp : if PTP_ENABLE generate
     rtc_status <= (31 => '1', 30 => lcl_tvalid, 0 => rtc_frozen, others => '0');
 end generate;
 
+-- Optionally check FCS of each incoming packet.
+-- In most cases, this logic is redundant because the upstream switch has
+-- already checked the CRC. However, PTP and other modes may intentionally
+-- inject bad CRCs to indicate when a packet should be dropped.
+gen_rxcrc1 : if CRC_ENABLE generate
+    blk_crc : block is
+        signal rx_raw_nlast : integer range 0 to 1;
+        signal tmp_residue  : crc_word_t;
+        signal tmp_data     : byte_t;
+        signal tmp_nlast    : integer range 0 to 1;
+        signal tmp_last     : std_logic;
+        signal tmp_error    : std_logic;
+        signal tmp_write    : std_logic;
+    begin
+        -- Byte-at-a-time CRC check.
+        -- Note: Pipeline delay is exactly one clock-cycle.
+        rx_raw_nlast <= u2i(rx_raw_last);
+        u_crc_check : entity work.eth_frame_parcrc2
+            port map(
+            in_data     => rx_raw_data,
+            in_nlast    => rx_raw_nlast,
+            in_write    => rx_raw_write,
+            out_res     => tmp_residue,
+            out_data    => tmp_data,
+            out_nlast   => tmp_nlast,
+            out_write   => tmp_write,
+            clk         => cfg_cmd.clk,
+            reset_p     => port_reset_p);
+
+        -- Check CRC residue at the end of each frame.
+        tmp_last    <= bool2bit(tmp_nlast > 0);
+        tmp_error   <= tmp_last and bool2bit(tmp_residue /= CRC_RESIDUE);
+
+        -- Skid-buffer for upstream flow-control.
+        u_crc_fifo : entity work.fifo_smol_sync
+            generic map(
+            IO_WIDTH    => 8,
+            META_WIDTH  => 1)
+            port map(
+            in_data     => tmp_data,
+            in_meta(0)  => tmp_error,
+            in_last     => tmp_last,
+            in_write    => tmp_write,
+            out_data    => rx_crc_data,
+            out_meta(0) => rx_crc_error,
+            out_last    => rx_crc_last,
+            out_valid   => rx_crc_valid,
+            out_read    => rx_crc_ready,
+            fifo_hempty => rx_raw_ready,
+            clk         => cfg_cmd.clk,
+            reset_p     => port_reset_p);
+    end block;
+end generate;
+
+gen_rxcrc0 : if not CRC_ENABLE generate
+    rx_crc_data     <= rx_raw_data;
+    rx_crc_error    <= '0';
+    rx_crc_last     <= rx_raw_last;
+    rx_crc_valid    <= rx_raw_valid;
+    rx_raw_ready    <= rx_crc_ready;
+end generate;
+
 -- Optionally strip FCS from incoming packets.
+-- Note: Pipeline delay is 1-2 cycles depending on configuration.
 u_rx_adj : entity work.eth_frame_adjust
     generic map(
     MIN_FRAME   => 0,
     APPEND_FCS  => false,
     STRIP_FCS   => STRIP_FCS)
     port map(
-    in_data     => rx_raw_data,
-    in_last     => rx_raw_last,
-    in_valid    => rx_raw_valid,
-    in_ready    => rx_raw_ready,
+    in_data     => rx_crc_data,
+    in_last     => rx_crc_last,
+    in_error    => rx_crc_error,
+    in_valid    => rx_crc_valid,
+    in_ready    => rx_crc_ready,
     out_data    => rx_adj_data,
     out_last    => rx_adj_last,
+    out_error   => rx_adj_error,
     out_valid   => rx_adj_valid,
     out_ready   => rx_adj_ready,
     clk         => cfg_cmd.clk,
@@ -327,6 +388,7 @@ u_rx_adj : entity work.eth_frame_adjust
 
 -- Accept data whenever we're between packets.
 rx_adj_ready <= not rx_ctrl_rcvd;
+rx_adj_write <= rx_adj_valid and rx_adj_ready;
 
 -- Controller for writing received data to the working buffer.
 p_rx_ctrl : process(cfg_cmd.clk)
@@ -336,19 +398,19 @@ begin
             -- Reset buffer contents and begin storing new data.
             rx_ctrl_len  <= (others => '0');
             rx_ctrl_rcvd <= '0';
-        elsif (rx_adj_valid = '1' and rx_adj_ready = '1') then
+        elsif (rx_adj_write = '1') then
             -- Accept new data and update state.
             if (rx_adj_last = '0') then
                 -- Receive next byte.
                 rx_ctrl_len  <= rx_ctrl_len + 1;
                 rx_ctrl_rcvd <= '0';
-            elsif (rx_ctrl_len < MAX_FRAME_BYTES) then
+            elsif (rx_adj_error = '0' and rx_ctrl_len < MAX_FRAME_BYTES) then
                 -- Receive final byte.
                 rx_ctrl_len  <= rx_ctrl_len + 1;
                 rx_ctrl_rcvd <= '1';
                 irq_toggle   <= not irq_toggle;
             else
-                -- Packet too long; discard.
+                -- Packet too long or bad FCS; discard.
                 rx_ctrl_len  <= (others => '0');
                 rx_ctrl_rcvd <= '0';
             end if;
@@ -363,7 +425,7 @@ rx_wr_addr  <= get_addr(rx_ctrl_len);
 tx_rd_addr  <= get_addr(tx_ctrl_len);
 gen_lane : for n in 0 to RAM_BYTES-1 generate
     cfg_wstrb(n)    <= cfg_wren and cfg_cmd.wstrb(n);
-    rx_ctrl_wren(n) <= rx_adj_valid and rx_adj_ready and bool2bit(n = get_lane(rx_ctrl_len));
+    rx_ctrl_wren(n) <= rx_adj_write and bool2bit(n = get_lane(rx_ctrl_len));
 end generate;
 
 -- Platform-specific dual-port block RAM.

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Interface driver for the ConfigBus I2C block
 //
@@ -53,11 +39,14 @@ namespace satcat5 {
             // Constructor links to specified control register.
             I2c(satcat5::cfg::ConfigBus* cfg, unsigned devaddr);
 
-            // Configure the I2C device.
+            // Configure the I2C controller.
             void configure(
                 unsigned refclk_hz,         // ConfigBus reference clock
                 unsigned baud_hz,           // Desired I2C baud rate
                 bool clock_stretch = true); // Allow clock-stretching?
+
+            // Is the I2C controller currently busy?
+            bool busy() override;
 
             // Add a bus operation to the queue. (Return true if successful.)
             bool read(const satcat5::util::I2cAddr& devaddr,

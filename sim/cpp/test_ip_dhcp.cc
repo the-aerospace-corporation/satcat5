@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for DHCP client and DHCP server
 
@@ -50,7 +36,9 @@ TEST_CASE("DHCP") {
     satcat5::test::FastPosixTimer clock;
     satcat5::test::TimerAlways timer;
     satcat5::log::ToConsole log;
-    log.disable();  // Suppress console output
+
+    // Ignore INFO messages from DHCP client and server.
+    log.m_threshold = satcat5::log::INFO + 1;
 
     // Network communication infrastructure.
     const MacAddr MAC_SERVER = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
@@ -197,6 +185,8 @@ TEST_CASE("DHCP") {
 
     // Renew but the original lease is invalid.
     SECTION("renew2") {
+        log.suppress("Request refused");
+
         // Get the initial lease.
         timer.sim_wait(10000);
         CHECK(check_leases(server, 1));
@@ -244,10 +234,14 @@ TEST_CASE("DHCP") {
 
     // Local request superseding an in-progress transaction.
     SECTION("reserve-mid") {
+        log.suppress("Request refused");
+
         // Wait for initial DISCOVER/OFFER exchange.
         timer.sim_wait(5000);
+
         // Local reservation for the same address should take priority.
         CHECK(server.request(ONE_DAY, IP_BASE) == IP_BASE);
+
         // Request should restart and eventually succeed.
         timer.sim_wait(15000);
         CHECK(check_leases(server, 2));
@@ -264,6 +258,8 @@ TEST_CASE("DHCP") {
     // Assign an IP that's taken by another endpoint.
     // (Eventually it should complete an automatic failover.)
     SECTION("squatter") {
+        log.suppress("Address already claimed");
+        log.suppress("Lease declined");
         net_server.set_addr(IP_BASE);
         timer.sim_wait(20000);
         CHECK(check_leases(server, 2));

@@ -42,13 +42,30 @@ but even more useful for things like small satellites and cubesats,
 which typically pack many microcontroller-based subsystems into a small volume.
 
 SatCat5 is used for the modular payload interface on [the Slingshot-1 cubesat mission](https://aerospace.org/article/slingshot-platform-showcase-advantages-modular-payload-architecture).
-For more details, please refer to the [full interface specification](../examples/slingshot).
+For more details, please refer to the [full interface specification and mission-operations report](../examples/slingshot).
 
 ### Can I customize it?
 
-Yes! That's a big part of why we chose the LGPL license,
+Yes! That's a big part of why we chose the CERN Open Hardware License,
 so you can use our VHDL building blocks to link together a custom SatCat5 switch for your application.
 We anticipate most users will need some degree of tailoring, so we've tried to make it as easy as we can.
+
+We have chosen the "weakly reciprocal" variant of the OHL (CERN-OHL-W v2 or later).
+If you make improvements to SatCat5, you may be obligated to share them.
+Please refer to the [full text of the license](../LICENSE.txt) for details.
+
+### Why CERN-OHL-W?
+
+Earlier versions of SatCat5 were released under an [LGPLv3 license](https://www.gnu.org/licenses/lgpl-3.0.en.html#license-text).
+You may continue to use those versions under those terms.
+
+However, some users found it difficult to use LGPLv3 because its
+legal terms are ambiguous or difficult to apply to FPGA designs.
+Such concerns are [echoed by OSHWA](https://www.oshwa.org/best-practices-for-sharing-fpga-designs-2/),
+which now recommends CERN-OHL licenses for open hardware and gateware.
+
+Moving forward, we chose [CERN-OHL-W v2 or later](https:/cern.ch/cern-ohl)
+for the same reason we chose LGPL. They are very similar in strategic intent.
 
 ### Can I help?
 
@@ -188,7 +205,8 @@ Per-VID throughput allocation may be added in a future release.
 
 [Precision time protocol (PTP / IEEE 1588-2008)](https://en.wikipedia.org/wiki/Precision_Time_Protocol)
 is supported.  If enabled, a SatCat5 switch acts as an "End-to-end Transparent Clock"
-as described in IEEE 1588-2019 Section 10.2a.
+as described in IEEE 1588-2019 Section 10.2a.  A software-based PTP client is also
+provided.  SatCat5 uses VERDACT technology to allow sub-nanosecond accuracy.
 
 [Spanning Tree Protocol](https://en.wikipedia.org/wiki/Spanning_Tree_Protocol)
 is not supported. It is up to the user to ensure no loops are present in the network.
@@ -223,7 +241,7 @@ then that random address can simply be hard-coded.
 
 ### How are each device's MAC addresses associated with specific ports?
 
-The switch is self-learning:
+By default, the switch is self-learning:
 it monitors source and destination MAC addresses to determine where to send future packets.
 To save FPGA resources, MAC tables are typically limited to a fixed maximum number
 of addresses for the entire network (typically ~64 unique addresses).
@@ -389,6 +407,70 @@ which means that the Pi-Wire can be connected to a SatCat5 switch or to a SatCat
 In SPI mode, the Raspberry Pi must act as an SPI clock source.
 As a result, it can only connect to a SatCat5 switch.
 
+## Precision Time Protocol (PTP)
+
+### What is the Precision Time Protocol?
+
+The Precision Time Protocol (PTP) is defined by IEEE-1588.
+It is a network protocol for precise two-way time transfer and ranging,
+allowing PTP clients to precisely synchronize their clocks over a network.
+PTP can operate in L2 (raw-Ethernet) or L3 (UDP) mode.
+
+PTP clients apply precise Tx and Rx timestamps to each packet.
+The catch is that end-to-end network delays are affected by network congestion.
+For this reason, network equipment between PTP clients must update certain
+timestamp fields in PTP messages, to allow clients to accurately compensate.
+
+### How does SatCat5 support PTP?
+
+SatCat5 is intended to comply with IEEE-1588-2019.
+All PTP features are optional.
+
+SatCat5 switches operate in "end-to-end transparent clock" mode
+as described in IEEE 1588-2019 Section 10.2a.
+The switch supports both L2 and L3 modes without further configuration.
+
+The `port_mailmap` block is a fully capable PTP endpoint.
+It can apply all required transmit and receive timestamps,
+operating in one-step mode (each SYNC message includes its own timestamp)
+or in two-step mode (timestamp sent in a separate FOLLOW_UP message).
+It also includes a PTP-compatible real-time clock controlled by the
+`ptp::Client` and `ptp::TrackingController` classes.
+
+All of the above use VERDACT to allow accurate collinear timestamps
+regardless of the source and destination clock domain(s).
+
+For more information, refer to the `vc707_ptp_client` example design.
+
+### What is VERDACT?
+
+Vernier-referenced digital asynchronous collinear timestamps (VERDACT).
+
+[Our paper in IEEE Access](https://ieeexplore.ieee.org/document/10367970)
+describes VERDACT theory of operation in detail, along with lab measurements of its
+performance. In many cases, VERDACT timestamps have sub-picosecond collinearity.
+
+In summary, VERDACT consists of a vernier reference (see `ptp_counter_gen.vhd`)
+and a synchronized counter (see `ptp_counter_sync.vhd').
+One reference can drive any number of asynchronous counters.
+Each counter reports the estimated timestamp for each rising edge in a given clock domain.
+All such timestamps are collinear with the same best-fit line (i.e., numeric value vs. time).
+
+VERDACT is related to the
+[DDMTD](http://white-rabbit.web.cern.ch/documents/DDMTD_for_Sub-ns_Synchronization.pdf)
+system used by [White Rabbit Project](https://ohwr.org/project/white-rabbit/wikis/home).
+DDMTD allows FPGAs to measure the static phase offset between syntonized
+clocks with sub-picosecond accuracy.
+
+VERDACT allows FPGAs to measure dynamic time offsets between asynchronous clocks
+with sub-picosecond accuracy, eliminating the need for Synchronous Ethernet.
+
+### How accurate is SatCat5 PTP?
+
+VERDACT has demonstrated sub-picosecond timestamp collinearity.
+
+The end-to-end synchronization of the PTP client has demonstrated sub-nanosecond precision.
+
 ## Reference Design: Arty
 
 ### What's the Arty reference design?
@@ -401,7 +483,7 @@ SatCat5 includes a reference design for an Ethernet switch.
 When installed on the Arty A7, it becomes a five-port SatCat5 switch
 with one regular Ethernet port and four auto-sensing SPI/UART ports.
 
-Further details specific to this design are included [here](ARTY_A7.md).
+Further details specific to this design are included [here](../examples/arty_a7/README.md).
 
 ## Reference Design: Prototype V1
 
@@ -514,28 +596,23 @@ The CLA protects the rights of The Aerospace Corporation, our customers, and you
 We currently hold one relevant US patent, number US11055254B2,
 titled "Mixed Media Ethernet Switch".
 
-We have applied for a patent on the vernier phase locked loop (VPLL),
+We have applied for a patent on VERDACT (fka "Vernier Phase Locked Loop"),
 which is used to generate cross-clock timestamps for PTP.
 
-In accordance with SatCat5's LGPL license agreement,
-we grant a royalty-free license for use of this technology.
-Refer to section 11 of the GPLv3 license for details.
+In accordance with SatCat5's open-source license agreement,
+we grant a royalty-free license for use of these technologies.
+Refer to section 7 of the CERN-OHL-W v2 license for details.
 
 # Copyright Notice
 
-Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
+Copyright 2019-2024 The Aerospace Corporation
 
-This file is part of SatCat5.
+This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
-SatCat5 is free software: you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the
-Free Software Foundation, either version 3 of the License, or (at your
-option) any later version.
+You may redistribute and modify SatCat5 and make products using it under
+the weakly reciprocal variant of the CERN Open Hardware License, version 2
+or (at your option) any later weakly reciprocal version.
 
-SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-License for more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with SatCat5.  If not, see [https://www.gnu.org/licenses/](https://www.gnu.org/licenses/).
+SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
+PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.

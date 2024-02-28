@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2023-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Free-running or CPU-controlled counter for PTP timestamps
@@ -24,7 +10,7 @@
 -- specified, it updates once every N clock cycles.
 --
 -- The optional ConfigBus interface allows runtime adjustments to the counter
--- rate.  This can be used for software-controlled PLLs.  If this feature is
+-- rate.  This can be used for software-controlled NCOs.  If this feature is
 -- not needed, leave the ConfigBus interface disconnected.  Otherwise, the
 -- control register is a signed integer N that offsets the time increment by
 -- N / 2^TFINE_SCALE nanoseconds:
@@ -37,7 +23,7 @@
 -- The full-scale tuning range is +/- 16 nanoseconds per clock, which usually
 -- exceeds the nominal clock rate.
 --
--- See "ptp_counter_gen" for a complete VPLL global reference source.
+-- See "ptp_counter_gen" for a complete vernier reference source.
 --
 -- The ConfigBus interface uses a single write-only register:
 --  * 1st write: MSBs (signed bits 63..32)

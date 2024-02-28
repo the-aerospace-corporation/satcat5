@@ -38,17 +38,12 @@ SatCat5 does not currently support TCP/IP, but may add lwIP support in a future 
 
 Copyright 2022 The Aerospace Corporation
 
-This file is part of SatCat5.
+This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
-SatCat5 is free software: you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the
-Free Software Foundation, either version 3 of the License, or (at your
-option) any later version.
+You may redistribute and modify SatCat5 and make products using it under
+the weakly reciprocal variant of the CERN Open Hardware License, version 2
+or (at your option) any later weakly reciprocal version.
 
-SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-License for more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with SatCat5.  If not, see [https://www.gnu.org/licenses/](https://www.gnu.org/licenses/).
+SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
+PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.

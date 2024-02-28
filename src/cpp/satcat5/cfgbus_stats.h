@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Network statistics reporting over ConfigBus
 //
@@ -43,6 +29,8 @@ namespace satcat5 {
             u8  errct_ovr_tx;       // Tx-FIFO overflow (common)
             u8  errct_ovr_rx;       // Rx-FIFO overflow (rare)
             u8  errct_pkt;          // Packet errors (bad checksum, length, etc.)
+            u8  errct_ptp_rx;       // RX PTP packets with bad tstamps
+            u8  errct_ptp_tx;       // TX PTP packets with bad tstamps
             u32 status;             // Port status (Varies by port)
         };
 

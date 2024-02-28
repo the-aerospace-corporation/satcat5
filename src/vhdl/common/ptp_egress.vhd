@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Egress processing for the Precision Time Protocol (PTP)
@@ -36,7 +22,20 @@
 -- Whenever PTP is enabled, the "switch_port_tx" chain will recalculate the
 -- Ethernet FCS.  Therefore, there is no need for this block to update it.
 --
-
+-- The "port_pstart" (PTP start) signal is used to coordinate the precise
+-- timing of outgoing packets.  Used correctly, it ensures the delay from
+-- the output of this block to the MAC/PHY interface is deterministic.
+--
+-- The "port_pstart" strobe indicates that the port is ready to accept the
+-- start of a new outgoing frame. Any reasonable delay is acceptable, as
+-- long as it is fixed and deterministic for a given port configuration.
+-- For ports with fixed delay, the signal may simply be tied to '1'.
+-- Otherwise, it indicates that all of the following are true:
+--  * No outgoing data is currently queued. (e.g., If your port contains
+--    an internal FIFO, tie this to the FIFO-empty flag.)
+--  * A new start-of-frame would be accepted on the current clock cycle.
+--    (e.g., The "frmst" strobe from "eth_enc8b10b.vhd".)
+--
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -50,11 +49,15 @@ use     work.ptp_types.all;
 entity ptp_egress is
     generic (
     IO_BYTES    : positive;         -- Width of datapath
+    PTP_STRICT  : boolean := true;  -- Drop frames with missing timestamps?
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
     REGADDR     : integer := CFGBUS_ADDR_NONE);
     port (
+    -- Timestamp and other signals from the port interface
+    port_tnow   : in  tstamp_t;     -- Time reference
+    port_pstart : in  std_logic;    -- Precision packet-start
+    port_dvalid : in  std_logic;    -- Transmit data-valid
     -- Input data
-    in_tnow     : in  tstamp_t;     -- Time reference (from port interface)
     in_tref     : in  tstamp_t;     -- Frame metadata (modified timestamp)
     in_pmode    : in  ptp_mode_t;   -- Frame metadata (PTP change mode)
     in_vtag     : in  vlan_hdr_t;   -- Frame metadata (VLAN tags)
@@ -65,6 +68,7 @@ entity ptp_egress is
     -- Modified data
     out_vtag    : out vlan_hdr_t;   -- Frame metadata (to VLAN block)
     out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
+    out_error   : out std_logic;    -- Drop this frame
     out_nlast   : out integer range 0 to IO_BYTES;
     out_valid   : out std_logic;    -- AXI flow-control
     out_ready   : in  std_logic;    -- AXI flow-control
@@ -72,7 +76,7 @@ entity ptp_egress is
     cfg_cmd     : in  cfgbus_cmd := CFGBUS_CMD_NULL;
     cfg_ack     : out cfgbus_ack;
     cfg_2step   : in  std_logic := '0';
-    -- Port timestamp, clock, and reset.
+    -- Port transmit clock and reset.
     clk         : in  std_logic;
     reset_p     : in  std_logic);
 end ptp_egress;
@@ -90,9 +94,12 @@ constant PTP_WORD_MAX   : positive := 1 + (PTP_BYTE_MAX / IO_BYTES);
 signal in_ready_i   : std_logic;
 signal in_write     : std_logic;
 signal in_wcount    : integer range 0 to PTP_WORD_MAX := 0;
+signal in_pstart    : std_logic := '0';
+signal in_adjust    : std_logic;
 signal tcorr_val    : tstamp_t := (others => '0');
 signal tcorr_word   : std_logic_vector(63 downto 0);
 signal tcorr_rd     : std_logic;
+signal tcorr_error  : std_logic;
 
 -- Packet-modification state machine.
 signal mod_ihl      : nybb_u := (others => '0');
@@ -101,14 +108,45 @@ signal mod_nlast    : last_t := 0;
 signal mod_valid    : std_logic := '0';
 signal mod_ready    : std_logic;
 signal mod_2step    : std_logic;
+signal mod_pstart   : std_logic := '0';
 signal mod_vtag     : vlan_hdr_t := VHDR_NONE;
 
 begin
 
 -- Upstream flow-control logic.
+-- At start-of-frame for PTP messages only, the IN_READY flag is
+-- additionally qualified by the IN_PSTART strobe (see below).
+in_adjust   <= bool2bit(in_pmode /= PTP_MODE_NONE);
 in_ready    <= in_ready_i;
-in_ready_i  <= mod_ready or not mod_valid;
+in_ready_i  <= mod_ready and bool2bit(
+    in_pstart = '1' or in_adjust = '0' or in_wcount > 0);
 in_write    <= in_valid and in_ready_i;
+
+-- Deterministic-delay state machine ensures:
+--  * The rest of the egress pipeline is completely flushed.
+--    i.e., Delay through all remaining blocks in "switch_port_tx",
+--    typically ~4-8 clock cycles depending on switch configuration.
+--  * The port has just asserted its "port_pstart" strobe.
+--    This *should* indicate that any queues in the port itself have
+--    been flushed, but we want to give a little leeway just in case.
+p_pstart : process(clk)
+    -- Delay here burns idle time before each PTP frame, but must be
+    -- large enough to exceed all above requirements with margin.
+    constant MAX_WAIT : integer := 15;
+    variable count : integer range 0 to MAX_WAIT := 0;
+begin
+    if rising_edge(clk) then
+        if (mod_valid = '1' or port_dvalid = '1') then
+            count := MAX_WAIT;  -- Busy / transmission in progress.
+            in_pstart <= '0';
+        elsif (count > 0) then  -- Wait for egress pipeline to flush.
+            count := count - 1;
+            in_pstart <= '0';
+        else                    -- Ready for timed packet?
+            in_pstart <= port_pstart;
+        end if;
+    end if;
+end process;
 
 -- Calculate the new correctionField for each input frame.
 -- Note: This block has a latency of two clock cycles.  However, the earliest
@@ -117,14 +155,17 @@ in_write    <= in_valid and in_ready_i;
 u_tstamp : entity work.ptp_timestamp
     generic map(
     IO_BYTES    => IO_BYTES,
+    PTP_STRICT  => PTP_STRICT,
     DEVADDR     => DEVADDR,
     REGADDR     => REGADDR)
     port map(
-    in_tnow     => in_tnow,
+    in_tnow     => port_tnow,
     in_tref     => in_tref,
+    in_adjust   => in_adjust,
     in_nlast    => in_nlast,
     in_write    => in_write,
     out_tstamp  => tcorr_val,
+    out_error   => tcorr_error,
     out_valid   => open,
     out_ready   => tcorr_rd,
     cfg_cmd     => cfg_cmd,
@@ -133,8 +174,9 @@ u_tstamp : entity work.ptp_timestamp
     reset_p     => reset_p);
 
 -- Pad the new correctionField value to 64 bits.
--- (Saving a LOT of resources by assuming elapsed time never exceeds ~4 seconds.)
-tcorr_word <= std_logic_vector(resize(tcorr_val, 64));
+-- (Default of 48-bit timestamps saves a LOT of resources by assuming that
+--  incoming correctionField plus residence time never exceeds +/-2 seconds.)
+tcorr_word <= std_logic_vector(resize(signed(tcorr_val), 64));
 
 -- Read from timestamp FIFO at the end of each modified frame.
 tcorr_rd <= mod_valid and mod_ready and bool2bit(mod_nlast > 0);
@@ -197,14 +239,14 @@ begin
         -- VALID signal needs a true reset.
         if (reset_p = '1') then
             mod_valid <= '0';                   -- Global reset
-        elsif (in_ready_i = '1') then
-            mod_valid <= in_valid;              -- Storing new data?
+        elsif (mod_ready = '1') then
+            mod_valid <= in_write;              -- Storing new data?
         end if;
 
         -- WCOUNT signal needs a true reset.
         if (reset_p = '1') then
             in_wcount  <= 0;                    -- Global reset
-        elsif (in_valid = '1' and in_ready_i = '1') then
+        elsif (in_write = '1') then
             if (in_nlast > 0) then              -- Word-count for parser:
                 in_wcount <= 0;                 -- Start of new frame
             elsif (in_wcount < PTP_WORD_MAX) then
@@ -213,7 +255,7 @@ begin
         end if;
 
         -- Remaining registers don't use a reset, to minimize excess fanout.
-        if (in_ready_i = '1') then
+        if (mod_ready = '1') then
             -- Passthrough buffer for unmodified fields.
             mod_nlast   <= in_nlast;
             mod_vtag    <= in_vtag;
@@ -238,10 +280,12 @@ begin
 end process;
 
 -- Connect modified stream to the output.
+-- Strict mode drops frames with missing egress timestamps.
 out_vtag    <= mod_vtag;
 out_data    <= mod_data;
+out_error   <= tcorr_error;
 out_nlast   <= mod_nlast;
 out_valid   <= mod_valid;
-mod_ready   <= out_ready;
+mod_ready   <= out_ready or not mod_valid;
 
 end ptp_egress;

@@ -1,21 +1,7 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2022-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 '''
 Simulations of Vernier phase-error detector and phase-locked loop
@@ -115,11 +101,12 @@ def vernier_diff(fsamp, fref, df, dt, jitter=0.0, alg='ctr', npts=250000):
     return score
 
 @jit(nopython=True)
-def vernier_pll(npts, fsamp, fref, df, dt,
+def vernier_sync(npts, fsamp, fref, df, dt,
     jitter=0.0, pha_lsb=None, tau_lsb=None, tau_sec=0.004):
     """
-    Fixed-point simulation of a Vernier PLL, comparing the synthesized clock
-    pair against the received signal to update PLL state at each increment.
+    Fixed-point simulation of a VERDACT synchronized counter, comparing the
+    synthesized clock pair against the received signal to update estimated
+    synchronizer state at each increment.
     Args:
         npts (int)      Length of simulation (samples)
         fsamp (float)   Nominal user sampling frequency (Hz)
@@ -147,7 +134,7 @@ def vernier_pll(npts, fsamp, fref, df, dt,
     # Effective VPED gain is estimated empirically.
     # TODO: There seems to be a small variation with fsamp.
     ped_gain = 128
-    # Set PLL loop-gain parameters.
+    # Set synchronizer loop-gain parameters.
     # Reference: Stephens & Thomas 1995, "Controlled-root formulation for digital
     # phase-locked loops." https://ieeexplore.ieee.org/abstract/document/366295/
     trk_dmpsq = 0.50                    # Damping factor squared
@@ -166,7 +153,7 @@ def vernier_pll(npts, fsamp, fref, df, dt,
     tau_0 = int(tau_scale / fsamp)      # Initial period estimate
     if gain_acc == 0 or gain_tau == 0:
         raise ValueError('Gain rounded to zero!')
-    # Set PLL initial state.
+    # Set synchronizer initial state.
     # There are separate phase accumulators for CLKA and CLKB, but they
     # share a common estimate of the user-clock period (tau).
     phase_a = 0
@@ -185,7 +172,7 @@ def vernier_pll(npts, fsamp, fref, df, dt,
     out_tau = np.zeros(npts)
     out_rac = np.zeros(npts)
     for t in range(npts):
-        # Calculate phase error from latest PLL state.
+        # Calculate phase error from latest VPED state.
         clka = (2*phase_a < tau_a)
         clkb = (2*phase_b < tau_b)
         if clka == refa[t]:         erra = 0
@@ -204,7 +191,7 @@ def vernier_pll(npts, fsamp, fref, df, dt,
         tau_s = (tau_s + tau_u)  % sc_ratio
         tau_a2 = tau_a + (ratio_accum < 0)
         tau_b2 = tau_b + (ratio_accum >= 0)
-        # Update PLL state, including ratiometric accumulator.
+        # Update loop-filter state, including ratiometric accumulator.
         phase_a = (phase_a + pincr + gain_acc*(erra+errb)) % tau_a2
         phase_b = (phase_b + pincr + gain_acc*(erra+errb)) % tau_b2
         tau_u = tau_u + gain_tau * (erra + errb)
@@ -261,16 +248,16 @@ def plot_scurves(device, refin, fsamp=125e6, jitter=1e-10, show=True):
     # Optionally display all plots.
     if show: plt.show()
 
-def plot_vernier_pll(device, refin, fsamp=125e6, jitter=1e-10, npts=8000000, show=True):
+def plot_vernier_sync(device, refin, fsamp=125e6, jitter=1e-10, npts=8000000, show=True):
     # Import plotting libraries.
     import matplotlib.pyplot as plt
     # Design MMCM parameters for a reference at 20 MHz +/- espilon.
     fref = freq_vernier(device, refin, 20e6)
-    # Simulate the PLL with a moderate phase step.
+    # Simulate VERDACT with a moderate phase step.
     t = np.arange(npts) / fsamp
-    (_, step_phase, _, _, _) = vernier_pll(npts, fsamp, fref, 0.0, 5.0e-9, jitter)
-    # Simulate PLL with a phase and frequency step.
-    (_, step_freq, _, _, _) = vernier_pll(npts, fsamp, fref, 1e3, 5.0e-9, jitter)
+    (_, step_phase, _, _, _) = vernier_sync(npts, fsamp, fref, 0.0, 5.0e-9, jitter)
+    # Simulate VERDACT with a phase and frequency step.
+    (_, step_freq, _, _, _) = vernier_sync(npts, fsamp, fref, 1e3, 5.0e-9, jitter)
     # Plot both results.
     fig, ax = plt.subplots()
     ax.plot(t * 1e3, step_phase * 1e9, 'b')
@@ -287,8 +274,8 @@ def print_help():
     print('  * [any number]: Set reference frequency in MHz.')
     print('  * [device name]: Set device family, see "mmcm_cfg.py".')
     print('  * scurve: Plot S-curves for the Vernier PED.')
-    print('  * vpll: Plot step response of the Vernier PLL')
-    print('Example: python %s 25 scurve 200 scurve vpll' % sys.argv[0])
+    print('  * step: Plot step response of VERDACT')
+    print('Example: python %s 25 scurve 200 scurve step' % sys.argv[0])
 
 def is_float(s):
     """ Test if a string can be converted to a valid float. """
@@ -319,8 +306,8 @@ if __name__ == '__main__':
             limits = clkgen_limits(cmd)
         elif cmd == 'scurve':
             plot_scurves(device, refin, fsamp, show=False)
-        elif cmd == 'vpll':
-            plot_vernier_pll(device, refin, fsamp, show=False)
+        elif cmd == 'step':
+            plot_vernier_sync(device, refin, fsamp, show=False)
         else:
             print('Unrecognized command: ' + cmd)
     # Display all accumulated output plots.

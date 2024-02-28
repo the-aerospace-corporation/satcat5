@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Systems for various types of polling
 //
@@ -68,6 +54,7 @@ namespace satcat5 {
         class Always {
         public:
             // Child class MUST override this method.
+            // (This method should rarely be called directly.)
             virtual void poll_always() = 0;
 
             // Count active objects of this type.
@@ -95,15 +82,16 @@ namespace satcat5 {
             // Count queued objects of this type (i.e., non-idle).
             static unsigned count();
 
+            // Deferred event handler, called after request().
+            // Child class MUST override this method.
+            // (This method should rarely be called directly.)
+            virtual void poll_demand() = 0;
+
         protected:
             // Register this pollable object.
             // (Only children should create or destroy the base class.)
             OnDemand();
             ~OnDemand() SATCAT5_OPTIONAL_DTOR;
-
-            // Deferred event handler, called after request().
-            // Child class MUST override this method.
-            virtual void poll_demand() = 0;
 
         private:
             friend satcat5::util::ListCore;

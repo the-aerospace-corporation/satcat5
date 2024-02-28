@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-interface adapter for generic AXI-streams
@@ -108,6 +94,7 @@ signal txa_data     : byte_t;
 signal txa_last     : std_logic;
 signal txa_valid    : std_logic;
 signal txa_ready    : std_logic;
+signal txa_empty    : std_logic;
 
 begin
 
@@ -207,6 +194,7 @@ prx_data.reset_p    <= rx_reset;
 
 -- Connect all signals from switch port.
 ptx_ctrl.clk        <= tx_clk;
+ptx_ctrl.pstart     <= txa_empty;
 ptx_ctrl.tnow       <= tx_tstamp;
 ptx_ctrl.txerr      <= '0';
 ptx_ctrl.reset_p    <= tx_reset;
@@ -273,6 +261,7 @@ gen_tx_dly1 : if DELAY_REG generate
             out_last    => tx_last,
             out_valid   => tx_valid,
             out_read    => tx_ready,
+            fifo_empty  => txa_empty,
             fifo_hempty => txa_ready,
             clk         => tx_clk,
             reset_p     => tx_reset);
@@ -285,6 +274,7 @@ gen_tx_dly0 : if not DELAY_REG generate
     tx_last     <= txa_last;
     tx_valid    <= txa_valid;
     txa_ready   <= tx_ready;
+    txa_empty   <= not txa_valid;
 end generate;
 
 end port_stream;

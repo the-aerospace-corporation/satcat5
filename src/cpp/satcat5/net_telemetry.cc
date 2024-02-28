@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/net_telemetry.h>
@@ -191,7 +177,7 @@ void TelemetryTier::telem_poll(const TelemetryCbor& cbor)
 
 void TelemetryCbor::add_array(s64 key, u32 len, const s8* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddInt64(cbor, value[a]);
@@ -200,7 +186,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const s8* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const u8* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddUInt64(cbor, value[a]);
@@ -209,7 +195,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const u8* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const s16* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddInt64(cbor, value[a]);
@@ -218,7 +204,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const s16* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const u16* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddUInt64(cbor, value[a]);
@@ -227,7 +213,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const u16* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const s32* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddInt64(cbor, value[a]);
@@ -236,7 +222,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const s32* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const u32* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddUInt64(cbor, value[a]);
@@ -245,7 +231,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const u32* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const s64* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddInt64(cbor, value[a]);
@@ -254,7 +240,7 @@ void TelemetryCbor::add_array(s64 key, u32 len, const s64* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const u64* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddUInt64(cbor, value[a]);
@@ -263,7 +249,88 @@ void TelemetryCbor::add_array(s64 key, u32 len, const u64* value) const
 
 void TelemetryCbor::add_array(s64 key, u32 len, const float* value) const
 {
-    QCBOREncode_AddUInt64(cbor, key);
+    QCBOREncode_AddInt64(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddFloat(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const s8* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const u8* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddUInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const s16* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const u16* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddUInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const s32* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const u32* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddUInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const s64* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const u64* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
+    QCBOREncode_OpenArray(cbor);
+    for (u32 a = 0 ; a < len ; ++a)
+        QCBOREncode_AddUInt64(cbor, value[a]);
+    QCBOREncode_CloseArray(cbor);
+}
+
+void TelemetryCbor::add_array(const char* key, u32 len, const float* value) const
+{
+    QCBOREncode_AddSZString(cbor, key);
     QCBOREncode_OpenArray(cbor);
     for (u32 a = 0 ; a < len ; ++a)
         QCBOREncode_AddFloat(cbor, value[a]);

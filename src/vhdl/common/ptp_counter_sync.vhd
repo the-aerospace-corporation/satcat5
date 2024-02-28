@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Cross-clock counter synchronization for Precision Time Protocol (PTP)
@@ -71,11 +57,9 @@ entity ptp_counter_sync is
     generic (
     VCONFIG     : vernier_config;   -- Vernier configuration
     USER_CLK_HZ : positive;         -- User clock frequency (Hz)
-    AUX_FILTER  : boolean := false; -- Enable secondary filter?
-    LOOP_TAU_MS : real := 4.0;      -- Loop time-constant (msec)
     PHA_SCALE   : natural := 0;     -- Phase scale (0=auto, 1+ override)
     TAU_SCALE   : natural := 0;     -- Slope scale (0=auto, 1+ override)
-    WAIT_LOCKED : boolean := true;  -- Supress output until locked?
+    WAIT_LOCKED : boolean := true;  -- Suppress output until locked?
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
     REGADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -117,7 +101,7 @@ constant PED_GAIN   : real := 128.0;
 -- phase-locked loops." https://ieeexplore.ieee.org/abstract/document/366295/
 constant TRK_DAMPSQ : real := 0.50;                 -- Damping factor squared
 constant TRK_DMOD   : real := 0.25 / TRK_DAMPSQ;    -- Modified damping factor
-constant TRK_TAU    : real := (0.001 * LOOP_TAU_MS) * real(USER_CLK_HZ);
+constant TRK_TAU    : real := (0.001 * VCONFIG.sync_tau_ms) * real(USER_CLK_HZ);
 constant TRK_ALPHA  : real := 4.0 / (MATH_PI * TRK_TAU * (1.0 + TRK_DMOD));
 constant TRK_BETA   : real := TRK_DMOD * TRK_ALPHA * TRK_ALPHA;
 
@@ -179,7 +163,7 @@ end function;
 
 function lpd(k : positive) return positive is       -- Settling time (msec)
     constant MIN_MSEC : positive := 1;
-    constant TRK_MSEC : real := 3.0 * LOOP_TAU_MS / real(k);
+    constant TRK_MSEC : real := 3.0 * VCONFIG.sync_tau_ms / real(k);
 begin
     -- Set the minimum expected settling time, in milliseconds.
     if (TRK_MSEC < real(MIN_MSEC)) then
@@ -612,7 +596,7 @@ begin
             ctr_outreg <= ctr_outreg;           -- Freeze output
         elsif (WAIT_LOCKED and lock_final = '0') then
             ctr_outreg <= TSTAMP_DISABLED;      -- Not locked
-        elsif (AUX_FILTER) then
+        elsif (VCONFIG.sync_aux_en) then
             ctr_outreg <= ctr_filter;           -- Filtered output
         else
             ctr_outreg <= ctr_total;            -- Direct output
@@ -627,7 +611,7 @@ begin
 end process;
 
 -- Optional auxiliary filter for high-frequency jitter reduction.
-gen_filter : if AUX_FILTER generate
+gen_filter : if VCONFIG.sync_aux_en generate
     u_filter : entity work.ptp_filter
         generic map(
         LOOP_TAU    => 0.01 * TRK_TAU,

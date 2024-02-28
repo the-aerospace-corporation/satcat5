@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2022-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // ConfigBus-controlled PTP reference counter (ptp_counter_gen.vhd)
 //
@@ -35,6 +21,9 @@
 namespace satcat5 {
     namespace cfg {
         // Reference scale for use with TrackingCoeff class.
+        // Scale parameter must match the TFINE_SCALE generic on the HDL block
+        // (usually "ptp_counter_free" or "ptp_realtime"). It indicates that
+        // the per-cycle rate-accumulator scaling is 2^N LSBs per nanosecond.
         constexpr double ptpref_scale(double ref_clk_hz, unsigned scale=40) {
             return ref_clk_hz / double(satcat5::ptp::NSEC_PER_SEC) / double(1ull << scale);
         }

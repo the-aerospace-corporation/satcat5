@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Apply start-of-frame timestamps for the Precision Time Protocol (PTP)
@@ -45,17 +31,20 @@ use     work.ptp_types.all;
 entity ptp_timestamp is
     generic (
     IO_BYTES    : positive;
+    PTP_STRICT  : boolean := false;
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
     REGADDR     : integer := CFGBUS_ADDR_NONE);
     port (
     -- Information from the port.
     in_tnow     : in  tstamp_t;     -- Time counter (see ptp_counter_sync)
+    in_adjust   : in  std_logic;    -- Timestamp adjustment required?
     in_nlast    : in  integer range 0 to IO_BYTES;
     in_write    : in  std_logic;    -- New-data strobe
     -- Optional reference is added to TNOW.
     in_tref     : in  tstamp_t := TSTAMP_DISABLED;
     -- Timestamp metadata for the packet FIFO.
     out_tstamp  : out tstamp_t;     -- Packet timestamp
+    out_error   : out std_logic;    -- Valid timestamp?
     out_valid   : out std_logic;    -- AXI flow-control
     out_ready   : in  std_logic;    -- AXI flow-control
     -- Optional ConfigBus interface.
@@ -69,13 +58,18 @@ end ptp_timestamp;
 architecture ptp_timestamp of ptp_timestamp is
 
 signal in_first     : std_logic := '1';
+signal in_error     : std_logic;
 signal fifo_din     : tstamp_t := (others => '0');
+signal fifo_error   : std_logic := '0';
 signal fifo_write   : std_logic := '0';
 signal fifo_dout    : std_logic_vector(TSTAMP_WIDTH-1 downto 0);
 signal cfg_word     : cfgbus_word := (others => '0');
 signal cfg_offset   : tstamp_t := (others => '0');
 
 begin
+
+-- Detect missing timestamps.
+in_error <= in_adjust and bool2bit(in_tnow = TSTAMP_DISABLED);
 
 -- Track start-of-frame and add offset, if applicable.
 p_tstamp : process(clk)
@@ -89,11 +83,14 @@ begin
         end if;
 
         -- Apply software offset and calculate difference, if applicable.
-        if (in_tnow = TSTAMP_DISABLED) then
-            fifo_din <= in_tref;    -- Invalid input, no change
+        if (in_adjust = '0') then
+            fifo_din <= (others => 'X');        -- Unused / don't-care
+        elsif (in_error = '1' and not PTP_STRICT) then
+            fifo_din <= in_tref;                -- Attempt as-is propagation?
         else
             fifo_din <= in_tref + in_tnow + cfg_offset;
         end if;
+        fifo_error <= in_error and bool2bit(PTP_STRICT);
 
         -- Timestamp is written to FIFO at the start of each frame.
         fifo_write <= in_write and in_first and not reset_p;
@@ -105,8 +102,10 @@ u_fifo : entity work.fifo_smol_sync
     generic map(IO_WIDTH => TSTAMP_WIDTH)
     port map(
     in_data     => std_logic_vector(fifo_din),
+    in_last     => fifo_error,
     in_write    => fifo_write,
     out_data    => fifo_dout,
+    out_last    => out_error,
     out_valid   => out_valid,
     out_read    => out_ready,
     clk         => clk,

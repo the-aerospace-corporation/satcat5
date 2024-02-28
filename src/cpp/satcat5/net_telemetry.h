@@ -1,26 +1,13 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // State-of-health telemetry using QCBOR
 //
 // This file implements a multipurpose system for reporting state-of-health
 // telemetry, typically over a network interface.  All messages in this
-// system are CBOR-encoded as a key-value dictionary with integer keys.
+// system are CBOR-encoded as a key-value dictionary.  Users can choose to
+// use integer keys (more compact) or string keys (more readable).
 //
 // The API can be operated in raw-Ethernet mode (eth::Telemetry) or UDP mode
 // (udp::Telemetry).  In both cases, the destination address is broadcast by
@@ -86,7 +73,7 @@ namespace satcat5 {
             // Use this pointer directly for writing complex data structures.
             _QCBOREncodeContext* const cbor;
 
-            // Helper methods for writing various arrays.
+            // Helper methods for writing various arrays (integer keys).
             void add_array(s64 key, u32 len, const s8* value) const;
             void add_array(s64 key, u32 len, const u8* value) const;
             void add_array(s64 key, u32 len, const s16* value) const;
@@ -97,7 +84,18 @@ namespace satcat5 {
             void add_array(s64 key, u32 len, const u64* value) const;
             void add_array(s64 key, u32 len, const float* value) const;
 
-            // Shortcuts for simple key/value pairs.
+            // Helper methods for writing various arrays (string keys).
+            void add_array(const char* key, u32 len, const s8* value) const;
+            void add_array(const char* key, u32 len, const u8* value) const;
+            void add_array(const char* key, u32 len, const s16* value) const;
+            void add_array(const char* key, u32 len, const u16* value) const;
+            void add_array(const char* key, u32 len, const s32* value) const;
+            void add_array(const char* key, u32 len, const u32* value) const;
+            void add_array(const char* key, u32 len, const s64* value) const;
+            void add_array(const char* key, u32 len, const u64* value) const;
+            void add_array(const char* key, u32 len, const float* value) const;
+
+            // Shortcuts for simple key/value pairs (integer keys).
             inline void add_bool(s64 key, bool value) const
                 { QCBOREncode_AddBoolToMapN(cbor, key, value); }
             inline void add_bytes(s64 key, u32 len, const u8* value) const
@@ -124,6 +122,34 @@ namespace satcat5 {
                 { QCBOREncode_AddNULLToMapN(cbor, key); }
             inline void add_string(s64 key, const char* value) const
                 { QCBOREncode_AddSZStringToMapN(cbor, key, value); }
+
+            // Shortcuts for simple key/value pairs (string keys).
+            inline void add_bool(const char* key, bool value) const
+                { QCBOREncode_AddBoolToMap(cbor, key, value); }
+            inline void add_bytes(const char* key, u32 len, const u8* value) const
+                { QCBOREncode_AddBytesToMap(cbor, key, {value, len}); }
+            inline void add_item(const char* key, s8 value) const
+                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, s16 value) const
+                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, s32 value) const
+                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, s64 value) const
+                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, u8 value) const
+                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, u16 value) const
+                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, u32 value) const
+                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, u64 value) const
+                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
+            inline void add_item(const char* key, float value) const
+                { QCBOREncode_AddFloatToMap(cbor, key, value); }
+            inline void add_null(const char* key) const
+                { QCBOREncode_AddNULLToMap(cbor, key); }
+            inline void add_string(const char* key, const char* value) const
+                { QCBOREncode_AddSZStringToMap(cbor, key, value); }
         };
 
         // User data sinks must inherit from the TelemetrySink class.
@@ -241,7 +267,8 @@ namespace satcat5 {
             , public satcat5::net::TelemetrySink
         {
         public:
-            // Constructor and destructor.
+            // Default connection is to the broadcast address.
+            // Recommended EtherType is satcat5::eth::ETYPE_CBOR_TLM.
             Telemetry(
                 satcat5::eth::Dispatch* eth,        // Ethernet interface
                 const satcat5::eth::MacType& typ,   // Destination EtherType
@@ -271,7 +298,8 @@ namespace satcat5 {
             , public satcat5::net::TelemetrySink
         {
         public:
-            // Constructor and destructor.
+            // Default connection is to the broadcast address.
+            // Recommended destination port is satcat5::udp::PORT_CBOR_TLM.
             Telemetry(
                 satcat5::udp::Dispatch* udp,        // UDP interface
                 const satcat5::udp::Port& dstport,  // Destination port

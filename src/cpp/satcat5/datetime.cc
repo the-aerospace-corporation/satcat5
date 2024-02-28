@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/datetime.h>
@@ -46,7 +32,6 @@ ptp::Time date::to_ptp(s64 time)
 Clock::Clock(satcat5::util::GenericTimer* timer)
     : satcat5::poll::Timer()
     , m_timer(timer)
-    , m_frac(0)
     , m_tref(0)
     , m_tcount(0)
     , m_gps(0)
@@ -59,7 +44,6 @@ Clock::Clock(satcat5::util::GenericTimer* timer)
 void Clock::set(s64 gps)
 {
     // Reset the current time reference.
-    m_frac  = 0;
     m_tref  = m_timer->now();
     m_gps   = gps;
 }
@@ -67,9 +51,7 @@ void Clock::set(s64 gps)
 void Clock::timer_event()
 {
     // Elapsed time since the last update?
-    unsigned elapsed = m_timer->elapsed_incr(m_tref) + m_frac;
-    u32 incr = elapsed / 1000;  // Increment millisecond counter.
-    m_frac   = elapsed % 1000;  // Save leftovers to prevent drift.
+    unsigned incr = m_timer->elapsed_msec(m_tref);
 
     // Increment both time counters.
     m_tcount += incr;           // Always increment uptime

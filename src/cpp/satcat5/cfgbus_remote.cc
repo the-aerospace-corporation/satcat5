@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/cfgbus_remote.h>
@@ -28,6 +14,11 @@ namespace cfg   = satcat5::cfg;
 namespace util  = satcat5::util;
 using satcat5::cfg::ConfigBusRemote;
 using satcat5::net::Type;
+
+// Legacy compatibility for very old versions with no sequence counter.
+#ifndef SATCAT5_CFGBUS_IGNORE_SEQ
+#define SATCAT5_CFGBUS_IGNORE_SEQ 0
+#endif
 
 // Set verbosity level (0/1/2)
 static const unsigned DEBUG_VERBOSE = 0;
@@ -157,22 +148,29 @@ void ConfigBusRemote::frame_rcvd(satcat5::io::LimitedRead& src)
         return;     // Ignore bad packet, keep waiting...
     }
 
-    // Read the response opcode.  Discard any that don't match.
+    // Read the response header.
+    u8  opcode  = src.read_u8();
+    u8  len8    = src.read_u8();
+    u8  seq     = src.read_u8();
+    src.read_u8();  // Reserved
+    u32 addr    = src.read_u32();
+    unsigned len = 1 + (unsigned)len8;
+
+    // Discard packets with mismatched header fields.
+    // Sequence check is optional, since it's not present in old versions.
     // (Frequently WRITE commands don't wait for the response, so there
     //  may be a number of queued responses before we get to a READ.)
-    u8 opcode = src.read_u8();
-    if (opcode != m_response_opcode && DEBUG_VERBOSE > 1) {
-        log::Log(log::DEBUG, "CfgRemote: Response ignored").write(opcode);
-        return;     // Ignore mismatched opcode. (With debug log)
-    } else if (opcode != m_response_opcode) {
-        return;     // Ignore mismatched opcode. (Normal)
+    if (!(opcode == m_response_opcode && len == m_response_len
+          && (SATCAT5_CFGBUS_IGNORE_SEQ || seq == m_sequence))) {
+        if (DEBUG_VERBOSE > 1) {
+            log::Log(log::DEBUG, "CfgRemote: Response ignored")
+                .write(opcode).write(addr).write((u16)len);
+        }
+        return;     // Ignore mismatched header.
     } else if (DEBUG_VERBOSE > 0) {
-        log::Log(log::DEBUG, "CfgRemote: Response received").write(opcode);
+        log::Log(log::DEBUG, "CfgRemote: Response received")
+            .write(opcode).write(addr).write((u16)len);
     }
-
-    // Read and discard the rest of the reply header.
-    // TODO: Is there any point in error-checking this?
-    src.read_consume(7);    // Len, Seq, Rsvd, Addr
 
     // If applicable, store the read-response.
     unsigned rdbytes = 4 * m_response_len + 1;

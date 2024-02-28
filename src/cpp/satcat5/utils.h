@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Miscellaneous mathematical utility functions
 //
@@ -41,6 +27,11 @@ namespace satcat5 {
         inline void set_mask_if(u32& val, u32 mask, bool b) {
             if (b) set_mask_u32(val, mask);
             else   clr_mask_u32(val, mask);
+        }
+
+        // Return a bit-mask where the N LSBs are set.
+        template <typename T> inline constexpr T mask_lower(unsigned n) {
+            return ((n >= 8*sizeof(T)) ? 0 : (T(1) << n)) - 1;
         }
 
         // Min and max functions
@@ -75,6 +66,12 @@ namespace satcat5 {
             {return (a > b) ? a : b;}
 
         u32 max_u32(u32 a, u32 b, u32 c);
+
+        // For an input x, the "clamp" function limits the output range to +/- y.
+        // i.e., if abs(x) <= y then clamp(x) => x, else clamp(x) => sign(x)*y
+        template <typename T> inline constexpr T clamp(T x, T y) {
+            return (x < -y) ? -y : (x > y ? y : x);
+        }
 
         // Absolute value
         inline constexpr u8 abs_s8(s8 a)
@@ -140,6 +137,16 @@ namespace satcat5 {
             return static_cast<u64>(x + (T)0.5);
         }
 
+        // Variant of "round_u64" that returns zero if input is out of range.
+        template <typename T> inline constexpr u64 round_u64z(T x) {
+            return (x < T(UINT64_MAX)) ? satcat5::util::round_u64(x) : 0;
+        }
+
+        // Calculate 2^N for very large N, returning a double.
+        constexpr double pow2d(unsigned n) {
+            return (n < 64) ? (double(1ull << n)) : (double(1ull << 63) * pow2d(n-63));
+        }
+
         // Integer division functions with various rounding options:
         template <typename T> inline constexpr T div_floor(T a, T b)
             {return divide(a, b);}
@@ -188,11 +195,32 @@ namespace satcat5 {
         void write_be_u32(u8* dst, u32 val);
         void write_be_u64(u8* dst, u64 val);
 
+        // Swap two values using a temporary variable.
+        template <typename T> void swap_ptr(T* x, T* y) {
+            if (x != y) {T z = *x; *x = *y; *y = z;}
+        }
+        template <typename T> void swap_ref(T& x, T& y) {
+            if (x != y) {T z = x; x = y; y = z;}
+        }
+
+        // Templated in-place stable sort for small arrays.
+        // Slower than std::sort(...) but does not require heap allocation.
+        template <typename T> void sort(T* begin, T* end) {
+            // Using selection-sort for simplicity, O(N^2).
+            for (T* a = begin ; a+1 != end ; ++a) {
+                T* min_ptr = a;
+                for (T* b = a+1 ; b != end ; ++b) {
+                    if (*b < *min_ptr) min_ptr = b;
+                }
+                satcat5::util::swap_ptr(a, min_ptr);
+            }
+        }
+
         // Simple cross-platform psuedorandom number generator (PRNG).
         // Generates uniform psuedorandom outputs in the range [0..2^32).
-        class Prng {
+        class Prng final {
         public:
-            explicit Prng(u64 seed = 123456789ull) : m_state(seed) {}
+            explicit constexpr Prng(u64 seed = 123456789ull) : m_state(seed) {}
             u32 next();
         protected:
             u64 m_state;

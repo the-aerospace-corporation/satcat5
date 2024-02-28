@@ -1,0 +1,21 @@
+# -*- coding: utf-8 -*-
+
+# Copyright 2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
+
+---
+
+pkt_filters:
+    pkt_layers: ['udp', 'data']
+    cbor_field: 'traffic_by_port'
+    pkt_fields:
+        # leave packet filters blank if not in use
+        eth.src:
+        eth.dst:
+        ip.src: str("192.168.4.42")
+        udp.dstport: str(0x5a63)
+
+fields:
+    cbor: ['rxb', 'rxf', 'txb',  'txf', 'mactbl'] # leave blank if you want to capture all fields
+
+

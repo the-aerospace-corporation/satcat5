@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Internal "MailMap" Ethernet port
 //
@@ -30,31 +16,24 @@
 #pragma once
 
 #include <satcat5/cfgbus_interrupt.h>
-#include <satcat5/io_buffer.h>
-#include <satcat5/ptp_time.h>
-#include <satcat5/ethernet.h>
-#include <satcat5/ip_core.h>
-#include <satcat5/udp_core.h>
+#include <satcat5/io_readable.h>
+#include <satcat5/io_writeable.h>
+#include <satcat5/ptp_interface.h>
 
 // Size of the memory-map defined in port_mailmap.vhd
 #define SATCAT5_MAILMAP_BYTES   1600
-#define SATCAT5_MAILMAP_PAD     106
-#define SATCAT5_TIMESTAMP_WORDS 4
-#define SATCAT5_CLK_CTRL_WORDS  6
 
 namespace satcat5 {
     namespace port {
         class Mailmap
-            : public    satcat5::io::Readable
-            , public    satcat5::io::Writeable
+            : public satcat5::io::Readable
+            , public satcat5::io::Writeable
+            , public satcat5::ptp::Interface
             , protected satcat5::cfg::Interrupt
         {
         public:
             // Constructor
             Mailmap(satcat5::cfg::ConfigBusMmap* cfg, unsigned devaddr);
-
-            // Used for marking whether a message is a PTP message transported on Layer2, a PTP message on Layer3 (UDP), or not a PTP message.
-            enum class PtpType {nonPTP, PTPL2, PTPL3};
 
             // Writeable / Readable API
             unsigned get_write_space() const override;
@@ -65,12 +44,12 @@ namespace satcat5 {
             bool read_bytes(unsigned nbytes, void* dst) override;
             void read_finalize() override;
 
-            // PTP
-            satcat5::ptp::Time ptp_tx_start();
-            satcat5::ptp::Time ptp_tx_timestamp();
-            PtpType ptp_rx_peek();
-            satcat5::ptp::Time ptp_rx_timestamp();
-            satcat5::ptp::Time get_timestamp(u32* addr);
+            // Implement the ptp::Interface API.
+            satcat5::ptp::Time ptp_tx_start() override;
+            satcat5::ptp::Time ptp_tx_timestamp() override;
+            satcat5::ptp::Time ptp_rx_timestamp() override;
+            satcat5::io::Writeable* ptp_tx_write() override;
+            satcat5::io::Readable* ptp_rx_read() override;
 
         protected:
             // Internal event-handlers.
@@ -82,17 +61,17 @@ namespace satcat5 {
 
             // Hardware register map:
             struct ctrl_reg {
-                u8 rx_buff[SATCAT5_MAILMAP_BYTES];          // Reg 0-399
-                u32 rx_rsvd[SATCAT5_MAILMAP_PAD];           // Reg 400-505
-                u32 rx_ptp_time[SATCAT5_TIMESTAMP_WORDS];   // Reg 506-509
-                volatile u32 rx_irq;                        // Reg 510
-                volatile u32 rx_ctrl;                       // Reg 511
-                u8 tx_buff[SATCAT5_MAILMAP_BYTES];          // Reg 512-911
-                u32 tx_rsvd[SATCAT5_MAILMAP_PAD-6];         // Reg 912-1011
-                u32 rt_clk_ctrl[SATCAT5_CLK_CTRL_WORDS];    // Reg 1012-1017
-                u32 tx_ptp_time[SATCAT5_TIMESTAMP_WORDS];   // Reg 1018-1021
-                u32 ptp_status;                             // Reg 1022
-                volatile u32 tx_ctrl;                       // Reg 1023
+                u8 rx_buff[SATCAT5_MAILMAP_BYTES];  // Reg 0-399
+                u32 rx_rsvd[106];                   // Reg 400-505
+                volatile u32 rx_ptp_time[4];        // Reg 506-509
+                volatile u32 rx_irq;                // Reg 510
+                volatile u32 rx_ctrl;               // Reg 511
+                u8 tx_buff[SATCAT5_MAILMAP_BYTES];  // Reg 512-911
+                u32 tx_rsvd[100];                   // Reg 912-1011
+                volatile u32 rt_clk_ctrl[6];        // Reg 1012-1017
+                volatile u32 tx_ptp_time[4];        // Reg 1018-1021
+                volatile u32 ptp_status;            // Reg 1022
+                volatile u32 tx_ctrl;               // Reg 1023
             };
             ctrl_reg* const m_ctrl;
 
@@ -103,16 +82,5 @@ namespace satcat5 {
             unsigned m_rdlen;   // Length of frame in receive buffer
             unsigned m_rdovr;   // Receive buffer underflow?
         };
-
-        inline satcat5::ptp::Time Mailmap::get_timestamp(u32* addr)
-        {
-            u32 secMSB = addr[0];
-            u32 secLSB = addr[1];
-            u32 nanoSec = addr[2];
-            u16 subNanoSec = addr[3];
-            u64 sec = ((u64)secMSB) << 32 | secLSB;
-
-            return satcat5::ptp::Time(sec, nanoSec, subNanoSec);
-        }
     }
 }

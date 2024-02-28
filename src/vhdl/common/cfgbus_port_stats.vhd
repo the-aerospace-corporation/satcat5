@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port traffic statistics (with ConfigBus)
@@ -27,23 +13,28 @@
 -- counters.  (The write address and write value are ignored.)
 --
 -- Once refreshed, each register reports total observed traffic since
--- the previous refresh.  There are eight registers for each port:
---   * Broadcast bytes received (from device to switch)
---   * Broadcast frames received
---   * Total bytes received (from device to switch)
---   * Total frames received
---   * Total bytes sent (from switch to device)
---   * Total frames sent
---   * Error reporting:
+-- the previous refresh.  There are 16 registers (9 used) for each port:
+--   [0] Broadcast bytes received (from device to switch)
+--   [1] Broadcast frames received
+--   [2] Total bytes received (from device to switch)
+--   [3] Total frames received
+--   [4] Total bytes sent (from switch to device)
+--   [5] Total frames sent
+--   [6] Error reporting:
 --      Bits 31..24: Count MAC/PHY errors
 --      Bits 23..16: Count Tx-FIFO overflow (common)
 --      Bits 15..08: Count Rx-FIFO overflow (rare)
 --      Bits 07..00: Count packet errors (bad checksum, length, etc.)
---   * Link-status reporting:
+--   [7] PTP error reporting:
+--      Bits 31..24: Reserved
+--      Bits 23..16: Reserved
+--      Bits 15..08: Count RX PTP packets with bad tstamps
+--      Bits 07..00: Count TX PTP packets with bad tstamps
+--   [8] Link-status reporting:
 --      Bits 31..16: Link speed (Mbps)
 --      Bits 15..08: Reserved
 --      Bits 07..00: Port status word
---
+--   [9-15] Reserved registers
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -78,7 +69,7 @@ end cfgbus_port_stats;
 architecture cfgbus_port_stats of cfgbus_port_stats is
 
 constant PORT_TOTAL : natural := PORT_COUNT + PORTX_COUNT;
-constant WORD_MULT  : natural := 8;
+constant WORD_MULT  : natural := 16;
 constant WORD_COUNT : natural := WORD_MULT * PORT_TOTAL;
 subtype stat_word is unsigned(COUNT_WIDTH-1 downto 0);
 type stats_array_t is array(WORD_COUNT-1 downto 0) of cfgbus_word;
@@ -113,6 +104,8 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
         signal errct_ovr_tx : byte_u;
         signal errct_ovr_rx : byte_u;
         signal errct_pkt    : byte_u;
+        signal errct_ptp_tx : byte_u;
+        signal errct_ptp_rx : byte_u;
         signal status       : cfgbus_word;
     begin
         -- Instantiate the statistics module.
@@ -135,6 +128,8 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
             err_ovr_tx  => errct_ovr_tx,
             err_ovr_rx  => errct_ovr_rx,
             err_pkt     => errct_pkt,
+            err_ptp_tx  => errct_ptp_tx,
+            err_ptp_rx  => errct_ptp_rx,
             rx_data     => rx_data(n),
             tx_data     => tx_data(n),
             tx_ctrl     => tx_ctrl(n));
@@ -148,7 +143,9 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
         stats_array(BASEADDR+5) <= count2word(sent_frames);
         stats_array(BASEADDR+6) <= std_logic_vector(
             errct_mii & errct_ovr_tx & errct_ovr_rx & errct_pkt);
-        stats_array(BASEADDR+7) <= status;
+        stats_array(BASEADDR+7) <= std_logic_vector(
+            x"0000" & errct_ptp_rx & errct_ptp_tx);
+        stats_array(BASEADDR+8) <= status;
     end block;
 end generate;
 
@@ -166,6 +163,8 @@ gen_xstats : for n in 0 to PORTX_COUNT-1 generate
         signal errct_ovr_tx : byte_u;
         signal errct_ovr_rx : byte_u;
         signal errct_pkt    : byte_u;
+        signal errct_ptp_tx : byte_u;
+        signal errct_ptp_rx : byte_u;
         signal status       : cfgbus_word;
     begin
         -- Instantiate the statistics module.
@@ -188,6 +187,8 @@ gen_xstats : for n in 0 to PORTX_COUNT-1 generate
             err_ovr_tx  => errct_ovr_tx,
             err_ovr_rx  => errct_ovr_rx,
             err_pkt     => errct_pkt,
+            err_ptp_tx  => errct_ptp_tx,
+            err_ptp_rx  => errct_ptp_rx,
             rx_data     => xrx_data(n),
             tx_data     => xtx_data(n),
             tx_ctrl     => xtx_ctrl(n));
@@ -201,7 +202,9 @@ gen_xstats : for n in 0 to PORTX_COUNT-1 generate
         stats_array(BASEADDR+5) <= count2word(sent_frames);
         stats_array(BASEADDR+6) <= std_logic_vector(
             errct_mii & errct_ovr_tx & errct_ovr_rx & errct_pkt);
-        stats_array(BASEADDR+7) <= status;
+        stats_array(BASEADDR+7) <= std_logic_vector(
+            x"0000" & errct_ptp_rx & errct_ptp_tx);
+        stats_array(BASEADDR+8) <= status;
     end block;
 end generate;
 

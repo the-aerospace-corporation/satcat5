@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for remotely-operated ConfigBus tools
 //
@@ -25,6 +11,7 @@
 // TODO: Test masked writes
 
 #include <hal_test/catch.hpp>
+#include <hal_test/eth_crosslink.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/cfgbus_remote.h>
 #include <satcat5/eth_dispatch.h>
@@ -62,34 +49,32 @@ TEST_CASE("cfgbus-remote-eth") {
     cfg::ConfigBusMmap cfg(&mmap[0], satcat5::irq::IRQ_NONE);
 
     // Network communication infrastructure.
-    const eth::MacAddr MAC_CONTROLLER = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
-    const eth::MacAddr MAC_PERIPHERAL = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
-    satcat5::io::PacketBufferHeap c2p, p2c;
-    eth::Dispatch net_controller(MAC_CONTROLLER, &c2p, &p2c);
-    eth::Dispatch net_peripheral(MAC_PERIPHERAL, &p2c, &c2p);
+    satcat5::test::CrosslinkEth xlink;
+
+    // Shortcuts and aliases:
+    auto& c2p(xlink.eth0);      // Inject controller-to-peripheral traffic
+    auto& p2c(xlink.eth1);      // Inject peripheral-to-controller traffic
 
     // Basic network headers.
     const eth::Header HDR_CMD = {
-        MAC_PERIPHERAL,
-        MAC_CONTROLLER,
+        xlink.MAC1, xlink.MAC0,
         eth::ETYPE_CFGBUS_CMD,
         eth::VTAG_NONE,
     };
     const eth::Header HDR_ACK = {
-        MAC_CONTROLLER,
-        MAC_PERIPHERAL,
+        xlink.MAC0, xlink.MAC1,
         eth::ETYPE_CFGBUS_ACK,
         eth::VTAG_NONE,
     };
 
     // Unit under test.
-    eth::ConfigBus uut_controller(&net_controller, timer.timer());
-    eth::ProtoConfig uut_peripheral(&net_peripheral, &cfg);
-    uut_controller.connect(MAC_PERIPHERAL);
+    eth::ConfigBus uut_controller(&xlink.net0, timer.timer());
+    eth::ProtoConfig uut_peripheral(&xlink.net1, &cfg);
+    uut_controller.connect(xlink.MAC1);
 
     // Screen for backwards traffic (i.e., CMD from peripheral to controller)
-    satcat5::test::LogProtocol screen_p2c(&net_controller, eth::ETYPE_CFGBUS_CMD);
-    satcat5::test::LogProtocol screen_c2p(&net_peripheral, eth::ETYPE_CFGBUS_ACK);
+    satcat5::test::LogProtocol screen_p2c(&xlink.net0, eth::ETYPE_CFGBUS_CMD);
+    satcat5::test::LogProtocol screen_c2p(&xlink.net1, eth::ETYPE_CFGBUS_ACK);
 
     // Reference values and test working buffers.
     const u32 REF_ARRAY[] = {1234, 1761, 6890, 1709};
@@ -173,7 +158,7 @@ TEST_CASE("cfgbus-remote-eth") {
 
     SECTION("array-wrap") {
         // Sequential array-write that exceeds page boundary.
-        log.disable();  // Suppress error display
+        log.suppress("Bad address");    // Suppress error display
         unsigned reg_first = cfg::REGS_PER_DEVICE - REF_SIZE/2;
         uut_controller.write_array(reg_first, REF_SIZE, REF_ARRAY);
 
@@ -182,6 +167,7 @@ TEST_CASE("cfgbus-remote-eth") {
             CHECK(uut_controller.read(reg_first+a, rxtmp) == cfg::IOSTATUS_OK);
             CHECK(rxtmp == 0);
         }
+        CHECK(log.contains("Bad address"));
     }
 
     SECTION("bad-command") {
@@ -189,17 +175,18 @@ TEST_CASE("cfgbus-remote-eth") {
         c2p.write_obj(HDR_CMD);
         c2p.write_finalize();
         // Confirm processing the packet generates an error message.
-        log.disable();;                     // Suppress error display...
-        satcat5::poll::service();
-        CHECK(!log.empty());                // Confirm an error was logged.
+        log.suppress("Invalid command");        // Suppress error display...
+        satcat5::poll::service_all();
+        CHECK(log.contains("Invalid command")); // Confirm an error was logged.
     }
 
     SECTION("bad-length") {
         // Attempt a bulk-write that's longer than the maximum.
         static const unsigned TEST_LEN = 512;   // API max = 256 words
         std::vector<u32> data(TEST_LEN, 0);
-        log.disable();                          // Suppress error display...
+        log.suppress("Bad length");             // Suppress error display...
         CHECK(uut_controller.write_array(42, TEST_LEN, &data[0]) == cfg::IOSTATUS_CMDERROR);
+        CHECK(log.contains("Bad length"));
     }
 
     SECTION("bad-length2") {
@@ -212,9 +199,9 @@ TEST_CASE("cfgbus-remote-eth") {
         c2p.write_u32(1234);                // 4 more bytes (expect 12)
         c2p.write_finalize();
         // Confirm processing the packet generates an error message.
-        log.disable();                      // Suppress error display...
-        satcat5::poll::service();
-        CHECK(!log.empty());
+        log.suppress("Bad length");         // Suppress error display...
+        satcat5::poll::service_all();
+        CHECK(log.contains("Bad length"));
     }
 
     SECTION("bad-opcode") {
@@ -226,9 +213,9 @@ TEST_CASE("cfgbus-remote-eth") {
         c2p.write_u32(0);                   // Address = Don't-care
         c2p.write_finalize();
         // Confirm processing the packet generates an error message.
-        log.disable();                      // Suppress error display...
-        satcat5::poll::service();
-        CHECK(!log.empty());
+        log.suppress("Bad opcode");         // Suppress error display...
+        satcat5::poll::service_all();
+        CHECK(log.contains("Bad opcode"));
     }
 
     SECTION("bad-response") {
@@ -238,46 +225,47 @@ TEST_CASE("cfgbus-remote-eth") {
         // ConfigRemote ignores traffic if PENDING flag isn't set, so request
         // a READ operation.  (Fake response above will be read first, produce
         // an error, then successfully process the "real" response.)
-        log.disable();                      // Suppress error display...
+        log.suppress("Invalid response");   // Suppress error display...
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_OK);
         CHECK(rxtmp == 0);
-        CHECK(!log.empty());                // Confirm an error was logged.
+        CHECK(log.contains("Invalid response"));
     }
 
     SECTION("bad-response2") {
         // Inject a slightly longer, but still invalid response.
         p2c.write_obj(HDR_ACK);             // Ethernet header
-        p2c.write_u8(0x50);                 // Opcode = read
-        p2c.write_u32(0);                   // 8 more bytes (expect 10)
-        p2c.write_u32(0);
+        p2c.write_u32(0x50000100u);         // Opcode = read, length 1, seq 1
+        p2c.write_u32(42);                  // Address = 42
+        p2c.write_u8(0xDD);                 // 1 more byte (expect 4)
         p2c.write_finalize();
         // As above, request a READ operation to process the fake packet.
-        log.disable();                      // Suppress error display...
+        log.suppress("Invalid response");   // Suppress error display...
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_CMDERROR);
         CHECK(rxtmp == 0);
-        CHECK(!log.empty());                // Confirm an error was logged.
+        CHECK(log.contains("Invalid response"));
     }
 
     SECTION("remote-error") {
         // Inject a response with the error flag set.
         p2c.write_obj(HDR_ACK);
-        p2c.write_u32(0x50000000u);         // Opcode = read, length = 1
+        p2c.write_u32(0x50000100u);         // Opcode = read, length 1, seq 1
         p2c.write_u32(0x00000042u);         // Read address = 0x42
         p2c.write_u32(0x12345678u);         // Read data
         p2c.write_u8(0xFF);                 // Read-error flag
         p2c.write_finalize();
         // As above, request a READ operation to process the fake packet.
-        log.disable();                      // Suppress error display...
+        log.suppress("Read error");         // Suppress error display...
         CHECK(uut_controller.read(0x42, rxtmp) == cfg::IOSTATUS_BUSERROR);
         CHECK(rxtmp == 0x12345678);         // Confirm read data
-        CHECK(!log.empty());                // Confirm an error was logged.
+        CHECK(log.contains("Read error"));  // Confirm an error was logged.
     }
 
     SECTION("nested-read") {
         // Attempt to read while another command is pending.
-        log.disable();                      // Suppress error display...
+        log.suppress("Already busy");       // Suppress error display...
         DelayedRead rd(&uut_controller);
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_OK);
+        CHECK(log.contains("Already busy"));
     }
 
     SECTION("reply-full") {
@@ -285,8 +273,13 @@ TEST_CASE("cfgbus-remote-eth") {
         while (p2c.get_write_space())
             p2c.write_u8(0x42);
         // Request a write; the reply should abort.
-        log.disable();                      // Suppress error display...
+        // We expect two errors: "Reply error" and "Timeout".
+        // Since we can't easily suppress both, just shutdown completely.
+        log.disable();
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_TIMEOUT);
+        // The log::ToConsole class only retains the most recent error,
+        // which is always "Timeout" in this test scenario.
+        CHECK(log.contains("Timeout"));
     }
 
     SECTION("polling") {
@@ -300,9 +293,10 @@ TEST_CASE("cfgbus-remote-eth") {
 
     SECTION("timeout") {
         // Corrupt outgoing command to force a read-timeout.
-        log.disable();                      // Suppress error display...
+        log.suppress("Timeout");            // Suppress error display...
         p2c.write_u32(0);                   // Write without finalize
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_TIMEOUT);
+        CHECK(log.contains("Timeout"));     // Confirm an error was logged.
     }
 }
 
@@ -315,38 +309,28 @@ TEST_CASE("cfgbus-remote-udp") {
     cfg::ConfigBusMmap cfg(&mmap[0], satcat5::irq::IRQ_NONE);
 
     // Network communication infrastructure.
-    const eth::MacAddr MAC_CONTROLLER = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
-    const eth::MacAddr MAC_PERIPHERAL = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
-    const ip::Addr IP_CONTROLLER(192, 168, 1, 11);
-    const ip::Addr IP_PERIPHERAL(192, 168, 1, 12);
-    satcat5::io::PacketBufferHeap c2p, p2c;
-    eth::Dispatch eth_controller(MAC_CONTROLLER, &c2p, &p2c);
-    eth::Dispatch eth_peripheral(MAC_PERIPHERAL, &p2c, &c2p);
-    ip::Dispatch ip_controller(IP_CONTROLLER, &eth_controller, timer.timer());
-    ip::Dispatch ip_peripheral(IP_PERIPHERAL, &eth_peripheral, timer.timer());
-    udp::Dispatch udp_controller(&ip_controller);
-    udp::Dispatch udp_peripheral(&ip_peripheral);
+    satcat5::test::CrosslinkIp xlink;
+    auto& c2p = xlink.eth0;     // Alias for controller-to-peripheral traffic
+    auto& p2c = xlink.eth1;     // Alias for peripheral-to-controller traffic
 
     // Basic network headers.
     const eth::Header HDR_CMD = {
-        MAC_PERIPHERAL,
-        MAC_CONTROLLER,
+        xlink.MAC1, xlink.MAC0,
         eth::ETYPE_CFGBUS_CMD,
         eth::VTAG_NONE,
     };
     const eth::Header HDR_ACK = {
-        MAC_CONTROLLER,
-        MAC_PERIPHERAL,
+        xlink.MAC0, xlink.MAC1,
         eth::ETYPE_CFGBUS_ACK,
         eth::VTAG_NONE,
     };
 
     // Unit under test.
-    udp::ConfigBus uut_controller(&udp_controller);
-    udp::ProtoConfig uut_peripheral(&udp_peripheral, &cfg);
+    udp::ConfigBus uut_controller(&xlink.net0.m_udp);
+    udp::ProtoConfig uut_peripheral(&xlink.net1.m_udp, &cfg);
 
     // Connect to remote host and run ARP handshake.
-    uut_controller.connect(IP_PERIPHERAL);
+    uut_controller.connect(xlink.IP1);
     satcat5::poll::service_all();
     REQUIRE(uut_controller.ready());
 
@@ -403,15 +387,17 @@ TEST_CASE("cfgbus-remote-udp") {
     }
 
     SECTION("closed") {
-        log.disable();                      // Suppress error display...
+        log.suppress("Connection error");   // Suppress error display...
         uut_controller.close();             // Close UDP connection
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_CMDERROR);
+        CHECK(log.contains("Connection error"));
     }
 
     SECTION("timeout") {
         // Corrupt outgoing command to force a read-timeout.
-        log.disable();                      // Suppress error display...
+        log.suppress("Timeout");            // Suppress error display...
         p2c.write_u32(0);                   // Write without finalize
         CHECK(uut_controller.read(42, rxtmp) == cfg::IOSTATUS_TIMEOUT);
+        CHECK(log.contains("Timeout"));
     }
 }

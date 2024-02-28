@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // File I/O wrappers
 
@@ -33,20 +19,24 @@ namespace satcat5 {
                 bool close_on_finalize = false);
             virtual ~FileWriter();
 
-            // Open the specified file to write the next frame.
-            // User must call open() after each call to write_finalize().
+            // Open the specified file. If "close_on_finalize" is set, then
+            // user must call open() after each call to write_finalize().
             void open(const char* filename);
             void close();
 
-            // Required function overrides.
+            // Move write cursor to the specified absolute offset.
+            void seek(unsigned offset);
+
+            // Required and optional function overrides.
             unsigned get_write_space() const override;
+            void write_bytes(unsigned nbytes, const void* src);
             bool write_finalize() override;
             void write_abort() override;
         protected:
             void write_next(u8 data) override;
             const bool m_close_on_finalize;
-            FILE* m_file;       // Current file object
-            std::string m_name; // Filename of m_file
+            FILE* m_file;           // Current file object
+            unsigned m_last_commit; // Position of last commit
         };
 
         class FileReader : public satcat5::io::Readable {
@@ -61,8 +51,10 @@ namespace satcat5 {
             void open(const char* filename, unsigned len = 0);
             void close();
 
-            // Required function overrides.
+            // Required and optional function overrides.
             unsigned get_read_ready() const override;
+            bool read_bytes(unsigned nbytes, void* dst);
+            bool read_consume(unsigned nbytes);
             void read_finalize() override;
         protected:
             u8 read_next() override;

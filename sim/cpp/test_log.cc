@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 logging system
 
@@ -47,6 +33,7 @@ const LogEvent MSG_F = {LOG_INFO,       "MsgF: Var1 = 1, Var2 = 0, Var3 = 0x4321
 const LogEvent MSG_G = {LOG_WARNING,    "MsgG: Var1 = 0, Var2 = 80, Var3 = 4294967295"};
 const LogEvent MSG_H = {LOG_WARNING,    "MsgH: Var1 = +0, Var2 = -2147483648, Var3 = +2147483647"};
 const LogEvent MSG_I = {LOG_WARNING,    "MsgI = DE:AD:BE:EF:CA:FE = 192.168.1.42"};
+const LogEvent MSG_J = {LOG_WARNING,    "MsgJ = 12345678901234567890 = -1234567890123456789 = +1234567890123456789"};
 const u8 MSG_D_BYTES[] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0};
 
 // Helper class for storing each Log message in a queue, then cross-checking
@@ -120,6 +107,12 @@ TEST_CASE("log") {
             .write(satcat5::eth::MacAddr {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE})
             .write(satcat5::ip::Addr(192, 168, 1, 42));}
 
+        // Test for signed and unsigned 64-bit decimals.
+        {Log(LOG_WARNING,   "MsgJ")
+            .write10((u64)12345678901234567890ull)
+            .write10((s64)-1234567890123456789ll)
+            .write10((s64)+1234567890123456789ll);}
+
         // Check each one against the expected reference.
         log.check_next(MSG_A);
         log.check_next(MSG_B);
@@ -130,6 +123,7 @@ TEST_CASE("log") {
         log.check_next(MSG_G);
         log.check_next(MSG_H);
         log.check_next(MSG_I);
+        log.check_next(MSG_J);
     }
 
     SECTION("fixed-len") {
@@ -153,6 +147,14 @@ TEST_CASE("log") {
 
         // Check for graceful overflow.
         log.check_next(ref);
+    }
+
+    SECTION("readable") {
+        // Create an io::Readable wrapper for the raw-bytes test message.
+        satcat5::io::ArrayRead uut(MSG_D_BYTES, sizeof(MSG_D_BYTES));
+        // The resulting message should have exactly the same formatting.
+        {Log(LOG_ERROR, "MsgD").write(&uut);}
+        log.check_next(MSG_D);
     }
 }
 

@@ -1,20 +1,6 @@
 # ------------------------------------------------------------------------
-# Copyright 2021, 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2023 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
 # This script creates a new Vivado project for the Digilent Arty A7,
@@ -43,11 +29,11 @@ if {($BOARD_OPTION in $VALID_BOARDS)} {
 if {$BOARD_OPTION == "100t"} {
     set HBUF_KBYTES {2}
     set MAC_TABLE_SIZE {64}
-    set PTP_MIXED_STEP {true}
+    set PTP_ENABLED {true}
 } else {
     set HBUF_KBYTES {0}
     set MAC_TABLE_SIZE {32}
-    set PTP_MIXED_STEP {false}
+    set PTP_ENABLED {false}
 }
 
 # Change to example project folder.
@@ -263,7 +249,7 @@ set_property -dict [ list \
 set port_mailmap_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_mailmap port_mailmap_0 ]
 set_property -dict [ list \
     CONFIG.DEV_ADDR {0} \
-    CONFIG.PTP_ENABLE {true} \
+    CONFIG.PTP_ENABLE $PTP_ENABLED \
     CONFIG.PTP_REF_HZ {100000000} \
 ] $port_mailmap_0
 
@@ -302,10 +288,10 @@ set_property -dict [ list \
     CONFIG.HBUF_KBYTES $HBUF_KBYTES \
     CONFIG.MAC_TABLE_SIZE $MAC_TABLE_SIZE \
     CONFIG.PORT_COUNT {6} \
-    CONFIG.PTP_MIXED_STEP $PTP_MIXED_STEP \
+    CONFIG.PTP_MIXED_STEP $PTP_ENABLED \
     CONFIG.STATS_DEVADDR {6} \
     CONFIG.STATS_ENABLE {true} \
-    CONFIG.SUPPORT_PTP {true} \
+    CONFIG.SUPPORT_PTP $PTP_ENABLED \
     CONFIG.SUPPORT_VLAN {true} \
 ] $switch_core_0
 
@@ -339,17 +325,24 @@ set_property -dict [list \
 ] $cfgbus_spi_0
 
 set port_adapter_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_adapter port_adapter_0 ]
-set ptp_reference_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:ptp_reference ptp_reference_0 ]
 set rmii_mode_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant rmii_mode_0 ]
 set rmii_reset_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:reset_hold rmii_reset_0 ]
 set port_rmii_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_rmii port_rmii_0 ]
 set_property -dict [ list \
     CONFIG.MODE_CLKOUT {true} \
-    CONFIG.PTP_ENABLE {true} \
+    CONFIG.PTP_ENABLE $PTP_ENABLED \
     CONFIG.PTP_REF_HZ {100000000} \
 ] $port_rmii_0
 
 set switch_aux_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:switch_aux switch_aux_0 ]
+
+if {$PTP_ENABLED} {
+    set ptp_reference_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:ptp_reference ptp_reference_0 ]
+    connect_bd_net [get_bd_ports ext_clk100] [get_bd_pins ptp_reference_0/ref_clk]
+    connect_bd_net [get_bd_pins rmii_reset_0/reset_p] [get_bd_pins ptp_reference_0/reset_p]
+    connect_bd_intf_net -intf_net ptpref [get_bd_intf_pins ptp_reference_0/PtpRef] [get_bd_intf_pins port_mailmap_0/PtpRef] 
+    connect_bd_intf_net -intf_net ptpref [get_bd_intf_pins ptp_reference_0/PtpRef] [get_bd_intf_pins port_rmii_0/PtpRef]
+}
 
 connect_bd_intf_net -intf_net cfgbus_split_0_Port00 [get_bd_intf_pins cfgbus_split_0/Port00] [get_bd_intf_pins port_mailmap_0/Cfg]
 connect_bd_intf_net -intf_net cfgbus_split_0_Port01 [get_bd_intf_pins cfgbus_split_0/Port01] [get_bd_intf_pins pmod1/Cfg]
@@ -370,8 +363,6 @@ connect_bd_intf_net -intf_net port_adapter_0_SwPort [get_bd_intf_pins port_adapt
 connect_bd_intf_net -intf_net port_mailmap_0_Eth [get_bd_intf_pins port_mailmap_0/Eth] [get_bd_intf_pins switch_core_0/Port00]
 connect_bd_intf_net -intf_net port_rmii_0_Eth [get_bd_intf_pins port_adapter_0/MacPort] [get_bd_intf_pins port_rmii_0/Eth]
 connect_bd_intf_net -intf_net port_rmii_0_RMII [get_bd_intf_ports rmii] [get_bd_intf_pins port_rmii_0/RMII]
-connect_bd_intf_net -intf_net ptpref [get_bd_intf_pins ptp_reference_0/PtpRef] [get_bd_intf_pins port_mailmap_0/PtpRef] 
-connect_bd_intf_net -intf_net ptpref [get_bd_intf_pins ptp_reference_0/PtpRef] [get_bd_intf_pins port_rmii_0/PtpRef]
 connect_bd_intf_net -intf_net ublaze_CfgBus [get_bd_intf_pins cfgbus_split_0/Cfg] [get_bd_intf_pins ublaze/CfgBus]
 connect_bd_net -net Net [get_bd_ports pmod1] [get_bd_pins pmod1/ext_pads]
 connect_bd_net -net Net1 [get_bd_ports pmod4] [get_bd_pins pmod4/ext_pads]
@@ -383,7 +374,6 @@ connect_bd_net -net ext_reset_in_0_1 [get_bd_ports ext_reset_n] \
 connect_bd_net -net microblaze_0_Clk [get_bd_ports ext_clk100] \
     [get_bd_pins rmii_reset_0/clk] \
     [get_bd_pins port_rmii_0/ctrl_clkin] \
-    [get_bd_pins ptp_reference_0/ref_clk] \
     [get_bd_pins switch_aux_0/scrub_clk] \
     [get_bd_pins ublaze/ext_clk100]
 connect_bd_net -net port_rmii_0_rmii_clkout [get_bd_ports rmii_clkout] [get_bd_pins port_rmii_0/rmii_clkout]
@@ -408,7 +398,6 @@ connect_bd_net -net ublaze_resetp [get_bd_pins pmod1/reset_p] \
     [get_bd_pins ublaze/resetp]
 connect_bd_net \
     [get_bd_pins port_rmii_0/reset_p] \
-    [get_bd_pins ptp_reference_0/reset_p] \
     [get_bd_pins rmii_reset_0/reset_p]
 connect_bd_net -net ublaze_uart_txd [get_bd_ports uart_txd] [get_bd_pins ublaze/uart_txd]
 connect_bd_net [get_bd_pins /cfgbus_mdio_0/mdio_clk] [get_bd_ports mdio_clk]

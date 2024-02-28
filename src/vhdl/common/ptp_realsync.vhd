@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2023-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Clock-domain transitions for a PTP real-time clock
@@ -54,9 +40,10 @@ use     work.ptp_types.all;
 
 entity ptp_realsync is
     generic (
-    OUT_CLK_HZ  : positive;
-    REF_UPDATE  : positive := 64;
-    USER_OFFSET : tstamp_t := (others => '0'));
+    OUT_CLK_HZ  : positive;             -- Frequency of "out_clk"
+    REF_UPDATE  : positive := 64;       -- Refresh every N ref_clk cycles
+    USER_OFFSET : tstamp_t := (others => '0');
+    WAIT_LOCKED : boolean := true);     -- Suppress output until locked?
     port (
     -- Reference clock domain.
     ref_clk     : in  std_logic;
@@ -74,14 +61,17 @@ architecture ptp_realsync of ptp_realsync is
 subtype seconds_t is signed(47 downto 0);
 
 -- Clock-crossing for the reference timestamps.
+signal xref_tvalid  : std_logic := '0';
 signal xref_tdiff   : tstamp_t := (others => '0');
 signal xref_sec     : seconds_t := (others => '0');
 signal xref_toggle  : std_logic := '0';     -- Toggle in ref_clk domain
 signal xout_strobe  : std_logic;            -- Strobe in out_clk domain
+signal xout_tvalid  : std_logic := '0';
 signal xout_tdiff   : tstamp_t := (others => '0');
 signal xout_sec     : seconds_t := (others => '0');
 
 -- Extrapolation of the output sequence.
+signal sum_tvalid   : std_logic := '0';
 signal sum_tdiff    : tstamp_t := (others => '0');
 signal sum_sec      : seconds_t := (others => '0');
 signal roll_subns   : tstamp_t := (others => '0');
@@ -98,6 +88,8 @@ begin
             -- Latch reference and precalculate "subns" difference term.
             -- Note: Wraparound / underflow is OK here as long as the final
             --   unwrapped "sum_tdiff" falls in range of [-1, +2) seconds.
+            xref_tvalid <= bool2bit(ref_rtc /= PTP_TIME_ZERO)
+                       and bool2bit(ref_tstamp /= TSTAMP_DISABLED);
             xref_tdiff  <= (ref_rtc.nsec & ref_rtc.subns) - ref_tstamp;
             xref_sec    <= ref_rtc.sec;
             xref_toggle <= not xref_toggle;
@@ -127,7 +119,10 @@ begin
             report "Rollover violation." severity warning;
 
         -- Pipeline stage 2: One-second rollover detection.
-        if (signed(sum_tdiff) < 0) then
+        if (WAIT_LOCKED and sum_tvalid = '0') then
+            roll_subns <= (others => '0');
+            roll_sec   <= (others => '0');
+        elsif (signed(sum_tdiff) < 0) then
             roll_subns <= sum_tdiff + TSTAMP_ONE_SEC;
             roll_sec   <= sum_sec - 1;
         elsif (sum_tdiff < TSTAMP_ONE_SEC) then
@@ -140,11 +135,13 @@ begin
 
         -- Pipeline stage 1: Summation of subnanosecond terms.
         -- (As before, wraparound at 2^48 is expected and routine.)
+        sum_tvalid  <= xref_tvalid and bool2bit(out_tstamp /= TSTAMP_DISABLED);
         sum_tdiff   <= xout_tdiff + out_tstamp + TOTAL_OFFSET;
         sum_sec     <= xout_sec;
 
         -- Pipeline stage 0: Latch each reference timestamp.
         if (xout_strobe = '1') then
+            xout_tvalid <= xref_tvalid;
             xout_tdiff  <= xref_tdiff;
             xout_sec    <= xref_sec;
         end if;

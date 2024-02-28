@@ -1,0 +1,18 @@
+# This CITATION.cff file was generated with cffinit.
+
+cff-version: 1.2.0
+title: satcat5
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: The Aerospace Corporation
+    address: 2310 E. El Segundo Blvd
+    city: 'El Segundo, CA'
+    country: US
+    post-code: '90245'
+    email: oss@aero.org
+    tel: 310-336-0753
+repository-code: 'https://github.com/the-aerospace-corporation/satcat5'
+license: CERN-OHL-W v2

@@ -1,29 +1,17 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for UDP dispatch and related blocks
 
 #include <hal_test/catch.hpp>
+#include <hal_test/eth_crosslink.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/ip_stack.h>
 #include <satcat5/udp_socket.h>
 #include <vector>
 
+using satcat5::ip::ADDR_BROADCAST;
 using satcat5::ip::ADDR_NONE;
 using satcat5::udp::PORT_CFGBUS_CMD;
 using satcat5::udp::PORT_CFGBUS_ACK;
@@ -34,22 +22,19 @@ TEST_CASE("UDP-socket") {
     satcat5::util::PosixTimer timer;
 
     // Network communication infrastructure.
-    const satcat5::eth::MacAddr MAC_CONTROLLER = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
-    const satcat5::eth::MacAddr MAC_PERIPHERAL = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
-    const satcat5::ip::Addr IP_CONTROLLER(192, 168, 1, 11);
-    const satcat5::ip::Addr IP_PERIPHERAL(192, 168, 1, 74);
-    const satcat5::ip::Addr IP_MULTICAST(224, 0, 0, 123);
-    const satcat5::ip::Addr IP_BROADCAST(255, 255, 255, 255);
+    satcat5::test::CrosslinkIp xlink;
 
-    satcat5::io::PacketBufferHeap c2p, p2c;
-    satcat5::ip::Stack net_controller(
-        MAC_CONTROLLER, IP_CONTROLLER, &c2p, &p2c, &timer);
-    satcat5::ip::Stack net_peripheral(
-        MAC_PERIPHERAL, IP_PERIPHERAL, &p2c, &c2p, &timer);
+    // Shortcuts and aliases:
+    const auto MAC_CONTROLLER(xlink.MAC0);
+    const auto MAC_PERIPHERAL(xlink.MAC1);
+    const satcat5::ip::Addr IP_PERIPHERAL(xlink.IP1);
+    const satcat5::ip::Addr IP_MULTICAST(224, 0, 0, 123);
+    auto& c2p(xlink.eth0);              // Bad packet injection point
+    auto& net_controller(xlink.net0);   // IP stack for controller (eth0)
 
     // Socket at each end of network link.
-    satcat5::udp::Socket uut_controller(&net_controller.m_udp);
-    satcat5::udp::Socket uut_peripheral(&net_peripheral.m_udp);
+    satcat5::udp::Socket uut_controller(&xlink.net0.m_udp);
+    satcat5::udp::Socket uut_peripheral(&xlink.net1.m_udp);
 
     // From idle state, neither Socket should be ready to communicate.
     CHECK_FALSE(uut_controller.ready_tx());
@@ -97,22 +82,26 @@ TEST_CASE("UDP-socket") {
         CHECK_FALSE(uut_controller.ready_tx());
         CHECK(uut_controller.ready_rx());
         // Confirm no ARP request was sent.
-        CHECK(c2p.get_read_ready() == 0);
-        CHECK(p2c.get_read_ready() == 0);
+        satcat5::poll::service_all();
+        CHECK(xlink.eth0.tx_count() == 0);
+        CHECK(xlink.eth1.tx_count() == 0);
     }
 
     SECTION("full") {
         // Keep auto-binding local ports until the entire space is full.
         // (Dynamic allocation = 0xC000 - 0xFFFF = 16,384 sockets!)
         std::vector<satcat5::udp::Socket*> bigvec(16384, 0);
+        unsigned ready_count = 0;
         for (auto a = bigvec.begin() ; a != bigvec.end() ; ++a) {
+            // Specify MAC address so socket is ready to operate immediately.
             *a = new satcat5::udp::Socket(&net_controller.m_udp);
             (*a)->connect(IP_PERIPHERAL, MAC_PERIPHERAL, PORT_CFGBUS_CMD);
-            CHECK((*a)->ready_rx());        // Bound to next free local port
-            CHECK((*a)->ready_tx());        // Ready to transmit (no ARP)
+            if ((*a)->ready_rx() && (*a)->ready_tx()) ++ready_count;
         }
+        // CHECK at the end to reduce Catch2 verbosity in debug mode.
+        CHECK(ready_count == bigvec.size());
         // The next attempt to auto-bind should fail.
-        log.disable();                      // Suppress warning message...
+        log.suppress("Ports full");         // Suppress warning message...
         uut_controller.connect(IP_PERIPHERAL, MAC_PERIPHERAL, PORT_CFGBUS_CMD);
         CHECK_FALSE(uut_controller.ready_rx());
         CHECK(log.contains("Ports full"));  // ...but confirm it was sent.
@@ -165,7 +154,7 @@ TEST_CASE("UDP-socket") {
         CHECK(c2p.write_finalize());
         // Confirm data received successfully.
         satcat5::poll::service_all();
-        CHECK(uut_peripheral.get_read_ready() == 200);
+        REQUIRE(uut_peripheral.get_read_ready() == 200);
         CHECK(uut_peripheral.read_u64() == 0x85aaff140005c816);
         CHECK(uut_peripheral.read_u64() == 0x6fbc681780c31e3f);
         CHECK(uut_peripheral.read_u64() == 0xbe9418513b5b52b3);
@@ -213,24 +202,38 @@ TEST_CASE("UDP-socket") {
         CHECK(uut_peripheral.get_read_ready() == 0);
     }
 
-    SECTION("error") {
-        // Setup Tx but no Rx.
+    SECTION("error-unicast") {
+        // Setup Tx unicast with no Rx.
         uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
         // Execute ARP handshake.
         satcat5::poll::service_all();
         CHECK(uut_controller.ready_tx());
         CHECK(uut_controller.ready_rx());
         // Sending the UDP datagram should produce an ICMP error message.
-        log.disable();
+        log.suppress("Destination port unreachable");
         uut_controller.write_u32(0x12345678u);
         CHECK(uut_controller.write_finalize());
         satcat5::poll::service_all();
         CHECK(log.contains("Destination port unreachable"));
     }
 
+    SECTION("error-broadcast") {
+        // Setup Tx broadcast with no Rx.
+        uut_controller.connect(ADDR_BROADCAST, PORT_CFGBUS_CMD);
+        // No ARP handshake required.
+        CHECK(uut_controller.ready_tx());
+        CHECK(uut_controller.ready_rx());
+        // Sending the UDP datagram should NOT produce an ICMP error,
+        // because unhandled broadcast packets must be ignored.
+        uut_controller.write_u32(0x12345678u);
+        CHECK(uut_controller.write_finalize());
+        satcat5::poll::service_all();
+        CHECK_FALSE(log.contains("Destination port unreachable"));
+    }
+
     SECTION("lost-arp") {
         // Tamper with the first ARP response during link setup.
-        p2c.write_str("BadHeader");
+        xlink.eth1.write_str("BadHeader");
         uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
         // Attempt to execute ARP handshake.
         satcat5::poll::service_all();
@@ -260,7 +263,7 @@ TEST_CASE("UDP-socket") {
 
     SECTION("broadcast") {
         // Setup a UDP broadcast.
-        uut_controller.connect(IP_BROADCAST, PORT_CFGBUS_CMD);
+        uut_controller.connect(ADDR_BROADCAST, PORT_CFGBUS_CMD);
         uut_peripheral.bind(PORT_CFGBUS_CMD);   // Listening port
         // No ARP query required.
         CHECK(uut_controller.ready_tx());

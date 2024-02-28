@@ -1,20 +1,6 @@
 # ------------------------------------------------------------------------
-# Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
 # This script creates a new Modelsim project, for running simulations.
@@ -77,6 +63,7 @@ project addfolder common_lib
 project addfile ../../src/vhdl/common/common_functions.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/common_primitives.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/eth_frame_common.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/prng_lfsr_common.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/ptp_types.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/router_common.vhd VHDL common_lib
 project addfile ../../src/vhdl/xilinx/7series_io.vhd VHDL common_lib
@@ -101,6 +88,7 @@ project addfile ../../src/vhdl/common/switch_types.vhd VHDL common_lib
 # Common VHDL (switch functions):
 project addfolder common_sw
 project addfile ../../src/vhdl/common/io_clock_detect.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_clock_tolerance.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_i2c_controller.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_i2c_peripheral.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_mdio_readwrite.vhd VHDL common_sw
@@ -113,6 +101,9 @@ project addfile ../../src/vhdl/common/io_error_reporting.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_delay.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_inject.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_round_robin.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/prng_lfsr_gen.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/prng_lfsr_sync.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/ptp_dither.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realsof.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realsync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realtime.vhd VHDL common_sw
@@ -127,6 +118,7 @@ project addfile ../../src/vhdl/common/eth_dec8b10b.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_enc8b10b_table.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_enc8b10b.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_parcrc.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/eth_frame_parcrc2.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_check.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_vstrip.vhd VHDL common_sw
@@ -301,6 +293,7 @@ project addfile ../../sim/vhdl/port_serial_uart_2wire_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_serial_uart_4wire_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_statistics_tb.vhd VHDL test
 project addfile ../../sim/vhdl/port_stream_tb.vhd VHDL test
+project addfile ../../sim/vhdl/prng_lfsr_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_adjust_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_clksynth_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_counter_tb.vhd VHDL test

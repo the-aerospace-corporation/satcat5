@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the Internet Protocol dispatcher and routing table
 
@@ -30,6 +16,7 @@ TEST_CASE("IP-Dispatch") {
 
     // Address constants.
     const satcat5::eth::MacAddr MAC_SELF = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
+    const satcat5::eth::MacAddr MAC_LOCAL = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
     const ip::Addr IP_GATEWAY1 (192, 168, 1,   1);
     const ip::Addr IP_GATEWAY2 (192, 168, 1,   2);
     const ip::Addr IP_SELF     (192, 168, 1,  11);
@@ -62,6 +49,13 @@ TEST_CASE("IP-Dispatch") {
         CHECK(uut.ipaddr() == IP_SELF);
         uut.set_addr(IP_LOCAL);
         CHECK(uut.ipaddr() == IP_LOCAL);
+    }
+
+    // Runtime adjustment of MAC-address.
+    SECTION("change-mac") {
+        CHECK(uut.macaddr() == MAC_SELF);
+        uut.set_macaddr(MAC_LOCAL);
+        CHECK(uut.macaddr() == MAC_LOCAL);
     }
 
     // Basic router tests.

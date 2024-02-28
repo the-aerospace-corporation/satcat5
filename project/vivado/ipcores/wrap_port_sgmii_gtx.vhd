@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "port_sgmii_gtx"
@@ -34,8 +20,12 @@ use     work.switch_types.all;
 entity wrap_port_sgmii_gtx is
     generic (
     AUTONEG_EN  : boolean;          -- Enable or disable autonegotiation
+    SHARED_EN   : boolean := true;  -- Does the IP-core include shared logic?
+    SHARED_QPLL : boolean := false; -- Workaround for shared QPLL signals?
     PTP_ENABLE  : boolean := false; -- Enable PTP timestamps?
-    PTP_REF_HZ  : integer := 0);    -- Vernier reference frequency
+    PTP_REF_HZ  : integer := 0;     -- Vernier reference frequency
+    PTP_TAU_MS  : integer := 50;    -- Tracking time constant (msec)
+    PTP_AUX_EN  : boolean := true); -- Enable extra tracking filter?
     port (
     -- External SGMII interface.
     sgmii_rxp   : in  std_logic;
@@ -59,6 +49,7 @@ entity wrap_port_sgmii_gtx is
     sw_tx_valid : in  std_logic;
     sw_tx_ready : out std_logic;
     sw_tx_error : out std_logic;
+    sw_tx_pstart: out std_logic;
     sw_tx_tnow  : out std_logic_vector(47 downto 0);
     sw_tx_reset : out std_logic;
 
@@ -68,17 +59,21 @@ entity wrap_port_sgmii_gtx is
     tref_tnext  : in  std_logic;
     tref_tstamp : in  std_logic_vector(47 downto 0);
 
-    -- Reference clock and reset.
-    gtrefclk_p  : in  std_logic;    -- GTX RefClk
-    gtrefclk_n  : in  std_logic;    -- (Differential)
-    clkin_bufg  : in  std_logic;    -- IDELAYCTRL or DRP clock
-    reset_p     : in  std_logic);   -- Reset / shutdown
+    -- Shared-logic ports.
+    gtrefclk_p  : in  std_logic := '0';     -- GTX RefClk
+    gtrefclk_n  : in  std_logic := '0';     -- (Differential)
+    shared_in   : in  std_logic_vector(15 downto 0) := (others => '0');
+    shared_out  : out std_logic_vector(15 downto 0);
+
+    -- System clock and reset.
+    clkin_bufg  : in  std_logic;            -- IDELAYCTRL or DRP clock
+    reset_p     : in  std_logic);           -- Reset / shutdown
 end wrap_port_sgmii_gtx;
 
 architecture wrap_port_sgmii_gtx of wrap_port_sgmii_gtx is
 
 constant VCONFIG : vernier_config := create_vernier_config(
-    value_else_zero(PTP_REF_HZ, PTP_ENABLE));
+    value_else_zero(PTP_REF_HZ, PTP_ENABLE), real(PTP_TAU_MS), PTP_AUX_EN);
 
 signal rx_data  : port_rx_m2s;
 signal tx_data  : port_tx_s2m;
@@ -99,6 +94,7 @@ sw_rx_status    <= rx_data.status;
 sw_rx_reset     <= rx_data.reset_p;
 sw_tx_clk       <= tx_ctrl.clk;
 sw_tx_ready     <= tx_ctrl.ready;
+sw_tx_pstart    <= tx_ctrl.pstart;
 sw_tx_tnow      <= std_logic_vector(tx_ctrl.tnow);
 sw_tx_error     <= tx_ctrl.txerr;
 sw_tx_reset     <= tx_ctrl.reset_p;
@@ -116,6 +112,8 @@ ref_time.tstamp <= unsigned(tref_tstamp);
 u_wrap : entity work.port_sgmii_gtx
     generic map(
     AUTONEG_EN  => AUTONEG_EN,
+    SHARED_EN   => SHARED_EN,
+    SHARED_QPLL => SHARED_QPLL,
     VCONFIG     => VCONFIG)
     port map(
     sgmii_rxp   => sgmii_rxp,
@@ -129,6 +127,8 @@ u_wrap : entity work.port_sgmii_gtx
     ref_time    => ref_time,
     gtrefclk_p  => gtrefclk_p,
     gtrefclk_n  => gtrefclk_n,
+    shared_out  => shared_out,
+    shared_in   => shared_in,
     clkin_bufg  => clkin_bufg,
     clkout_125  => open);
 

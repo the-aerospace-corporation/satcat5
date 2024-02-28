@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2022-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // High-precision "Time" object for use with PTP / IEEE1588
 //
@@ -46,9 +32,13 @@ namespace satcat5 {
         // Object holding a PTP-compatible timestamp.
         class Time {
         public:
+            // Default constructor.
+            constexpr Time()
+                : m_secs(0), m_subns(0) {}
+
             // Single argument constructor is scaled in subnanoseconds.
             // (This matches the format used for the PTP "correction" field.)
-            constexpr explicit Time(s64 subnanoseconds = 0)
+            constexpr explicit Time(s64 subnanoseconds)
                 : m_secs (satcat5::util::divide(subnanoseconds, SUBNS_PER_SEC))
                 , m_subns(satcat5::util::modulo(subnanoseconds, SUBNS_PER_SEC)) {}
 
@@ -61,9 +51,18 @@ namespace satcat5 {
             Time(u64 seconds, u32 nanoseconds, u16 subnanoseconds = 0);
 
             // Read-only accessors for individual fields.
-            inline s64 secs() const     {return m_secs;}
-            inline u32 nsec() const     {return (u32)satcat5::util::div_round(m_subns, SUBNS_PER_NSEC);}
-            inline u64 subns() const    {return (u64)m_subns;}
+            // Use "field_xx()" in combination with "correction()", below.
+            // Use "round_xx()" for safe rounding to nearest nanosecond.
+            inline s64 field_secs() const
+                {return m_secs;}
+            inline u32 field_nsec() const
+                {return (u32)satcat5::util::div_floor(m_subns, SUBNS_PER_NSEC);}
+            inline u64 field_subns() const
+                {return (u64)m_subns;}
+            inline s64 round_secs() const
+                {return (*this + Time(SUBNS_PER_NSEC / 2)).field_secs();}
+            inline u32 round_nsec() const
+                {return (*this + Time(SUBNS_PER_NSEC / 2)).field_nsec();}
 
             // Conversion for "small" time-differences.  Times beyond the safe
             // range (at least +/- 24 hours) will return INT64_MIN or INT64_MAX.
@@ -74,8 +73,17 @@ namespace satcat5 {
 
             // Read or write the standard 10-byte PTP timestamp.
             // (e.g., originTimestamp: u48 seconds + u32 nanoseconds)
+            // Note: This does not preserve subnanosecond precision.
             bool read_from(satcat5::io::Readable* src);
             void write_to(satcat5::io::Writeable* dst) const;
+
+            // User-readable format for logging.
+            void log_to(satcat5::log::LogBuffer& wr) const;
+
+            // To preserve full precision (see above), sender should set the
+            // initial value of "correctionField" using this accessor.
+            inline u64 correction() const
+                {return (u64)satcat5::util::modulo(m_subns, SUBNS_PER_NSEC);}
 
             // Convert to SatCat5 date/time (see "datetime.h")
             s64 to_datetime() const;
@@ -114,6 +122,7 @@ namespace satcat5 {
         satcat5::ptp::Time from_datetime(s64 gps_msec);
 
         // Common time-related constants.
+        constexpr satcat5::ptp::Time TIME_ZERO(0LL);
         constexpr satcat5::ptp::Time ONE_NANOSECOND(SUBNS_PER_NSEC);
         constexpr satcat5::ptp::Time ONE_MICROSECOND(SUBNS_PER_USEC);
         constexpr satcat5::ptp::Time ONE_MILLISECOND(SUBNS_PER_MSEC);

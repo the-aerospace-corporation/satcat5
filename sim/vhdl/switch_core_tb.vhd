@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for the core packet-switching pipeline.
@@ -89,6 +75,8 @@ end process;
 gen_ports : for n in PORT_COUNT-1 downto 0 generate
     ports_tx_ctrl(n).clk     <= clk_100;
     ports_tx_ctrl(n).ready   <= '1';
+    ports_tx_ctrl(n).pstart  <= '1';
+    ports_tx_ctrl(n).tnow    <= (others => '0');
     ports_tx_ctrl(n).txerr   <= '0';
     ports_tx_ctrl(n).reset_p <= reset_p;
 

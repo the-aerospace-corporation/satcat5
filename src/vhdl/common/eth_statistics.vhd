@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Stream traffic statistics
@@ -82,6 +68,8 @@ entity eth_statistics is
     err_ovr_tx  : out byte_u;
     err_ovr_rx  : out byte_u;
     err_pkt     : out byte_u;
+    err_ptp_tx  : out byte_u;
+    err_ptp_rx  : out byte_u;
 
     -- Traffic stream to be monitored.
     rx_reset_p  : in  std_logic;
@@ -164,6 +152,8 @@ signal wrk_err_mii      : byte_u := (others => '0');
 signal wrk_err_ovr_tx   : byte_u := (others => '0');
 signal wrk_err_ovr_rx   : byte_u := (others => '0');
 signal wrk_err_pkt      : byte_u := (others => '0');
+signal wrk_err_ptp_tx   : byte_u := (others => '0');
+signal wrk_err_ptp_rx   : byte_u := (others => '0');
 
 -- Latched values for clock-domain crossing.
 signal lat_bcst_bytes   : counter_t := (others => '0');
@@ -185,6 +175,8 @@ signal evt_mii_err      : std_logic;
 signal evt_ovr_tx       : std_logic;
 signal evt_ovr_rx       : std_logic;
 signal evt_pkt_err      : std_logic;
+signal evt_ptp_tx_err   : std_logic;
+signal evt_ptp_rx_err   : std_logic;
 signal status_async     : cfgbus_word;
 
 begin
@@ -367,6 +359,18 @@ u_pkt_err : sync_toggle2pulse
     out_strobe  => evt_pkt_err,
     out_clk     => status_clk);
 
+u_ptp_tx_err: sync_toggle2pulse
+    port map(
+    in_toggle   => err_port.tx_ptp_err,
+    out_strobe  => evt_ptp_tx_err,
+    out_clk     => status_clk);
+
+u_ptp_rx_err: sync_toggle2pulse
+    port map(
+    in_toggle   => err_port.rx_ptp_err,
+    out_strobe  => evt_ptp_rx_err,
+    out_clk     => status_clk);
+
 -- Error counting is asynchronous; use the status clock domain.
 p_errct : process(status_clk)
 begin
@@ -388,6 +392,10 @@ begin
             wrk_err_ovr_rx, evt_ovr_rx,     stats_req_tx);
         wrk_err_pkt      <= accum_err(
             wrk_err_pkt,    evt_pkt_err,    stats_req_tx);
+        wrk_err_ptp_tx   <= accum_err(
+            wrk_err_ptp_tx, evt_ptp_tx_err, stats_req_tx);
+        wrk_err_ptp_rx   <= accum_err(
+            wrk_err_ptp_rx, evt_ptp_rx_err, stats_req_tx);
     end if;
 end process;
 

@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "port_adapter"
@@ -49,6 +35,7 @@ entity wrap_port_adapter is
     sw_tx_valid     : in  std_logic;
     sw_tx_ready     : out std_logic;
     sw_tx_error     : out std_logic;
+    sw_tx_pstart    : out std_logic;
     sw_tx_tnow      : out std_logic_vector(47 downto 0);
     sw_tx_reset     : out std_logic;
 
@@ -68,6 +55,7 @@ entity wrap_port_adapter is
     mac_tx_valid    : out std_logic;
     mac_tx_ready    : in  std_logic;
     mac_tx_error    : in  std_logic;
+    mac_tx_pstart   : in  std_logic;
     mac_tx_tnow     : in  std_logic_vector(47 downto 0);
     mac_tx_reset    : in  std_logic);
 end wrap_port_adapter;
@@ -92,6 +80,7 @@ sw_rx_status    <= sw_rxd.status;
 sw_rx_reset     <= sw_rxd.reset_p;
 sw_tx_clk       <= sw_txc.clk;
 sw_tx_ready     <= sw_txc.ready;
+sw_tx_pstart    <= sw_txc.pstart;
 sw_tx_tnow      <= std_logic_vector(sw_txc.tnow);
 sw_tx_error     <= sw_txc.txerr;
 sw_tx_reset     <= sw_txc.reset_p;
@@ -110,6 +99,7 @@ mac_rxd.status  <= mac_rx_status;
 mac_rxd.reset_p <= mac_rx_reset;
 mac_txc.clk     <= mac_tx_clk;
 mac_txc.ready   <= mac_tx_ready;
+mac_txc.pstart  <= mac_tx_pstart;
 mac_txc.tnow    <= unsigned(mac_tx_tnow);
 mac_txc.txerr   <= mac_tx_error;
 mac_txc.reset_p <= mac_tx_reset;

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // "Writeable" I/O interface core definitions
 //
@@ -36,7 +22,7 @@ namespace satcat5 {
             // (Child objects MUST override this method.)
             virtual unsigned get_write_space() const = 0;
 
-            // Write various data types.
+            // Write various data types in big-endian format.
             // (Child MAY override "write_bytes" as needed for performance.)
             void write_u8(u8 data);
             void write_u16(u16 data);
@@ -48,8 +34,21 @@ namespace satcat5 {
             void write_s64(s64 data);
             void write_f32(float data);
             void write_f64(double data);
-            void write_str(const char* str);
             virtual void write_bytes(unsigned nbytes, const void* src);
+
+            // Write various data types in little-endian format.
+            void write_u16l(u16 data);
+            void write_u32l(u32 data);
+            void write_u64l(u64 data);
+            void write_s16l(s16 data);
+            void write_s32l(s32 data);
+            void write_s64l(s64 data);
+            void write_f32l(float data);
+            void write_f64l(double data);
+
+            // Write the contents of a null-terminated string.
+            // Note: Null-termination is not copied to the output.
+            void write_str(const char* str);
 
             // Mark end of frame and release temporary working data.
             // Returns true if successful, false on error.
@@ -87,6 +86,7 @@ namespace satcat5 {
         public:
             ArrayWrite(void* dst, unsigned len);
             unsigned get_write_space() const override;
+            void write_abort() override;
             bool write_finalize() override;
             inline unsigned written_len() const {return m_wrlen;}
         private:
@@ -110,8 +110,9 @@ namespace satcat5 {
             ~WriteableRedirect() {}
             void write_next(u8 data) override;
             void write_overflow() override;
+            inline void write_dst(satcat5::io::Writeable* dst) {m_dst = dst;}
         private:
-            satcat5::io::Writeable* const m_dst;
+            satcat5::io::Writeable* m_dst;
         };
     }
 }

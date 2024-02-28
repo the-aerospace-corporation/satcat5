@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/eth_arp.h>
@@ -177,7 +163,7 @@ bool ProtoArp::send_internal(u16 opcode,
     wr->write_u8(ARP_HLEN_ETHERNET);
     wr->write_u8(ARP_PLEN_IPV4);
     wr->write_u16(opcode);
-    wr->write_obj(m_iface->m_addr); // SHA = Our MAC-address
+    wr->write_obj(m_iface->macaddr()); // SHA = Our MAC-address
     wr->write_obj(spa);             // SPA = Source IP (varies)
     wr->write_obj(tha);             // THA = Target MAC (varies)
     wr->write_obj(tpa);             // TPA = Target IP (varies)

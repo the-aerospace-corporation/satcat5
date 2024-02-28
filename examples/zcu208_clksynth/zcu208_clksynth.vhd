@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2023-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 -- Top-level file for the ZCU208 "Clock-Synthesizer" demo
 --
@@ -26,14 +12,14 @@
 -- Control is provided over the USB-UART (UART2).
 --
 -- The design requires two external reference clocks:
---  * 125 MHz reference for VPLL, routed through MGT (J6, J7)
+--  * 125 MHz reference for VERDACT, routed through MGT (J6, J7)
 --  * 400 MHz reference for DAC (J99, J100)
 --    (This can be sourced from the CLK104.)
 --  * TODO: Is SYSREF input required? If so, what parameters?
 --
 -- It synthesizes four sine-waves, each nominally 125 MHz:
---  * DAC230 T2.0: 125 MHz locked cosine   (derived from VPLL counter)
---  * DAC230 T2.2: 125 MHz locked sine     (derived from VPLL counter)
+--  * DAC230 T2.0: 125 MHz locked cosine   (derived from VERDACT counter)
+--  * DAC230 T2.2: 125 MHz locked sine     (derived from VERDACT counter)
 --  * DAC231 T3.0: 125 MHz unlocked cosine (free-running)
 --  * DAC231 T3.2: 125 MHz unlocked sine   (free-running)
 --
@@ -76,10 +62,10 @@ end zcu208_clksynth;
 
 architecture zcu208_clksynth of zcu208_clksynth is
 
--- VPLL configuration is tuned for the ZCU208.
-constant PLL_TAU_MS : real := 50.0;     -- VPLL time-constant (msec)
-constant PLL_SC_PHA : natural := 28;    -- VPLL phase precision
-constant PLL_SC_TAU : natural := 40;    -- VPLL frequency precision
+-- VERDACT configuration is tuned for the ZCU208.
+constant PLL_TAU_MS : real := 50.0;     -- Filter time-constant (msec)
+constant PLL_SC_PHA : natural := 28;    -- VERDACT phase precision
+constant PLL_SC_TAU : natural := 40;    -- VERDACT frequency precision
 constant PLL_FILTER : boolean := true;  -- Enable auxiliary filter?
 
 -- Configuration constants.
@@ -97,10 +83,10 @@ constant DEV_OTHER  : integer := 3;     -- Individual registers
 
 constant REG_IDENT  : integer := 0;     -- Read-only identifier
 constant REG_SPIMUX : integer := 1;     -- Control CLK104 SPI MUX
-constant REG_VPLL   : integer := 2;     -- VPLL offset
+constant REG_TIME   : integer := 2;     -- DAC time offset
 constant REG_LED    : integer := 3;     -- Status LED mode
 constant REG_RESET  : integer := 4;     -- Software reset
-constant REG_VLOCK  : integer := 5;     -- VPLL lock/unlock counter
+constant REG_VLOCK  : integer := 5;     -- VERDACT lock/unlock counter
 constant REG_VREF   : integer := 6;     -- VREF fine adjustment
 constant REG_VCMP   : integer := 7;     -- VREF phase reporting
 
@@ -121,7 +107,8 @@ signal cfg_ledmux   : cfgbus_word;
 signal cfg_reset    : cfgbus_word;
 
 -- Vernier clock and reference counter.
-constant VCONFIG : vernier_config := create_vernier_config(REF_CLK_HZ);
+constant VCONFIG : vernier_config :=
+    create_vernier_config(REF_CLK_HZ, PLL_TAU_MS, PLL_FILTER);
 signal vclka        : std_logic;
 signal vclkb        : std_logic;
 signal vreset_p     : std_logic;
@@ -279,13 +266,11 @@ u_vpll_dac : entity work.ptp_counter_sync
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => DAC_CLK_HZ,
-    AUX_FILTER  => PLL_FILTER,
-    LOOP_TAU_MS => PLL_TAU_MS,
     PHA_SCALE   => PLL_SC_PHA,
     TAU_SCALE   => PLL_SC_TAU,
     WAIT_LOCKED => false,
     DEVADDR     => DEV_OTHER,
-    REGADDR     => REG_VPLL)
+    REGADDR     => REG_TIME)
     port map(
     ref_time    => ref_time,
     cfg_cmd     => cfg_cmd,
@@ -309,8 +294,6 @@ u_vpll_aux : entity work.ptp_counter_sync
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => REF_CLK_HZ,
-    AUX_FILTER  => PLL_FILTER,
-    LOOP_TAU_MS => PLL_TAU_MS,
     PHA_SCALE   => PLL_SC_PHA,
     TAU_SCALE   => PLL_SC_TAU,
     WAIT_LOCKED => false)

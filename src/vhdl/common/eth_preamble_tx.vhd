@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Ethernet preamble insertion
@@ -94,7 +80,7 @@ signal reg_ctr      : integer range 0 to COUNT_MAX := 0;
 signal reg_data     : byte_t := (others => '0');
 signal reg_dv       : std_logic := '0';
 signal reg_ready    : std_logic := '0';
-
+signal reg_pstart   : std_logic := '0';
 
 begin
 
@@ -107,6 +93,7 @@ rep_read        <= rep_read_i;
 
 tx_ctrl.clk     <= tx_clk;
 tx_ctrl.ready   <= not fifo_full;
+tx_ctrl.pstart  <= reg_pstart;
 tx_ctrl.tnow    <= tx_tstamp;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= not tx_pwren;
@@ -156,6 +143,9 @@ begin
         elsif (rep_read_i = '1') then
             rep_max <= rep_rate;
         end if;
+
+        -- Frame-start strobe with deterministic delay (see "ptp_egress.vhd").
+        reg_pstart <= tx_frmst and rep_read_i and not fifo_valid;
     end if;
 end process;
 

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for ConfigBus "Mailmap" driver
 
@@ -110,9 +96,9 @@ TEST_CASE("port_mailmap") {
     satcat5::port::Mailmap uut(&mock, CFG_DEVADDR);
 
     // PtpRealtime objects for setting timestamps for testing PTP functions
-    satcat5::cfg::PtpRealtime rt_clk_ctrl_ptprealtime = satcat5::cfg::PtpRealtime(&mock, CFG_DEVADDR, REG_RTCLKCTRL);
-    satcat5::cfg::PtpRealtime tx_ptp_time_ptprealtime = satcat5::cfg::PtpRealtime(&mock, CFG_DEVADDR, REG_TXPTPTIME);
-    satcat5::cfg::PtpRealtime rx_ptp_time_ptprealtime = satcat5::cfg::PtpRealtime(&mock, CFG_DEVADDR, REG_RXPTPTIME);
+    satcat5::cfg::PtpRealtime rt_clk_ctrl_ptprealtime(&mock, CFG_DEVADDR, REG_RTCLKCTRL);
+    satcat5::cfg::PtpRealtime tx_ptp_time_ptprealtime(&mock, CFG_DEVADDR, REG_TXPTPTIME);
+    satcat5::cfg::PtpRealtime rx_ptp_time_ptprealtime(&mock, CFG_DEVADDR, REG_RXPTPTIME);
 
     // Sanity check on initial state.
     CHECK(uut.get_write_space() > 1500);
@@ -206,6 +192,16 @@ TEST_CASE("port_mailmap") {
     }
 
     SECTION("PTP") {
+        // Count the number of PTP and non-PTP notifications.
+        satcat5::test::CountOnDemand events_ptp;
+        satcat5::test::IoEventCounter events_non;
+        uut.ptp_callback(&events_ptp);
+        uut.set_callback(&events_non);
+
+        // ptp_tx_write() and ptp_rx_read() simply point to the main object.
+        CHECK(uut.ptp_tx_write() == &uut);
+        CHECK(uut.ptp_rx_read() == &uut);
+
         // ptp_tx_start()
         ptp::Time test_time1 = ptp::Time(4660, 86, 120);
         rt_clk_ctrl_ptprealtime.clock_set(test_time1);
@@ -218,51 +214,63 @@ TEST_CASE("port_mailmap") {
 
         // ptp_rx_peak()
         // PTP - L2
-        CHECK(mock.buf_wr("abcdefghijkl""\x88\xF7"));
+        CHECK(events_non.count() == 0);
+        CHECK(events_ptp.count() == 0);
+        CHECK(mock.buf_wr("abcdefghijkl\x88\xF7"));
         satcat5::poll::service();
-        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::PTPL2);
+        CHECK(events_non.count() == 0);
+        CHECK(events_ptp.count() == 1);
+        CHECK(uut.ptp_rx_type() == ptp::PacketType::PTP_L2);
         read_str(&uut);     // Read to clear the buffer for the next test
 
         // PTP - L3
         // Test message downloaded from https://wiki.wireshark.org/Protocols/ptp
-        u64 message1[12] = {
+        const u64 message1[12] = {
             0x01005e00006b0080, 0x630009ba08004500, 0x005245a200000111, 0xd0dfc0a80206e000,
             0x006b013f013f003e, 0x0000120200360000, 0x0000000000000000, 0x0000000000000080,
             0x63ffff0009ba0001, 0x9e4b050f000045b1, 0x11522825d2fb0000, 0x0000000000000000
         };
         mock.buf_wr(message1, sizeof(message1));
         satcat5::poll::service();
-        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::PTPL3);
+        CHECK(events_non.count() == 0);
+        CHECK(events_ptp.count() == 2);
+        CHECK(uut.ptp_rx_type() == ptp::PacketType::PTP_L3);
         uut.read_finalize();     // Clear the buffer for the next test
 
         // non-PTP (IPv4 ether type but wrong protocol)
         // Test message adapted from https://wiki.wireshark.org/Protocols/ptp
-        u64 message2[12] = {
+        const u64 message2[12] = {
             0x01005e00006b0080, 0x630009ba08004500, 0x005245a200000110, 0xd0dfc0a80206e000,
             0x006b013f013f003e, 0x0000120200360000, 0x0000000000000000, 0x0000000000000080,
             0x63ffff0009ba0001, 0x9e4b050f000045b1, 0x11522825d2fb0000, 0x0000000000000000
         };
         mock.buf_wr(message2, sizeof(message2));
         satcat5::poll::service();
-        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::nonPTP);
+        CHECK(events_non.count() == 1);
+        CHECK(events_ptp.count() == 2);
+        CHECK(uut.ptp_rx_type() == ptp::PacketType::NON_PTP);
         uut.read_finalize();     // Clear the buffer for the next test
 
         // non-PTP (IPv4 ether type and UDP protocol but wrong ports)
         // Test message adapted from https://wiki.wireshark.org/Protocols/ptp
-        u64 message3[12] = {
+        const u64 message3[12] = {
             0x01005e00006b0080, 0x630009ba08004500, 0x005245a200000111, 0xd0dfc0a80206e000,
             0x006baaaaaaaa003e, 0x0000120200360000, 0x0000000000000000, 0x0000000000000080,
             0x63ffff0009ba0001, 0x9e4b050f000045b1, 0x11522825d2fb0000, 0x0000000000000000
         };
         mock.buf_wr(message3, sizeof(message3));
         satcat5::poll::service();
-        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::nonPTP);
+        CHECK(events_non.count() == 2);
+        CHECK(events_ptp.count() == 2);
+        CHECK(uut.ptp_rx_type() == ptp::PacketType::NON_PTP);
         uut.read_finalize();     // Clear the buffer for the next test
 
         // non-PTP (wrong ether type)
         CHECK(mock.buf_wr("\x01\x02\x03\x04\x05\x06\x07\x08\x09\x10\x11\x12\x99\x99"));
         satcat5::poll::service();
-        CHECK(uut.ptp_rx_peek() == satcat5::port::Mailmap::PtpType::nonPTP);
+        CHECK(events_non.count() == 3);
+        CHECK(events_ptp.count() == 2);
+        CHECK(uut.ptp_rx_type() == ptp::PacketType::NON_PTP);
         read_str(&uut);     // Read to clear the buffer for the next test
 
         // ptp_rx_timestamp()

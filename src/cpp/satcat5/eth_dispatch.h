@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Ethernet protocol dispatcher.
 
@@ -33,10 +19,12 @@ namespace satcat5 {
         public:
             // Connect to any valid I/O source and sink.
             // (e.g., satcat5::port::MailMap or satcat5::eth::SlipCodec.)
+            // If provided, optional timer object allows retry-timeout.
             Dispatch(
                 const satcat5::eth::MacAddr& addr,
                 satcat5::io::Writeable* dst,
-                satcat5::io::Readable* src);
+                satcat5::io::Readable* src,
+                satcat5::util::GenericTimer* timer = 0);
             ~Dispatch() SATCAT5_OPTIONAL_DTOR;
 
             // Write Ethernet frame header and get Writeable object.
@@ -54,7 +42,12 @@ namespace satcat5 {
                 const satcat5::eth::MacType& type);
             #endif
 
+            // Set the local MAC-address.
+            void set_macaddr(const satcat5::eth::MacAddr& macaddr);
+
             // Other accessors:
+            inline satcat5::eth::MacAddr macaddr() const
+                {return m_addr;}
             inline satcat5::eth::MacAddr reply_mac() const
                 {return m_reply_macaddr;}
             #if SATCAT5_VLAN_ENABLE
@@ -64,16 +57,19 @@ namespace satcat5 {
                 {m_default_vid.value = vtag.vid();}
             #endif
 
-            // MAC address for this interface.
-            satcat5::eth::MacAddr const m_addr;
+
 
         protected:
             // Event handler for incoming Ethernet frames.
             void data_rcvd() override;
 
+            // MAC address for this interface.
+            satcat5::eth::MacAddr m_addr;
+
             // Sink and source objects for the Ethernet interface.
             satcat5::io::Writeable* const m_dst;
             satcat5::io::Readable* const m_src;
+            satcat5::util::GenericTimer* const m_timer;
 
             // Other internal state:
             satcat5::eth::MacAddr m_reply_macaddr;  // Reply address

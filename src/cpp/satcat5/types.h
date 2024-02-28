@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Basic type aliases and prototypes used throughout SatCat5
 
@@ -82,6 +68,13 @@ namespace satcat5 {
         class WrappedRegisterPtr;   // satcat5/cfgbus_core.h
     }
 
+    namespace crc16 {               // 16-bit CRC calculation
+        class KermitRx;             // satcat5/crc16_checksum.h
+        class KermitTx;             // satcat5/crc16_checksum.h
+        class XmodemRx;             // satcat5/crc16_checksum.h
+        class XmodemTx;             // satcat5/crc16_checksum.h
+    }
+
     namespace datetime {            // Human-readable date and time
         struct GpsTime;             // satcat5/datetime.h
         struct RtcTime;             // satcat5/datetime.h
@@ -95,6 +88,7 @@ namespace satcat5 {
         struct MacType;             // satcat5/eth_header.h
         struct VlanTag;             // satcat5/eth_header.h
         class Address;              // satcat5/eth_address.h
+        class AeroFtpClient;        // satcat5/net_aeroftp.h
         class ArpListener;          // satcat5/eth_arp.h
         class ChecksumRx;           // satcat5/eth_checksum.h
         class ChecksumTx;           // satcat5/eth_checksum.h
@@ -118,13 +112,15 @@ namespace satcat5 {
         class BufferedIO;           // satcat5/io_buffer.h
         class BufferedWriter;       // satcat5/io_buffer.h
         class EventListener;        // satcat5/io_readable.h
+        class HdlcDecoder;          // satcat5/codec_hdlc.h
+        class HdlcEncoder;          // satcat5/codec_hdlc.h
         class LimitedRead;          // satcat5/io_readable.h
         class PacketBuffer;         // satcat5/pkt_buffer.h
         class Readable;             // satcat5/io_readable.h
         class ReadableRedirect;     // satcat5/io_readable.h
-        class SlipCodec;            // satcat5/slip.h
-        class SlipDecoder;          // satcat5/slip.h
-        class SlipEncoder;          // satcat5/slip.h
+        class SlipCodec;            // satcat5/codec_slip.h
+        class SlipDecoder;          // satcat5/codec_slip.h
+        class SlipEncoder;          // satcat5/codec_slip.h
         class Writeable;            // satcat5/io_writeable.h
         class WriteableRedirect;    // satcat5/io_writeable.h
     }
@@ -162,6 +158,7 @@ namespace satcat5 {
     namespace net {                 // Generic networking
         struct Type;                // satcat5/net_type.h
         class Address;              // satcat5/net_address.h
+        class AeroFtpClient;        // satcat5/net_aeroftp.h
         class Dispatch;             // satcat5/net_dispatch.h
         class Protocol;             // satcat5/net_protocol.h
         class ProtoConfig;          // satcat5/net_cfgbus.h
@@ -191,15 +188,40 @@ namespace satcat5 {
     }
 
     namespace ptp {                 // Precision Time Protocol (PTP)
+        class Callback;             // satcat5/ptp_measurement.h
+        class Client;               // satcat5/ptp_client.h
+        struct ClockInfo;           // satcat5/ptp_header.h
+        struct CoeffLR;             // satcat5/ptp_filters.h
+        struct CoeffPI;             // satcat5/ptp_filters.h
+        struct CoeffPII;            // satcat5/ptp_filters.h
+        template <unsigned>
+            class ControllerLR;     // satcat5/ptp_filters.h
+        class ControllerLR_Inner;   // satcat5/ptp_filters.h
+        class ControllerPI;         // satcat5/ptp_filters.h
+        class ControllerPII;        // satcat5/ptp_filters.h
+        class Dispatch;             // satcat5/ptp_dispatch.h
+        class Filter;               // satcat5/ptp_filters.h
+        struct Header;              // satcat5/ptp_header.h
+        class Interface;            // satcat5/ptp_interface.h
+        struct Measurement;         // satcat5/ptp_measurement.h
+        class MeasurementCache;     // satcat5/ptp_measurement.h
+        class Source;               // satcat5/ptp_measurement.h
+        class SyncUnicastL2;        // satcat5/ptp_client.h
+        class SyncUnicastL3;        // satcat5/ptp_client.h
         class Time;                 // satcat5/ptp_time.h
         class TrackingClock;        // satcat5/ptp_tracking.h
-        struct TrackingCoeff;       // satcat5/ptp_tracking.h
         class TrackingDither;       // satcat5/ptp_tracking.h
         class TrackingController;   // satcat5/ptp_tracking.h
     }
 
+    namespace test {                // Unit test framework
+        class TftpClient;           // sim/cpp/test_udp_tftp.cc
+        class TftpServer;           // sim/cpp/test_udp_tftp.cc
+    }
+
     namespace udp {                 // UDP networking
         class Address;              // satcat5/udp_core.h
+        class AeroFtpClient;        // satcat5/net_aeroftp.h
         class ConfigBus;            // satcat5/cfgbus_remote.h
         class Dispatch;             // satcat5/udp_dispatch.h
         class ProtoConfig;          // satcat5/net_cfgbus.h
@@ -207,6 +229,9 @@ namespace satcat5 {
         class Socket;               // satcat5/udp_socket.h
         class SocketCore;           // satcat5/udp_socket.h
         class Telemetry;            // satcat5/net_telemetry.h
+        class TftpClient;           // satcat5/udp_tftp.h
+        class TftpServerCore;       // satcat5/udp_tftp.h
+        class TftpServerSimple;     // satcat5/udp_tftp.h
     }
 
     namespace util {                // Other utilities
@@ -219,6 +244,8 @@ namespace satcat5 {
         class RunningMax;           // satcat5/utils.h
         class TimerRegister;        // satcat5/timer.h
         template <unsigned W>
-            struct UintWide;        // satcat5/uint_wide.h
+            struct WideSigned;      // satcat5/wide_integer.h
+        template <unsigned W>
+            struct WideUnsigned;    // satcat5/wide_integer.h
     }
 }

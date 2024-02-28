@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for the PTP clock-synthesizer unit
@@ -23,7 +9,7 @@
 -- It confirms that it reaches the expected output phase and frequency
 -- under a variety of frequency initial conditions.
 --
--- The complete test takes just under 1.6 milliseconds.
+-- The complete test takes just under 2.3 milliseconds.
 --
 
 library ieee;
@@ -39,6 +25,7 @@ entity ptp_clksynth_tb_helper is
     PAR_CLK_HZ  : positive;
     PAR_COUNT   : positive;
     REF_MOD_HZ  : natural;
+    DITHER_EN   : boolean;
     MSB_FIRST   : boolean);
 end ptp_clksynth_tb_helper;
 
@@ -49,12 +36,14 @@ constant SYNTH_NS   : real := 1.0e9 / real(SYNTH_HZ);
 constant REF_MODULO : tstamp_t := get_tstamp_incr(REF_MOD_HZ);
 
 signal par_clk      : std_logic := '0';
+signal ref_tstamp   : tstamp_t := (others => '0');
 signal par_tstamp   : tstamp_t := (others => '0');
 signal par_out      : std_logic_vector(PAR_COUNT-1 downto 0);
 signal par_ref      : std_logic_vector(PAR_COUNT-1 downto 0) := (others => '0');
 signal par_match    : std_logic_vector(PAR_COUNT-1 downto 0) := (others => '0');
 signal reset_p      : std_logic := '1';
 signal check_en     : std_logic := '0';
+signal ref_lock     : std_logic := '0';
 signal ref_incr     : tstamp_t := (others => '0');
 signal ref_offset   : tstamp_t := (others => '0');
 signal test_index   : natural := 0;
@@ -69,14 +58,18 @@ p_tstamp : process(par_clk)
 begin
     if rising_edge(par_clk) then
         if (reset_p = '1') then
-            par_tstamp <= ref_offset;
+            ref_tstamp <= ref_offset;
         elsif REF_MODULO > 0 then
-            par_tstamp <= (par_tstamp + ref_incr) mod REF_MODULO;
+            ref_tstamp <= (ref_tstamp + ref_incr) mod REF_MODULO;
         else
-            par_tstamp <= par_tstamp + ref_incr;
+            ref_tstamp <= ref_tstamp + ref_incr;
         end if;
     end if;
 end process;
+
+-- Suppress the reference signal on startup?
+-- (Many references emit zero until they are locked.)
+par_tstamp <= ref_tstamp when (ref_lock = '1') else TSTAMP_DISABLED;
 
 -- Generate reference signal.
 p_ref : process(par_clk)
@@ -95,7 +88,7 @@ begin
         -- Calculate expected phase of each reference bit.
         for n in 0 to PAR_COUNT-1 loop
             -- Modulo current time to get clock phase.
-            tref := (get_time_nsec(par_tstamp) + par_ns + real(n) * out_ns) mod SYNTH_NS;
+            tref := (get_time_nsec(ref_tstamp) + par_ns + real(n) * out_ns) mod SYNTH_NS;
             -- Add some fuzziness at the edges. ('Z' = Don't-care)
             if (tref < MARGIN) then
                 btmp := 'Z';    -- Rising edge
@@ -125,6 +118,7 @@ uut : entity work.ptp_clksynth
     PAR_CLK_HZ  => PAR_CLK_HZ,
     PAR_COUNT   => PAR_COUNT,
     REF_MOD_HZ  => REF_MOD_HZ,
+    DITHER_EN   => DITHER_EN,
     MSB_FIRST   => MSB_FIRST)
     port map(
     par_clk     => par_clk,
@@ -134,12 +128,14 @@ uut : entity work.ptp_clksynth
 
 -- Compare output to reference.
 p_check : process(par_clk)
+    variable diff : integer := 0;
     variable ok : std_logic := '0';
 begin
     if rising_edge(par_clk) then
         if (reset_p = '0' and check_en = '1') then
-            assert (and_reduce(par_match) = '1')
-                report "Output clock mismatch: " & integer'image(count_zeros(par_match)) severity error;
+            diff := count_zeros(par_match);
+            assert ((diff = 0) or (DITHER_EN and diff = 1))
+                report "Output clock mismatch: " & integer'image(diff) severity error;
         end if;
 
         for b in par_ref'range loop
@@ -150,12 +146,17 @@ end process;
 
 -- High-level test control.
 p_test : process
-    procedure test_single(offset_ns, freq_ppm : real; lock_time : time := 5 us) is
+    procedure test_single(
+        offset_ns   : real;             -- Iniital value of timestamp counter
+        freq_ppm    : real;             -- Reference frequency offset (ppm)
+        lock_time   : time := 5 us;     -- Max allowed time for UUT to lock
+        pre_time    : time := 0 us) is  -- Suppress reference on startup?
         constant period_ns : real := 1.0e3 * (1.0e6 + freq_ppm) / real(PAR_CLK_HZ);
     begin
         -- Reset and set test configuration.
         test_index  <= test_index + 1;
         reset_p     <= '1';
+        ref_lock    <= bool2bit(pre_time = 0 us);
         check_en    <= '0';
         if (REF_MODULO > 0 and offset_ns < 0.0) then
             ref_offset  <= get_tstamp_nsec(offset_ns) + REF_MODULO;
@@ -165,12 +166,16 @@ p_test : process
         ref_incr    <= get_tstamp_nsec(period_ns);
 
         -- Run the test sequence.
-        wait for 1 us;      -- Reset unit under test
+        wait for 1 us;          -- Reset unit under test
         report "Starting test #" & integer'image(test_index);
-        reset_p <= '0';     -- Release reset
-        wait for lock_time; -- Wait for lock (varies)
-        check_en <= '1';    -- Start checking output
-        wait for 190 us;    -- Run for a while
+        reset_p <= '0';         -- Release reset
+        if (pre_time > 0 us) then
+            wait for pre_time;  -- Wait designated period
+            ref_lock <= '1';    -- Begin normal operation
+        end if;
+        wait for lock_time;     -- Wait for lock (varies)
+        check_en <= '1';        -- Start checking output
+        wait for 190 us;        -- Run for a while
     end procedure;
 begin
     -- Ordinary tests.
@@ -182,6 +187,10 @@ begin
     -- Rollover tests may take longer to lock.
     test_single(850_000.0, 0.0, 75 us);
     test_single(950_000.0, 0.0, 75 us);
+    -- Repeat above, but zero input for a while.
+    test_single(      0.0, 0.0,  5 us, 10 us);
+    test_single(850_000.0, 0.0, 75 us, 10 us);
+    test_single(950_000.0, 0.0, 75 us, 10 us);
     report "All tests completed!";
     wait;
 end process;
@@ -205,6 +214,7 @@ uut0 : entity work.ptp_clksynth_tb_helper
     PAR_CLK_HZ  => 125_000_000,
     PAR_COUNT   => 16,
     REF_MOD_HZ  => 0,
+    DITHER_EN   => false,
     MSB_FIRST   => false);
 
 uut1 : entity work.ptp_clksynth_tb_helper
@@ -213,6 +223,16 @@ uut1 : entity work.ptp_clksynth_tb_helper
     PAR_CLK_HZ  => 100_000_000,
     PAR_COUNT   => 16,
     REF_MOD_HZ  => 1000,
+    DITHER_EN   => true,
+    MSB_FIRST   => true);
+
+uut2 : entity work.ptp_clksynth_tb_helper
+    generic map(
+    SYNTH_HZ    => 20_000,
+    PAR_CLK_HZ  => 100_000_000,
+    PAR_COUNT   => 16,
+    REF_MOD_HZ  => 1000,
+    DITHER_EN   => false,
     MSB_FIRST   => true);
 
 end tb;

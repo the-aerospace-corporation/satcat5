@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Data-type definitions used for the switch core.
@@ -89,6 +75,7 @@ package SWITCH_TYPES is
     type port_tx_m2s is record
         clk     : std_logic;        -- Clock for all Tx signals
         ready   : std_logic;        -- Data-READY (AXI flow control)
+        pstart  : std_logic;        -- PTP start (see "ptp_egress.vhd")
         tnow    : tstamp_t;         -- Current system timestamp
         txerr   : std_logic;        -- PHY/MAX error strobe
         reset_p : std_logic;        -- Port reset/shutdown (async)
@@ -111,6 +98,7 @@ package SWITCH_TYPES is
     constant TX_M2S_IDLE : port_tx_m2s := (
         clk     => '0',
         ready   => '0',
+        pstart  => '0',
         tnow    => TSTAMP_DISABLED,
         txerr   => '0',
         reset_p => '0');
@@ -137,6 +125,7 @@ package SWITCH_TYPES is
     type port_tx_m2sx is record     -- From MAC/PHY to switch (Tx-ctrl)
         clk     : std_logic;        -- Clock for all Tx signals
         ready   : std_logic;        -- Data-READY (AXI flow control)
+        pstart  : std_logic;        -- PTP start (see "ptp_egress.vhd")
         tnow    : tstamp_t;         -- Current system timestamp
         txerr   : std_logic;        -- PHY/MAX error strobe
         reset_p : std_logic;        -- Port reset/shutdown (async)
@@ -159,6 +148,7 @@ package SWITCH_TYPES is
     constant TX_M2SX_IDLE : port_tx_m2sx := (
         clk     => '0',
         ready   => '0',
+        pstart  => '0',
         tnow    => TSTAMP_DISABLED,
         txerr   => '0',
         reset_p => '0');
@@ -196,10 +186,12 @@ package SWITCH_TYPES is
     -- (Each signal is an asynchronous toggle marking the designated event.
     --  i.e., Each rising or falling edge indicates that event has occurred.)
     type port_error_t is record
-        mii_err : std_logic;    -- MAC/PHY reports error
-        ovr_tx  : std_logic;    -- Overflow in Tx FIFO (common)
-        ovr_rx  : std_logic;    -- Overflow in Rx FIFO (rare)
-        pkt_err : std_logic;    -- Packet error (Bad checksum, length, etc.)
+        mii_err    : std_logic;    -- MAC/PHY reports error
+        ovr_tx     : std_logic;    -- Overflow in Tx FIFO (common)
+        ovr_rx     : std_logic;    -- Overflow in Rx FIFO (rare)
+        pkt_err    : std_logic;    -- Packet error (Bad checksum, length, etc.)
+        tx_ptp_err : std_logic;    -- invalid egress ptp_tstamp
+        rx_ptp_err : std_logic;    -- invalid ingress ptp_tstamp
     end record;
 
     constant PORT_ERROR_NONE : port_error_t := (others => '0');

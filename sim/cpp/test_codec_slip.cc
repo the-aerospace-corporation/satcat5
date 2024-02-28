@@ -1,40 +1,24 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SLIP encoder and decoder.
 
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
-#include <satcat5/slip.h>
+#include <satcat5/codec_slip.h>
 
 TEST_CASE("SlipEncoder") {
     // Print any SatCat5 messages to console.
     satcat5::log::ToConsole log;
 
-    // Create a working buffer for each encoded frame.
+    // Unit under test writes to a fixed-size working buffer.
     satcat5::io::PacketBufferHeap test_buff(64);
-
-    // Unit under test writes to this buffer.
     satcat5::io::SlipEncoder uut(&test_buff);
 
     SECTION("simple4") {
         uut.write_u32(0x12345678u);
-        uut.write_finalize();
+        REQUIRE(uut.write_finalize());
         CHECK(test_buff.get_read_ready() == 5);
         CHECK(test_buff.read_u8() == 0x12);
         CHECK(test_buff.read_u8() == 0x34);
@@ -45,7 +29,7 @@ TEST_CASE("SlipEncoder") {
 
     SECTION("escape4") {
         uut.write_u32(0xDB12C034u);
-        uut.write_finalize();
+        REQUIRE(uut.write_finalize());
         CHECK(test_buff.get_read_ready() == 7);
         CHECK(test_buff.read_u8() == 0xDB);   // Escape
         CHECK(test_buff.read_u8() == 0xDD);
@@ -57,9 +41,10 @@ TEST_CASE("SlipEncoder") {
     }
 
     SECTION("overflow") {
-        for (u8 a = 0 ; a < 64 ; ++a)
-            uut.write_u8(a);
-        CHECK(!uut.write_finalize());
+        unsigned write_len = test_buff.get_write_space() + 10;
+        for (unsigned a = 0 ; a < write_len ; ++a)
+            uut.write_u8(a & 0xFF);
+        CHECK_FALSE(uut.write_finalize());
     }
 }
 
@@ -67,10 +52,8 @@ TEST_CASE("SlipDecoder") {
     // Print any SatCat5 messages to console.
     satcat5::log::ToConsole log;
 
-    // Create a working buffer for each decoded frame.
+    // Unit under test writes to a fixed-size working buffer.
     satcat5::io::PacketBufferHeap rx(64);
-
-    // Unit under test writes to this buffer.
     satcat5::io::SlipDecoder uut(&rx);
 
     SECTION("simple4") {
@@ -94,17 +77,27 @@ TEST_CASE("SlipDecoder") {
     }
 
     SECTION("error-eof-in-escape") {
-        log.disable();                      // Suppress error messages
+        log.suppress("SLIP decode error");          // Suppress error messages
         uut.write_bytes(5, "\xDB\xDD\x12\xDB\xC0");
-        CHECK(rx.get_read_ready() == 0);    // Should abort entire frame
-        CHECK(!log.empty());                // Confirm error was logged
+        CHECK(rx.get_read_ready() == 0);            // Should abort entire frame
+        CHECK(log.contains("SLIP decode error"));   // Confirm error was logged
     }
 
     SECTION("error-invalid-escape") {
-        log.disable();                      // Suppress error messages
+        log.suppress("SLIP decode error");          // Suppress error messages
         uut.write_bytes(7, "\xDB\xDD\x12\xDB\xCD\x34\xC0");
-        CHECK(rx.get_read_ready() == 0);    // Should abort entire frame
-        CHECK(!log.empty());                // Confirm error was logged
+        CHECK(rx.get_read_ready() == 0);            // Should abort entire frame
+        CHECK(log.contains("SLIP decode error"));   // Confirm error was logged
+    }
+
+    SECTION("overflow") {
+        unsigned write_len = rx.get_write_space() + 10;
+        for (unsigned a = 0 ; a < write_len ; ++a)
+            uut.write_u8(0x42);                     // Packet too long...
+        uut.write_u8(0xC0);                         // End-of-frame
+        CHECK(rx.get_read_ready() == 0);            // Confirm output is empty
+        uut.write_u16(0x42C0);                      // Single byte + EOF
+        CHECK(rx.get_read_ready() == 1);            // Confirm output is OK
     }
 }
 
@@ -118,7 +111,7 @@ TEST_CASE("SlipCodec") {
 
     SECTION("Tx") {
         uut.write_u32(0x12345678u);
-        uut.write_finalize();
+        REQUIRE(uut.write_finalize());
         satcat5::poll::service();
         CHECK(tx.get_read_ready() == 5);
         CHECK(tx.read_u8() == 0x12);

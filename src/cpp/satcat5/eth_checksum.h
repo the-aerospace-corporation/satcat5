@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Inline Ethernet Checksum insertion and verification
 //
@@ -35,8 +21,9 @@
 
 #pragma once
 
+#include <satcat5/codec_slip.h>
 #include <satcat5/io_buffer.h>
-#include <satcat5/slip.h>
+#include <satcat5/io_checksum.h>
 
 namespace satcat5 {
     namespace eth {
@@ -47,47 +34,33 @@ namespace satcat5 {
         u32 crc32(satcat5::io::Readable* src);
 
         // Append FCS to each outgoing frame.
-        class ChecksumTx : public satcat5::io::Writeable
+        class ChecksumTx : public satcat5::io::ChecksumTx<u32,4>
         {
         public:
             // Permanently link this encoder to an output object.
             explicit ChecksumTx(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
-            unsigned get_write_space() const override;
             bool write_finalize() override;
-            void write_abort() override;
 
         private:
             // Implement required API from Writeable:
             void write_next(u8 data) override;
-
-            // Internal state:
-            satcat5::io::Writeable* const m_dst;    // Output object
-            u32 m_crc;                              // Checksum state
         };
 
         // Check and remove FCS from each incoming frame.
-        class ChecksumRx : public satcat5::io::Writeable
+        class ChecksumRx : public satcat5::io::ChecksumRx<u32,4>
         {
         public:
             // Permanently link this encoder to an output object.
             explicit ChecksumRx(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
-            unsigned get_write_space() const override;
             bool write_finalize() override;
-            void write_abort() override;
 
         private:
             // Implement required API from Writeable:
             void write_next(u8 data) override;
-
-            // Internal state:
-            satcat5::io::Writeable* const m_dst;    // Output object
-            u32 m_crc;                              // Checksum state
-            u32 m_sreg;                             // Input delay buffer
-            unsigned m_bidx;                        // Bytes received
         };
 
         // Buffered SLIP encoder / decoder pair with Ethernet FCS.

@@ -1,20 +1,6 @@
 # ------------------------------------------------------------------------
-# Copyright 2019, 2021, 2022 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
 # This script is a target-agnostic helper that is used by the various
@@ -95,17 +81,21 @@ generate_sem sem_0
 # Add/Import each constraints file and set properties.
 variable constr_files [get_filesets constrs_1]
 
-variable file "[file normalize ./$constr_synth]"
-variable file_added [add_files -norecurse -fileset $constr_files $file]
-variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
-set_property "file_type" "XDC" $file_obj
+if {[info exists constr_synth]} {
+    variable file "[file normalize ./$constr_synth]"
+    variable file_added [add_files -norecurse -fileset $constr_files $file]
+    variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+    set_property "file_type" "XDC" $file_obj
+}
 
-variable file "[file normalize ./$constr_impl]"
-variable file_added [add_files -norecurse -fileset $constr_files $file]
-variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
-set_property "file_type" "XDC" $file_obj
-set_property "used_in" "implementation" $file_obj
-set_property "used_in_synthesis" "0" $file_obj
+if {[info exists constr_impl]} {
+    variable file "[file normalize ./$constr_impl]"
+    variable file_added [add_files -norecurse -fileset $constr_files $file]
+    variable file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+    set_property "file_type" "XDC" $file_obj
+    set_property "used_in" "implementation" $file_obj
+    set_property "used_in_synthesis" "0" $file_obj
+}
 
 variable file "[file normalize ./$target_proj/constr_debug.xdc]"
 variable file_added [add_files -norecurse -fileset $constr_files $file]
@@ -116,6 +106,14 @@ set_property "file_type" "XDC" $file_obj
 variable sim_files [get_filesets sim_1]
 set_property "xelab.nosort" "1" $sim_files
 set_property "xelab.unifast" "" $sim_files
+
+if {[info exists files_sim]} {
+    foreach fi $files_sim {
+        variable file_obj [add_files -norecurse -fileset $sim_files [glob $fi]]
+        set_property "file_type" "VHDL" $file_obj
+        set_property "library" $target_lib $file_obj
+    }
+}
 
 # Set the top-level file, if specified.
 if {[info exists target_top]} {

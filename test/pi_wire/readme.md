@@ -60,7 +60,7 @@ Pi-Wire is a tool that turns a [Raspberry Pi](https://www.raspberrypi.org/) into
 
 The name is intended to indicate that the device acts as close as possible to a wire. Ideally, it simply allows every packet through, verbatim, and doesn't act like an independent device. 
 
-Initial development was by 2019 summer interns Henry Haase and Louis Stromeyer.  Current point of contact is Alex Utter.
+Initial development was by 2019 summer interns Henry Haase and Louis Stromeyer and continued by 2021 summer intern Giuliana Hofheins.  Current point of contact is Alex Utter.
 
 The instructions below assume a Raspberry Pi 3+ running stock Raspbian (2021 May 7 build).
 
@@ -308,16 +308,17 @@ The two UART peripherals utilized by Raspberry Pi are ttyS0 and ttyAMA0. While t
 Test UART ports by referencing [Supplemental](#supplemental).
 
 ## Copyright Notice
-Copyright 2019 The Aerospace Corporation
-Copyright 2021 Giuliana Hofheins
+Copyright 2019-2021 The Aerospace Corporation.
 
-This file is part of SatCat5.
+This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
-SatCat5 is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+You may redistribute and modify SatCat5 and make products using it under
+the weakly reciprocal variant of the CERN Open Hardware License, version 2
+or (at your option) any later weakly reciprocal version.
 
-SatCat5 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with SatCat5. If not, see https://www.gnu.org/licenses/.
+SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
+PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.
 
 
 

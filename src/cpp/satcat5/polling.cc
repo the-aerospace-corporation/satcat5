@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/interrupts.h> // For AtomicLock
@@ -247,20 +233,25 @@ void poll::Timer::query(unsigned elapsed_msec)
         // Continue countdown...
         m_trem -= elapsed_msec;
     } else if (m_trem) {
-        // Countdown just elapsed!
-        timer_event();
-        // Adjust next interval to minimize cumulative drift.
-        // e.g., If timer scheduled every 1000 msec fires 5 msec late,
-        // then next interval should be 995 msec to get back on schedule.
-        // If overshoot is too large to fix, minimum delay is 1 msec.
+        // Repeating timers adjust next interval to minimize cumulative drift.
+        // (Do this first, since timer_event() may change the configuration.)
         unsigned ovr = elapsed_msec - m_trem;
-        if (m_tnext > ovr) {    // Adjust next interval
+        if (m_tnext > ovr) {
+            // Overshoot is small enough to compensate accurately.
+            // e.g., If timer scheduled every 1000 msec fires 5 msec late,
+            // then next interval should be 995 msec to get back on schedule.
             m_trem = m_tnext - ovr;
-        } else if (m_tnext) {   // Too large, use minimum
+        } else if (m_tnext) {
+            // Overshoot is too large to fix, minimum delay is 1 msec.
             m_trem = 1;
-        } else {                // Stop after one-time event
+        } else {
+            // Stop after one-time event
             m_trem = 0;
         }
+
+        // Process the timer event notification.
+        // (Any configuration changes overwrite the calculations above.)
+        timer_event();
     }
 }
 

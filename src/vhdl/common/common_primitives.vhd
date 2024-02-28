@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Shared definitions for platform-specific primitives
@@ -256,16 +242,25 @@ package common_primitives is
         input_hz    : natural;          -- Original reference frequency
         vclka_hz    : real;             -- Frequency of the slow output (0 = invalid)
         vclkb_hz    : real;             -- Frequency of the fast output (0 = invalid)
+        sync_tau_ms : real;             -- Synchronization-filter time constant
+        sync_aux_en : boolean;          -- Synchronization enable auxiliary filter?
         params      : vernier_params;   -- Reserved parameters (varies by platform)
     end record;
 
+    constant VERNIER_DEFAULT_TAU_MS : real := 50.0;
+    constant VERNIER_DEFAULT_AUX_EN : boolean := true;
+
     -- Use this configuration to indicate PTP is disabled.
     constant VERNIER_DISABLED : vernier_config :=
-        (0, 0.0, 0.0, (others => 0.0));
+        (0, 0.0, 0.0, 0.0, false, (others => 0.0));
 
     -- Given reference frequency, determine the "best" Vernier configuration.
     -- (An unsupported or zero input frequency returns "VERNIER_DISABLED".)
-    function create_vernier_config(input_hz : natural) return vernier_config;
+    function create_vernier_config(
+        input_hz    : natural;
+        sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+        return vernier_config;
 
     -- Standardized clock generator for a Vernier clock-pair.
     component clkgen_vernier is

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Microblaze software top-level for the "Arty Managed" example design
 
@@ -34,6 +20,7 @@
 #include <satcat5/port_mailmap.h>
 #include <satcat5/port_serial.h>
 #include <satcat5/switch_cfg.h>
+#include <satcat5/udp_tftp.h>
 #include "arty_devices.h"
 
 using satcat5::cfg::LedActivity;
@@ -114,9 +101,16 @@ static constexpr satcat5::eth::MacAddr LOCAL_MAC
 static constexpr ip::Addr LOCAL_IP
     = DEBUG_DHCP_CLIENT ? ip::ADDR_NONE : ip::Addr(192, 168, 1, 42);
 static constexpr ip::Addr PING_TARGET
-    = DEBUG_PING_HOST ? ip::ADDR_NONE : ip::Addr(192, 168, 1, 1);
+    = DEBUG_PING_HOST ? ip::Addr(192, 168, 1, 1) : ip::ADDR_NONE;
 
 ip::Stack ip_stack(LOCAL_MAC, LOCAL_IP, &eth_port, &eth_port, &timer);
+
+// Read-only TFTP server sends a fixed message for any requested file.
+// From an attached PC, run the command: "curl tftp://192.168.1.42/test.txt"
+static constexpr char TFTP_MESSAGE[] =
+    "SatCat5 is FPGA gateware that implements a low-power, mixed-media Ethernet switch.\n";
+satcat5::io::ArrayRead tftp_source(TFTP_MESSAGE, sizeof(TFTP_MESSAGE)-1);
+satcat5::udp::TftpServerSimple tftp_server(&ip_stack.m_udp, &tftp_source, 0);
 
 // DHCP client is dormant if user sets a static IP.
 ip::DhcpClient ip_dhcp(&ip_stack.m_udp);
@@ -264,8 +258,7 @@ int main()
     {
         timer.busywait_usec(1000);
         Log(satcat5::log::INFO,
-            "Welcome to SatCat5: "
-            "\xf0\x9f\x9b\xb0\xef\xb8\x8f\xf0\x9f\x90\xb1\xf0\x9f\x95\x94\r\n\t"
+            "Welcome to SatCat5: " SATCAT5_WELCOME_EMOJI "\r\n\t"
             "Arty-Managed Demo, built ").write(satcat5::get_sw_build_string());
         eth_switch.log_info("Arty-Switch");
     }

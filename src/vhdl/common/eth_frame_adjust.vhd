@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2022 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Ethernet frame adjustment prior to transmission.
@@ -74,6 +60,7 @@ entity eth_frame_adjust is
     -- Output data stream (with zero-padding and FCS, AXI flow control).
     out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
     out_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
+    out_error   : out std_logic;
     out_nlast   : out integer range 0 to IO_BYTES;
     out_last    : out std_logic;            -- Legacy compatibility only
     out_valid   : out std_logic;
@@ -124,6 +111,8 @@ signal fcs_meta     : meta_t := (others => '0');
 signal fcs_nlast    : last_t := 0;
 signal fcs_valid    : std_logic := '0';
 signal fcs_ready    : std_logic := '0';
+signal fcs_error    : std_logic := '0';
+signal fcs_first    : std_logic := '1';
 signal fcs_ovr      : std_logic := '0';
 
 begin
@@ -359,6 +348,7 @@ end process;
 -- Optionally append a new FCS to the end of each packet.
 gen_append_none : if not APPEND_FCS generate
     fcs_data  <= pad_data;
+    fcs_error <= pad_error;
     fcs_meta  <= pad_meta;
     fcs_nlast <= pad_nlast;
     fcs_valid <= pad_valid;
@@ -375,12 +365,10 @@ gen_append_single : if APPEND_FCS and IO_BYTES = 1 generate
         variable bcount : integer range 0 to 3 := 0;
         variable crc32  : crc_word_t := CRC_INIT;
         variable emask  : byte_t := (others => '0');
-        variable error  : std_logic := '0';
-        variable first  : std_logic := '1';
     begin
         if rising_edge(clk) then
             -- Relay data until end-of-frame, then append FCS.
-            emask := (others => error);
+            emask := (others => fcs_error);
             if (pad_valid = '1' and pad_ready = '1') then
                 -- Relay normal data until end of frame.
                 fcs_data  <= pad_data;
@@ -418,11 +406,11 @@ gen_append_single : if APPEND_FCS and IO_BYTES = 1 generate
 
             -- Sticky "error" flag persists over each frame.
             if (reset_p = '1') then
-                error := '0';
-                first := '1';
+                fcs_error <= '0';
+                fcs_first <= '1';
             elsif (pad_valid = '1' and pad_ready = '1') then
-                error := pad_error or (error and not first);
-                first := bool2bit(pad_nlast > 0);
+                fcs_error <= pad_error or (fcs_error and not fcs_first);
+                fcs_first <= bool2bit(pad_nlast > 0);
             end if;
 
             -- Update the CRC word and output byte counter.
@@ -461,6 +449,7 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
         signal dly_write    : std_logic;
         signal fifo_data    : data_t := (others => '0');
         signal fifo_nlast   : last_t := 0;
+        signal fifo_error   : std_logic := '0';
         signal fifo_write   : std_logic := '0';
         signal fifo_ready   : std_logic;
         signal fcs_read     : std_logic;
@@ -538,24 +527,29 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
 
                 -- Modify the primary output stream.
                 if (ovr_bytes > IO_BYTES) then
-                    -- Multi-word carryover from previous frame (
+                    -- Multi-word carryover from previous frame.
                     fifo_data   <= crc_shift;
+                    fifo_error  <= crc_error;
                     fifo_nlast  <= 0;
                 elsif (ovr_bytes > 0) then
                     -- Final carryover from previous frame.
                     fifo_data   <= crc_shift;
+                    fifo_error  <= crc_error;
                     fifo_nlast  <= ovr_bytes;
                 elsif (dly_nlast = 0) then
                     -- Regular data feedthrough.
                     fifo_data   <= dly_data;
+                    fifo_error  <= dly_error;
                     fifo_nlast  <= dly_nlast;
                 elsif (dly_nlast + FCS_BYTES <= IO_BYTES) then
                     -- Insertion without carryover.
                     fifo_data   <= dly_data or crc_shift;
+                    fifo_error  <= dly_error;
                     fifo_nlast  <= dly_nlast + FCS_BYTES;
                 else
                     -- Insertion with carryover.
                     fifo_data   <= dly_data or crc_shift;
+                    fifo_error  <= dly_error;
                     fifo_nlast  <= 0;
                 end if;
                 fifo_write <= dly_write or bool2bit(ovr_bytes > 0);
@@ -582,12 +576,16 @@ gen_append_parallel : if APPEND_FCS and IO_BYTES > 1 generate
 
         -- Output FIFO required because "parcrc" block has no flow-control.
         u_fifo_data : entity work.fifo_smol_bytes
-            generic map(IO_BYTES => IO_BYTES)
+            generic map(
+            IO_BYTES    => IO_BYTES,
+            META_WIDTH  => 1)
             port map(
             in_data     => fifo_data,
+            in_meta(0)  => fifo_error,
             in_nlast    => fifo_nlast,
             in_write    => fifo_write,
             out_data    => fcs_data,
+            out_meta(0) => fcs_error,
             out_nlast   => fcs_nlast,
             out_valid   => fcs_valid,
             out_read    => fcs_read,
@@ -619,6 +617,7 @@ out_data  <= fcs_data;
 gen_withmeta : if (META_WIDTH > 0) generate
     out_meta  <= fcs_meta;
 end generate;
+out_error <= fcs_error;
 out_nlast <= fcs_nlast;
 out_last  <= bool2bit(fcs_nlast > 0);
 out_valid <= fcs_valid;

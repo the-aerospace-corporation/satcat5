@@ -1,20 +1,6 @@
 # ------------------------------------------------------------------------
-# Copyright 2021, 2022 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
 # This script packages a Vivado IP core: satcat5.port_axi_mailmap
@@ -40,6 +26,8 @@ ipcore_add_refopt PtpRef tref
 set rtc [ipcore_add_ptptime PtpTime rtc master]
 
 # Set parameters
+set cfg_clk_hz [ipcore_add_param CFG_CLK_HZ long 100000000 \
+    {ConfigBus clock frequency. (Required for PTP.)}]
 ipcore_add_param DEV_ADDR devaddr 0 \
     {ConfigBus device address (0-255)}
 ipcore_add_param MIN_FRAME long 64 \
@@ -49,6 +37,7 @@ ipcore_add_param APPEND_FCS bool true \
 ipcore_add_param STRIP_FCS bool true \
     {Remove frame check sequence (FCS / CRC32) from incoming packets? (Recommended)}
 set_property enablement_dependency {$PTP_ENABLE} $rtc
+set_property enablement_tcl_expr {$PTP_ENABLE} $cfg_clk_hz
 
 # Package the IP-core.
 ipcore_finished
