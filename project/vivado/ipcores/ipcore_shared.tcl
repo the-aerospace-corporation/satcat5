@@ -1,20 +1,6 @@
 # ------------------------------------------------------------------------
-# Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
 # This TCL script defines functions that are used by other scripts in this
@@ -80,22 +66,7 @@ if {$ipcount eq 0} {
 }
 
 # Identify the correct part family to use when instantiating primitives
-variable families_7series {spartan7 artix7 kintex7 virtex7 zynq}
-variable families_ultrascale {kintexu virtexu}
-variable families_ultraplus {kintexuplus virtexuplus zynquplus zynquplusRFSOC}
-set part_family [get_property family [get_parts -of_objects [current_project]]]
-if {[lsearch -exact $families_7series $part_family] >= 0} {
-    set part_family "7series"
-    set supported_families $families_7series
-} elseif {[lsearch -exact $families_ultrascale $part_family] >= 0} {
-    set part_family "ultrascale"
-    set supported_families $families_ultrascale
-} elseif {[lsearch -exact $families_ultraplus $part_family] >= 0} {
-    set part_family "ultraplus"
-    set supported_families $families_ultraplus
-} else {
-    error "Unsupported part family: $part_family"
-}
+source "$ip_root/../part_family.tcl"
 
 # Create project, set description and related properties.
 puts "Creating $ip_name..."
@@ -137,25 +108,27 @@ set_property type LOGO $logo_file
 
 # Suppress various spurious warnings:
 # TODO: Better fix for false-alarm warnings about custom bus types?
-#   [IP_Flow 19-459] Cannot find bus abstraction file...
-#   [IP_Flow 19-459] Cannot find bus definition file...
-set_msg_config -new_severity INFO -id {[IP_Flow 19-569]}
-set_msg_config -new_severity INFO -id {[IP_Flow 19-570]}
-set_msg_config -suppress -id {[IP_Flow 19-2181]}
-set_msg_config -suppress -id {[IP_Flow 19-2403]}
+set_msg_config -new_severity INFO -id {[IP_Flow 19-569]};       # Missing bus abstraction
+set_msg_config -new_severity INFO -id {[IP_Flow 19-570]};       # Missing bus definition
+set_msg_config -new_severity INFO -id {[DesignUtils 20-1280]};  # Unused nested IP-core
+set_msg_config -suppress -id {[IP_Flow 19-2181]};               # Payment required flag
+set_msg_config -suppress -id {[IP_Flow 19-2187]};               # Missing product guide
+set_msg_config -suppress -id {[IP_Flow 19-2403]};               # TODO: What is this?
 
 # Copy file(s) to the working folder and add them to the source list.
 # (Copying is the recommended best practice for packaging IP cores.)
-proc ipcore_add_file { src_pattern } {
+proc ipcore_add_file { src_pattern {folder src} } {
     global ip ip_dir fg_syn fg_sim
+    # Create the target folder if it doesn't already exist.
+    file mkdir "${ip_dir}/${folder}"
     # For each file matching the specified pattern...
     # (Glob will throw an error for zero matches, as desired.)
     set dst_list {}
     foreach src_file [glob ${src_pattern}] {
         # Copy the file to the IP folder.
-        file copy -force "${src_file}" "${ip_dir}/src"
+        file copy -force "${src_file}" "${ip_dir}/${folder}"
         # Add to project using the new relative path.
-        set dst_file "src/[file tail ${src_file}]"
+        set dst_file "${folder}/[file tail ${src_file}]"
         ipx::add_file "${dst_file}" $fg_syn
         ipx::add_file "${dst_file}" $fg_sim
         # Separate list of new files returned to user.
@@ -165,11 +138,18 @@ proc ipcore_add_file { src_pattern } {
 }
 
 # Add XCI files from a third-party IP-core to the project.
-proc ipcore_add_xci { xci_name } {
+proc ipcore_add_xci { xci_name {export_files 0} } {
     # Find the matching XCI in the project.
     set xci_file [get_files $xci_name.xci]
+    # Generate files for the new core.
+    generate_target {instantiation_template} $xci_file
     # Split path/filename to add a copy to the package.
-    set dst_file [ipcore_add_file $xci_file]]
+    set dst_file [ipcore_add_file $xci_file $xci_name]]
+    # Some cores require additional files through the export tool.
+    if {$export_files} {
+        set more_files [export_ip_user_files -of_objects $xci_file -no_script -sync -force -quiet]
+        foreach file $more_files {ipcore_add_file $file $xci_name}
+    }
     return $dst_file
 }
 
@@ -206,6 +186,24 @@ proc ipcore_add_clock { clk_name bus_names {clk_type slave} {clk_freq 0} } {
     foreach bus $bus_names {
         set_property value $bus [ipx::add_bus_parameter ASSOCIATED_BUSIF $intf]
     }
+    # Set the clock frequency for validation and clarity, if requested
+    if {$clk_freq > 0} {
+        set_property value $clk_freq [ipx::add_bus_parameter FREQ_HZ $intf]
+    }
+    return $intf
+}
+
+# Create and associate a differential clock port.
+proc ipcore_add_diffclock { label pname {type slave} {clk_freq 0} } {
+    global ip
+    # Create the port.
+    set intf [ipx::add_bus_interface $label $ip]
+    set_property abstraction_type_vlnv xilinx.com:interface:diff_clock_rtl:1.0 $intf
+    set_property bus_type_vlnv xilinx.com:interface:diff_clock:1.0 $intf
+    set_property interface_mode $type $intf
+    # Associate individual signals.
+    set_property physical_name ${pname}_p   [ipx::add_port_map CLK_P $intf]
+    set_property physical_name ${pname}_n   [ipx::add_port_map CLK_N $intf]
     # Set the clock frequency for validation and clarity, if requested
     if {$clk_freq > 0} {
         set_property value $clk_freq [ipx::add_bus_parameter FREQ_HZ $intf]
@@ -266,6 +264,7 @@ proc ipcore_add_ethport { label pname type } {
     set_property physical_name ${pname}_tx_valid    [ipx::add_port_map "tx_valid"   $intf]
     set_property physical_name ${pname}_tx_ready    [ipx::add_port_map "tx_ready"   $intf]
     set_property physical_name ${pname}_tx_error    [ipx::add_port_map "tx_error"   $intf]
+    set_property physical_name ${pname}_tx_pstart   [ipx::add_port_map "tx_pstart"  $intf]
     set_property physical_name ${pname}_tx_tnow     [ipx::add_port_map "tx_tnow"    $intf]
     set_property physical_name ${pname}_tx_reset    [ipx::add_port_map "tx_reset"   $intf]
     return $intf
@@ -295,6 +294,7 @@ proc ipcore_add_xgeport { label pname type } {
     set_property physical_name ${pname}_tx_valid    [ipx::add_port_map "tx_valid"   $intf]
     set_property physical_name ${pname}_tx_ready    [ipx::add_port_map "tx_ready"   $intf]
     set_property physical_name ${pname}_tx_error    [ipx::add_port_map "tx_error"   $intf]
+    set_property physical_name ${pname}_tx_pstart   [ipx::add_port_map "tx_pstart"  $intf]
     set_property physical_name ${pname}_tx_tnow     [ipx::add_port_map "tx_tnow"    $intf]
     set_property physical_name ${pname}_tx_reset    [ipx::add_port_map "tx_reset"   $intf]
     return $intf
@@ -326,7 +326,23 @@ proc ipcore_add_ptptime { label pname type } {
     return $intf
 }
 
-# Create and associated a Text-LCD interface.
+# Create and associate a SGMII interface.
+proc ipcore_add_sgmii { label pname {type "master"} } {
+    global ip
+    # Configure the high-level port object.
+    set intf [ipx::add_bus_interface $label $ip]
+    set_property abstraction_type_vlnv xilinx.com:interface:sgmii_rtl:1.0 $intf
+    set_property bus_type_vlnv xilinx.com:interface:sgmii:1.0 $intf
+    set_property interface_mode $type $intf
+    # Associate individual signals.
+    set_property physical_name ${pname}_rxp     [ipx::add_port_map RXP  $intf]
+    set_property physical_name ${pname}_rxn     [ipx::add_port_map RXN  $intf]
+    set_property physical_name ${pname}_txp     [ipx::add_port_map TXP  $intf]
+    set_property physical_name ${pname}_txn     [ipx::add_port_map TXN  $intf]
+    return $intf
+}
+
+# Create and associate a Text-LCD interface.
 proc ipcore_add_textlcd { label pname {type "master"} } {
     global ip
     # Configure the high-level port object.
@@ -440,17 +456,24 @@ proc ipcore_add_reftime { label pname type } {
     return $intf
 }
 
-# Create an optional Vernier reference port with user configuration options.
-proc ipcore_add_refopt { label pname } {
+# Create an Vernier reference port with user configuration options.
+# (Port is optional by default, but can be made mandatory if desired.)
+proc ipcore_add_refopt { label pname {optional true} } {
     # Create and associate the port.
     # Note: Use "monitor" rather than "slave" to allow one-to-many connection.
     set refport [ipcore_add_reftime $label $pname monitor]
     # Add PTP-enable and reference-frequency parameters.
-    ipcore_add_param PTP_ENABLE bool false {Enable PTP timestamps?}
+    if {$optional} {ipcore_add_param PTP_ENABLE bool false {Enable PTP timestamps?}}
     set vrefhz [ipcore_add_param PTP_REF_HZ long 0 {Vernier reference frequency}]
-    # Enable ports and parameters depending on configuration.
-    set_property enablement_dependency {$PTP_ENABLE} $refport
-    set_property enablement_tcl_expr {$PTP_ENABLE} $vrefhz
+    set tau_ms [ipcore_add_param PTP_TAU_MS long 50 {Synchronizer filter constant}]
+    set aux_en [ipcore_add_param PTP_AUX_EN bool true {Additional synchronizer filter}]
+    # Enable ports and parameters depending on configuration?
+    if {$optional} {
+        set_property enablement_dependency {$PTP_ENABLE} $refport
+        set_property enablement_tcl_expr {$PTP_ENABLE} $vrefhz
+        set_property enablement_tcl_expr {$PTP_ENABLE} $tau_ms
+        set_property enablement_tcl_expr {$PTP_ENABLE} $aux_en
+    }
     return $refport
 }
 
@@ -462,20 +485,32 @@ proc ipcore_add_gpio { port_name } {
 }
 
 # Add a user-configured customizable parameter.
+# All types from UG1118 Chapter 4 are accepted except "float", plus a few
+# custom types (see below) that automatically set formatting:
+#     PARAM_TYPE    VHDL Type           Description
+#   * bitstring     std_logic_vector    String of 1's and 0's.
+#   * bool          boolean             Simple "true" or "false".
+#   * devaddr       integer             ConfigBus device address.
+#   * hexstring     std_logic_vector    Hexadecimal string (0-9, A-F).
+#   * long          integer             General-purpose integer.
+#   * string        string              General-purpose text string.
+# If desired, caller can explicitly set min/max range as follows:
+#   set param [ipcore_add_param MY_PARAM long 12 {Example tooltip}]
+#   set_property value_validation_type range_long $param
+#   set_property value_validation_range_minimum 1 $param
+#   set_property value_validation_range_maximum 64 $param
 proc ipcore_add_param { param_name param_type param_default param_tooltip {param_editable true} } {
     global ip
     # Create and bind the parameter.
     set param_obj [ipx::add_user_parameter $param_name $ip]
     set param_gui [ipgui::add_param -name $param_name -component $ip]
     set param_hdl [ipx::get_hdl_parameters $param_name -of_objects $ip]
+    # Parameters with no HDL counterpart are for display purposes only.
     set has_hdl [expr {$param_hdl != ""}]
     if {!($has_hdl) && $param_editable} {
-        # $param_hdl is an Error, unacceptable if it's a r/w parameter.
-        # It's OK if readonly (value is for display purposes)
-        puts "Error adding $param_name - cannot set params specified in HDL as editable"
+        puts "Error adding $param_name: Only HDL parameters can be editable."
         return -code error $param_hdl
     }
-
     # Set value first.
     set_property value $param_default $param_obj
     if {$has_hdl} {set_property value $param_default $param_hdl}
@@ -515,6 +550,14 @@ proc ipcore_add_param { param_name param_type param_default param_tooltip {param
     if {$has_hdl} {set_property value $param_default $param_hdl}
     set_property enablement_value $param_editable $param_obj
     return $param_obj
+}
+
+# Abort packaging of this core. (i.e, Exit without saving.)
+proc ipcore_abort {} {
+    global ip
+    close_project
+    set ipname [get_property NAME $ip]
+    puts "Cancelled creation of $ipname"
 }
 
 # Package up the IP-core.

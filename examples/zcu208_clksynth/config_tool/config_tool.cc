@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Console application for configuring the "zcu208_clksynth" example design
 //
@@ -33,8 +19,8 @@
 #include <satcat5/cfgbus_i2c.h>
 #include <satcat5/cfgbus_ptpref.h>
 #include <satcat5/cfgbus_remote.h>
-#include <satcat5/datetime.h>
 #include <satcat5/ip_stack.h>
+#include <satcat5/ptp_filters.h>
 #include <satcat5/ptp_time.h>
 #include <satcat5/ptp_tracking.h>
 
@@ -46,7 +32,6 @@ unsigned verbosity = 1;
 // Global background services.
 log::ToConsole logger;          // Print Log messages to console
 util::PosixTimekeeper timer;    // Link system time to internal timers
-datetime::Clock sysclock(timer.timer());
 
 // MAC and IP address for the Ethernet-over-UART interface.
 eth::MacAddr LOCAL_MAC  = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
@@ -80,8 +65,8 @@ const unsigned PHASE_LOCK_SLEW  = 512;  // Slew-rate (bang-bang mode)
 const double PHASE_LOCK_TAU     = 2.0;  // Time-constant (linear mode)
 const double PHASE_LOCK_SCALE   = cfg::ptpref_scale(10e6);
 
-inline ptp::TrackingCoeff trk_coeff(double tau)
-    { return ptp::TrackingCoeff(PHASE_LOCK_SCALE, tau); }
+inline ptp::CoeffPI trk_coeff(double tau)
+    { return ptp::CoeffPI(PHASE_LOCK_SCALE, tau); }
 
 // Configuration of ZCU208 design.
 class Zcu208 final
@@ -95,13 +80,14 @@ public:
         , m_ledmode(cfg, DEV_OTHER, REG_LEDMODE)
         , m_reset(cfg, DEV_OTHER, REG_RESET)
         , m_vlock(cfg, DEV_OTHER, REG_VLOCK)
-        , m_vref_raw(cfg, DEV_OTHER, REG_VREF)
-        , m_vref(&m_vref_raw)
+        , m_vref(cfg, DEV_OTHER, REG_VREF)
         , m_vcmp(cfg, DEV_OTHER, REG_VCMP)
         , m_clk104(&m_i2c, &m_spimux)
         , m_coeff(trk_coeff(PHASE_LOCK_TAU))
-        , m_track(&m_vref, m_coeff)
+        , m_ctrl(m_coeff)
+        , m_track(timer.timer(), &m_vref, 0)
     {
+        m_track.add_filter(&m_ctrl);
         m_vref.clock_rate(0);
     }
 
@@ -175,7 +161,7 @@ public:
     // Set time-constant for linear-mode phase-tracking.
     void phase_lock_tau(double tau) {
         m_coeff = trk_coeff(tau);
-        m_track.reconfigure(m_coeff);
+        m_ctrl.set_coeff(m_coeff);
     }
 
     // Rapid slew to the expected clock phase.
@@ -195,10 +181,10 @@ public:
         } else {
             // Linear control mode: Temporarily increase loop bandwidth.
             std::cout << "VREF fast-track starting..." << std::endl;
-            m_track.reconfigure(trk_coeff(1.0));
+            m_ctrl.set_coeff(trk_coeff(1.0));
             m_track.reset();
             idle_loop(2000, 0);
-            m_track.reconfigure(m_coeff);
+            m_ctrl.set_coeff(m_coeff);
             std::cout << "VREF fast-track completed." << std::endl;
         }
     }
@@ -232,13 +218,13 @@ private:
             }
         } else {
             // Update the linear 2nd-order control loop.
-            m_track.update(sysclock.ptp(), ptp::Time(diff_subns));
+            m_track.update(ptp::Time(diff_subns));
         }
 
         // Optional diagnostic output.
         if (verbosity > 1) {
-            std::cout << "VREF Diff = " << std::setw(8) << diff_subns 
-                      << ", Rate = " << std::setw(8) << m_vref.clock_rate()
+            std::cout << "VREF Diff = " << std::setw(8) << diff_subns
+                      << ", Rate = " << std::setw(8) << m_vref.get_rate()
                       << std::endl;
         }
 
@@ -281,15 +267,15 @@ private:
     cfg::GpoRegister m_ledmode;
     cfg::GpoRegister m_reset;
     cfg::GpiRegister m_vlock;
-    cfg::PtpReference m_vref_raw;
-    ptp::TrackingClockDebug m_vref;
+    cfg::PtpReference m_vref;
     cfg::GpiRegister m_vcmp;
 
     // Driver for the CLK104 board.
     device::pll::Clk104 m_clk104;
 
     // Linear-mode offset tracking.
-    ptp::TrackingCoeff m_coeff;
+    ptp::CoeffPI m_coeff;
+    ptp::ControllerPI m_ctrl;
     ptp::TrackingController m_track;
 };
 
@@ -451,9 +437,6 @@ void config_tool(cfg::ConfigBus* cfg)
 
 int main(int argc, const char* argv[])
 {
-    // Set SatCat5 clock to system time.
-    sysclock.set(timer.gps());
-
     // Set console mode for UTF-8 support.
     setlocale(LC_ALL, SATCAT5_WIN32 ? ".UTF8" : "");
 

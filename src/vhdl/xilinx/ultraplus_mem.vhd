@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Inferred and explicit memory structures for Xilinx FPGAs.
@@ -39,7 +25,11 @@ package body common_primitives is
 
     -- Given reference frequency, determine the "best" Vernier configuration.
     -- (See also: "ultraplus_vernier.vhd")
-    function create_vernier_config(input_hz : natural) return vernier_config is
+    function create_vernier_config(
+        input_hz    : natural;
+        sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+    return vernier_config is
         variable mul, d0, d1 : real;    -- MMCM multiply/divide parameters
         variable f0, f1 : real;         -- Output frequency (Hz)
     begin
@@ -51,6 +41,7 @@ package body common_primitives is
             when  50_000_000 => mul := 31.875; d0 := 79.875; d1 := 80.000;
             when 100_000_000 => mul := 15.750; d0 := 79.125; d1 := 79.000;
             when 125_000_000 => mul := 12.750; d0 := 79.875; d1 := 80.000;
+            when 156_250_000 => mul := 10.125; d0 := 79.375; d1 := 79.000;
             when 200_000_000 => mul :=  7.875; d0 := 79.125; d1 := 79.000;
             when others => return VERNIER_DISABLED;
         end case;
@@ -59,9 +50,11 @@ package body common_primitives is
         f1 := real(input_hz) * mul / d1;
         -- Create data structure, swapping A/B outputs as needed.
         if (f0 < f1) then
-            return (input_hz, f0, f1, (0 => mul, 1 => d0, 2 => d1, others => 0.0));
+            return (input_hz, f0, f1, sync_tau_ms, sync_aux_en,
+                    (0 => mul, 1 => d0, 2 => d1, others => 0.0));
         else
-            return (input_hz, f1, f0, (0 => mul, 1 => d0, 2 => d1, others => 0.0));
+            return (input_hz, f1, f0, sync_tau_ms, sync_aux_en,
+                    (0 => mul, 1 => d0, 2 => d1, others => 0.0));
         end if;
     end function;
 end package body;

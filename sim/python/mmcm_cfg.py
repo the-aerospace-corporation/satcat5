@@ -1,21 +1,7 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2022-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 '''
 Design tool for Vernier clock generators
@@ -142,6 +128,9 @@ def clkgen_print(label, refin, cfg):
     """
     # Split the configuration tuple and calculate outputs.
     (m, d0, d1) = cfg
+    if d0 <= 0 or d1 <= 0:
+        print("%s: No solution." % label)
+        return
     refin_mhz = refin / 1e6
     refout0 = refin_mhz * m / d0
     refout1 = refin_mhz * m / d1
@@ -182,9 +171,10 @@ if __name__ == '__main__':
     for device in ['7series', 'ultrascale', 'ultraplus']:
         limits = clkgen_limits(device)
         print('Device family: ' + device)
-        clkgen_vernier(limits, 20e6, 20e6)
-        clkgen_vernier(limits, 25e6, 20e6)
-        clkgen_vernier(limits, 50e6, 20e6)
-        clkgen_vernier(limits, 100e6, 20e6)
-        clkgen_vernier(limits, 125e6, 20e6)
-        clkgen_vernier(limits, 200e6, 20e6)
+        clkgen_vernier(limits,  20.00e6, 20e6)
+        clkgen_vernier(limits,  25.00e6, 20e6)
+        clkgen_vernier(limits,  50.00e6, 20e6)
+        clkgen_vernier(limits, 100.00e6, 20e6)
+        clkgen_vernier(limits, 125.00e6, 20e6)
+        clkgen_vernier(limits, 156.25e6, 20e6)
+        clkgen_vernier(limits, 200.00e6, 20e6)

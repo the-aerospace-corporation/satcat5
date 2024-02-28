@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Miscellaneous POSIX wrappers (e.g., heap allocation, log to console...)
 
@@ -26,6 +12,7 @@
 #include <satcat5/pkt_buffer.h>
 #include <satcat5/timer.h>
 #include <string>
+#include <vector>
 
 #ifdef _WIN32
     #define SATCAT5_WIN32 1
@@ -118,6 +105,10 @@ namespace satcat5 {
             // Disable all output messages until threshold is lowered.
             void disable() {m_threshold = INT8_MAX;}
 
+            // Suppress messages containing a specific string.
+            // Filters are added to an internal list; null pointer clears the list.
+            void suppress(const char* msg);
+
             // Does the last logged message contain the provided substring?
             bool contains(const char* msg);
 
@@ -131,6 +122,7 @@ namespace satcat5 {
 
         protected:
             void log_event(s8 priority, unsigned nbytes, const char* msg) override;
+            std::vector<std::string> m_suppress;
             satcat5::util::PosixTimer m_timer;
             u32 m_tref;
         };

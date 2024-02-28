@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Software-readable real-time-clock timestamps for Precision Time Protocol
@@ -61,12 +47,16 @@ end ptp_realsof;
 architecture ptp_realsof of ptp_realsof is
 
 signal in_first     : std_logic := '1';
-signal time_reg     : ptp_time_t := PTP_TIME_ZERO;
+signal time_sof     : ptp_time_t := PTP_TIME_ZERO;
 signal cfg_ack_i    : cfgbus_ack := cfgbus_idle;
 signal cfg_sec_msb  : cfgbus_word;
 signal cfg_sec_lsb  : cfgbus_word;
 signal cfg_nsec     : cfgbus_word;
 signal cfg_subns    : cfgbus_word;
+
+-- For debugging, apply KEEP constraint to certain signals.
+attribute KEEP : string;
+attribute KEEP of time_sof : signal is "true";
 
 begin
 
@@ -86,16 +76,16 @@ begin
 
         -- Latch the start-of-frame timestamp.
         if (in_write = '1' and in_first = '1') then
-            time_reg <= in_tnow;
+            time_sof <= in_tnow;
         end if;
     end if;
 end process;
 
 -- ConfigBus interface.
-cfg_sec_msb <= std_logic_vector(resize(time_reg.sec(47 downto 32), 32));
-cfg_sec_lsb <= std_logic_vector(time_reg.sec(31 downto 0));
-cfg_nsec    <= std_logic_vector(resize(time_reg.nsec, 32));
-cfg_subns   <= std_logic_vector(resize(time_reg.subns, 32));
+cfg_sec_msb <= std_logic_vector(resize(time_sof.sec(47 downto 32), 32));
+cfg_sec_lsb <= std_logic_vector(time_sof.sec(31 downto 0));
+cfg_nsec    <= std_logic_vector(resize(time_sof.nsec, 32));
+cfg_subns   <= std_logic_vector(resize(time_sof.subns, 32));
 
 p_cfgbus : process(cfg_cmd.clk)
 begin

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2022-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the "ptp::Time" class
 
@@ -36,31 +22,49 @@ TEST_CASE("ptp_time") {
 
     SECTION("Constructors") {
         Time t1(12345);         // Subnanoseconds
-        CHECK(t1.secs() == 0);
-        CHECK(t1.subns() == 12345);
+        CHECK(t1.field_secs() == 0);
+        CHECK(t1.field_subns() == 12345);
         CHECK(t1.delta_subns() == 12345);
 
         Time t2(-12345);        // Subnanoseconds
-        CHECK(t2.secs() == -1);
-        CHECK(t2.subns() == SUBNS_PER_SEC - 12345);
+        CHECK(t2.field_secs() == -1);
+        CHECK(t2.field_subns() == SUBNS_PER_SEC - 12345);
         CHECK(t2.delta_subns() == -12345);
 
         Time t3(12, 34567);     // Seconds + nanosec
-        CHECK(t3.secs() == 12);
-        CHECK(t3.nsec() == 34567);
-        CHECK(t3.subns() == 34567 * SUBNS_PER_NSEC);
+        CHECK(t3.field_secs() == 12);
+        CHECK(t3.field_nsec() == 34567);
+        CHECK(t3.field_subns() == 34567 * SUBNS_PER_NSEC);
+        CHECK(t3.round_secs() == 12);
+        CHECK(t3.round_nsec() == 34567);
         CHECK(t3.delta_subns() == 786434265382912ll);
 
         Time t4(123, 456, 789); // Seconds + nanosec + subns
-        CHECK(t4.secs() == 123);
-        CHECK(t4.nsec() == 456);
-        CHECK(t4.subns() == 456 * SUBNS_PER_NSEC + 789);
+        CHECK(t4.field_secs() == 123);
+        CHECK(t4.field_nsec() == 456);
+        CHECK(t4.field_subns() == 456 * SUBNS_PER_NSEC + 789);
+        CHECK(t4.round_secs() == 123);
+        CHECK(t4.round_nsec() == 456);
         CHECK(t4.delta_subns() == 8060928029885205ll);
 
         Time t5(t4);            // Copy constructor
         CHECK(t5 == t4);
         t5 = t3;                // Operator=
         CHECK(t5 == t3);
+    }
+
+    SECTION("Rounding") {
+        Time t1(12, 999999999, 32767);  // Seconds + nanosec + subns
+        CHECK(t1.field_secs() == 12);
+        CHECK(t1.field_nsec() == 999999999);
+        CHECK(t1.round_secs() == 12);
+        CHECK(t1.round_nsec() == 999999999);
+
+        Time t2(12, 999999999, 32768);  // Seconds + nanosec + subns
+        CHECK(t2.field_secs() == 12);
+        CHECK(t2.field_nsec() == 999999999);
+        CHECK(t2.round_secs() == 13);
+        CHECK(t2.round_nsec() == 0);
     }
 
     SECTION("Delta") {
@@ -101,8 +105,8 @@ TEST_CASE("ptp_time") {
         satcat5::io::ArrayRead rd2(msg, 7);     // Partial message (7 bytes)
         Time t(0);
         CHECK(t.read_from(&rd1));               // First read should succeed
-        CHECK(t.secs() == 0x112233445566);
-        CHECK(t.subns() == 0x123456780000);
+        CHECK(t.field_secs() == 0x112233445566);
+        CHECK(t.field_subns() == 0x123456780000);
         CHECK_FALSE(t.read_from(&rd2));         // Second read should fail
     }
 
@@ -117,6 +121,13 @@ TEST_CASE("ptp_time") {
         CHECK(satcat5::test::read(&buf, sizeof(ref), ref));
     }
 
+    SECTION("Logging") {
+        log.suppress("TimestampTest");
+        Time t(0x123456789ABCull, 0x11223344u);
+        satcat5::log::Log(satcat5::log::INFO, "TimestampTest").write_obj(t);
+        CHECK(log.contains("TimestampTest = 0x123456789ABC.112233440000"));
+    }
+
     SECTION("DateTime") {
         Time t1(315532819, 0);          // GPS epoch
         CHECK(t1.to_datetime() == 0);
@@ -125,7 +136,7 @@ TEST_CASE("ptp_time") {
 
         Time t2 = from_datetime(2000);  // GPS epoch + 2 seconds
         CHECK(t2.to_datetime() == 2000);
-        CHECK(t2.secs() == 315532821);
+        CHECK(t2.field_secs() == 315532821);
     }
 
     SECTION("Abs") {
@@ -143,23 +154,23 @@ TEST_CASE("ptp_time") {
         Time t2(0, 999999999);
 
         Time t3 = t1 + t1;
-        CHECK(t3.secs() == 2);
-        CHECK(t3.nsec() == 246913578);
+        CHECK(t3.field_secs() == 2);
+        CHECK(t3.field_nsec() == 246913578);
         CHECK(t3.delta_subns() == 147253728247808ll);
 
         Time t4 = t1 + t2;
-        CHECK(t4.secs() == 2);
-        CHECK(t4.nsec() == 123456788);
+        CHECK(t4.field_secs() == 2);
+        CHECK(t4.field_nsec() == 123456788);
         CHECK(t4.delta_subns() == 139162864058368ll);
 
         Time t5 = t2 + t1;
-        CHECK(t5.secs() == 2);
-        CHECK(t5.nsec() == 123456788);
+        CHECK(t5.field_secs() == 2);
+        CHECK(t5.field_nsec() == 123456788);
         CHECK(t5.delta_subns() == 139162864058368ll);
 
         Time t6 = t2 + t2;
-        CHECK(t6.secs() == 1);
-        CHECK(t6.nsec() == 999999998);
+        CHECK(t6.field_secs() == 1);
+        CHECK(t6.field_nsec() == 999999998);
         CHECK(t6.delta_subns() == 131071999868928ll);
     }
 
@@ -168,23 +179,23 @@ TEST_CASE("ptp_time") {
         Time t2(0, 999999999);
 
         Time t3 = t1 - t1;
-        CHECK(t3.secs() == 0);
-        CHECK(t3.subns() == 0);
+        CHECK(t3.field_secs() == 0);
+        CHECK(t3.field_subns() == 0);
         CHECK(t3.delta_subns() == 0);
 
         Time t4 = t1 - t2;
-        CHECK(t4.secs() == 0);
-        CHECK(t4.nsec() == 123456790);
+        CHECK(t4.field_secs() == 0);
+        CHECK(t4.field_nsec() == 123456790);
         CHECK(t4.delta_subns() == 8090864189440ll);
 
         Time t5 = t2 - t1;
-        CHECK(t5.secs() == -1);
-        CHECK(t5.nsec() == 876543210);
+        CHECK(t5.field_secs() == -1);
+        CHECK(t5.field_nsec() == 876543210);
         CHECK(t5.delta_subns() == -8090864189440ll);
 
         Time t6 = t2 - t2;
-        CHECK(t6.secs() == 0);
-        CHECK(t6.subns() == 0);
+        CHECK(t6.field_secs() == 0);
+        CHECK(t6.field_subns() == 0);
         CHECK(t6.delta_subns() == 0);
     }
 
@@ -193,18 +204,18 @@ TEST_CASE("ptp_time") {
         Time t2(0, 999999999);
 
         Time t3 = t1 * 2;
-        CHECK(t3.secs() == 2);
-        CHECK(t3.nsec() == 246913578);
+        CHECK(t3.field_secs() == 2);
+        CHECK(t3.field_nsec() == 246913578);
         CHECK(t3.delta_subns() == 147253728247808ll);
 
         Time t4 = t2 * 3;
-        CHECK(t4.secs() == 2);
-        CHECK(t4.nsec() == 999999997);
+        CHECK(t4.field_secs() == 2);
+        CHECK(t4.field_nsec() == 999999997);
         CHECK(t4.delta_subns() == 196607999803392ll);
 
         Time t5 = t1 * 9 - t2 * 10;
-        CHECK(t5.secs() == 0);
-        CHECK(t5.nsec() == 111111111);
+        CHECK(t5.field_secs() == 0);
+        CHECK(t5.field_nsec() == 111111111);
         CHECK(t5.delta_subns() == 7281777770496);
     }
 
@@ -213,8 +224,8 @@ TEST_CASE("ptp_time") {
         Time t2(0, 999999999);
 
         Time t3 = (t1 + t2) / 2;
-        CHECK(t3.secs() == 1);
-        CHECK(t3.nsec() == 61728394);
+        CHECK(t3.field_secs() == 1);
+        CHECK(t3.field_nsec() == 61728394);
         CHECK(t3.delta_subns() == 69581432029184ll);
 
         CHECK(t2 == (t2 * 10) / 10);
@@ -298,15 +309,15 @@ TEST_CASE("ptp_time") {
             Time sum = t1 - t2 + t3 - t4;
 
             // Manually calculate normalized sum/difference and compare.
-            s64 ref_secs  = t1.secs()  - t2.secs()  + t3.secs()  - t4.secs();
-            s64 ref_subns = t1.subns() - t2.subns() + t3.subns() - t4.subns();
+            s64 ref_secs  = t1.field_secs()  - t2.field_secs()  + t3.field_secs()  - t4.field_secs();
+            s64 ref_subns = t1.field_subns() - t2.field_subns() + t3.field_subns() - t4.field_subns();
             s64 ref_delta = t1.delta_subns() - t2.delta_subns() + t3.delta_subns() - t4.delta_subns();
             while (ref_subns < 0)
                 {ref_secs -= 1; ref_subns += SUBNS_PER_SEC;}
             while (ref_subns >= SUBNS_PER_SEC)
                 {ref_secs += 1; ref_subns -= SUBNS_PER_SEC;}
-            CHECK(sum.secs() == ref_secs);
-            CHECK(sum.subns() == (u64)ref_subns);
+            CHECK(sum.field_secs() == ref_secs);
+            CHECK(sum.field_subns() == (u64)ref_subns);
             CHECK(sum.delta_subns() == ref_delta);
         }
     }

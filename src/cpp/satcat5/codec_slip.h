@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2023 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Inline SLIP encoder and decoder objects
 //
@@ -81,6 +67,7 @@ namespace satcat5 {
         private:
             // Implement required API from Writeable:
             void write_next(u8 data) override;
+            void write_overflow() override;
 
             // Internal state:
             enum class State {SLIP_RDY, SLIP_ESC, SLIP_EOF, SLIP_ERR};

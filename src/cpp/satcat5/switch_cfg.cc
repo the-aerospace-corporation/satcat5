@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/log.h>
@@ -318,6 +304,12 @@ bool SwitchConfig::mactbl_write(
     return mactbl_wait_idle();              // Success?
 }
 
+unsigned SwitchConfig::mactbl_size()
+{
+    // Read table size from hardware (typ. 32-128)
+    return (unsigned)m_reg[REG_MACCOUNT];
+}
+
 bool SwitchConfig::mactbl_clear()
 {
     // Wait until other commands are finished.
@@ -343,16 +335,14 @@ void SwitchConfig::mactbl_log(const char* label)
     unsigned port_idx;
     eth::MacAddr mac_addr;
 
-    // Read table-size from hardware (typ. 32-128)
-    unsigned table_size = (unsigned)m_reg[REG_MACCOUNT];
-
     // Create a log message for each table entry.
+    unsigned table_size = mactbl_size();
     for (unsigned tbl_idx = 0 ; tbl_idx < table_size ; ++tbl_idx) {
         log::Log msg(log::INFO, label);
-        msg.write(": Row").write((u8)tbl_idx);
+        msg.write(": Row").write10((u32)tbl_idx);
         if (mactbl_read(tbl_idx, port_idx, mac_addr)) {
-            msg.write(": Port").write((u8)port_idx);
-            msg.write(", MAC").write(mac_addr.addr, 6);
+            msg.write(": Port").write10((u32)port_idx);
+            msg.write(", MAC").write(mac_addr);
         } else {
             msg.write(": Empty");
         }

@@ -1,25 +1,12 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/eth_dispatch.h>
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
+#include <satcat5/timer.h>
 
 namespace eth = satcat5::eth;
 using satcat5::eth::Dispatch;
@@ -28,13 +15,19 @@ using satcat5::net::Type;
 // Set verbosity level (0/1/2)
 static const unsigned DEBUG_VERBOSE = 0;
 
+// Baseline Ethenret header is 14 bytes (dst + src + type).
+// IEEE 802.1q VLAN tags add another four bytes.
+constexpr unsigned ETH_HEADER_BYTES = SATCAT5_VLAN_ENABLE ? 18 : 14;
+
 Dispatch::Dispatch(
         const eth::MacAddr& addr,
         satcat5::io::Writeable* dst,
-        satcat5::io::Readable* src)
+        satcat5::io::Readable* src,
+        satcat5::util::GenericTimer* timer)
     : m_addr(addr)  // MAC address for this endpoint
     , m_dst(dst)    // Destination pipe (Writeable)
     , m_src(src)    // Source pipe (Readable)
+    , m_timer(timer)
     , m_reply_macaddr(eth::MACADDR_BROADCAST)
     #if SATCAT5_VLAN_ENABLE
     , m_reply_vtag(eth::VTAG_NONE)
@@ -63,6 +56,9 @@ satcat5::io::Writeable* Dispatch::open_reply(const Type& type, unsigned len)
             log::Log(log::DEBUG, "EthDispatch: open_reply").write(type.as_u16());
         }
     }
+
+    // Abort if there's not enough space for the entire frame.
+    if (m_dst->get_write_space() < ETH_HEADER_BYTES + len) return 0;
 
     if (SATCAT5_VLAN_ENABLE) {
         // VLAN support: Pull EtherType and VLAN tag from "type" parameter.
@@ -99,7 +95,12 @@ satcat5::io::Writeable* Dispatch::open_write(
     if (type.value < 1536) return 0;
 
     // Sanity check: Is there room for the frame header?
-    if (m_dst->get_write_space() < 14) return 0;
+    // If not, wait a few microseconds and try again before giving up.
+    // (Workaround for edge-case where MailMap block is still busy.)
+    if (m_dst->get_write_space() < ETH_HEADER_BYTES) {
+        if (m_timer) m_timer->busywait_usec(20);
+        if (m_dst->get_write_space() < ETH_HEADER_BYTES) return 0;
+    }
 
     // Override outgoing VID, if none is specified.
     // (Useful for ports where VLAN tags are mandatory.)
@@ -120,6 +121,11 @@ satcat5::io::Writeable* Dispatch::open_write(
 
     // Ready to start writing frame contents.
     return m_dst;
+}
+
+void Dispatch::set_macaddr(const satcat5::eth::MacAddr& macaddr)
+{
+    m_addr = macaddr;
 }
 
 void Dispatch::data_rcvd()

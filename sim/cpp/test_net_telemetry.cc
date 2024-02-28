@@ -1,27 +1,12 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 "Telemetry-Aggregator" system (net_telemetry.h)
 
 #include <hal_test/catch.hpp>
+#include <hal_test/eth_crosslink.h>
 #include <hal_test/sim_utils.h>
-#include <qcbor/qcbor_decode.h>
-#include <satcat5/ip_stack.h>
 #include <satcat5/net_telemetry.h>
 
 using satcat5::io::Readable;
@@ -63,6 +48,11 @@ template <class T> void write_array(const TelemetryCbor& cbor, u32 key)
     const T temp[4] = {0, 1, 2, 3};
     cbor.add_array(key, 4, temp);
 }
+template <class T> void write_array(const TelemetryCbor& cbor, const char* key)
+{
+    const T temp[4] = {0, 1, 2, 3};
+    cbor.add_array(key, 4, temp);
+}
 
 // Check QCBOR string against the designated constant.
 bool string_match(const UsefulBufC& x, const char* y)
@@ -80,15 +70,21 @@ bool string_match(const UsefulBufC& x, const char* y)
 class TestSource : public TelemetrySource
 {
 public:
-    // Note: All three tiers are disabled by default.
+    // Note: All tiers are disabled by default.
     TelemetryTier m_tier0;
     TelemetryTier m_tier1;
     TelemetryTier m_tier2;
+    TelemetryTier m_tier3;
+    TelemetryTier m_tier4;
+    TelemetryTier m_tier5;
 
     explicit TestSource(TelemetryAggregator* tlm)
         : m_tier0(tlm, this, 0)
         , m_tier1(tlm, this, 1)
         , m_tier2(tlm, this, 2)
+        , m_tier3(tlm, this, 3)
+        , m_tier4(tlm, this, 4)
+        , m_tier5(tlm, this, 5)
     {
         // No other initialization required.
     }
@@ -112,7 +108,7 @@ public:
             // Tier 1 adds both string-like types.
             cbor.add_bytes(KEY_BYTES, strlen(TEST_STR), (const u8*)TEST_STR);
             cbor.add_string(KEY_STRING, TEST_STR);
-        } else {
+        } else if (tier_id == 2) {
             // Tier 2 adds the numeric array types.
             write_array<s8>   (cbor, KEY_ARRAY_S8);
             write_array<u8>   (cbor, KEY_ARRAY_U8);
@@ -123,73 +119,40 @@ public:
             write_array<s64>  (cbor, KEY_ARRAY_S64);
             write_array<u64>  (cbor, KEY_ARRAY_U64);
             write_array<float>(cbor, KEY_ARRAY_FLOAT);
+        } else if (tier_id == 3) {
+            // Tier 0 but with string keys.
+            cbor.add_bool("KEY_BOOL",    true);
+            cbor.add_item("KEY_FLOAT",   42.0f);
+            cbor.add_item("KEY_INT_S8",  (s8)42);
+            cbor.add_item("KEY_INT_U8",  (u8)42);
+            cbor.add_item("KEY_INT_S16", (s16)42);
+            cbor.add_item("KEY_INT_U16", (u16)42);
+            cbor.add_item("KEY_INT_S32", (s32)42);
+            cbor.add_item("KEY_INT_U32", (u32)42);
+            cbor.add_item("KEY_INT_S64", (s64)42);
+            cbor.add_item("KEY_INT_U64", (u64)42);
+            cbor.add_null("KEY_NULL");
+        } else if (tier_id == 4) {
+            // Tier 1 but with string keys.
+            cbor.add_bytes("KEY_BYTES", strlen(TEST_STR), (const u8*)TEST_STR);
+            cbor.add_string("KEY_STRING", TEST_STR);
+        } else if (tier_id == 5) {
+            // Tier 2 but with string keys.
+            write_array<s8>   (cbor, "KEY_ARRAY_S8");
+            write_array<u8>   (cbor, "KEY_ARRAY_U8");
+            write_array<s16>  (cbor, "KEY_ARRAY_S16");
+            write_array<u16>  (cbor, "KEY_ARRAY_U16");
+            write_array<s32>  (cbor, "KEY_ARRAY_S32");
+            write_array<u32>  (cbor, "KEY_ARRAY_U32");
+            write_array<s64>  (cbor, "KEY_ARRAY_S64");
+            write_array<u64>  (cbor, "KEY_ARRAY_U64");
+            write_array<float>(cbor, "KEY_ARRAY_FLOAT");
         }
     }
-};
-
-// Helper object for parsing a CBOR key/value dictionary.
-class TestParser {
-public:
-    // Copy received message to local buffer.
-    explicit TestParser(Readable* src, bool verbose=false)
-        : m_len(src->get_read_ready())
-    {
-        REQUIRE(m_len > 0);
-        REQUIRE(m_len <= sizeof(m_dat));
-        src->read_bytes(m_len, m_dat);
-        src->read_finalize();
-        if (verbose) {
-            satcat5::log::Log(satcat5::log::DEBUG, "Raw CBOR").write(m_dat, m_len);
-        }
-    }
-
-    // Fetch QCBOR item for the given key.
-    // (Iterating over the entire dictionary each time is inefficient
-    //  but simple, and we don't need high performance for this test.)
-    QCBORItem get(u32 key_req) const {
-        // A null item for indicating decoder errors.
-        static const QCBORItem ITEM_ERROR = {
-            QCBOR_TYPE_NONE,    // Type (value)
-            QCBOR_TYPE_NONE,    // Type (label)
-            0, 0, 0, 0,         // Metadata
-            {.int64=0},         // Value
-            {.int64=0},         // Label
-            0,                  // Tags
-        };
-
-        // Open a QCBOR parser object.
-        QCBORDecodeContext cbor;
-        QCBORDecode_Init(&cbor, {m_dat, m_len}, QCBOR_DECODE_MODE_NORMAL);
-
-        // First item should be the top-level dictionary.
-        QCBORItem item;
-        int errcode = QCBORDecode_GetNext(&cbor, &item);
-        if (errcode || item.uDataType != QCBOR_TYPE_MAP) return ITEM_ERROR;
-
-        // Read key/value pairs until we find the desired key.
-        // (Or, if no match is found, return ITEM_ERROR.)
-        u32 key_rcvd = 0;
-        while (1) {
-            errcode = QCBORDecode_GetNext(&cbor, &item);    // Read key + value
-            if (errcode) return ITEM_ERROR;
-            if (item.uNestingLevel > 1) continue;
-            if (item.uLabelType != QCBOR_TYPE_INT64) return ITEM_ERROR;
-            errcode = QCBOR_Int64ToUInt32(item.label.int64, &key_rcvd);
-            if (errcode) return ITEM_ERROR;
-            if (key_req == key_rcvd) return item;           // Key match?
-        }
-    }
-private:
-    u8 m_dat[2048];
-    unsigned m_len;
 };
 
 TEST_CASE("net_telemetry") {
     // Configuration constants.
-    constexpr satcat5::eth::MacAddr MAC_CLIENT = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
-    constexpr satcat5::eth::MacAddr MAC_SERVER = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
-    constexpr satcat5::ip::Addr IP_CLIENT(192, 168, 0, 11);
-    constexpr satcat5::ip::Addr IP_SERVER(192, 168, 0, 22);
     constexpr satcat5::eth::MacType TYPE_ETH = {0x4321};
     constexpr satcat5::udp::Port    PORT_UDP = {0x4321};
 
@@ -199,17 +162,15 @@ TEST_CASE("net_telemetry") {
     satcat5::test::FastPosixTimer timer;
 
     // Network infrastructure for client and server.
-    satcat5::io::PacketBufferHeap c2s, s2c;
-    satcat5::ip::Stack client(MAC_CLIENT, IP_CLIENT, &c2s, &s2c, &timer);
-    satcat5::ip::Stack server(MAC_SERVER, IP_SERVER, &s2c, &c2s, &timer);
+    satcat5::test::CrosslinkIp xlink;
 
     // Client-side telemetry aggregators for each protocol.
-    satcat5::eth::Telemetry tx_eth(&client.m_eth, TYPE_ETH);
-    satcat5::udp::Telemetry tx_udp(&client.m_udp, PORT_UDP);
+    satcat5::eth::Telemetry tx_eth(&xlink.net0.m_eth, TYPE_ETH);
+    satcat5::udp::Telemetry tx_udp(&xlink.net0.m_udp, PORT_UDP);
 
     // Server-side infrastructure records incoming messages.
-    satcat5::eth::Socket rx_eth(&server.m_eth);
-    satcat5::udp::Socket rx_udp(&server.m_udp);
+    satcat5::eth::Socket rx_eth(&xlink.net1.m_eth);
+    satcat5::udp::Socket rx_udp(&xlink.net1.m_udp);
     rx_eth.bind(TYPE_ETH);
     rx_udp.bind(PORT_UDP);
 
@@ -229,7 +190,7 @@ TEST_CASE("net_telemetry") {
         timekeeper.sim_wait(1000);
         REQUIRE(rx_eth.get_read_ready() > 0);
         // Inspect the contents of the received message.
-        TestParser rcvd(&rx_eth);
+        satcat5::test::CborParser rcvd(&rx_eth);
         QCBORItem next;
         next = rcvd.get(KEY_BOOL);
         CHECK(next.uDataType == QCBOR_TYPE_TRUE);
@@ -279,7 +240,7 @@ TEST_CASE("net_telemetry") {
         timekeeper.sim_wait(1000);
         REQUIRE(rx_udp.get_read_ready() > 0);
         // Inspect the contents of the received message.
-        TestParser rcvd(&rx_udp);
+        satcat5::test::CborParser rcvd(&rx_udp);
         QCBORItem next;
         next = rcvd.get(KEY_BYTES);
         CHECK(next.uDataType == QCBOR_TYPE_BYTE_STRING);
@@ -301,7 +262,7 @@ TEST_CASE("net_telemetry") {
         REQUIRE(rx_udp.get_read_ready() > 0);
         // Inspect the format of the received message.
         // TODO: Just type and length for now. Inspect array contents?
-        TestParser rcvd(&rx_udp);
+        satcat5::test::CborParser rcvd(&rx_udp);
         QCBORItem next;
         next = rcvd.get(KEY_ARRAY_S8);
         CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
@@ -328,6 +289,120 @@ TEST_CASE("net_telemetry") {
         CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
         CHECK(next.val.uCount == 4);
         next = rcvd.get(KEY_ARRAY_FLOAT);
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        // Confirm no other messages were sent.
+        CHECK(rx_eth.get_read_ready() == 0);
+        CHECK(rx_udp.get_read_ready() == 0);
+    }
+
+    // Enable and inspect Tier-3 telemetry.
+    SECTION("tier3") {
+        // Enable tier and wait long enough for a single message.
+        TestSource src(&tx_eth);
+        src.m_tier3.set_interval(700);
+        timekeeper.sim_wait(1000);
+        REQUIRE(rx_eth.get_read_ready() > 0);
+        // Inspect the contents of the received message.
+        satcat5::test::CborParser rcvd(&rx_eth);
+        QCBORItem next;
+        next = rcvd.get("KEY_BOOL");
+        CHECK(next.uDataType == QCBOR_TYPE_TRUE);
+        next = rcvd.get("KEY_FLOAT");
+        if (next.uDataType == QCBOR_TYPE_FLOAT) {
+            CHECK(next.val.fnum == 42.0f);
+        } else {
+            CHECK(next.uDataType == QCBOR_TYPE_DOUBLE);
+            CHECK(next.val.dfnum == 42.0);
+        }
+        next = rcvd.get("KEY_INT_S8");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_U8");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_S16");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_U16");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_S32");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_U32");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_S64");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_INT_U64");
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+        next = rcvd.get("KEY_NULL");
+        CHECK(next.uDataType == QCBOR_TYPE_NULL);
+        // Confirm no other messages were sent.
+        CHECK(rx_eth.get_read_ready() == 0);
+        CHECK(rx_udp.get_read_ready() == 0);
+    }
+
+    // Enable and inspect Tier-4 telemetry.
+    SECTION("tier4") {
+        // Enable tier and wait long enough for a single message.
+        TestSource src(&tx_udp);
+        src.m_tier4.set_interval(800);
+        timekeeper.sim_wait(1000);
+        REQUIRE(rx_udp.get_read_ready() > 0);
+        // Inspect the contents of the received message.
+        satcat5::test::CborParser rcvd(&rx_udp);
+        QCBORItem next;
+        next = rcvd.get("KEY_BYTES");
+        CHECK(next.uDataType == QCBOR_TYPE_BYTE_STRING);
+        CHECK(string_match(next.val.string, TEST_STR));
+        next = rcvd.get("KEY_STRING");
+        CHECK(next.uDataType == QCBOR_TYPE_TEXT_STRING);
+        CHECK(string_match(next.val.string, TEST_STR));
+        // Confirm no other messages were sent.
+        CHECK(rx_eth.get_read_ready() == 0);
+        CHECK(rx_udp.get_read_ready() == 0);
+    }
+
+    // Enable and inspect Tier-5 telemetry.
+    SECTION("tier5") {
+        // Enable tier and wait long enough for a single message.
+        TestSource src(&tx_udp);
+        src.m_tier5.set_interval(900);
+        timekeeper.sim_wait(1000);
+        REQUIRE(rx_udp.get_read_ready() > 0);
+        // Inspect the format of the received message.
+        // TODO: Just type and length for now. Inspect array contents?
+        satcat5::test::CborParser rcvd(&rx_udp);
+        QCBORItem next;
+        next = rcvd.get("KEY_ARRAY_S8");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_U8");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_S16");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_U16");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_S32");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_U32");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_S64");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_U64");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        CHECK(next.val.uCount == 4);
+        next = rcvd.get("KEY_ARRAY_FLOAT");
         CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
         CHECK(next.val.uCount == 4);
         // Confirm no other messages were sent.

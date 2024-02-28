@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // ConfigBus core definitions
 //
@@ -41,8 +27,8 @@ void cfg::NetworkStats::refresh_now()
 
 cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
 {
-    cfg::TrafficStats stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    unsigned reg = 8 * idx;         // Fixed size, 8 registers per port
+    cfg::TrafficStats stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned reg = 16 * idx;         // Fixed size, 16 registers per port
     if (reg < cfg::REGS_PER_DEVICE) {
         // Read ConfigBus registers.
         stats.bcast_bytes   = m_traffic[reg+0];
@@ -52,13 +38,17 @@ cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
         stats.sent_bytes    = m_traffic[reg+4];
         stats.sent_frames   = m_traffic[reg+5];
         u32 errct_word      = m_traffic[reg+6];
-        stats.status        = m_traffic[reg+7];
+        u32 errct_ptp       = m_traffic[reg+7];
+        stats.status        = m_traffic[reg+8];
         // Split individual byte fields from errct_word.
         // (This method works on both little-endian and big-endian hosts.)
-        stats.errct_mac     = (u8)(errct_word >> 0);
-        stats.errct_ovr_tx  = (u8)(errct_word >> 8);
-        stats.errct_ovr_rx  = (u8)(errct_word >> 16);
-        stats.errct_pkt     = (u8)(errct_word >> 24);
+        stats.errct_mac     = (u8)(errct_word >> 24);
+        stats.errct_ovr_tx  = (u8)(errct_word >> 16);
+        stats.errct_ovr_rx  = (u8)(errct_word >> 8);
+        stats.errct_pkt     = (u8)(errct_word >> 0);
+        stats.errct_ptp_rx  = (u8)(errct_ptp >> 8);
+        stats.errct_ptp_tx  = (u8)(errct_ptp >> 0);
+
     }
     return stats;
 }

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Basic type definitions for Internet Protocol v4 packets (IPv4)
 
@@ -40,15 +26,15 @@ namespace satcat5 {
                 : value(16777216ul * a + 65536ul * b + 256ul * c + d) {}
 
             // Commonly used operators.
-            inline bool operator==(const satcat5::ip::Addr& other) const
+            constexpr bool operator==(const satcat5::ip::Addr& other) const
                 {return value == other.value;}
-            inline bool operator!=(const satcat5::ip::Addr& other) const
+            constexpr bool operator!=(const satcat5::ip::Addr& other) const
                 {return value != other.value;}
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u32(value);}
             inline bool read_from(satcat5::io::Readable* rd)
                 {value = rd->read_u32(); return true;}
-            inline satcat5::ip::Addr operator+(unsigned offset) const
+            constexpr satcat5::ip::Addr operator+(unsigned offset) const
                 {return satcat5::ip::Addr(value + (u32)offset);}
 
             // Is this address reserved for broadcast or multicast?
@@ -81,13 +67,13 @@ namespace satcat5 {
             satcat5::ip::Mask mask;
 
             // Does this subnet contain the given address?
-            inline bool contains(const satcat5::ip::Addr& other) const
+            constexpr bool contains(const satcat5::ip::Addr& other) const
                 {return (addr.value & mask.value) == (other.value & mask.value);}
 
             // Commonly used operators.
-            inline bool operator==(const satcat5::ip::Subnet& other) const
+            constexpr bool operator==(const satcat5::ip::Subnet& other) const
                 {return (addr == other.addr) && (mask == other.mask);}
-            inline bool operator!=(const satcat5::ip::Subnet& other) const
+            constexpr bool operator!=(const satcat5::ip::Subnet& other) const
                 {return (addr != other.addr) || (mask != other.mask);}
         };
 
@@ -100,9 +86,9 @@ namespace satcat5 {
             constexpr Port(u16 port) : value(port) {}   // NOLINT
 
             // Commonly used operators.
-            inline bool operator==(const satcat5::ip::Port& other) const
+            constexpr bool operator==(const satcat5::ip::Port& other) const
                 {return value == other.value;}
-            inline bool operator!=(const satcat5::ip::Port& other) const
+            constexpr bool operator!=(const satcat5::ip::Port& other) const
                 {return value != other.value;}
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
@@ -137,10 +123,38 @@ namespace satcat5 {
         constexpr u8 PROTO_UDP                  = 0x11;
 
         // Structure for holding an IPv4 Header.
+        // For creating new headers, see ip::Dispatch::next_header(...)
         struct Header {
+            // Raw access to the underlying header contents.
             u16 data[HDR_MAX_SHORTS];
 
-            unsigned ihl() const {return (data[0] >> 8) & 0x0F;}
+            // Accessors for specific sub-fields.
+            // See also: https://en.wikipedia.org/wiki/Internet_Protocol_version_4#Header
+            constexpr unsigned ver() const              // Header version (i.e., "4")
+                {return (data[0] >> 12) & 0x0F;}
+            constexpr unsigned ihl() const              // Header length (4-byte words)
+                {return (data[0] >> 8) & 0x0F;}
+            constexpr unsigned len_total() const        // Total bytes including header
+                {return data[1];}
+            constexpr u16 frg() const                   // Fragment offset
+                {return data[3] & 0xBFFF;}
+            constexpr unsigned len_inner() const        // Inner bytes excluding header
+                {return len_total() - 4*ihl();}
+            constexpr u8 proto() const                  // Inner protocol (UDP/TCP/etc.)
+                {return (u8)(data[4] & 0x00FF);}
+            constexpr u16 chk() const                   // Checksum (incoming only)
+                {return data[5];}
+            constexpr satcat5::ip::Addr src() const     // Source address
+                {return satcat5::ip::Addr(data[6], data[7]);}
+            constexpr satcat5::ip::Addr dst() const     // Destination address
+                {return satcat5::ip::Addr(data[8], data[9]);}
+
+            // Write Ethernet header to the designated stream.
+            void write_to(satcat5::io::Writeable* wr) const;
+
+            // Read Ethernet header from the designated stream.
+            // (Returns true for valid header+checksum, false otherwise.)
+            bool read_from(satcat5::io::Readable* rd);
         };
 
         // Calculate the IP header checksum over a block of data.

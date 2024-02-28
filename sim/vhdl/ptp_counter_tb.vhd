@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for the PTP cross-clock counter system (gen + sync)
@@ -57,7 +43,8 @@ constant VCLKA_PSI  : positive := integer(round(0.5e12 / VNOMINAL.vclka_hz));
 constant VCLKB_PSI  : positive := integer(round(0.5e12 / VNOMINAL.vclkb_hz));
 constant VCLKA_HZ   : real := 0.5e12 / real(VCLKA_PSI);
 constant VCLKB_HZ   : real := 0.5e12 / real(VCLKB_PSI);
-constant VACTUAL    : vernier_config := (VREF_HZ, VCLKA_HZ, VCLKB_HZ, (others => 0.0));
+constant VACTUAL    : vernier_config :=
+    (VREF_HZ, VCLKA_HZ, VCLKB_HZ, 4.0, false, (others => 0.0));
 
 -- Offset actual user clock from the nominal rate.
 -- (To confirm pull-in range, unit under test gets the nominal rate only.)

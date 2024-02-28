@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/cfgbus_ptpref.h>
@@ -34,9 +20,9 @@ static constexpr unsigned RTC_NSEC      = 2;
 static constexpr unsigned RTC_SUBNS     = 3;
 static constexpr unsigned RTC_COMMAND   = 4;
 static constexpr unsigned RTC_RATE      = 5;
-static constexpr u32 OPCODE_READ        = 1;
-static constexpr u32 OPCODE_WRITE       = 2;
-static constexpr u32 OPCODE_INCR        = 4;
+static constexpr u32 OPCODE_READ        = 0x01000000u;
+static constexpr u32 OPCODE_WRITE       = 0x02000000u;
+static constexpr u32 OPCODE_INCR        = 0x04000000u;
 
 // Rate register requires multiple operations to write.
 inline u32 wide_write(Register& reg, s64 offset)
@@ -64,6 +50,7 @@ void PtpReference::clock_rate(s64 offset)
 {
     // Note: Cast to void prevents unused-value warnings.
     (void)wide_write(m_reg, offset);
+    m_offset = offset;
 }
 
 PtpRealtime::PtpRealtime(ConfigBus* cfg, unsigned devaddr, unsigned regaddr)
@@ -85,6 +72,7 @@ void PtpRealtime::clock_rate(s64 offset)
     // Note: Cast to void prevents unused-value warnings.
     Register tmp = m_reg + RTC_RATE;
     (void)wide_write(tmp, offset);
+    m_offset = offset;
 }
 
 Time PtpRealtime::clock_ext()
@@ -111,8 +99,8 @@ void PtpRealtime::clock_set(const Time& new_time)
 
 void PtpRealtime::load(const Time& time)
 {
-    u64 sec = (u64)time.secs();
-    u64 sub = time.subns();
+    u64 sec = (u64)time.field_secs();
+    u64 sub = time.field_subns();
     m_reg[RTC_SEC_MSB] = (u32)(sec >> 32);
     m_reg[RTC_SEC_LSB] = (u32)(sec >> 0);
     m_reg[RTC_NSEC]    = (u32)(sub / SUBNS_PER_NSEC);

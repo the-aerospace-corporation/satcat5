@@ -1,25 +1,12 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2022-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/ptp_time.h>
 #include <satcat5/datetime.h>
 #include <satcat5/io_core.h>
+#include <satcat5/log.h>
 
 using satcat5::ptp::MSEC_PER_SEC;
 using satcat5::ptp::USEC_PER_SEC;
@@ -90,7 +77,16 @@ bool Time::read_from(satcat5::io::Readable* src) {
 void Time::write_to(satcat5::io::Writeable* dst) const {
     dst->write_u16((u16)(m_secs >> 32));        // MSBs of seconds
     dst->write_u32((u32)(m_secs >> 0));         // LSBs of seconds
-    dst->write_u32(nsec());                     // Nanoseconds
+    dst->write_u32(field_nsec());               // Nanoseconds (floor)
+}
+
+void Time::log_to(satcat5::log::LogBuffer& wr) const {
+    wr.wr_str(" = 0x");
+    wr.wr_hex((u32)(m_secs >> 32), 4);          // MSBs of seconds
+    wr.wr_hex((u32)(m_secs >>  0), 8);          // LSBs of seconds
+    wr.wr_str(".");
+    wr.wr_hex((u32)(m_subns >> 32), 4);         // MSBs of subns
+    wr.wr_hex((u32)(m_subns >>  0), 8);         // LSBs of subns
 }
 
 // Offset (in milliseconds) from the PTP epoch (TAI @ 1970 Jan 1)

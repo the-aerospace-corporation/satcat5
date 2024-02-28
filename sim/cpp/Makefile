@@ -1,19 +1,5 @@
-# Copyright 2021 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 .PHONY: test build clean coverage coverage_test precov
 
@@ -69,6 +55,7 @@ COVERAGE := --coverage -g -O0 $(NOINLINE)
 COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter $(INC_FLAGS) \
 	-DSATCAT5_CBOR_ENABLE=1 \
 	-DSATCAT5_CHECK_DUPIRQ=1 \
+	-DSATCAT5_CRC_TABLE_BITS=8 \
 	-DSATCAT5_LOG_CONCISE=0
 CFLAGS := $(COMMON_FLAGS)
 CXXFLAGS := $(COMMON_FLAGS) -std=c++11
@@ -87,6 +74,10 @@ test: build
 	@echo Running tests...
 	@$(BUILD_DIR)/$(PROJECT).bin
 
+valgrind_test: build
+	@echo Running tests with Valgrind...
+	@valgrind --leak-check=full $(BUILD_DIR)/$(PROJECT).bin
+
 build: $(SIM_DIR) $(OBJS) $(BUILD_DIR)/$(PROJECT).bin
 
 clean:
@@ -102,19 +93,23 @@ $(SIM_DIR):
 
 # Special case for main.cc (disable coverage)
 $(BUILD_DIR)/main.cc.o: main.cc | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -O3 -c main.cc -o $@
+	@echo Compiling main.cc...
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -O3 -c main.cc -o $@
 
 # C++ source
 $(BUILD_DIR)/%.cc.o: %.cc | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(COVERAGE) -c $< -o $@
+	@echo Compiling $<...
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(COVERAGE) -c $< -o $@
 
 # C source
 $(BUILD_DIR)/%.c.o: %.c | $(BUILD_DIR)
-	$(CXX) $(CFLAGS) $(COVERAGE) -c $< -o $@
+	@echo Compiling $<...
+	@$(CXX) $(CFLAGS) $(COVERAGE) -c $< -o $@
 
 # Binary
 %.bin: $(OBJS)
-	$(CXX) $^ $(LDFLAGS) $(LIBS) -o $@
+	@echo Linking $@...
+	@$(CXX) $^ $(LDFLAGS) $(LIBS) -o $@
 
 ### Required code-coverage percentage for pass/fail in "coverage_test"
 REQUIRED_COVERAGE := 100.0
@@ -133,7 +128,7 @@ coverage.html: precov
 	@echo Preparing coverage.html...
 	@$(REMOVE) coverage > $(NULL) $(IGNORE_ERROR)
 	@$(MKDIR) coverage > $(NULL) $(IGNORE_ERROR)
-	@$(GCOVR) --html --html-details -o coverage/coverage.html
+	@$(GCOVR) --html --html-details --html-high-threshold $(REQUIRED_COVERAGE) -o coverage/coverage.html
 
 coverage.xml: precov
 	@echo Preparing coverage.xml...

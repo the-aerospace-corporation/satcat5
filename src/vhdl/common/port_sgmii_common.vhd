@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- General-purpose logic for SGMII transceiver port
@@ -44,6 +30,7 @@ use     work.switch_types.all;
 
 entity port_sgmii_common is
     generic (
+    MSB_FIRST   : boolean := true;   -- Bit order for tx_data, rx_data
     SHAKE_WAIT  : boolean := false); -- Wait for MAC/PHY handshake?
     port (
     -- Transmitter/Serializer interface.
@@ -71,6 +58,7 @@ end port_sgmii_common;
 architecture port_sgmii_common of port_sgmii_common is
 
 -- Transmit chain
+signal tx_data_msb  : std_logic_vector(9 downto 0);
 signal tx_amb_data  : std_logic_vector(7 downto 0);
 signal tx_amb_dv    : std_logic;
 signal tx_amb_err   : std_logic;
@@ -83,6 +71,7 @@ signal tx_pkten     : std_logic;
 signal tx_frmst     : std_logic;
 
 -- Receive chain
+signal rx_data_msb  : std_logic_vector(9 downto 0);
 signal rx_dly_cken  : std_logic := '0';
 signal rx_dly_lock  : std_logic := '0';
 signal rx_dly_data  : std_logic_vector(9 downto 0) := (others => '0');
@@ -139,6 +128,10 @@ tx_cfg_reg  <= (14 => '1', 0 => '1', others => '0');    -- MAC to PHY
 -- Allow data transmission before MAC/PHY handshake is established?
 tx_pkten    <= (tx_cfg_rcvd and tx_cfg_ack) when SHAKE_WAIT else '1';
 
+-- Convert input and output signals to preferred MSB-first order.
+tx_data     <= tx_data_msb when MSB_FIRST else flip_vector(tx_data_msb);
+rx_data_msb <= rx_data     when MSB_FIRST else flip_vector(rx_data);
+
 -- Transmit: preamble insertion
 u_txamb : entity work.eth_preamble_tx
     port map(
@@ -165,7 +158,7 @@ u_txenc : entity work.eth_enc8b10b
     in_frmst    => tx_frmst,
     cfg_xmit    => tx_cfg_xmit,
     cfg_word    => tx_cfg_reg,
-    out_data    => tx_data,
+    out_data    => tx_data_msb,
     out_cken    => open,
     io_clk      => tx_clk,
     reset_p     => reset_p);
@@ -176,13 +169,15 @@ begin
     if rising_edge(rx_clk) then
         rx_dly_cken <= rx_cken;
         rx_dly_lock <= rx_lock;
-        rx_dly_data <= rx_data;
+        rx_dly_data <= rx_data_msb;
         rx_dly_tsof <= rx_tstamp;
     end if;
 end process;
 
 -- Receive: 8b/10b decoder
 u_rxdec : entity work.eth_dec8b10b
+    generic map(
+    IN_RATE_HZ  => 1_250_000_000)
     port map(
     io_clk      => rx_clk,
     in_lock     => rx_dly_lock,

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // xCA9548A device driver for the several pin-compatible I2C switches:
 //  * NXP Semiconductors PCA9548A
@@ -57,6 +43,7 @@ namespace satcat5 {
                     {return select_mask((u8)(1u << n));}
 
                 // Forward read/write calls to the parent.
+                bool busy() override;
                 bool read(const satcat5::util::I2cAddr& devaddr,
                     u8 regbytes, u32 regaddr, u8 nread,
                     satcat5::cfg::I2cEventListener* callback = 0) override;

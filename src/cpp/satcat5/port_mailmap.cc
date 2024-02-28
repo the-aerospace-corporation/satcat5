@@ -1,32 +1,36 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <cstring>
 #include <satcat5/port_mailmap.h>
+#include <satcat5/ptp_time.h>
 #include <satcat5/cfgbus_ptpref.h>
 
 using satcat5::irq::AtomicLock;
+using satcat5::log::DEBUG;
+using satcat5::log::Log;
 using satcat5::port::Mailmap;
 using satcat5::ptp::Time;
 
+// Enable additional diagnostics? (0/1/2)
+// Note: Sending log messages may overwrite Tx timestamps before they are read.
+static constexpr unsigned DEBUG_VERBOSE = 0;
+
 static const char* LBL_MAP = "MAP";
 static const unsigned REGADDR_IRQ = 510;    // Matches position in ctrl_reg
+
+// Read standard 4-word timestamp, starting from designated register.
+inline Time get_timestamp(volatile u32* addr)
+{
+    u32 secMSB = addr[0];
+    u32 secLSB = addr[1];
+    u32 nanoSec = addr[2];
+    u16 subNanoSec = addr[3];
+    u64 sec = ((u64)secMSB) << 32 | secLSB;
+    return Time(sec, nanoSec, subNanoSec);
+}
 
 Mailmap::Mailmap(satcat5::cfg::ConfigBusMmap* cfg, unsigned devaddr)
     : satcat5::cfg::Interrupt(cfg, devaddr, REGADDR_IRQ)
@@ -143,67 +147,48 @@ u8 Mailmap::read_next()
 
 void Mailmap::irq_event()
 {
-    m_rdlen = m_ctrl->rx_ctrl;              // Refresh Rx-buffer state
-    if (m_rdlen) request_poll();            // Schedule follow-up?
+    // Interrupts indicate a new received packet. Update state.
+    m_rdlen = m_ctrl->rx_ctrl;
+    if (!m_rdlen) return;                   // Ignore empty packets
+    // PTP packet? Deferred notification to selected event-handler.
+    if (ptp_dispatch(m_ctrl->rx_buff, m_rdlen)) {
+        ptp_notify_req();
+    } else {
+        request_poll();
+    }
 }
 
 Time Mailmap::ptp_tx_start()
 {
     // Initiate an outgoing PTP message
-    m_ctrl->ptp_status = 0x01;                  // Freeze the RTC
-    return get_timestamp(m_ctrl->rt_clk_ctrl);  // Read the current time
+    m_ctrl->ptp_status = 0x01;                      // Freeze the RTC
+    Time tmp = get_timestamp(m_ctrl->rt_clk_ctrl);  // Read the RTC
+    if (DEBUG_VERBOSE > 0) Log(DEBUG, "ptp_tx_start").write_obj(tmp);
+    return tmp;
 }
 
 Time Mailmap::ptp_tx_timestamp()
 {
     // Returns the timestamp for the previous outgoing message as ptp::Time
-    return get_timestamp(m_ctrl->tx_ptp_time);
-}
-
-Mailmap::PtpType Mailmap::ptp_rx_peek()
-{
-    // Peek at the contents of an incoming message and determine if it is a PTP message.
-    // Returns an enum that indicates whether it is non - PTP, PTP - L2(raw), or PTP - L3(UDP)
-
-    satcat5::eth::MacType ether_type = {util::extract_be_u16(m_ctrl->rx_buff + 12)};
-
-    if (ether_type == satcat5::eth::ETYPE_PTP)        // PTP - L2 if etherType is 0x88F7
-    {
-        return PtpType::PTPL2;
-    }
-
-    if (ether_type == satcat5::eth::ETYPE_IPV4)        // might be PTP - L3 if ether_type is 0x0800
-    {
-        // Get protocol type, check if it's UDP i.e. protocol = 17 = 0x11.
-        u8 protocol = m_ctrl->rx_buff[23];
-
-        if (protocol == satcat5::ip::PROTO_UDP)
-        {
-            // Get the header length
-            u16 version_and_length = util::extract_be_u16(&(m_ctrl->rx_buff[14]));
-            u16 header_length = (version_and_length >> (8)) & 0x000f;
-
-            // Find the source and destination ports (their position depends on the header length)
-            u16 src_port_index = 14 + header_length * 4;
-            u16 dst_port_index = 16 + header_length * 4;
-            satcat5::ip::Port src_port = util::extract_be_u16(m_ctrl->rx_buff + src_port_index);
-            satcat5::ip::Port dst_port = util::extract_be_u16(m_ctrl->rx_buff + dst_port_index);
-
-            // If source or destination port is 319 or 320, message is PTP - L3
-            if (src_port == satcat5::udp::PORT_PTP_EVENT || src_port == satcat5::udp::PORT_PTP_GENERAL ||
-                dst_port == satcat5::udp::PORT_PTP_EVENT || dst_port == satcat5::udp::PORT_PTP_GENERAL)
-            {
-                return PtpType::PTPL3;
-            }
-        }
-    }
-
-    // Message is not PTP
-    return PtpType::nonPTP;
+    Time tmp = get_timestamp(m_ctrl->tx_ptp_time);  // Read packet timestamp
+    if (DEBUG_VERBOSE > 0) Log(DEBUG, "ptp_tx_timestamp").write_obj(tmp);
+    return tmp;
 }
 
 Time Mailmap::ptp_rx_timestamp()
 {
     // Returns the timestamp for the current received message as ptp::Time
-    return get_timestamp(m_ctrl->rx_ptp_time);
+    Time tmp = get_timestamp(m_ctrl->rx_ptp_time);  // Read packet timestamp
+    if (DEBUG_VERBOSE > 0) Log(DEBUG, "ptp_rx_timestamp").write_obj(tmp);
+    return tmp;
+}
+
+satcat5::io::Writeable* Mailmap::ptp_tx_write()
+{
+    return this;    // PTP and normal data use the same interface.
+}
+
+satcat5::io::Readable* Mailmap::ptp_rx_read()
+{
+    return this;    // PTP and normal data use the same interface.
 }

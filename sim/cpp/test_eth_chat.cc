@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2023 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test the "Chat" dispatch and protocol handlers
 
@@ -66,7 +52,7 @@ TEST_CASE("ethernet-chat") {
     const u8 REF_VLAN[] = {
         // Eth-DST
         0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22,
-        // Eth-SRC                          
+        // Eth-SRC
         0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11,
         // VLAN-tag             Eth-TYPE
         0x81, 0x00, 0x01, 0x23, 0x99, 0x9C,

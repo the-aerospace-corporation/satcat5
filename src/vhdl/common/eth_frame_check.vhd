@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2021 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Ethernet frame verification
@@ -157,60 +143,22 @@ in_nlast_mod <= 0 when (in_write = '0')
            else 1 when (IO_BYTES = 1 and in_last = '1')
            else in_nlast;
 
--- CRC calculation using simple or parallel algorithm.
-gen_single : if IO_BYTES = 1 generate
-    -- No delay necessary for other check logic.
-    dly_data    <= in_data;
-    dly_nlast   <= in_nlast_mod;
-    dly_write   <= in_write;
-
-    -- Byte-at-a-time CRC calculation.
-    p_crc : process(clk)
-        variable first_byte : std_logic := '1';
-    begin
-        if rising_edge(clk) then
-            -- Matched-delay buffer.
-            crc_data  <= in_data;
-            crc_write <= in_write;
-            crc_nlast <= in_nlast_mod;
-
-            -- Update CRC whenever we receive new data.
-            if (in_write = '1') then
-                if (first_byte = '1') then
-                    crc_result <= crc_next(CRC_INIT, in_data);
-                else
-                    crc_result <= crc_next(crc_result, in_data);
-                end if;
-            end if;
-
-            -- Set the "first-byte" flag after reset or end-of-frame.
-            if (reset_p = '1') then
-                first_byte := '1';
-            elsif (in_write = '1') then
-                first_byte := bool2bit(in_nlast_mod > 0);
-            end if;
-        end if;
-    end process;
-end generate;
-
-gen_parallel : if IO_BYTES > 1 generate
-    -- Pipelined multi-byte CRC calculation.
-    u_crc : entity work.eth_frame_parcrc
-        generic map(IO_BYTES => IO_BYTES)
-        port map(
-        in_data     => in_data,
-        in_nlast    => in_nlast_mod,
-        in_write    => in_write,
-        dly_data    => dly_data,
-        dly_nlast   => dly_nlast,
-        dly_write   => dly_write,
-        out_data    => crc_data,
-        out_res     => crc_result,
-        out_nlast   => crc_nlast,
-        out_write   => crc_write,
-        clk         => clk,
-        reset_p     => reset_p);
-end generate;
+-- Select CRC calculation using simple or parallel algorithm.
+u_crc : entity work.eth_frame_parcrc2
+    generic map(IO_BYTES => IO_BYTES)
+    port map(
+    in_data     => in_data,
+    in_nlast    => in_nlast_mod,
+    in_write    => in_write,
+    dly_data    => dly_data,
+    dly_nlast   => dly_nlast,
+    dly_write   => dly_write,
+    out_data    => crc_data,
+    out_res     => crc_result,
+    out_nlast   => crc_nlast,
+    out_write   => crc_write,
+    clk         => clk,
+    reset_p     => reset_p);
 
 -- Other frame-checking parameters:
 p_frame : process(clk)

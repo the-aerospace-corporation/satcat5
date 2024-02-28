@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/ethernet.h>
@@ -59,7 +45,8 @@ inline char hex_lookup(unsigned val) {
 }
 
 // Helper function for writing a single decimal digit.
-inline void next_digit(char* out, unsigned& wridx, u32& val, u32 place) {
+template <typename T>
+inline void next_digit(char* out, unsigned& wridx, T& val, T place) {
     // Find value of leading digit (i.e., '0' through '9').
     // Use while loop in case CPU doesn't have a divide instruction.
     char digit = '0';
@@ -71,20 +58,48 @@ inline void next_digit(char* out, unsigned& wridx, u32& val, u32 place) {
 }
 
 // Helper function writes a decimal number to buffer, returns sting length.
-// Working buffer MUST contain at least SATCAT5_ITOA_BUFFSIZE = 11 bytes.
-//  (u32 max = ~4 billion = 10 digits + terminator)
-static constexpr unsigned LOG_ITOA_BUFFSIZE = 11;
-unsigned log_itoa(char* out, u32 val) {
+// Working buffer MUST contain the designated minimum size:
+//  u32 max = ~4 billion = 10 digits + terminator = 11 bytes
+//  u64 max = ~18 pentillion = 20 digits + terminator = 21 bytes
+static constexpr unsigned LOG_ITOA_BUFF32 = 11;
+static unsigned log_itoa32(char* out, u32 val) {
     unsigned wridx = 0;
-    next_digit(out, wridx, val, 1000000000u);
-    next_digit(out, wridx, val, 100000000u);
-    next_digit(out, wridx, val, 10000000u);
-    next_digit(out, wridx, val, 1000000u);
-    next_digit(out, wridx, val, 100000u);
-    next_digit(out, wridx, val, 10000u);
-    next_digit(out, wridx, val, 1000u);
-    next_digit(out, wridx, val, 100u);
-    next_digit(out, wridx, val, 10u);
+    next_digit<u32>(out, wridx, val, 1000000000u);
+    next_digit<u32>(out, wridx, val, 100000000u);
+    next_digit<u32>(out, wridx, val, 10000000u);
+    next_digit<u32>(out, wridx, val, 1000000u);
+    next_digit<u32>(out, wridx, val, 100000u);
+    next_digit<u32>(out, wridx, val, 10000u);
+    next_digit<u32>(out, wridx, val, 1000u);
+    next_digit<u32>(out, wridx, val, 100u);
+    next_digit<u32>(out, wridx, val, 10u);
+    out[wridx++] = val + '0';   // Always write final digit
+    out[wridx] = 0;             // Null termination
+    return wridx;               // String length excludes terminator
+}
+
+static constexpr unsigned LOG_ITOA_BUFF64 = 21;
+static unsigned log_itoa64(char* out, u64 val) {
+    unsigned wridx = 0;
+    next_digit<u64>(out, wridx, val, 10000000000000000000ull);
+    next_digit<u64>(out, wridx, val, 1000000000000000000ull);
+    next_digit<u64>(out, wridx, val, 100000000000000000ull);
+    next_digit<u64>(out, wridx, val, 10000000000000000ull);
+    next_digit<u64>(out, wridx, val, 1000000000000000ull);
+    next_digit<u64>(out, wridx, val, 100000000000000ull);
+    next_digit<u64>(out, wridx, val, 10000000000000ull);
+    next_digit<u64>(out, wridx, val, 1000000000000ull);
+    next_digit<u64>(out, wridx, val, 100000000000ull);
+    next_digit<u64>(out, wridx, val, 10000000000ull);
+    next_digit<u64>(out, wridx, val, 1000000000ull);
+    next_digit<u64>(out, wridx, val, 100000000ull);
+    next_digit<u64>(out, wridx, val, 10000000ull);
+    next_digit<u64>(out, wridx, val, 1000000ull);
+    next_digit<u64>(out, wridx, val, 100000ull);
+    next_digit<u64>(out, wridx, val, 10000ull);
+    next_digit<u64>(out, wridx, val, 1000ull);
+    next_digit<u64>(out, wridx, val, 100ull);
+    next_digit<u64>(out, wridx, val, 10ull);
     out[wridx++] = val + '0';   // Always write final digit
     out[wridx] = 0;             // Null termination
     return wridx;               // String length excludes terminator
@@ -217,6 +232,14 @@ Log& Log::write(u64 val) {
     return *this;
 }
 
+Log& Log::write(io::Readable* rd)
+{
+    m_buff.wr_str(" = 0x");
+    while (rd->get_read_ready())
+        m_buff.wr_hex(rd->read_u8(), 2);
+    return *this;
+}
+
 Log& Log::write(const u8* val, unsigned nbytes) {
     m_buff.wr_str(" = 0x");
     for (unsigned a = 0 ; a < nbytes ; ++a)
@@ -263,10 +286,22 @@ Log& Log::write10(s32 val) {
     return *this;
 }
 
+Log& Log::write10(s64 val) {
+    // Decimal string with sign prefix.
+    m_buff.wr_str(val < 0 ? " = -" : " = +");
+    m_buff.wr_d64(satcat5::util::abs_s64(val));
+    return *this;
+}
+
 Log& Log::write10(u32 val) {
-    // Write final string.
     m_buff.wr_str(" = ");
     m_buff.wr_dec(val);
+    return *this;
+}
+
+Log& Log::write10(u64 val) {
+    m_buff.wr_str(" = ");
+    m_buff.wr_d64(val);
     return *this;
 }
 
@@ -295,7 +330,14 @@ void LogBuffer::wr_hex(u32 val, unsigned nhex)
 
 void LogBuffer::wr_dec(u32 val)
 {
-    char temp[LOG_ITOA_BUFFSIZE];
-    log_itoa(temp, val);
+    char temp[LOG_ITOA_BUFF32];
+    log_itoa32(temp, val);
+    wr_str(temp);
+}
+
+void LogBuffer::wr_d64(u64 val)
+{
+    char temp[LOG_ITOA_BUFF64];
+    log_itoa64(temp, val);
     wr_str(temp);
 }

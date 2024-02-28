@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Diagnostic logging to UART and/or Ethernet ports
 //
@@ -58,6 +44,10 @@
 
 #ifndef SATCAT5_LOG_CONCISE     // Enable concise syntax?
 #define SATCAT5_LOG_CONCISE 1
+#endif
+
+#ifndef SATCAT5_WELCOME_EMOJI   // UTF-8 string: [satellite] [smiling cat] [five o'clock]
+#define SATCAT5_WELCOME_EMOJI "\xf0\x9f\x9b\xb0\xef\xb8\x8f\xf0\x9f\x90\xb1\xf0\x9f\x95\x94"
 #endif
 
 namespace satcat5 {
@@ -110,6 +100,7 @@ namespace satcat5 {
             void wr_str(const char* str);                   // Null-term string
             void wr_hex(u32 val, unsigned nhex);            // Hexadecimal int
             void wr_dec(u32 val);                           // Decimal int
+            void wr_d64(u64 val);                           // Decimal int
 
             // Current string length.
             unsigned len() const {return m_wridx;}
@@ -151,13 +142,16 @@ namespace satcat5 {
             Log& write(u16 val);
             Log& write(u32 val);
             Log& write(u64 val);
+            Log& write(satcat5::io::Readable* rd);
             Log& write(const u8* val, unsigned nbytes);
             Log& write(const satcat5::eth::MacAddr& mac);
             Log& write(const satcat5::ip::Addr& ip);
 
             // Print integer as a decimal value with no leading zeros.
             Log& write10(s32 val);  // Signed (e.g., "+1234" or "-1234")
+            Log& write10(s64 val);
             Log& write10(u32 val);  // Unsigned (e.g., "1234")
+            Log& write10(u64 val);
 
             // Templated wrapper for any object with the following method:
             //  void log_to(satcat5::log::LogBuffer& wr) const;

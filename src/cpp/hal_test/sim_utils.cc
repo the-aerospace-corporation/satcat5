@@ -1,35 +1,24 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
-#include "sim_utils.h"
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <hal_test/catch.hpp>
 #include <hal_test/sim_cfgbus.h>
+#include <hal_test/sim_utils.h>
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
 #include <satcat5/utils.h>
 
+using satcat5::test::CborParser;
 using satcat5::test::ConstantTimer;
 using satcat5::test::LogProtocol;
 using satcat5::test::MockConfigBusMmap;
 using satcat5::test::MockInterrupt;
+using satcat5::test::RandomSource;
 using satcat5::test::Statistics;
 
 bool satcat5::test::write(
@@ -52,7 +41,7 @@ bool satcat5::test::read(
             ++match;
         } else {
             log::Log(log::ERROR, "String mismatch @ index")
-                .write(a).write(next).write(data[a]);
+                .write10(a).write(next).write(data[a]);
         }
     }
 
@@ -61,17 +50,137 @@ bool satcat5::test::read(
 
     // Check for leftover bytes in either direction.
     if (rcvd > nbytes) {
-        u16 diff = satcat5::util::min_u16(65535, rcvd - nbytes);
-        log::Log(log::ERROR, "Unexpected trailing bytes").write(diff);
+        log::Log(log::ERROR, "Unexpected trailing bytes").write10(rcvd - nbytes);
         return false;
     } else if (rcvd < nbytes) {
-        u16 diff = satcat5::util::min_u16(65535, nbytes - rcvd);
-        log::Log(log::ERROR, "Missing expected bytes").write(diff);
+        log::Log(log::ERROR, "Missing expected bytes").write10(nbytes - rcvd);
         return false;
     } else {
         return (match == nbytes);
     }
 }
+
+bool satcat5::test::read(satcat5::io::Readable* src, const std::string& ref)
+{
+    return satcat5::test::read(src, ref.size(), (const u8*)ref.c_str());
+}
+
+bool satcat5::test::write_random(satcat5::io::Writeable* dst, unsigned nbytes)
+{
+    auto rng = Catch::rng();
+    for (unsigned a = 0 ; a < nbytes ; ++a)
+        dst->write_u8((u8)rng());
+    return dst->write_finalize();
+}
+
+bool satcat5::test::read_equal(
+    satcat5::io::Readable* src1,
+    satcat5::io::Readable* src2)
+{
+    // Read from both sources until the end.
+    unsigned diff = 0;
+    for (unsigned a = 0 ; src1->get_read_ready() && src2->get_read_ready() ; ++a) {
+        u8 x = src1->read_u8(), y = src2->read_u8();
+        if (x != y) {
+            ++diff;
+            log::Log(log::ERROR, "Stream mismatch @ index")
+                .write10(a).write(x).write(y);
+        }
+    }
+
+    // Any leftover bytes in either sources?
+    unsigned trail = src1->get_read_ready() + src2->get_read_ready();
+    if (trail > 0) {
+        log::Log(log::ERROR, "Unexpected trailing bytes").write10(trail);
+    }
+
+    // Cleanup before returning the result.
+    src1->read_finalize();
+    src2->read_finalize();
+    return (diff == 0) && (trail == 0);
+}
+
+CborParser::CborParser(satcat5::io::Readable* src, bool verbose)
+    : m_len(src->get_read_ready())
+{
+    REQUIRE(m_len > 0);
+    REQUIRE(m_len <= sizeof(m_dat));
+    src->read_bytes(m_len, m_dat);
+    src->read_finalize();
+    if (verbose) {
+        log::Log(log::DEBUG, "Raw CBOR").write(m_dat, m_len);
+    }
+}
+
+#if SATCAT5_CBOR_ENABLE
+
+// A null item for indicating decoder errors.
+static const QCBORItem ITEM_ERROR = {
+    QCBOR_TYPE_NONE,    // Type (value)
+    QCBOR_TYPE_NONE,    // Type (label)
+    0, 0, 0, 0,         // Metadata
+    {.int64=0},         // Value
+    {.int64=0},         // Label
+    0,                  // Tags
+};
+
+QCBORItem CborParser::get(u32 key_req) const {
+    // Open a QCBOR parser object.
+    QCBORDecodeContext cbor;
+    QCBORDecode_Init(&cbor, {m_dat, m_len}, QCBOR_DECODE_MODE_NORMAL);
+
+    // First item should be the top-level dictionary.
+    QCBORItem item;
+    int errcode = QCBORDecode_GetNext(&cbor, &item);
+    if (errcode || item.uDataType != QCBOR_TYPE_MAP) return ITEM_ERROR;
+
+    // Read key/value pairs until we find the desired key.
+    // Or, if no match is found, return ITEM_ERROR.
+    // (Iterating over the entire dictionary each time is inefficient
+    //  but simple, and we don't need high performance for unit tests.)
+    u32 key_rcvd = 0;
+    while (1) {
+        errcode = QCBORDecode_GetNext(&cbor, &item);    // Read key + value
+        if (errcode) return ITEM_ERROR;
+        if (item.uNestingLevel > 1) continue;
+        if (item.uLabelType == QCBOR_TYPE_INT64) {
+            errcode = QCBOR_Int64ToUInt32(item.label.int64, &key_rcvd);
+            if (errcode) return ITEM_ERROR;
+            if (key_req == key_rcvd) return item;       // Key match?
+        }
+    }
+}
+
+QCBORItem CborParser::get(const char* key_req) const {
+    // Convert key to a UsefulBuf object.
+    UsefulBufC key_buf = UsefulBuf_FromSZ(key_req);
+
+    // Open a QCBOR parser object.
+    QCBORDecodeContext cbor;
+    QCBORDecode_Init(&cbor, {m_dat, m_len}, QCBOR_DECODE_MODE_NORMAL);
+
+    // First item should be the top-level dictionary.
+    QCBORItem item;
+    int errcode = QCBORDecode_GetNext(&cbor, &item);
+    if (errcode || item.uDataType != QCBOR_TYPE_MAP) return ITEM_ERROR;
+
+    // Read key/value pairs until we find the desired key.
+    // Or, if no match is found, return ITEM_ERROR.
+    // (Iterating over the entire dictionary each time is inefficient
+    //  but simple, and we don't need high performance for unit tests.)
+    while (1) {
+        errcode = QCBORDecode_GetNext(&cbor, &item);    // Read key + value
+        if (errcode) return ITEM_ERROR;
+        if (item.uNestingLevel > 1) continue;
+        if (item.uLabelType == QCBOR_TYPE_BYTE_STRING ||
+            item.uLabelType == QCBOR_TYPE_TEXT_STRING) {
+            int diff = UsefulBuf_Compare(key_buf, item.label.string);
+            if (diff == 0) return item;                 // Key match?
+        }
+    }
+}
+
+#endif // SATCAT5_CBOR_ENABLE
 
 ConstantTimer::ConstantTimer(u32 val)
     : satcat5::util::GenericTimer(16)  // 16 ticks = 1 microsecond
@@ -92,7 +201,7 @@ void LogProtocol::frame_rcvd(satcat5::io::LimitedRead& src)
 {
     satcat5::log::Log(satcat5::log::INFO, "Frame received")
         .write(m_etype.value).write(", Len")
-        .write((u16)src.get_read_ready());
+        .write10((u16)src.get_read_ready());
 }
 
 MockConfigBusMmap::MockConfigBusMmap()
@@ -151,6 +260,28 @@ void MockInterrupt::fire() {
         // No-register mode -> Always fire as if enabled.
         m_cfg->irq_poll();
     }
+}
+
+RandomSource::RandomSource(unsigned len)
+    : satcat5::io::ReadableRedirect(&m_read)
+    , m_len(len)
+    , m_buff(new u8[len])
+    , m_read(m_buff, len)
+{
+    auto rng = Catch::rng();
+    for (unsigned a = 0 ; a < len ; ++a)
+        m_buff[a] = (u8)rng();
+}
+
+RandomSource::~RandomSource()
+{
+    delete[] m_buff;
+}
+
+satcat5::io::Readable* RandomSource::read()
+{
+    m_read.read_reset(m_len);
+    return &m_read;
 }
 
 Statistics::Statistics()

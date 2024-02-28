@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the NetworkStats class
 
@@ -54,27 +40,31 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.rcvd_frames     == 4);
         CHECK(stats.sent_bytes      == 5);
         CHECK(stats.sent_frames     == 6);
-        CHECK(stats.errct_mac       == 7);
+        CHECK(stats.errct_mac       == 0);
         CHECK(stats.errct_ovr_tx    == 0);
         CHECK(stats.errct_ovr_rx    == 0);
-        CHECK(stats.errct_pkt       == 0);
-        CHECK(stats.status          == 8);
+        CHECK(stats.errct_pkt       == 7);
+        CHECK(stats.errct_ptp_rx    == 0);
+        CHECK(stats.errct_ptp_tx    == 8);
+        CHECK(stats.status          == 9);
     }
 
     SECTION("port1") {
         // Confirm Port 1 returns the expected initial state.
         satcat5::cfg::TrafficStats stats = uut.get_port(1);
-        CHECK(stats.bcast_bytes     == 9);
-        CHECK(stats.bcast_frames    == 10);
-        CHECK(stats.rcvd_bytes      == 11);
-        CHECK(stats.rcvd_frames     == 12);
-        CHECK(stats.sent_bytes      == 13);
-        CHECK(stats.sent_frames     == 14);
-        CHECK(stats.errct_mac       == 15);
+        CHECK(stats.bcast_bytes     == 17);
+        CHECK(stats.bcast_frames    == 18);
+        CHECK(stats.rcvd_bytes      == 19);
+        CHECK(stats.rcvd_frames     == 20);
+        CHECK(stats.sent_bytes      == 21);
+        CHECK(stats.sent_frames     == 22);
+        CHECK(stats.errct_mac       == 0);
         CHECK(stats.errct_ovr_tx    == 0);
         CHECK(stats.errct_ovr_rx    == 0);
-        CHECK(stats.errct_pkt       == 0);
-        CHECK(stats.status          == 16);
+        CHECK(stats.errct_pkt       == 23);
+        CHECK(stats.errct_ptp_rx    == 0);
+        CHECK(stats.errct_ptp_tx    == 24);
+        CHECK(stats.status          == 25);
     }
 
     SECTION("port999") {
@@ -90,6 +80,8 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.errct_ovr_tx    == 0);
         CHECK(stats.errct_ovr_rx    == 0);
         CHECK(stats.errct_pkt       == 0);
+        CHECK(stats.errct_ptp_rx    == 0);
+        CHECK(stats.errct_ptp_tx    == 0);
         CHECK(stats.status          == 0);
     }
 

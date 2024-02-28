@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Protocol handler and dispatch unit for Internet Protocol v4 (IPv4)
 //
@@ -103,6 +89,12 @@ namespace satcat5 {
             satcat5::ip::Addr route_lookup(
                 const satcat5::ip::Addr& dstaddr) const;
 
+            // Create a basic IPv4 header with the specified information.
+            satcat5::ip::Header next_header(
+                u8 protocol,                    // Packet type (ICMP/UDP/etc)
+                const satcat5::ip::Addr& dst,   // Destination IP address
+                unsigned inner_bytes);          // Length of contained packet
+
             // Other accessors:
             inline satcat5::eth::ProtoArp* arp()
                 {return &m_arp;}
@@ -111,13 +103,17 @@ namespace satcat5 {
             inline satcat5::ip::Addr ipaddr() const
                 {return m_addr;}
             inline satcat5::eth::MacAddr macaddr() const
-                {return m_iface->m_addr;}
+                {return m_iface->macaddr();}
             inline satcat5::eth::MacAddr reply_mac() const
                 {return m_iface->reply_mac();}
             inline satcat5::ip::Addr reply_ip() const
                 {return m_reply_ip;}
             inline const satcat5::ip::Header& reply_hdr() const
                 {return m_reply_hdr;}
+            inline void set_ipaddr(const satcat5::ip::Addr& addr)
+                {set_addr(addr);}
+            inline void set_macaddr(const satcat5::eth::MacAddr& macaddr)
+                {m_iface->set_macaddr(macaddr);}
 
             // Reference timer (for ICMP timestamps, etc.)
             satcat5::util::GenericTimer* const m_timer;

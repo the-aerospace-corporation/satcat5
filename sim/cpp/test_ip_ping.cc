@@ -1,44 +1,35 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2022-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for Ping utilities
 
 #include <hal_test/catch.hpp>
+#include <hal_test/eth_crosslink.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/ip_stack.h>
 
 TEST_CASE("Ping") {
     // Test infrastructure.
-    satcat5::util::PosixTimer clock;
     satcat5::test::TimerAlways timer;
     satcat5::log::ToConsole log;
-    log.disable();  // Always suppress console output
+
+    // Suppress expected log messages from the unit under test.
+    log.suppress("Ping:");
 
     // Network communication infrastructure.
-    const satcat5::eth::MacAddr MAC_A = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
-    const satcat5::eth::MacAddr MAC_B = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
-    const satcat5::ip::Addr IP_A(192, 168, 1, 11);
-    const satcat5::ip::Addr IP_B(192, 168, 1, 74);
-    const satcat5::ip::Addr IP_C(192, 168, 1, 93);
+    satcat5::test::CrosslinkIp xlink;
 
-    satcat5::io::PacketBufferHeap c2p, p2c;
-    satcat5::ip::Stack net_a(MAC_A, IP_A, &c2p, &p2c, &clock);
-    satcat5::ip::Stack net_b(MAC_B, IP_B, &p2c, &c2p, &clock);
+    // Shortcuts and aliases:
+    const satcat5::ip::Addr IP_A(xlink.IP0);
+    const satcat5::ip::Addr IP_B(xlink.IP1);
+    const satcat5::ip::Addr IP_C(192, 168, 1, 93);
+    satcat5::ip::Stack& net_a(xlink.net0);
+
+    // Sanity check that the three addresses are unique.
+    REQUIRE(IP_A != IP_B);
+    REQUIRE(IP_A != IP_C);
+    REQUIRE(IP_B != IP_C);
 
     // Count ARP and ICMP responses.
     satcat5::test::CountArpResponse ctr_arp(&net_a.m_ip);

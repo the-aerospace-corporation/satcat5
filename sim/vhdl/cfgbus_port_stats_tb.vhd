@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for port traffic statistics with ConfigBus interface.
@@ -45,7 +31,8 @@ end cfgbus_port_stats_tb;
 architecture tb of cfgbus_port_stats_tb is
 
 -- Total number of registers to read.
-constant CFG_WORDS  : positive := PORT_COUNT * 8;
+constant REG_PER_PORT : positive := 16;
+constant CFG_WORDS    : positive := PORT_COUNT * REG_PER_PORT;
 
 -- Clock and reset generation.
 signal clk_100      : std_logic := '0';
@@ -185,8 +172,8 @@ begin
             null;   -- No new data this cycle.
         elsif (test_rcount < CFG_WORDS) then
             -- Compare read data to the appropriate reference counter:
-            prt := test_rcount / 8;
-            case (test_rcount mod 8) is
+            prt := test_rcount / REG_PER_PORT;
+            case (test_rcount mod REG_PER_PORT) is
                 when 0 =>   assert(u2i(cfg_ack.rdata) = ref_bcbyte(prt))
                                 report "RxBcast-Bytes mismatch" severity error;
                 when 1 =>   assert(u2i(cfg_ack.rdata) = ref_bcfrm(prt))
@@ -201,7 +188,7 @@ begin
                                 report "TxTot-Frames mismatch" severity error;
                 when 6 =>   assert(u2i(cfg_ack.rdata) = 0)
                                 report "ErrCount mismatch" severity error;
-                when 7 =>   assert(u2i(cfg_ack.rdata(7 downto 0)) = test_index)
+                when 8 =>   assert(u2i(cfg_ack.rdata(7 downto 0)) = test_index)
                                 report "Status mismatch" severity error;
                 when others => null;
             end case;

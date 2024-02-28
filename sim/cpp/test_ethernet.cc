@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for Ethernet-related data structures
 
@@ -69,6 +55,11 @@ TEST_CASE("ethernet-mac") {
         CHECK(MACADDR_A < MACADDR_C);
         CHECK(MACADDR_B < MACADDR_C);
         CHECK(!(MACADDR_B < MACADDR_B));
+    }
+
+    SECTION("to_from") {
+        CHECK(MACADDR_B.to_u64() == 0x424242414242ULL);
+        CHECK(MACADDR_C == eth::MacAddr::from_u64(0x424242424342ULL));
     }
 
     SECTION("read-write") {

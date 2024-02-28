@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2020-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for the inline status-injection block
@@ -144,6 +130,7 @@ lcl_tx_data.data    <= lcl_tx_temp.data;
 lcl_tx_data.last    <= lcl_tx_temp.last;
 lcl_tx_data.valid   <= lcl_tx_valid;
 lcl_tx_ready        <= lcl_tx_ctrl.ready;
+net_tx_ctrl.pstart  <= '1';
 net_tx_ctrl.tnow    <= lcl_tx_temp.tsof;
 net_tx_ctrl.txerr   <= lcl_tx_temp.rxerr;
 net_tx_ctrl.reset_p <= lcl_tx_temp.reset_p;

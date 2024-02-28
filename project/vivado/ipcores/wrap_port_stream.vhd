@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-interface wrapper for a generic AXI-stream
@@ -44,6 +30,8 @@ entity wrap_port_stream is
     TX_HAS_FCS  : boolean;      -- Retain FCS for each Tx frame?
     PTP_ENABLE  : boolean;      -- Enable PTP timestamps?
     PTP_REF_HZ  : integer;      -- Vernier reference frequency
+    PTP_TAU_MS  : integer;      -- Tracking time constant (msec)
+    PTP_AUX_EN  : boolean;      -- Enable extra tracking filter?
     RX_CLK_HZ   : integer;      -- Frequency of rx_clk (PTP only)
     TX_CLK_HZ   : integer);     -- Frequency of tx_clk (PTP only)
     port (
@@ -86,6 +74,7 @@ entity wrap_port_stream is
     sw_tx_valid : in  std_logic;
     sw_tx_ready : out std_logic;
     sw_tx_error : out std_logic;
+    sw_tx_pstart: out std_logic;
     sw_tx_tnow  : out std_logic_vector(47 downto 0);
     sw_tx_reset : out std_logic);
 end wrap_port_stream;
@@ -93,7 +82,7 @@ end wrap_port_stream;
 architecture wrap_port_stream of wrap_port_stream is
 
 constant VCONFIG : vernier_config := create_vernier_config(
-    value_else_zero(PTP_REF_HZ, PTP_ENABLE));
+    value_else_zero(PTP_REF_HZ, PTP_ENABLE), real(PTP_TAU_MS), PTP_AUX_EN);
 
 signal prx_data : port_rx_m2s;
 signal ptx_data : port_tx_s2m;
@@ -114,6 +103,7 @@ sw_rx_status    <= prx_data.status;
 sw_rx_reset     <= prx_data.reset_p;
 sw_tx_clk       <= ptx_ctrl.clk;
 sw_tx_ready     <= ptx_ctrl.ready;
+sw_tx_pstart    <= ptx_ctrl.pstart;
 sw_tx_tnow      <= std_logic_vector(ptx_ctrl.tnow);
 sw_tx_error     <= ptx_ctrl.txerr;
 sw_tx_reset     <= ptx_ctrl.reset_p;

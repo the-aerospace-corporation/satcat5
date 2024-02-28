@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "port_crosslink"
@@ -37,7 +23,9 @@ entity wrap_port_crosslink is
     RUNT_PORTB  : boolean;          -- Allow runt packets on Port B?
     RATE_DIV    : integer;          -- Rate limit of 1/N
     PTP_ENABLE  : boolean := false; -- Enable PTP timestamps?
-    PTP_REF_HZ  : integer := 0);    -- Vernier reference frequency
+    PTP_REF_HZ  : integer := 0;     -- Vernier reference frequency
+    PTP_TAU_MS  : integer := 50;    -- Tracking time constant (msec)
+    PTP_AUX_EN  : boolean := true); -- Enable extra tracking filter?
     port (
     -- Network port A
     pa_rx_clk       : out std_logic;
@@ -55,6 +43,7 @@ entity wrap_port_crosslink is
     pa_tx_valid     : in  std_logic;
     pa_tx_ready     : out std_logic;
     pa_tx_error     : out std_logic;
+    pa_tx_pstart    : out std_logic;
     pa_tx_tnow      : out std_logic_vector(47 downto 0);
     pa_tx_reset     : out std_logic;
 
@@ -74,6 +63,7 @@ entity wrap_port_crosslink is
     pb_tx_valid     : in  std_logic;
     pb_tx_ready     : out std_logic;
     pb_tx_error     : out std_logic;
+    pb_tx_pstart    : out std_logic;
     pb_tx_tnow      : out std_logic_vector(47 downto 0);
     pb_tx_reset     : out std_logic;
 
@@ -91,7 +81,7 @@ end wrap_port_crosslink;
 architecture wrap_port_crosslink of wrap_port_crosslink is
 
 constant VCONFIG : vernier_config := create_vernier_config(
-    value_else_zero(PTP_REF_HZ, PTP_ENABLE));
+    value_else_zero(PTP_REF_HZ, PTP_ENABLE), real(PTP_TAU_MS), PTP_AUX_EN);
 
 signal ref_time   : port_timeref;
 signal arxd, brxd : port_rx_m2s;
@@ -113,6 +103,7 @@ pa_rx_reset <= arxd.reset_p;
 pa_tx_clk   <= atxc.clk;
 pa_tx_ready <= atxc.ready;
 pa_tx_tnow  <= std_logic_vector(atxc.tnow);
+pa_tx_pstart<= atxc.pstart;
 pa_tx_error <= atxc.txerr;
 pa_tx_reset <= atxc.reset_p;
 atxd.data   <= pa_tx_data;
@@ -130,6 +121,7 @@ pb_rx_status<= brxd.status;
 pb_rx_reset <= brxd.reset_p;
 pb_tx_clk   <= btxc.clk;
 pb_tx_ready <= btxc.ready;
+pb_tx_pstart<= btxc.pstart;
 pb_tx_tnow  <= std_logic_vector(btxc.tnow);
 pb_tx_error <= btxc.txerr;
 pb_tx_reset <= btxc.reset_p;

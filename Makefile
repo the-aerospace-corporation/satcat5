@@ -1,19 +1,6 @@
-# Copyright 2020, 2021, 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2021-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
+
 
 # Use BASH shell for the "source" command.
 SHELL := /bin/bash
@@ -34,17 +21,23 @@ VIVADO_RUN := ${VIVADO_SETUP} && xvfb-run -a ${VIVADO_BATCH}
 # Software analysis parameters
 CPPCHECK_RUN := cppcheck \
     --std=c++11 --enable=all --xml --xml-version=2 \
+    -DSATCAT5_IRQ_STATS=1 \
     -DSATCAT5_VLAN_ENABLE=1 \
     -i src/cpp/hal_ublaze/overrides.cc \
     -i src/cpp/qcbor \
     --suppress=knownConditionTrueFalse \
     --suppress=missingInclude \
     --suppress=unusedFunction
+CPPLINT_FILTERS := \
+    -build/include_order, -build/include_what_you_use, -build/include_subdir, \
+    -readability/casting, -readability/namespace, -readability/todo, \
+    -runtime/indentation_namespace, -runtime/references, \
+    -whitespace, +whitespace/end_of_line, +whitespace/tab
 CPPLINT_RUN := cpplint \
-    --filter=-build/include_order,-build/include_what_you_use,-build/include_subdir,-readability/casting,-readability/namespace,-runtime/indentation_namespace,-whitespace,+whitespace/end_of_line \
+    --filter=$(subst $() ,,$(CPPLINT_FILTERS)) \
     --exclude=src/cpp/hal_test/catch.hpp \
     --exclude=src/cpp/qcbor/* \
-    --verbose=3 --recursive
+    --verbose=1 --recursive
 
 # Set working folders
 SIMS_DIR := ./sim/vhdl/
@@ -109,6 +102,10 @@ vc707_clksynth:
 .PHONY: vc707_managed
 vc707_managed:
 	@cd examples/vc707_managed && ${VIVADO_RUN} create_all.tcl
+
+.PHONY: vc707_ptp_client
+vc707_ptp_client:
+	@cd examples/vc707_ptp_client && ${VIVADO_RUN} create_all.tcl
 
 # ZCU208 example design
 .PHONY: zcu208_clksynth

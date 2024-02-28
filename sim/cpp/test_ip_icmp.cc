@@ -1,24 +1,11 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the Internet Control Message Protocol (ICMP)
 
 #include <hal_test/catch.hpp>
+#include <hal_test/eth_crosslink.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/eth_dispatch.h>
 #include <satcat5/ip_address.h>
@@ -66,22 +53,21 @@ protected:
 
 TEST_CASE("ICMP") {
     satcat5::log::ToConsole log;
-    satcat5::util::PosixTimer timer;
 
     // Network communication infrastructure.
-    const satcat5::eth::MacAddr MAC_CONTROLLER = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
-    const satcat5::eth::MacAddr MAC_PERIPHERAL = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
-    const satcat5::ip::Addr IP_CONTROLLER(192, 168, 1, 11);
-    const satcat5::ip::Addr IP_PERIPHERAL(192, 168, 1, 12);
-    satcat5::io::PacketBufferHeap c2p, p2c;
-    satcat5::eth::Dispatch eth_controller(MAC_CONTROLLER, &c2p, &p2c);
-    satcat5::eth::Dispatch eth_peripheral(MAC_PERIPHERAL, &p2c, &c2p);
-    satcat5::ip::Dispatch ip_controller(IP_CONTROLLER, &eth_controller, &timer);
-    satcat5::ip::Dispatch ip_peripheral(IP_PERIPHERAL, &eth_peripheral, &timer);
+    satcat5::test::CrosslinkIp xlink;
+
+    // Shortcuts and aliases:
+    auto& c2p(xlink.eth0);                      // Bad packet injection point
+    auto& ip_controller(xlink.net0.m_ip);       // IP stack for controller
+    auto MAC_CONTROLLER(xlink.MAC0);            // Controller MAC addr (eth0)
+    auto MAC_PERIPHERAL(xlink.MAC1);            // Peripheral MAC addr (eth1)
+    auto IP_CONTROLLER(xlink.IP0);              // Controller IP addr (eth0)
+    auto IP_PERIPHERAL(xlink.IP1);              // Peripheral IP addr (eth1)
 
     // Specialized test infrastructure
-    FakeProto fake_controller(&ip_controller);
-    FakeProto fake_peripheral(&ip_peripheral);
+    FakeProto fake_controller(&xlink.net0.m_ip);
+    FakeProto fake_peripheral(&xlink.net1.m_ip);
 
     // Open a connection and execute ARP handshake.
     satcat5::ip::Address addr(&ip_controller, satcat5::ip::PROTO_ICMP);
@@ -101,7 +87,7 @@ TEST_CASE("ICMP") {
 
     SECTION("time") {
         ip_controller.m_icmp.send_timereq(addr);
-        log.disable();
+        log.suppress("Timestamp");
         satcat5::poll::service_all();
         CHECK(log.contains("Timestamp"));
     }
@@ -114,14 +100,14 @@ TEST_CASE("ICMP") {
         c2p.write_obj(satcat5::eth::ETYPE_IPV4);    // EtherType
         c2p.write_u32(0x4F00004C);                  // IHL = 15 words (max)
         c2p.write_u32(0xCAFE0000);                  // ID + flags
-        c2p.write_u32(0x424269D4);                  // Proto = 0x42, checksum
-        c2p.write_u32(IP_CONTROLLER.value);         // IP Source
-        c2p.write_u32(IP_PERIPHERAL.value);         // IP Destination
+        c2p.write_u32(0x42426996);                  // Proto = 0x42, checksum
+        c2p.write_obj(IP_CONTROLLER);               // IP Source
+        c2p.write_obj(IP_PERIPHERAL);               // IP Destination
         for (unsigned a = 0 ; a < 14 ; ++a)         // 10x fake options
             c2p.write_u32(0x12340000 + a);          // +4x placeholder data
         CHECK(c2p.write_finalize());
         // Deliver the frame and watch for the error message.
-        log.disable();
+        log.suppress("Destination protocol unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination protocol unreachable"));
     }
@@ -134,14 +120,13 @@ TEST_CASE("ICMP") {
         c2p.write_obj(satcat5::eth::ETYPE_IPV4);    // EtherType
         c2p.write_u32(0x4F00004C);                  // IHL = 15 words (max)
         c2p.write_u32(0xCAFE0000);                  // ID + flags
-        c2p.write_u32(0x424269D3);                  // Checksum should be 0x69D4
-        c2p.write_u32(IP_CONTROLLER.value);         // IP Source
-        c2p.write_u32(IP_PERIPHERAL.value);         // IP Destination
+        c2p.write_u32(0x42426995);                  // Checksum should be 0x6996
+        c2p.write_obj(IP_CONTROLLER);               // IP Source
+        c2p.write_obj(IP_PERIPHERAL);               // IP Destination
         for (unsigned a = 0 ; a < 14 ; ++a)         // 10x fake options
             c2p.write_u32(0x12340000 + a);          // +4x placeholder data
         CHECK(c2p.write_finalize());
         // Deliver the frame and it should be dropped silently.
-        log.disable();
         satcat5::poll::service_all();
         CHECK(log.empty());
     }
@@ -177,7 +162,7 @@ TEST_CASE("ICMP") {
     SECTION("unreachable-prohibit") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_NET_PROHIBITED);
-        log.disable();
+        log.suppress("Destination unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination unreachable"));
     }
@@ -185,7 +170,7 @@ TEST_CASE("ICMP") {
     SECTION("unreachable-host") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_UNREACHABLE_HOST);
-        log.disable();
+        log.suppress("Destination host unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination host unreachable"));
     }
@@ -193,7 +178,7 @@ TEST_CASE("ICMP") {
     SECTION("unreachable-net") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_UNREACHABLE_NET);
-        log.disable();
+        log.suppress("Destination network unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination network unreachable"));
     }
@@ -201,7 +186,7 @@ TEST_CASE("ICMP") {
     SECTION("unreachable-host") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_UNREACHABLE_HOST);
-        log.disable();
+        log.suppress("Destination host unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination host unreachable"));
     }
@@ -209,7 +194,7 @@ TEST_CASE("ICMP") {
     SECTION("unreachable-proto") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_UNREACHABLE_PROTO);
-        log.disable();
+        log.suppress("Destination protocol unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination protocol unreachable"));
     }
@@ -217,7 +202,7 @@ TEST_CASE("ICMP") {
     SECTION("unreachable-port") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_UNREACHABLE_PORT);
-        log.disable();
+        log.suppress("Destination port unreachable");
         satcat5::poll::service_all();
         CHECK(log.contains("Destination port unreachable"));
     }
@@ -225,7 +210,7 @@ TEST_CASE("ICMP") {
     SECTION("time-exceeded") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_FRAG_TIMEOUT);
-        log.disable();
+        log.suppress("Time exceeded");
         satcat5::poll::service_all();
         CHECK(log.contains("Time exceeded"));
     }
@@ -233,7 +218,7 @@ TEST_CASE("ICMP") {
     SECTION("ttl-expired") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_TTL_EXPIRED);
-        log.disable();
+        log.suppress("TTL expired");
         satcat5::poll::service_all();
         CHECK(log.contains("TTL expired"));
     }
@@ -241,7 +226,7 @@ TEST_CASE("ICMP") {
     SECTION("bad-header") {
         fake_controller.request(IP_PERIPHERAL,
             satcat5::ip::ICMP_IP_HDR_OPTION);
-        log.disable();
+        log.suppress("IP header error");
         satcat5::poll::service_all();
         CHECK(log.contains("IP header error"));
     }

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the generic Interrupt Controller
 
@@ -234,6 +220,56 @@ TEST_CASE("interrupts") {
     REQUIRE(ctrl.count() == 0);
 }
 
+TEST_CASE("interrupts-null-timer") {
+    // Print any SatCat5 messages to console.
+    satcat5::log::ToConsole log;
+
+    // Unit under test: One controller and two handlers.
+    MockInterruptController ctrl;
+    MockInterruptHandler irq1(&ctrl, 1);
+    MockInterruptHandler irq2(&ctrl, 2);
+
+    // Initialize interrupt system, without a timer.
+    ctrl.init(0);
+    CHECK(ctrl.count() == 2);
+    CHECK(ctrl.is_initialized());
+    CHECK_FALSE(ctrl.is_irq_context());
+    CHECK_FALSE(ctrl.is_irq_or_locked());
+
+    SECTION("lock") {
+        // Enter and exit a critical section.
+        REQUIRE(ctrl.is_initialized());
+        CHECK_FALSE(ctrl.is_irq_context());
+        CHECK_FALSE(ctrl.is_irq_or_locked());
+        {
+            satcat5::irq::AtomicLock lock("LockTest");
+            CHECK_FALSE(ctrl.is_irq_context());
+            CHECK(ctrl.is_irq_or_locked());
+        }
+        CHECK_FALSE(ctrl.is_irq_context());
+        CHECK_FALSE(ctrl.is_irq_or_locked());
+    }
+
+    SECTION("interrupt") {
+        // Trigger each interrupt a few times.
+        REQUIRE(ctrl.is_initialized());
+        CHECK(irq1.count() == 0);
+        CHECK(irq2.count() == 0);
+        ctrl.trigger(&irq1);
+        ctrl.trigger(&irq2);
+        ctrl.trigger(&irq1);
+        ctrl.trigger(&irq1);
+        ctrl.trigger(&irq2);
+        ctrl.trigger(&irq1);
+        ctrl.trigger(&irq1);
+        CHECK(irq1.count() == 5);
+        CHECK(irq2.count() == 2);
+    }
+
+    // Cleanup.
+    ctrl.stop();
+}
+
 TEST_CASE("ControllerNull") {
     // Print any SatCat5 messages to console.
     satcat5::log::ToConsole log;
@@ -280,3 +316,4 @@ TEST_CASE("ControllerNull") {
     // Cleanup.
     ctrl.stop();
 }
+

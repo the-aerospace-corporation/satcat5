@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2021, 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- High-level wrapper for the MAC-processing pipeline
@@ -70,6 +56,7 @@ entity mac_core is
     PRI_TABLE_SIZE  : natural;          -- Max high-priority EtherTypes (0 = disable)
     ALLOW_RUNT      : boolean;          -- Allow undersize frames?
     ALLOW_PRECOMMIT : boolean;          -- Allow output FIFO cut-through?
+    PTP_STRICT      : boolean;          -- Drop frames with missing timestamps?
     SUPPORT_PTP     : boolean;          -- Support Precision Time Protocol?
     SUPPORT_VPORT   : boolean;          -- Support virtual-LAN port control?
     SUPPORT_VRATE   : boolean;          -- Support virtual-LAN rate control?
@@ -104,6 +91,8 @@ entity mac_core is
     error_change    : out std_logic;    -- MAC address changed ports
     error_other     : out std_logic;    -- Other internal error
     error_table     : out std_logic;    -- Table integrity check failed
+    error_ptp       : out std_logic;
+    ptp_err_psrc    : out integer range 0 to PORT_COUNT-1;
 
     -- System interface
     clk             : in  std_logic;
@@ -331,6 +320,7 @@ gen_ptp1 : if SUPPORT_PTP generate
         generic map(
         IO_BYTES    => IO_BYTES,
         PORT_COUNT  => PORT_COUNT,
+        PTP_STRICT  => PTP_STRICT,
         MIXED_STEP  => PTP_MIXED_STEP)
         port map(
         in_meta     => in_meta,
@@ -351,6 +341,8 @@ gen_ptp1 : if SUPPORT_PTP generate
         frm_tstamp  => ptpf_tstamp,
         frm_valid   => ptpf_valid,
         frm_ready   => packet_done,
+        ptp_err     => error_ptp,
+        ptp_err_psrc=> ptp_err_psrc,
         clk         => clk,
         reset_p     => reset_p);
 end generate;

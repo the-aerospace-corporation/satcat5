@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "port_status_inline"
@@ -59,6 +45,7 @@ entity wrap_port_inline_status is
     lcl_tx_valid    : in  std_logic;
     lcl_tx_ready    : out std_logic;
     lcl_tx_error    : out std_logic;
+    lcl_tx_pstart   : out std_logic;
     lcl_tx_tnow     : out std_logic_vector(47 downto 0);
     lcl_tx_reset    : out std_logic;
 
@@ -78,6 +65,7 @@ entity wrap_port_inline_status is
     net_tx_valid    : out std_logic;
     net_tx_ready    : in  std_logic;
     net_tx_error    : in  std_logic;
+    net_tx_pstart   : in  std_logic;
     net_tx_tnow     : in  std_logic_vector(47 downto 0);
     net_tx_reset    : in  std_logic;
 
@@ -106,6 +94,7 @@ lcl_rx_status   <= lcl_rxd.status;
 lcl_rx_reset    <= lcl_rxd.reset_p;
 lcl_tx_clk      <= lcl_txc.clk;
 lcl_tx_ready    <= lcl_txc.ready;
+lcl_tx_pstart   <= lcl_txc.pstart;
 lcl_tx_tnow     <= std_logic_vector(lcl_txc.tnow);
 lcl_tx_error    <= lcl_txc.txerr;
 lcl_tx_reset    <= lcl_txc.reset_p;
@@ -124,6 +113,7 @@ net_rxd.status  <= net_rx_status;
 net_rxd.reset_p <= net_rx_reset;
 net_txc.clk     <= net_tx_clk;
 net_txc.ready   <= net_tx_ready;
+net_txc.pstart  <= net_tx_pstart;
 net_txc.tnow    <= unsigned(net_tx_tnow);
 net_txc.txerr   <= net_tx_error;
 net_txc.reset_p <= net_tx_reset;

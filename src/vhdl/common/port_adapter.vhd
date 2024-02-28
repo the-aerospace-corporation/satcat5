@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Internal port adapter, for switches with a single uplink port
@@ -46,6 +32,7 @@ end port_adapter;
 architecture port_adapter of port_adapter is
 
 signal adjust_data      : axi_stream8;
+signal flow_fifo_empty  : std_logic;
 signal flow_fifo_full   : std_logic;
 signal flow_fifo_write  : std_logic;
 
@@ -58,6 +45,7 @@ sw_rx_data.rate     <= mac_rx_data.rate;
 sw_rx_data.status   <= mac_rx_data.status;
 sw_rx_data.reset_p  <= mac_rx_data.reset_p;
 sw_tx_ctrl.clk      <= mac_tx_ctrl.clk;
+sw_tx_ctrl.pstart   <= mac_tx_ctrl.pstart and flow_fifo_empty;
 sw_tx_ctrl.tnow     <= mac_tx_ctrl.tnow;
 sw_tx_ctrl.txerr    <= mac_tx_ctrl.txerr;
 sw_tx_ctrl.reset_p  <= mac_tx_ctrl.reset_p;
@@ -102,7 +90,7 @@ u_flow_fifo : entity work.fifo_smol_sync
     out_valid   => mac_tx_data.valid,
     out_read    => mac_tx_ctrl.ready,
     fifo_full   => flow_fifo_full,
-    fifo_empty  => open,
+    fifo_empty  => flow_fifo_empty,
     fifo_hfull  => open,
     fifo_hempty => open,
     fifo_error  => open,

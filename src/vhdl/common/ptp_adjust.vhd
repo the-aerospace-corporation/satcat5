@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- MAC-pipeline processing for the Precision Time Protocol (PTP)
@@ -72,6 +58,7 @@ entity ptp_adjust is
     IO_BYTES    : positive;         -- Width of datapath
     PORT_COUNT  : positive;         -- Number of Ethernet ports
     MIXED_STEP  : boolean := true;  -- Step-type conversion?
+    PTP_STRICT  : boolean := true;  -- Drop frames with missing timestamps?
     SUPPORT_L2  : boolean := true;  -- L2 supported? (Ethernet)
     SUPPORT_L3  : boolean := true); -- L3 supported? (UDP)
     port (
@@ -96,6 +83,9 @@ entity ptp_adjust is
     frm_tstamp  : out tstamp_t;     -- Modified timestamp
     frm_valid   : out std_logic;    -- AXI flow-control
     frm_ready   : in  std_logic;    -- AXI flow-control
+    -- ptp error
+    ptp_err     : out std_logic;
+    ptp_err_psrc: out integer range 0 to PORT_COUNT-1;
     -- System clock and reset.
     clk         : in  std_logic;
     reset_p     : in  std_logic);
@@ -462,6 +452,7 @@ begin
         elsif (ptp_ready = '1') then
             mod_valid <= ptp_valid;         -- Storing new data?
         end if;
+        ptp_err <= '0';
 
         -- Store metadata at the end of each frame.
         meta_write <= ptp_eof and not reset_p;
@@ -477,6 +468,13 @@ begin
                 meta_pmask  <= (others => '1');
                 meta_pmode  <= PTP_MODE_NONE;
                 meta_tstamp <= TSTAMP_DISABLED;
+            elsif (PTP_STRICT and ptp_tstamp = TSTAMP_DISABLED) then
+                -- Strict mode drops frames with missing ingress timestamps.
+                meta_pmask  <= (others => '0');
+                meta_pmode  <= PTP_MODE_NONE;
+                meta_tstamp <= TSTAMP_DISABLED;
+                ptp_err <= '1';
+                ptp_err_psrc <= vec2psrc(ptp_meta);
             elsif (ptp_is_udp = '1') then
                 -- Adjustments required, UDP mode
                 meta_pmask  <= (others => '1');

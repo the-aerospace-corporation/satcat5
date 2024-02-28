@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Miscellaneous simulation and test helper functions
 
@@ -27,6 +13,11 @@
 #include <satcat5/ip_stack.h>
 #include <satcat5/polling.h>
 #include <satcat5/timer.h>
+
+/// Enable CBOR features?
+#if SATCAT5_CBOR_ENABLE
+#include <qcbor/qcbor_decode.h>
+#endif
 
 // Macro for making a std::string from a byte-array.
 // Note: Only works for locally defined constants.
@@ -43,6 +34,33 @@ namespace satcat5 {
         // Logs messages indicating each mismatch.
         bool read(satcat5::io::Readable* src,
             unsigned nbytes, const u8* data);
+        bool read(satcat5::io::Readable* src,
+            const std::string& ref);
+
+        // Write random bytes and finalize.
+        bool write_random(satcat5::io::Writeable* dst, unsigned nbytes);
+
+        // Check if two streams are equal.
+        bool read_equal(
+            satcat5::io::Readable* src1,
+            satcat5::io::Readable* src2);
+
+        // A simple CBOR decoder for use in unit tests.
+        class CborParser {
+        public:
+            // Copy received message to local buffer.
+            explicit CborParser(satcat5::io::Readable* src, bool verbose=false);
+
+            // Attempt to fetch top-level QCBOR item for the given key.
+            #if SATCAT5_CBOR_ENABLE
+            QCBORItem get(const char* key) const;
+            QCBORItem get(u32 key) const;
+            #endif
+
+        protected:
+            u8 m_dat[2048];
+            unsigned m_len;
+        };
 
         // Timer object that simply returns a constant.
         // For test purposes, resolution is fixed at 16 ticks per microsecond.
@@ -194,6 +212,18 @@ namespace satcat5 {
             satcat5::cfg::ConfigBus* const m_cfg;
             unsigned m_count;
             unsigned m_regaddr;
+        };
+
+        // Generate a random block of data that can be read repeatedly.
+        class RandomSource : satcat5::io::ReadableRedirect {
+        public:
+            explicit RandomSource(unsigned len);
+            ~RandomSource();
+            satcat5::io::Readable* read();
+        protected:
+            const unsigned m_len;
+            u8* const m_buff;
+            satcat5::io::ArrayRead m_read;
         };
 
         // Measure various statistics of a discrete-time series.

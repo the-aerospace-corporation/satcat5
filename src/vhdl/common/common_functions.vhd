@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2020-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Generic functions that are useful to nearly any VHDL block
@@ -64,6 +50,9 @@ package COMMON_FUNCTIONS is
     function or_reduce(a: std_logic_vector) return std_logic;
     -- Return '1' if all the bits in the input are '1'
     function and_reduce(a: std_logic_vector) return std_logic;
+
+    -- Are all bits in the input the same? (i.e., all '0' or all '1'.)
+    function same_bits(a: std_logic_vector) return std_logic;
 
     -- X / Y, rounded up, down, or to the nearest integer.
     function div_ceil(a: natural; b: positive) return natural;
@@ -261,14 +250,27 @@ package body COMMON_FUNCTIONS is
     function or_reduce(a: std_logic_vector) return std_logic is
         variable z : std_logic := '0';
     begin
-        for i in a'range loop z := z or a(i); end loop;
+        for i in a'range loop
+            z := z or a(i);
+        end loop;
         return z;
     end;
 
     function and_reduce(a: std_logic_vector) return std_logic is
         variable z : std_logic := '1';
     begin
-        for i in a'range loop z := z and a(i); end loop;
+        for i in a'range loop
+            z := z and a(i);
+        end loop;
+        return z;
+    end;
+
+    function same_bits(a: std_logic_vector) return std_logic is
+        variable z : std_logic := '1';
+    begin
+        for i in a'range loop
+            z := z and (a(i) xnor a(a'left));
+        end loop;
         return z;
     end;
 

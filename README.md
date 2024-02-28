@@ -99,7 +99,7 @@ hardware-in-the-loop testig, can also be found in the [DevOps documentation](doc
 # Folder Structure
 
 * doc: Documentation and associated images. All documentation is linked somewhere in this README.
-* example: [Example designs](examples/README.md) for specific hardware platforms
+* examples: [Example designs](examples/README.md) for specific hardware platforms
 * project: Scripts and project files for specific vendor tools
   * libero: Building Microsemi designs in Libero. (Tested with version 12.3.)
   * modelsim: Running VHDL simulations in ModelSim. (Tested with version 10.0a.)
@@ -112,8 +112,11 @@ hardware-in-the-loop testig, can also be found in the [DevOps documentation](doc
   * vhdl: VHDL unit tests for individual functional blocks.
 * src: Source code for the core SatCat5 design
   * cpp: C/C++ software libraries targeting various platforms
-    * hal_ublaze: Microblaze-specific hardware abstraction layer (HAL).
-    * hal_posix: Linux HAL intended to be used to run embedded unit tests on a Linux host.
+    * hal_devices: Abstraction layer for specific hardware peripherals.
+    * hal_pcap: Abstraction layer for interfacing with PCAP or NPCAP.
+    * hal_posix: Abstraction layer for Linux and Windows PCs.
+    * hal_test: Abstraction layer for simulation and testing.
+    * hal_ublaze: Abstraction layer for the Xilinx Microblaze soft-CPU.
     * satcat5: Cross-platform libraries for connecting to and configuring an Ethernet network.
   * python: Python libraries for connecting to raw-Ethernet / Ethernet-over-UART ports and remote ConfigBus control.
   * vhdl: VHDL implementation of functional blocks
@@ -125,6 +128,7 @@ hardware-in-the-loop testig, can also be found in the [DevOps documentation](doc
   * chat_client: A demo application that implements chatroom functions using raw Ethernet frames.
   * log_viewer: A demo application for viewing Chat/Log messages from example designs.
   * pi_wire: A tool for connecting to SatCat5 with a Raspberry Pi.
+  * telem_receive: A Python tool for receiving CBOR telemetry.
 
 # Contributing
 
@@ -136,25 +140,22 @@ A log of major changes per SatCat5 release can be found in the [Change Log](doc/
 
 # Patents
 
-Portions of SatCat5 are patented under US11055254B2.
+Portions of SatCat5 are patented or patent-pending, e.g., US11055254B2.
 
-In accordance with SatCat5's LGPL license agreement, we grant a royalty-free license for use of this technology. Refer to section 11 of the GPLv3 license for details.
+In accordance with SatCat5's open-source license agreement,
+we grant a royalty-free license for use of these technologies.
+Refer to section 7 of the CERN-OHL-W v2 license for details.
 
 # Copyright Notice
 
-Copyright 2019, 2020, 2021, 2022 The Aerospace Corporation
+Copyright 2019-2024 The Aerospace Corporation.
 
-This file is part of SatCat5.
+This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
-SatCat5 is free software: you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the
-Free Software Foundation, either version 3 of the License, or (at your
-option) any later version.
+You may redistribute and modify SatCat5 and make products using it under
+the weakly reciprocal variant of the CERN Open Hardware License, version 2
+or (at your option) any later weakly reciprocal version.
 
-SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-License for more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with SatCat5.  If not, see [https://www.gnu.org/licenses/](https://www.gnu.org/licenses/).
+SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
+PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.

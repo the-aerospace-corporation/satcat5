@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Clock-synthesis unit using cross-clock counter
@@ -55,6 +41,7 @@ entity ptp_clksynth is
     PAR_CLK_HZ  : positive;         -- Rate of the parallel clock
     PAR_COUNT   : positive;         -- Number of samples per clock
     REF_MOD_HZ  : natural := 0;     -- Reference modulo (1/N) seconds?
+    DITHER_EN   : boolean := true;  -- Enable dither on output?
     MSB_FIRST   : boolean := true); -- Parallel bit order
     port (
     par_clk     : in  std_logic;    -- Parallel clock
@@ -68,19 +55,33 @@ architecture ptp_clksynth of ptp_clksynth is
 -- Useful constants.
 -- (Note: If REF_MOD_HZ is zero, then REF_MODULO is also zero.)
 constant OUT_TSAMP  : real := 1.0 / (real(PAR_COUNT) * real(PAR_CLK_HZ));
+constant DITHER_MAX : tstamp_t := get_tstamp_sec(OUT_TSAMP);
 constant REF_MODULO : tstamp_t := get_tstamp_incr(REF_MOD_HZ);
 constant SYNTH_ONE  : tstamp_t := get_tstamp_incr(SYNTH_HZ);
 constant SYNTH_TWO  : tstamp_t := shift_left(SYNTH_ONE, 1);
 constant SYNTH_HALF : tstamp_t := shift_right(SYNTH_ONE, 1);
 
 -- Counter initial value compensates for pipeline delay in "p_mod".
-constant CTR_DELAY  : real := 3.0 / real(PAR_CLK_HZ);
+function CTR_DELAY return real is
+begin
+    if (DITHER_EN) then
+        return 4.0 / real(PAR_CLK_HZ);
+    else
+        return 3.0 / real(PAR_CLK_HZ);
+    end if;
+end function;
+
 constant CTR_INIT   : tstamp_t := REF_MODULO + get_tstamp_sec(-CTR_DELAY);
 
--- Internal state.
+-- Modulo-time calculation.
 signal mod_offset   : tstamp_t := ctr_init;
 signal mod_time     : tstamp_t := (others => '0');
+signal mod_dither   : tstamp_t := (others => '0');
 signal par_out_i    : std_logic_vector(PAR_COUNT-1 downto 0) := (others => '0');
+
+-- For debugging, apply KEEP constraint to certain signals.
+attribute KEEP : string;
+attribute KEEP of mod_offset, mod_time : signal is "true";
 
 begin
 
@@ -144,10 +145,26 @@ begin
     end if;
 end process;
 
+-- Optionally add dither to the parallel timestamps.
+gen_dither1 : if DITHER_EN generate
+    u_dither : entity work.ptp_dither
+        port map(
+        in_tstamp   => mod_time,
+        in_tmax     => DITHER_MAX,
+        out_dither  => mod_dither,
+        clk         => par_clk,
+        reset_p     => reset_p);
+end generate;
+
+gen_dither0 : if not DITHER_EN generate
+    mod_dither <= mod_time;
+end generate;
+
 -- Comparator for each parallel output bit:
 gen_cmp : for n in 0 to PAR_COUNT-1 generate
     p_cmp : process(par_clk)
         constant OFFSET : tstamp_t := get_tstamp_sec(real(n) * OUT_TSAMP);
+        constant OFFMOD : tstamp_t := SYNTH_ONE - OFFSET;
         variable tlocal : tstamp_t := (others => '0');
     begin
         if rising_edge(par_clk) then
@@ -155,10 +172,10 @@ gen_cmp : for n in 0 to PAR_COUNT-1 generate
             par_out_i(n) <= bool2bit(tlocal < SYNTH_HALF);
 
             -- Calculate local modulo (never more than one wraparound).
-            if (mod_time + OFFSET < SYNTH_ONE) then
-                tlocal := mod_time + OFFSET;
+            if (mod_dither < OFFMOD) then
+                tlocal := mod_dither + OFFSET;
             else
-                tlocal := mod_time + OFFSET - SYNTH_ONE;
+                tlocal := mod_dither - OFFMOD;
             end if;
         end if;
     end process;

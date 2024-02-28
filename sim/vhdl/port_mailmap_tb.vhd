@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for ConfigBus "MailMap" port
@@ -37,7 +23,8 @@ use     work.switch_types.all;
 
 entity port_mailmap_tb is
     generic (
-    BIG_ENDIAN  : boolean := false);    -- Big-endian byte order?
+    BIG_ENDIAN  : boolean := false;     -- Big-endian byte order?
+    CHECK_FCS   : boolean := true);     -- Always check FCS?
     -- Unit testbench top level, no I/O ports
 end port_mailmap_tb;
 
@@ -251,7 +238,8 @@ u_src_b2a : entity work.port_test_common
 uut_a : entity work.port_mailmap
     generic map(
     DEV_ADDR    => DEVADDR_A,
-    BIG_ENDIAN  => BIG_ENDIAN)
+    BIG_ENDIAN  => BIG_ENDIAN,
+    CHECK_FCS   => CHECK_FCS)
     port map(
     rx_data     => rxdata_a,
     tx_data     => txdata_a,
@@ -262,7 +250,8 @@ uut_a : entity work.port_mailmap
 uut_b : entity work.port_mailmap
     generic map(
     DEV_ADDR    => DEVADDR_B,
-    BIG_ENDIAN  => BIG_ENDIAN)
+    BIG_ENDIAN  => BIG_ENDIAN,
+    CHECK_FCS   => CHECK_FCS)
     port map(
     rx_data     => rxdata_b,
     tx_data     => txdata_b,

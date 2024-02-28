@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2020, 2021, 2022, 2023 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2019-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Core packet-switching pipeline
@@ -75,6 +61,10 @@
 --      Allow output FIFO cut-through?
 --      This reduces latency by 1-5 microseconds in some cases, but requires
 --      additional slices.  Currently experimental, use at your own risk.
+--  * PTP_STRICT (default: true)
+--      Sets policy for dropping PTP messages when timestamps are not
+--      available for the affected ports.  It is typically better to drop
+--      the message entirely than to propagate with unknown degradation.
 --  * PORT_COUNT (default: 0)
 --      Total standard Ethernet ports (ports_*)
 --  * PORTX_COUNT (default: 0)
@@ -141,6 +131,7 @@ entity switch_core is
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean := false; -- Allow runt frames? (Size < 64 bytes)
     ALLOW_PRECOMMIT : boolean := false; -- Allow output FIFO cut-through?
+    PTP_STRICT      : boolean := true;  -- Drop frames with missing timestamps?
     PORT_COUNT      : natural := 0;     -- Total standard Ethernet ports
     PORTX_COUNT     : natural := 0;     -- Total 10 Gbps Ethernet ports
     DATAPATH_BYTES  : positive;         -- Width of shared pipeline
@@ -254,12 +245,15 @@ signal pktout_write     : std_logic;
 signal pktout_precommit : std_logic;
 signal pktout_hipri     : std_logic;
 signal pktout_pdst      : bit_array;
+signal pktin_ptperror   : std_logic;
+signal pktin_ptperr_src : integer range 0 to PORT_TOTAL-1;
 
 -- Output packet FIFO
 signal pktout_overflow  : bit_array;
 signal pktout_txerror   : bit_array;
 signal pktout_2step     : bit_array;
 signal pktout_pause     : bit_array;
+signal pktout_ptperror  : bit_array;
 
 -- Error toggles for switch_aux and port_statistics.
 signal err_prt          : array_port_error(PORT_TOTAL-1 downto 0) := (others => PORT_ERROR_NONE);
@@ -334,7 +328,14 @@ begin
             if (pktin_badfrm(n) = '1') then
                 err_prt(n).pkt_err <= not err_prt(n).pkt_err;
             end if;
+            if (pktout_ptperror(n) = '1') then
+                err_prt(n).tx_ptp_err <= not err_prt(n).tx_ptp_err;
+            end if;
         end loop;
+
+        if (pktin_ptperror = '1') then
+            err_prt(pktin_ptperr_src).rx_ptp_err <= not err_prt(pktin_ptperr_src).rx_ptp_err;
+        end if;
     end if;
 end process;
 
@@ -470,6 +471,7 @@ u_mac : entity work.mac_core
     CORE_CLK_HZ     => CORE_CLK_HZ,
     ALLOW_RUNT      => ALLOW_RUNT,
     ALLOW_PRECOMMIT => ALLOW_PRECOMMIT,
+    PTP_STRICT      => PTP_STRICT,
     SUPPORT_PTP     => SUPPORT_PTP,
     SUPPORT_VPORT   => SUPPORT_VLAN,
     SUPPORT_VRATE   => SUPPORT_VLAN,
@@ -501,6 +503,8 @@ u_mac : entity work.mac_core
     error_change    => macerr_dup,
     error_other     => macerr_int,
     error_table     => macerr_tbl,
+    error_ptp       => pktin_ptperror,
+    ptp_err_psrc    => pktin_ptperr_src,
     clk             => core_clk,
     reset_p         => core_reset_sync);
 
@@ -525,6 +529,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
         ALLOW_RUNT      => ALLOW_RUNT,
+        PTP_STRICT      => PTP_STRICT,
         INPUT_BYTES     => DATAPATH_BYTES,
         OUTPUT_BYTES    => 1,
         HBUF_KBYTES     => HBUF_KBYTES,
@@ -543,6 +548,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         tx_last         => ports_tx_data(n).last,
         tx_valid        => ports_tx_data(n).valid,
         tx_ready        => ports_tx_ctrl(n).ready,
+        tx_pstart       => ports_tx_ctrl(n).pstart,
         tx_tnow         => ports_tx_ctrl(n).tnow,
         tx_macerr       => ports_tx_ctrl(n).txerr,
         tx_reset_p      => ports_tx_ctrl(n).reset_p,
@@ -550,6 +556,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         port_2step      => pktout_2step(n),
         err_overflow    => pktout_overflow(n),
         err_txmac       => pktout_txerror(n),
+        err_ptp         => pktout_ptperror(n),
         cfg_cmd         => cfg_cmd,
         cfg_ack         => cfg_ack_tx(n),
         core_clk        => core_clk,
@@ -570,6 +577,7 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
         ALLOW_RUNT      => ALLOW_RUNT,
+        PTP_STRICT      => PTP_STRICT,
         INPUT_BYTES     => DATAPATH_BYTES,
         OUTPUT_BYTES    => 8,
         HBUF_KBYTES     => HBUF_KBYTES,
@@ -588,6 +596,7 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         tx_nlast        => portx_tx_data(n).nlast,
         tx_valid        => portx_tx_data(n).valid,
         tx_ready        => portx_tx_ctrl(n).ready,
+        tx_pstart       => portx_tx_ctrl(n).pstart,
         tx_tnow         => portx_tx_ctrl(n).tnow,
         tx_macerr       => portx_tx_ctrl(n).txerr,
         tx_reset_p      => portx_tx_ctrl(n).reset_p,
@@ -595,6 +604,7 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         port_2step      => pktout_2step(PORT_COUNT+n),
         err_overflow    => pktout_overflow(PORT_COUNT+n),
         err_txmac       => pktout_txerror(PORT_COUNT+n),
+        err_ptp         => pktout_ptperror(PORT_COUNT+n),
         cfg_cmd         => cfg_cmd,
         cfg_ack         => cfg_ack_tx(PORT_COUNT+n),
         core_clk        => core_clk,

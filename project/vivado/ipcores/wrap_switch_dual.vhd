@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "switch_dual"
@@ -51,6 +37,7 @@ entity wrap_switch_dual is
     pa_tx_valid     : out std_logic;
     pa_tx_ready     : in  std_logic;
     pa_tx_error     : in  std_logic;
+    pa_tx_pstart    : in  std_logic;
     pa_tx_tnow      : in  std_logic_vector(47 downto 0);
     pa_tx_reset     : in  std_logic;
 
@@ -70,6 +57,7 @@ entity wrap_switch_dual is
     pb_tx_valid     : out std_logic;
     pb_tx_ready     : in  std_logic;
     pb_tx_error     : in  std_logic;
+    pb_tx_pstart    : in  std_logic;
     pb_tx_tnow      : in  std_logic_vector(47 downto 0);
     pb_tx_reset     : in  std_logic;
 
@@ -98,6 +86,7 @@ rx_data(0).reset_p  <= pa_rx_reset;
 tx_ctrl(0).clk      <= pa_tx_clk;
 tx_ctrl(0).ready    <= pa_tx_ready;
 tx_ctrl(0).txerr    <= pa_tx_error;
+tx_ctrl(0).pstart   <= pa_tx_pstart;
 tx_ctrl(0).tnow     <= unsigned(pa_tx_tnow);
 tx_ctrl(0).reset_p  <= pa_tx_reset;
 pa_tx_data          <= tx_data(0).data;
@@ -116,6 +105,7 @@ rx_data(1).reset_p  <= pb_rx_reset;
 tx_ctrl(1).clk      <= pb_tx_clk;
 tx_ctrl(1).ready    <= pb_tx_ready;
 tx_ctrl(1).txerr    <= pb_tx_error;
+tx_ctrl(1).pstart   <= pb_tx_pstart;
 tx_ctrl(1).tnow     <= unsigned(pb_tx_tnow);
 tx_ctrl(1).reset_p  <= pb_tx_reset;
 pb_tx_data          <= tx_data(1).data;

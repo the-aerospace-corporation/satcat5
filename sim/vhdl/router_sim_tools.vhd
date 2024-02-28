@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2021, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2020-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Tools for use in various router_xx simulations
@@ -34,6 +20,9 @@ package router_sim_tools is
     -- PRNG state for the rand_xx functions, below.
     shared variable rs_seed1 : positive := 518874;
     shared variable rs_seed2 : positive := 761078;
+
+    -- Random float from [0..r)
+    impure function rand_float(rmax : real := 1.0) return real;
 
     -- Random integer from [0..N)
     impure function rand_int(imax : positive) return natural;
@@ -249,6 +238,13 @@ end package;
 ---------------------------------------------------------------------
 
 package body router_sim_tools is
+    impure function rand_float(rmax : real := 1.0) return real is
+        variable rand : real;
+    begin
+        uniform(rs_seed1, rs_seed2, rand);
+        return rand * rmax;
+    end function;
+
     impure function rand_int(imax : positive) return natural is
         variable rand : real;
     begin

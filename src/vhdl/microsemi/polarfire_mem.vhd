@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2019, 2021 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Inferred and explicit memory structures for Microsemi PolarFire FPGAs.
@@ -40,8 +26,11 @@ package body common_primitives is
     constant PREFER_DPRAM_AWIDTH : positive := 6;
 
     -- TODO: Add support for Vernier clock generator on this platform.
-    function create_vernier_config(input_hz : natural) return vernier_config is
-    begin
+    function create_vernier_config(
+        input_hz    : natural;
+        sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+    return vernier_config is begin
         return VERNIER_DISABLED;
     end function;
 end package body;

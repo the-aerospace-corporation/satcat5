@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/udp_core.h>
@@ -61,4 +47,24 @@ satcat5::net::Dispatch* Address::iface() const
 satcat5::io::Writeable* Address::open_write(unsigned len)
 {
     return m_iface->open_write(m_addr, m_srcport, m_dstport, len);
+}
+
+void satcat5::udp::Header::write_to(satcat5::io::Writeable* wr) const
+{
+    src.write_to(wr);
+    dst.write_to(wr);
+    wr->write_u16(length);
+    // Checksum of 0 means checksum is disabled as permitted under IETF RFC 768
+    wr->write_u16(0x0);
+}
+
+bool satcat5::udp::Header::read_from(satcat5::io::Readable* rd)
+{
+    if (rd->get_read_ready() < 8) {return false;}
+    src.read_from(rd);
+    dst.read_from(rd);
+    length = rd->read_u16();
+    // Read and discard checksum
+    rd->read_u16();
+    return true;
 }

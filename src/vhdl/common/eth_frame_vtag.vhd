@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- On-demand insertion of 802.1Q Virtual-LAN tags
@@ -61,12 +47,14 @@ entity eth_frame_vtag is
     -- Input data stream
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_vtag     : in  vlan_hdr_t;
+    in_error    : in  std_logic := '0';
     in_nlast    : in  integer range 0 to IO_BYTES;
     in_valid    : in  std_logic;
     in_ready    : out std_logic;
 
     -- Output data stream
     out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
+    out_error   : out std_logic;
     out_nlast   : out integer range 0 to IO_BYTES;
     out_valid   : out std_logic;
     out_ready   : in  std_logic;
@@ -116,6 +104,7 @@ signal tag_data     : data_t := (others => '0');
 signal tag_nlast    : last_t := 0;
 signal tag_novr     : shift_t := 0;
 signal tag_busy     : std_logic := '0';
+signal tag_error    : std_logic := '0';
 signal tag_valid    : std_logic := '0';
 signal tag_ready    : std_logic;
 signal tag_next     : std_logic;
@@ -164,6 +153,10 @@ begin
     if rising_edge(clk) then
         -- Delayed copy of the VLAN tag, for overflow handling.
         mod_vtag_d <= mod_vtag;
+
+        -- Buffer for propagating the upstream error flag.
+        -- (This block does not generate errors of its own.)
+        tag_error <= in_error;
 
         -- Update the output-valid flag and end-of-frame indicators.
         if (reset_p = '1') then
@@ -271,6 +264,7 @@ end generate;
 -- Drive top-level outputs.
 in_ready    <= in_ready_i;
 out_data    <= tag_data;
+out_error   <= tag_error;
 out_nlast   <= tag_nlast;
 out_valid   <= tag_valid;
 tag_ready   <= out_ready;

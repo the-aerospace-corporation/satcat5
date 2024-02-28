@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2022-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Testbench for the PTP "adjust" block (MAC pipeline processing)
@@ -24,7 +10,7 @@
 -- adjustments.  The test is run in parallel with various build-time
 -- parameters, including IO_BYTES settings that span the expected range.
 --
--- The complete test takes 5.3 milliseconds.
+-- The complete test takes 9 milliseconds.
 --
 
 library ieee;
@@ -178,6 +164,7 @@ uut : entity work.ptp_adjust
     IO_BYTES    => IO_BYTES,
     PORT_COUNT  => PORT_COUNT,
     MIXED_STEP  => MIXED_STEP,
+    PTP_STRICT  => true,
     SUPPORT_L2  => true,
     SUPPORT_L3  => true)
     port map(
@@ -261,7 +248,7 @@ p_test : process
     end procedure;
 
     -- Load packet(s) into the input and reference FIFOs.
-    procedure wr_all(typ: ptp_mode_t; din: std_logic_vector) is
+    procedure wr_all(typ: ptp_mode_t; din: std_logic_vector ; tstamp_err:boolean) is
         variable dref   : std_logic_vector(din'range) := din;
         variable dcpy   : std_logic_vector(din'range) := din;
         variable ihl    : nybb_u := (others => '0');
@@ -274,6 +261,10 @@ p_test : process
     begin
         -- Randomize input metadata for this packet.
         fifo_swmeta <= rand_vec(SWITCH_META_WIDTH);
+        fifo_swmeta (PTP_MODE_WIDTH + TSTAMP_WIDTH -1 downto  TSTAMP_WIDTH) <= typ;
+        if (tstamp_err) then
+            fifo_swmeta(TSTAMP_WIDTH-1 downto 0) <= (others => '0');
+        end if;
 
         -- Write the raw packet to the input FIFO.
         wait until rising_edge(clk);
@@ -324,10 +315,16 @@ p_test : process
 
         -- Set expected metadata for this frame.
         if (padj = '1') then
-            -- PTP frame requiring egressMake adjustment 
-            fifo_pmask  <= (others => '1');
-            fifo_pmode  <= typ;
-            fifo_tstamp <= pcorr - switch_v2m(fifo_swmeta).tstamp;
+            -- PTP frame requiring egressMake adjustment
+            if (switch_v2m(fifo_swmeta).tstamp = TSTAMP_DISABLED) then
+                fifo_pmask  <= (others => '0');
+                fifo_pmode  <= PTP_MODE_NONE;
+                fifo_tstamp <= TSTAMP_DISABLED;
+            else
+                fifo_pmask  <= (others => '1');
+                fifo_pmode  <= typ;
+                fifo_tstamp <= pcorr - switch_v2m(fifo_swmeta).tstamp;
+            end if;
         else
             -- No adjustment needed
             fifo_pmask  <= (others => '1');
@@ -354,7 +351,7 @@ p_test : process
     end procedure;
 
     -- Run a complete test with a single packet.
-    procedure test_single(ri, ro: real; typ: ptp_mode_t; pkt: std_logic_vector) is
+    procedure test_single(ri, ro: real; typ: ptp_mode_t; pkt: std_logic_vector ; tstamp_err:boolean) is
         variable timeout : natural := 10_000;
     begin
         -- Pre-test setup.
@@ -364,7 +361,7 @@ p_test : process
         test_rate_o <= 0.0;
         test_rate_f <= 0.0;
         wait for 1 us;
-        wr_all(typ, pkt);
+        wr_all(typ, pkt, tstamp_err);
         -- Run test to completion or timeout.
         wait for 1 us;
         test_rate_i <= ri;
@@ -395,17 +392,17 @@ p_test : process
         variable eth : eth_packet := make_eth_fcs(
             MAC_DST, MAC_SRC, ETYPE_ARP, rand_vec(8*nbytes));
     begin
-        test_single(ri, ro, PTP_MODE_NONE, eth.all);
+        test_single(ri, ro, PTP_MODE_NONE, eth.all, false);
     end procedure;
 
-    procedure test_l2(ri, ro: real; nbytes: natural) is
+    procedure test_l2(ri, ro: real; nbytes: natural; tstamp_err:boolean) is
         variable eth : eth_packet := make_eth_fcs(
             MAC_DST, MAC_SRC, ETYPE_PTP, rand_vec(8*nbytes));
     begin
-        test_single(ri, ro, PTP_MODE_ETH, eth.all);
+        test_single(ri, ro, PTP_MODE_ETH, eth.all, tstamp_err);
     end procedure;
 
-    procedure test_l3(ri, ro: real; nbytes: natural) is
+    procedure test_l3(ri, ro: real; nbytes: natural; tstamp_err:boolean) is
         variable nopt : natural := rand_int(10);
         variable udp : std_logic_vector(63 downto 0) :=
             rand_vec(16) & x"013F" & rand_vec(32);
@@ -414,7 +411,7 @@ p_test : process
         variable eth : eth_packet := make_eth_fcs(
             MAC_DST, MAC_SRC, ETYPE_IPV4, ip.all);
     begin
-        test_single(ri, ro, PTP_MODE_UDP, eth.all);
+        test_single(ri, ro, PTP_MODE_UDP, eth.all, tstamp_err);
     end procedure;
 begin
     reset_p <= '1';
@@ -426,12 +423,18 @@ begin
         test_no(0.1, 0.9, 64);
         test_no(0.9, 0.1, 64);
         test_no(0.9, 0.9, 128);
-        test_l2(0.1, 0.9, 64);
-        test_l2(0.9, 0.1, 64);
-        test_l2(0.9, 0.9, 128);
-        test_l3(0.1, 0.9, 64);
-        test_l3(0.9, 0.1, 64);
-        test_l3(0.9, 0.9, 128);
+        test_l2(0.1, 0.9, 64, false);
+        test_l2(0.9, 0.1, 64, false);
+        test_l2(0.9, 0.9, 128, false);
+        test_l3(0.1, 0.9, 64, false);
+        test_l3(0.9, 0.1, 64, false);
+        test_l3(0.9, 0.9, 128, false);
+        test_l2(0.1, 0.9, 64, true);
+        test_l2(0.9, 0.1, 64, true);
+        test_l2(0.9, 0.9, 128, true);
+        test_l3(0.1, 0.9, 64, true);
+        test_l3(0.9, 0.1, 64, true);
+        test_l3(0.9, 0.9, 128, true);
         if (n mod 10 = 0) then
             report "Completed run #" & integer'image(n);
         end if;
@@ -454,6 +457,7 @@ architecture tb of ptp_adjust_tb is
 begin
 
 -- Demonstrate operation at different pipeline widths.
+
 uut0 : entity work.ptp_adjust_tb_single
     generic map(IO_BYTES => 1, MIXED_STEP => true, TEST_ITER => 42);
 uut1 : entity work.ptp_adjust_tb_single

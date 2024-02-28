@@ -1,20 +1,6 @@
 --------------------------------------------------------------------------
--- Copyright 2020, 2022 The Aerospace Corporation
---
--- This file is part of SatCat5.
---
--- SatCat5 is free software: you can redistribute it and/or modify it under
--- the terms of the GNU Lesser General Public License as published by the
--- Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
---
--- SatCat5 is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
---
--- You should have received a copy of the GNU Lesser General Public License
--- along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+-- Copyright 2021-2024 The Aerospace Corporation.
+-- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Port-type wrapper for "port_gmii_internal"
@@ -34,7 +20,9 @@ use     work.switch_types.all;
 entity wrap_port_gmii_internal is
     generic (
     PTP_ENABLE  : boolean := false; -- Enable PTP timestamps?
-    PTP_REF_HZ  : integer := 0);    -- Vernier reference frequency
+    PTP_REF_HZ  : integer := 0;     -- Vernier reference frequency
+    PTP_TAU_MS  : integer := 50;    -- Tracking time constant (msec)
+    PTP_AUX_EN  : boolean := true); -- Enable extra tracking filter?
     port (
     -- GMII interface.
     gmii_txc    : out std_logic;
@@ -64,6 +52,7 @@ entity wrap_port_gmii_internal is
     sw_tx_valid : in  std_logic;
     sw_tx_ready : out std_logic;
     sw_tx_error : out std_logic;
+    sw_tx_pstart: out std_logic;
     sw_tx_tnow  : out std_logic_vector(47 downto 0);
     sw_tx_reset : out std_logic;
 
@@ -81,7 +70,7 @@ end wrap_port_gmii_internal;
 architecture wrap_port_gmii_internal of wrap_port_gmii_internal is
 
 constant VCONFIG : vernier_config := create_vernier_config(
-    value_else_zero(PTP_REF_HZ, PTP_ENABLE));
+    value_else_zero(PTP_REF_HZ, PTP_ENABLE), real(PTP_TAU_MS), PTP_AUX_EN);
 
 signal rx_data  : port_rx_m2s;
 signal tx_data  : port_tx_s2m;
@@ -109,6 +98,7 @@ sw_rx_status    <= rx_data.status;
 sw_rx_reset     <= rx_data.reset_p;
 sw_tx_clk       <= tx_ctrl.clk;
 sw_tx_ready     <= tx_ctrl.ready;
+sw_tx_pstart    <= tx_ctrl.pstart;
 sw_tx_tnow      <= std_logic_vector(tx_ctrl.tnow);
 sw_tx_error     <= tx_ctrl.txerr;
 sw_tx_reset     <= tx_ctrl.reset_p;

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Type definitions for Ethernet frames and protocol handlers
 //
@@ -40,13 +26,31 @@ namespace satcat5 {
     namespace eth {
         // An Ethernet MAC address (with serializable interface).
         struct MacAddr {
+            // Byte array in network order (Index 0 = MSB)
             u8 addr[6];
 
+            // Numeric conversion functions.
+            static constexpr satcat5::eth::MacAddr from_u64(u64 x) {
+                return MacAddr {
+                    (u8)(x >> 40), (u8)(x >> 32), (u8)(x >> 24),
+                    (u8)(x >> 16), (u8)(x >>  8), (u8)(x >>  0)};
+            }
+            constexpr u64 to_u64() const {
+                return 1099511627776ULL * addr[0]
+                     +    4294967296ULL * addr[1]
+                     +      16777216ULL * addr[2]
+                     +         65536ULL * addr[3]
+                     +           256ULL * addr[4]
+                     +             1ULL * addr[5];
+            }
+
+            // Basic comparisons.
             bool operator==(const satcat5::eth::MacAddr& other) const;
             bool operator<(const satcat5::eth::MacAddr& other) const;
             inline bool operator!=(const satcat5::eth::MacAddr& other) const
                 {return !operator==(other);}
 
+            // I/O functions.
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_bytes(6, addr);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -57,12 +61,16 @@ namespace satcat5 {
         // Use as a "length" field [64..1500] is supported but not recommended.
         // See also: https://en.wikipedia.org/wiki/EtherType
         struct MacType {
+            // The 16-bit value is stored in processor-native order.
             u16 value;
 
+            // Basic comparisons.
             inline bool operator==(const satcat5::eth::MacType& other) const
                 {return value == other.value;}
             inline bool operator!=(const satcat5::eth::MacType& other) const
                 {return value != other.value;}
+
+            // I/O functions.
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -72,12 +80,15 @@ namespace satcat5 {
         // Header contents for an 802.1Q Virtual-LAN tag.
         // See also: https://en.wikipedia.org/wiki/IEEE_802.1Q
         struct VlanTag {
+            // The 16-bit value holds VID, DEI, and PCP fields.
             u16 value;
 
+            // Accessors for each individual field.
             inline u16 vid() const {return ((value >> 0)  & 0xFFF);}
             inline u16 dei() const {return ((value >> 12) & 0x1);}
             inline u16 pcp() const {return ((value >> 13) & 0x7);}
 
+            // I/O functions.
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -87,6 +98,7 @@ namespace satcat5 {
         // An Ethernet header (destination, source, and EtherType)
         // See also: https://en.wikipedia.org/wiki/Ethernet_frame
         struct Header {
+            // Ethernet header fields.
             satcat5::eth::MacAddr dst;
             satcat5::eth::MacAddr src;
             satcat5::eth::MacType type;
@@ -115,6 +127,7 @@ namespace satcat5 {
             ETYPE_CFGBUS_CMD    = {0x5C01},
             ETYPE_CFGBUS_ACK    = {0x5C02},
             ETYPE_SLINGSHOT_LOG = {0x5C03},
+            ETYPE_CBOR_TLM      = {0x5C04},
             ETYPE_VTAG          = {0x8100},
             ETYPE_FLOWCTRL      = {0x8808},
             ETYPE_PTP           = {0x88F7};

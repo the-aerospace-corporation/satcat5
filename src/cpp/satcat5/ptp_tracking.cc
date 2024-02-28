@@ -1,71 +1,41 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2023-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/log.h>
 #include <satcat5/net_core.h>
 #include <satcat5/ptp_tracking.h>
+#include <satcat5/timer.h>
+#include <satcat5/utils.h>
 
 namespace log = satcat5::log;
-using satcat5::ptp::NSEC_PER_SEC;
 using satcat5::ptp::SUBNS_PER_MSEC;
+using satcat5::ptp::SUBNS_PER_USEC;
+using satcat5::ptp::USEC_PER_SEC;
+using satcat5::ptp::Callback;
+using satcat5::ptp::Filter;
+using satcat5::ptp::Measurement;
 using satcat5::ptp::Time;
 using satcat5::ptp::TrackingClock;
-using satcat5::ptp::TrackingClockDebug;
-using satcat5::ptp::TrackingCoeff;
 using satcat5::ptp::TrackingController;
 using satcat5::ptp::TrackingDither;
-using satcat5::util::abs_s64;
 using satcat5::util::divide;
+using satcat5::util::GenericTimer;
+using satcat5::util::min_u32;
 using satcat5::util::modulo;
 
 // Enable additional diagnostics? (0/1/2)
 static constexpr unsigned DEBUG_VERBOSE = 0;
 
-// Enable dither of TrackingController output?
-#ifndef SATCAT5_PTRK_DITHER
-#define SATCAT5_PTRK_DITHER 1
+// Enable faster frequency acquisition?
+#ifndef SATCAT5_PTRK_FASTACQ
+#define SATCAT5_PTRK_FASTACQ 1
 #endif
-
-// We need signed accumulators, but the "UintWide" is unsigned only.
-// Create some helper functions to help with two's-complement conversion.
-inline bool wide_lt_zero(const TrackingController::Accumulator& x) {
-    return x.m_data[x.width_words()-1] >= 0x80000000u;
-}
-
-inline s64 wide_to_output(const TrackingController::Accumulator& x) {
-    return s64(x >> TrackingCoeff::SCALE);
-}
-
-Time TrackingClockDebug::clock_adjust(const Time& amount)
-{
-    return m_target->clock_adjust(amount);
-}
-
-void TrackingClockDebug::clock_rate(s64 offset)
-{
-    m_rate = offset; m_target->clock_rate(offset);
-}
 
 TrackingDither::TrackingDither(TrackingClock* clk)
     : m_clk(clk)
     , m_disparity(0)
-    , m_offset(0)
 {
     timer_every(1);
 }
@@ -94,143 +64,127 @@ void TrackingDither::timer_event()
 }
 
 TrackingController::TrackingController(
-    TrackingClock* clk, const TrackingCoeff& coeff)
-    : m_clk(clk)
-    , m_coeff(coeff)
-    , m_debug(0)
-    , m_last_rcvd(0)
-    , m_prng()
-    , m_accum(u32(0))
+    GenericTimer* timer, TrackingClock* clk, Client* client)
+    : Callback(client)
+    , m_timer(timer)
+    , m_clk(clk)
+    , m_tref(timer->now())
+    , m_freq_accum(0)
+    , m_lock_alarm(0)
+    , m_lock_usec(0)
+    , m_lock_state(LockState::ACQUIRE)
 {
-    reconfigure(coeff);
     reset();
 }
 
-void TrackingController::reconfigure(const TrackingCoeff& coeff)
+void TrackingController::ptp_ready(const Measurement& data)
 {
-    m_coeff = coeff;
-    if (DEBUG_VERBOSE > 0) {
-        auto level = coeff.ok() ? log::DEBUG : log::ERROR;
-        log::Log(level, "PTP-Track: Config")
-            .write10((s32)m_coeff.kp)
-            .write10((s32)m_coeff.ki)
-            .write10((s32)m_coeff.ymax);
-    } else if (!coeff.ok()) {
-        log::Log(log::ERROR, "PTP-Track: Bad config.");
-    }
+    update(-data.offset_from_master());
 }
-
 
 void TrackingController::reset()
 {
     // Reset oscillator control signal.
-    m_clk->clock_rate(0);
-    // Reset accumulator state.
-    m_accum = 0;
+    if (m_clk) m_clk->clock_rate(0);
+
+    // Reset each filter in the chain.
+    Filter* filter = m_filters.head();
+    while (filter) {
+        filter->reset();
+        filter = m_filters.next(filter);
+    }
+
+    // Reset lock/unlock state.
+    m_freq_accum = 0;
+    m_lock_alarm = 0;
+    m_lock_usec = 0;
+    m_lock_state = LockState::RESET;
 }
 
-void TrackingController::update(const Time& rxtime, const Time& delta)
+void TrackingController::update(const Time& delta)
 {
-    constexpr Time MAX_FINE(2000 * SUBNS_PER_MSEC);
-    constexpr Time MAX_ELAPSED(1000 * SUBNS_PER_MSEC);
-
     // Calculate time since the last received message.
-    Time elapsed = (rxtime - m_last_rcvd).abs();
-    if (elapsed > MAX_ELAPSED) elapsed = MAX_ELAPSED;
-    m_last_rcvd = rxtime;
+    // Use microsecond-resolution timers to support higher message rates.
+    u32 elapsed_usec = min_u32(1000000, m_timer->elapsed_incr(m_tref));
+    m_lock_usec = min_u32(1000000000, m_lock_usec + elapsed_usec);
 
-    // Attempt a coarse adjustment?
-    Time filter_input = delta;
-    if (delta.abs() > MAX_FINE) {
-        log::Log(log::INFO, "PTP-Track: Coarse update")
-            .write10((s32)delta.secs())
-            .write10((u32)delta.nsec());
-        reset();
-        filter_input = m_clk->clock_adjust(delta);
-        m_last_rcvd += delta;
-    }
+    // Sanity check: Abort immediately if no clock is configured.
+    if (!m_clk) return;
 
-    // Linear tracking-loop update.
-    filter((u32)elapsed.delta_nsec(), filter_input.delta_subns());
+    // Apply coarse adjustments if required, then fine tracking.
+    s64 input = coarse(delta);
+    filter(elapsed_usec, input);
 }
 
-void TrackingController::filter(u32 elapsed_nsec, s64 delta_subns)
+s64 TrackingController::coarse(const Time& delta)
 {
-    // Sanity check on the input to prevent overflow.
-    constexpr u64 MAX_DELTA = u64(100 * SUBNS_PER_MSEC);
-    u64 delta_abs = abs_s64(delta_subns);
-    if (delta_abs > MAX_DELTA) delta_abs = MAX_DELTA;
+    constexpr Time ADJ_COARSE(SUBNS_PER_MSEC * 10);
+    constexpr Time ADJ_FREQ(SUBNS_PER_USEC * 1000);
+    constexpr Time ADJ_FINE(SUBNS_PER_USEC * 10);
 
-    // Convert inputs to extra-wide integers for more dynamic range,
-    // then multiply by the KI and KP loop-gain coefficients.
-    // Note: Our bigint only handles unsigned, so some care is required.
-    Accumulator delta_i(delta_abs);
-    Accumulator delta_p(delta_abs);
-    delta_i *= Accumulator(m_coeff.ki);
-    delta_p *= Accumulator(m_coeff.kp);
-
-    // Compensate for changes to the effective sample interval T0, using
-    // most recent elapsed time as a proxy for future sample intervals.
-    //  * Output to NCO is a rate, held and accumulated for T0 seconds.
-    //    Therefore, outputs must be scaled by 1/T0 to compensate.
-    //  * I gain is missing implicit T0^2, so net scaling by T0.
-    //  * P gain is missing implicit T0, so net scaling is unity.
-    delta_i *= Accumulator(elapsed_nsec);
-    delta_p *= Accumulator(NSEC_PER_SEC);
-
-    // Done with multiplication, so we can restore the original sign.
-    if (delta_subns < 0) {
-        delta_i = -delta_i;
-        delta_p = -delta_p;
-    }
-
-    // Update the accumulator.
-    m_accum += delta_i;
-
-    // Clamp accumulator term to +/- ymax, to mitigate windup.
-    Accumulator clamp_pos(m_coeff.ymax);
-    clamp_pos <<= TrackingCoeff::SCALE;
-    Accumulator clamp_neg(-clamp_pos);
-    if (wide_lt_zero(m_accum)) {
-        // Accumulator is negative -> Compare to the negative limit.
-        if (m_accum < clamp_neg) m_accum = clamp_neg;
-    } else {
-        // Accumulator is positive -> Compare to the positive limit.
-        if (m_accum > clamp_pos) m_accum = clamp_pos;
-    }
-
-    // Generate dither at the required scale.
-    Accumulator dither(SATCAT5_PTRK_DITHER ? m_prng.next() : 0);
-    if (m_coeff.SCALE > 32) {
-        dither <<= (m_coeff.SCALE - 32);
-    } else {
-        dither >>= (32 - m_coeff.SCALE);
-    }
-
-    // Output is the sum of all filter terms.
-    s64 filter_out = wide_to_output(m_accum + delta_p + dither);
-    m_clk->clock_rate(filter_out);
-
-    // Optional diagnostics to the log or direct-to-network.
-    if (m_debug) {
-        auto dst = m_debug->open_write(24);
-        if (dst) {
-            dst->write_s64(delta_subns);
-            dst->write_s64(wide_to_output(m_accum));
-            dst->write_s64(filter_out);
-            dst->write_finalize();
+    Time filter_input = delta;
+    if (delta.abs() > ADJ_COARSE) {
+        log::Log(log::INFO, "PTP-Track: Coarse").write_obj(delta);
+        if (m_lock_state == LockState::RESET || m_lock_alarm >= 3) {
+            // Initial startup or several consecutive alarms.
+            reset();
+            m_lock_state = LockState::ACQUIRE;
+            filter_input = m_clk->clock_adjust(delta);
+        } else if (m_lock_usec >= 1000000) {
+            // Once locked, don't reset based on one outlier.
+            ++m_lock_alarm;
+            return 0;
         }
+    } else if (SATCAT5_PTRK_FASTACQ && m_lock_state == LockState::ACQUIRE) {
+        // If enabled, keep making coarse phase adjustments after each reset.
+        // Cumulative adjustments are used to estimate coarse frequency.
+        if (delta.abs() < ADJ_FREQ) {
+            filter_input = m_clk->clock_adjust(delta);
+            m_freq_accum += (delta - filter_input).delta_subns();
+        }
+        // Wait for at least one second to improve estimation quality.
+        // Goal is to get initial state within ~1ppm for faster pull-in.
+        if (m_lock_usec >= 1000000) {
+            log::Log(log::INFO, "PTP-Track: Adjust")
+                .write10(m_freq_accum).write10(m_lock_usec);
+            Filter* filter = m_filters.head();
+            while (filter) {
+                filter->rate(m_freq_accum, m_lock_usec);
+                filter = m_filters.next(filter);
+            }
+            m_lock_state = LockState::TRACK;
+        }
+    } else if (delta.abs() < ADJ_FINE) {
+        // Well-aligned measurements reset the consecutive-alarm counter.
+        m_lock_alarm = 0;
+        m_lock_state = LockState::TRACK;
     }
 
+    return filter_input.delta_subns();
+}
+
+void TrackingController::filter(u32 elapsed_usec, s64 delta_subns)
+{
+    // Apply each filter in the chain.
+    Filter* filter = m_filters.head();
+    s64 result = delta_subns;
+    while (filter) {
+        result = filter->update(result, elapsed_usec);
+        filter = m_filters.next(filter);
+    }
+
+    // Keep this output sample?
+    if (m_clk && result != INT64_MAX)
+        m_clk->clock_rate(result);
+
+    // Additinoal diagnostics?
     if (DEBUG_VERBOSE > 1) {
         log::Log(log::DEBUG, "PTP-Track: Update")
-            .write("\n  delta  ").write((u64)delta_subns)
-            .write("\n  elapsed").write((u64)elapsed_nsec)
-            .write("\n  accum  ").write((u64)wide_to_output(m_accum))
-            .write("\n  output ").write((u64)filter_out);
+            .write("\n  delta  ").write10(delta_subns)
+            .write("\n  elapsed").write10(elapsed_usec)
+            .write("\n  output ").write10(result);
     } else if (DEBUG_VERBOSE > 0) {
         log::Log(log::DEBUG, "PTP-Track: Update")
-            .write10((s32)delta_subns)
-            .write10((s32)filter_out);
+            .write10(delta_subns).write10(result);
     }
 }

@@ -31,6 +31,11 @@
 			<locationURI>$%7BPARENT-3-PROJECT_LOC%7D/src/cpp/hal_ublaze</locationURI>
 		</link>
 		<link>
+			<name>qcbor</name>
+			<type>2</type>
+			<locationURI>$%7BPARENT-3-PROJECT_LOC%7D/src/cpp/qcbor</locationURI>
+		</link>
+		<link>
 			<name>satcat5</name>
 			<type>2</type>
 			<locationURI>$%7BPARENT-3-PROJECT_LOC%7D/src/cpp/satcat5</locationURI>

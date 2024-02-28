@@ -1,19 +1,5 @@
-# Copyright 2019, 2021, 2022, 2023 The Aerospace Corporation
-#
-# This file is part of SatCat5.
-#
-# SatCat5 is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the
-# Free Software Foundation, either version 3 of the License, or (at your
-# option) any later version.
-#
-# SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-# License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright 2019-2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 # Ignore compiled Python and C files
 *.bin
@@ -28,8 +14,7 @@
 *.swo
 backups
 build_tmp
-.vscode/settings.json
-.vscode/settings.json
+.vscode/
 sim/cpp/coverage*
 
 # Ignore test reports.
@@ -38,6 +23,8 @@ cppcheck.xml
 cpplint.log
 
 # Ignore temporary files from example designs.
+examples/vc707_ptp_client/vc707_ptp/*
+examples/vc707_ptp_master/
 test/log_viewer/build_tmp
 
 # Ignore most Lattice-created project files
@@ -73,6 +60,7 @@ project/modelsim/work
 *.project
 *.runs
 *.srcs
+*.str
 *.xpr
 .Xil
 examples/*/*/*.xdc
@@ -89,3 +77,10 @@ project/yosys/*/
 npcap/
 /.vs/pico_ethernet/v17
 /.vs
+/sim/cpp/simulations/
+
+# Ignore packet capture files.
+*.pcap
+*.pcapng
+
+

@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021, 2022, 2023 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/ip_address.h>
@@ -214,8 +200,8 @@ void ProtoIcmp::frame_rcvd(satcat5::io::LimitedRead& src)
     unsigned wlen = src.get_read_ready() / 2;
 
     // Handle each supported message type:
-    u16 type    = code & ip::ICMP_TYPE_MASK;
-    u32 src_ip  = m_iface->reply_ip().value;
+    u16 type = code & ip::ICMP_TYPE_MASK;
+    auto src_ip  = m_iface->reply_ip();
     if (code == ip::ICMP_ECHO_REPLY) {
         // Ping response: Extract the timestamp we inserted earlier.
         u32 tref = src.read_u32();

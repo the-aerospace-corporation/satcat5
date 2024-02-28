@@ -1,20 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation
-//
-// This file is part of SatCat5.
-//
-// SatCat5 is free software: you can redistribute it and/or modify it under
-// the terms of the GNU Lesser General Public License as published by the
-// Free Software Foundation, either version 3 of the License, or (at your
-// option) any later version.
-//
-// SatCat5 is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with SatCat5.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright 2021-2024 The Aerospace Corporation.
+// This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/eth_checksum.h>
@@ -23,15 +9,39 @@ using satcat5::eth::ChecksumTx;
 using satcat5::eth::ChecksumRx;
 using satcat5::eth::SlipCodec;
 
+// Set default table size.
+#ifndef SATCAT5_CRC_TABLE_BITS
+#define SATCAT5_CRC_TABLE_BITS 8
+#endif
+
 // Ethernet CRC32:
 //  * Set initial state = 0xFFFFFFFF
-//  * For each byte, incremental update using lookup table
+//  * For each byte or nybble, incremental update using lookup table
 //  * Invert output and write in little-endian order
 static const u32 CRC_INIT = 0xFFFFFFFFu;
-static const u32 CRC_MASK = 0xFFFFFFFFu;
 
-// Table for incremental CRC updates (1 kiB)
-// TODO: Build-time option for a nybble-sized table? (Slower but smaller)
+// Table for nybble-by-nybble CRC updates (64 bytes)
+#if SATCAT5_CRC_TABLE_BITS == 4
+static const u32 CRC_TABLE[16] = {
+    0x00000000u, 0x1DB71064u, 0x3B6E20C8u, 0x26D930ACu,
+    0x76DC4190u, 0x6B6B51F4u, 0x4DB26158u, 0x5005713Cu,
+    0xEDB88320u, 0xF00F9344u, 0xD6D6A3E8u, 0xCB61B38Cu,
+    0x9B64C2B0u, 0x86D3D2D4u, 0xA00AE278u, 0xBDBDF21Cu,
+};
+
+inline void crc_update(u32& crc, u8 next)
+{
+    u32 next1 = next >> 0;                  // First nybble
+    u32 next2 = next >> 4;                  // Second nybble
+    u8 index1 = (crc ^ next1) & 0x0Ful;     // Table index
+    crc = (crc >> 4) ^ CRC_TABLE[index1];   // XOR with table
+    u8 index2 = (crc ^ next2) & 0x0Ful;     // Table index
+    crc = (crc >> 4) ^ CRC_TABLE[index2];   // XOR with table
+}
+#endif  // SATCAT5_CRC_TABLE_BITS == 4
+
+// Table for byte-by-byte CRC updates (1 kiB)
+#if SATCAT5_CRC_TABLE_BITS == 8
 static const u32 CRC_TABLE[256] = {
     0x00000000u, 0x77073096u, 0xEE0E612Cu, 0x990951BAu,
     0x076DC419u, 0x706AF48Fu, 0xE963A535u, 0x9E6495A3u,
@@ -104,6 +114,12 @@ inline void crc_update(u32& crc, u8 next)
     u8 index = (crc ^ (u32)next) & 0xFFul;  // Table index
     crc = (crc >> 8) ^ CRC_TABLE[index];    // XOR with table
 }
+#endif  // SATCAT5_CRC_TABLE_BITS == 8
+
+inline u32 crc_format(u32 crc)
+{
+    return __builtin_bswap32(~crc);
+}
 
 u32 satcat5::eth::crc32(unsigned nbytes, const void* data)
 {
@@ -113,7 +129,7 @@ u32 satcat5::eth::crc32(unsigned nbytes, const void* data)
     for (unsigned a = 0 ; a < nbytes ; ++a)
         crc_update(crc, data8[a]);
     // Format result per Ethernet specification.
-    return __builtin_bswap32(crc ^ CRC_MASK);
+    return crc_format(crc);
 }
 
 u32 satcat5::eth::crc32(satcat5::io::Readable* src)
@@ -124,98 +140,42 @@ u32 satcat5::eth::crc32(satcat5::io::Readable* src)
         crc_update(crc, src->read_u8());
     src->read_finalize();
     // Format result per Ethernet specification.
-    return __builtin_bswap32(crc ^ CRC_MASK);
+    return crc_format(crc);
 }
 
 ChecksumTx::ChecksumTx(satcat5::io::Writeable* dst)
-    : m_dst(dst)
-    , m_crc(CRC_INIT)
+    : satcat5::io::ChecksumTx<u32,4>(dst, CRC_INIT)
 {
     // Nothing else to initialize
-}
-
-unsigned ChecksumTx::get_write_space() const
-{
-    // Reserve enough space for us to append CRC32.
-    unsigned nbytes = m_dst->get_write_space();
-    return (nbytes < 4) ? (0) : (nbytes - 4);
 }
 
 bool ChecksumTx::write_finalize()
 {
-    // Format CRC32 per Ethernet specification.
-    u32 fcs = __builtin_bswap32(m_crc ^ CRC_MASK);
-    m_crc = CRC_INIT;           // Reset internal state
-    m_dst->write_u32(fcs);      // Append FCS
-    return m_dst->write_finalize();
-}
-
-void ChecksumTx::write_abort()
-{
-    m_crc = CRC_INIT;           // Reset internal state
-    m_dst->write_abort();       // Forward error event
+    // Format and append CRC32 per Ethernet specification.
+    m_dst->write_u32(crc_format(m_chk));
+    return chk_finalize() && m_dst->write_finalize();
 }
 
 void ChecksumTx::write_next(u8 data)
 {
-    crc_update(m_crc, data);    // Update internal state
-    m_dst->write_u8(data);      // Forward new data
+    crc_update(m_chk, data);            // Update internal state
+    m_dst->write_u8(data);              // Forward new data
 }
 
 ChecksumRx::ChecksumRx(satcat5::io::Writeable* dst)
-    : m_dst(dst)
-    , m_crc(CRC_INIT)
-    , m_sreg(0)
-    , m_bidx(0)
+    : satcat5::io::ChecksumRx<u32,4>(dst, CRC_INIT)
 {
     // Nothing else to initialize
 }
 
-unsigned ChecksumRx::get_write_space() const
-{
-    return m_dst->get_write_space();
-}
-
 bool ChecksumRx::write_finalize()
 {
-    bool ok = false;
-    if (m_bidx < 4) {
-        m_dst->write_abort();           // Runt frame (didn't even get FCS)
-    } else if ((m_crc ^ CRC_MASK) != m_sreg) {
-        m_dst->write_abort();           // CRC mismatch (discard frame)
-    } else {
-        ok = m_dst->write_finalize();   // CRC OK, attempt to finalize.
-    }
-
-    m_crc = CRC_INIT;                   // Reset internal state
-    m_sreg = 0;
-    m_bidx = 0;
-    return ok;
+    return sreg_match(crc_format(m_chk));
 }
 
-void ChecksumRx::write_abort()
-{
-    m_dst->write_abort();               // Forward error event
-    m_crc = CRC_INIT;                   // Reset internal state
-    m_sreg = 0;
-    m_bidx = 0;
-}
-
-// The FCS is in the last four bytes, but we don't know when that will be.
-// Instead, buffer previous four bytes of input in a shift register.
 void ChecksumRx::write_next(u8 data)
 {
-    // Is the shift register currently full?
-    if (m_bidx < 4) {
-        ++m_bidx;                       // Wait until full...
-    } else {
-        u8 next = (u8)(m_sreg & 0xFF);  // Oldest byte in LSBs.
-        m_dst->write_u8(next);          // Forward to output
-        crc_update(m_crc, next);        // Update internal state
-    }
-    // Push new byte onto the shift register.
-    u32 data32 = (u32)data;
-    m_sreg = (data32 << 24) | (m_sreg >> 8);
+    if (sreg_push(data)) crc_update(m_chk, data);
 }
 
 SlipCodec::SlipCodec(
