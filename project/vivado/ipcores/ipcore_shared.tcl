@@ -128,7 +128,7 @@ proc ipcore_add_file { src_pattern {folder src} } {
         # Copy the file to the IP folder.
         file copy -force "${src_file}" "${ip_dir}/${folder}"
         # Add to project using the new relative path.
-        set dst_file "${folder}/[file tail ${src_file}]"
+        set dst_file "${ip_dir}/${folder}/[file tail ${src_file}]"
         ipx::add_file "${dst_file}" $fg_syn
         ipx::add_file "${dst_file}" $fg_sim
         # Separate list of new files returned to user.
