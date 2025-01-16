@@ -49,7 +49,7 @@ In addition to these building blocks, we include several
 The easiest way to get started is with the
 [Digilent Arty A7](https://store.digilentinc.com/arty-a7-artix-7-fpga-development-board-for-makers-and-hobbyists/),
 a low-cost FPGA development board. We've included a reference design and
-[companion documentation](doc/ARTY_A7.md) that specifically targets this board.
+[companion documentation](examples/arty_a7/) that specifically targets this board.
 PMOD connector pinouts are chosen to be directly compatible with off-the-shelf USB-UART adapters.
 
 Other reference designs include the [prototype](doc/images/prototype.jpg) that we built to develop, test, and demonstrate the SatCat5 switch.
@@ -140,7 +140,7 @@ A log of major changes per SatCat5 release can be found in the [Change Log](doc/
 
 # Patents
 
-Portions of SatCat5 are patented or patent-pending, e.g., US11055254B2.
+Portions of SatCat5 are patented or patent-pending, e.g., US20210173806A1 and US20240204788A1.
 
 In accordance with SatCat5's open-source license agreement,
 we grant a royalty-free license for use of these technologies.
@@ -148,7 +148,7 @@ Refer to section 7 of the CERN-OHL-W v2 license for details.
 
 # Copyright Notice
 
-Copyright 2019-2024 The Aerospace Corporation.
+Copyright 2019-2025 The Aerospace Corporation.
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
@@ -158,4 +158,4 @@ or (at your option) any later weakly reciprocal version.
 
 SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
 OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
-PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.
+PURPOSE. Please see (https://cern.ch/cern-ohl) for applicable conditions.

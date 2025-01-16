@@ -87,7 +87,7 @@ legal terms are ambiguous or difficult to apply to FPGA designs.
 Such concerns are [echoed by OSHWA](https://www.oshwa.org/best-practices-for-sharing-fpga-designs-2/),
 which now recommends CERN-OHL licenses for open hardware and gateware.
 
-Moving forward, we chose [CERN-OHL-W v2 or later](https:/cern.ch/cern-ohl)
+Moving forward, we chose [CERN-OHL-W v2 or later](https://cern.ch/cern-ohl)
 for the same reason we chose LGPL. They are very similar in strategic intent.
 
 ### Can I help?
@@ -419,7 +419,7 @@ The name is intended to indicate that the device acts as close as possible to a 
 Ideally, it simply allows every packet through, verbatim,
 and doesn't really act like an independent device.
 
-Refer to the [Pi-Wire README](../test/pi_wire/README.md) for additional information.
+Refer to the [Pi-Wire README](../test/pi_wire/readme.md) for additional information.
 
 ### What interfaces are supported?
 
@@ -665,7 +665,7 @@ Refer to section 7 of the CERN-OHL-W v2 license for details.
 
 # Copyright Notice
 
-Copyright 2019-2024 The Aerospace Corporation
+Copyright 2019-2025 The Aerospace Corporation
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
@@ -675,4 +675,4 @@ or (at your option) any later weakly reciprocal version.
 
 SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
 OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
-PURPOSE. Please see (https:/cern.ch/cern-ohl) for applicable conditions.
+PURPOSE. Please see (https://cern.ch/cern-ohl) for applicable conditions.
