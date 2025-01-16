@@ -20,16 +20,17 @@ use     work.common_primitives.all;
 
 -- Deferred constant definition(s):
 package body common_primitives is
-    -- 256x16 has 8 address bits. 
-    -- TODO: 256x16 supports per-bit write enable, maybe should make a new generic module to take advantage of that
-    -- Or could force 2048x2 in TCAM to only waste half of the memory?
+    -- Smallest BRAM (256x16) has 8 address bits.
     constant PREFER_DPRAM_AWIDTH : positive := 8;
+    constant PREFER_DPRAM_ONEBIT : boolean := false;
+    constant PREFER_FIFO_SREG    : boolean := false;
 
     -- TODO: Add support for Vernier clock generator on this platform.
     function create_vernier_config(
         input_hz    : natural;
         sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
-        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN;
+        sync_frq_en : boolean := VERNIER_DEFAULT_FRQ_EN)
     return vernier_config is begin
         return VERNIER_DISABLED;
     end function;
@@ -87,7 +88,7 @@ begin
             dp_ram(i_wr_addr) <= wr_val;
         end if;
     end if;
-      
+
     if rising_edge(rd_clk) then
         if (rd_en = '1') then
             rd_val <= dp_ram(i_rd_addr);

@@ -55,6 +55,7 @@
 									<listOptionValue builtIn="false" value="SATCAT5_ALLOW_DELETION=0"/>
 									<listOptionValue builtIn="false" value="SATCAT5_CBOR_ENABLE=1"/>
 									<listOptionValue builtIn="false" value="SATCAT5_CFGBUS_DIRECT=1"/>
+									<listOptionValue builtIn="false" value="SATCAT5_PTP_CACHE_SIZE=256"/>
 								</option>
 								<option id="xilinx.gnu.compiler.dircategory.includes.2091445267" name="Include Paths" superClass="xilinx.gnu.compiler.dircategory.includes" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/../../../src/cpp&quot;"/>

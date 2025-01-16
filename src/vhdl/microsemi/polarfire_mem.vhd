@@ -24,12 +24,15 @@ use IEEE.numeric_std.all;
 package body common_primitives is
     -- RAM64X12 supports 6-bit addresses.
     constant PREFER_DPRAM_AWIDTH : positive := 6;
+    constant PREFER_DPRAM_ONEBIT : boolean := false;
+    constant PREFER_FIFO_SREG    : boolean := false;
 
     -- TODO: Add support for Vernier clock generator on this platform.
     function create_vernier_config(
         input_hz    : natural;
         sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
-        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN;
+        sync_frq_en : boolean := VERNIER_DEFAULT_FRQ_EN)
     return vernier_config is begin
         return VERNIER_DISABLED;
     end function;
@@ -73,7 +76,6 @@ wr_rval <= wr_reg;
 rd_val  <= rd_reg;
 
 -- Inferred dual-port block RAM.
--- Note: "Three-port" mode is supported on 7-Series at no additional cost.
 -- Note: We arbitrarily select "write-before-read" for the three-port mode.
 p_ram_in : process(wr_clk)
 begin
@@ -138,14 +140,8 @@ architecture polarfire of dpram is
 subtype word_t is std_logic_vector(DWIDTH-1 downto 0);
 signal rd_reg, wr_reg : word_t := (others => '0');
 
-function resize_slv(a: std_logic_vector; w: natural) return std_logic_vector is
-begin
-    return std_logic_vector(resize(UNSIGNED(a), w));
-end;
-
 -- small ram signals
---constant RAM12_COUNT : positive := (DWIDTH+11)/12;
-constant RAM12_COUNT : integer := (DWIDTH+11)/12;
+constant RAM12_COUNT : positive := div_floor(DWIDTH+11, 12);
 signal wr_addr_pad : std_logic_vector(5 downto 0) := (others => '0');
 signal rd_addr_pad : std_logic_vector(5 downto 0) := (others => '0');
 signal wr_val_pad  : std_logic_vector(12*RAM12_COUNT-1 downto 0) := (others => '0');
@@ -160,7 +156,7 @@ component RAM64x12
     BLK_EN          : in  std_logic;
     R_CLK           : in  std_logic;
     R_ADDR          : in  std_logic_vector(5 downto 0);
-    R_ADDR_BYPASS   : in  std_logic; 
+    R_ADDR_BYPASS   : in  std_logic;
     R_ADDR_EN       : in  std_logic;
     R_ADDR_SL_N     : in  std_logic;
     R_ADDR_SD       : in  std_logic;
@@ -177,20 +173,17 @@ component RAM64x12
     ACCESS_BUSY     : out std_logic);
 end component;
 
-
 begin
 
 -- Address widths from 1-6 use uSRAM primitives.
 gen_usram : if (AWIDTH < 7) generate
     -- Zero-pad address if needed.
-    wr_addr_pad <= std_logic_vector(resize(wr_addr, 6));
-    rd_addr_pad <= std_logic_vector(resize(rd_addr, 6)); 
+    wr_addr_pad <= resize(std_logic_vector(wr_addr), 6);
+    rd_addr_pad <= resize(std_logic_vector(rd_addr), 6);
     -- Zero-pad data if needed to next highest multiple of 12 bits
-    wr_val_pad <= resize_slv(wr_val, 12*RAM12_COUNT);
-    rd_reg <= rd_val_pad(DWIDTH-1 downto 0);
+    wr_val_pad <= resize(wr_val, 12*RAM12_COUNT);
 
     gen_bits : for b in 0 to RAM12_COUNT-1 generate
-        -- See PolarFire_FPGA_Fabric_UG0680_V6 section 7.2.1 for configuration
         RAM64x12_inst : RAM64x12
             port map(
             W_EN =>             wr_en,
@@ -200,7 +193,7 @@ gen_usram : if (AWIDTH < 7) generate
             BLK_EN =>           '1',
             R_CLK =>            rd_clk,
             R_ADDR =>           rd_addr_pad,
-            R_ADDR_BYPASS =>    '1', -- Bypass register on read address TODO: pin table does not match truth table?
+            R_ADDR_BYPASS =>    '1', -- Bypass register on read address
             R_ADDR_EN =>        '0', -- don't care
             R_ADDR_SL_N =>      '1', -- Disable asynchronous load
             R_ADDR_SD =>        '0', -- don't care
@@ -217,10 +210,31 @@ gen_usram : if (AWIDTH < 7) generate
             ACCESS_BUSY =>      open);
     end generate;
 
-    gen_tri : if TRIPORT generate
-        assert false report "TRIBUFF not implemented" severity error;
-    end generate;
-    wr_reg <= (others => '0');  -- Disabled
+    -- Register for buffering async reads.
+    -- (Plus logic for simulation-only formal verification.)
+    p_rbuff : process(rd_clk)
+    begin
+        if rising_edge(rd_clk) then
+            if (SIMTEST and rd_en = '0') then
+                rd_reg <= (others => 'X');
+            else
+                rd_reg <= rd_val_pad(DWIDTH-1 downto 0);
+            end if;
+        end if;
+    end process;
+
+    p_wbuff : process(wr_clk)
+    begin
+        if rising_edge(wr_clk) then
+            if (SIMTEST and not TRIPORT) then
+                wr_reg <= (others => '0');
+            elsif (SIMTEST and wr_en = '1') then
+                wr_reg <= (others => 'X');
+            else
+                wr_reg <= wr_val_pad(DWIDTH-1 downto 0);
+            end if;
+        end if;
+    end process;
 end generate;
 
 gen_lsram : if (AWIDTH > 6) generate
@@ -246,6 +260,5 @@ end generate;
 -- Drive top-level output.
 rd_val  <= rd_reg;
 wr_rval <= wr_reg;
-
 
 end polarfire;

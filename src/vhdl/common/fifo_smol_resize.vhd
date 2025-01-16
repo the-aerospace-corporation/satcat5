@@ -39,6 +39,7 @@ entity fifo_smol_resize is
     IN_BYTES    : positive;             -- Width of input port
     OUT_BYTES   : positive;             -- Width of output port
     DEPTH_LOG2  : positive := 4;        -- FIFO depth = 2^N LCM words (see top)
+    ZERO_PAD    : boolean := true;      -- Zero-pad unaligned inputs?
     ERROR_UNDER : boolean := false;     -- Treat underflow as error?
     ERROR_OVER  : boolean := true;      -- Treat overflow as error?
     ERROR_PRINT : boolean := true);     -- Print message on error? (sim only)
@@ -56,8 +57,10 @@ entity fifo_smol_resize is
     -- Status signals (each is optional)
     fifo_full   : out std_logic;        -- FIFO full (write may overflow)
     fifo_empty  : out std_logic;        -- FIFO empty (no data available)
-    fifo_hfull  : out std_logic;        -- Half-full flag
-    fifo_hempty : out std_logic;        -- Half-empty flag
+    fifo_hfull  : out std_logic;        -- Half-full flag (n > N/2)
+    fifo_hempty : out std_logic;        -- Half-empty flag (n <= N/2)
+    fifo_qfull  : out std_logic;        -- Three-quarters-full flag (n > 3N/4)
+    fifo_qempty : out std_logic;        -- Three-quarters-empty flag (n <= 3N/4)
     fifo_error  : out std_logic;        -- Overflow error strobe
     -- Common
     clk         : in  std_logic;        -- Clock for both ports
@@ -93,6 +96,8 @@ signal mid_full     : std_logic;
 signal mid_empty    : std_logic;
 signal mid_hfull    : std_logic;
 signal mid_hempty   : std_logic;
+signal mid_qfull    : std_logic;
+signal mid_qempty   : std_logic;
 signal mid_error    : std_logic;
 
 begin
@@ -106,10 +111,13 @@ gen_input_resize : if IN_BYTES < FIFO_BYTES generate
     begin
         if rising_edge(clk) then
             -- Update each part of the data register, MSW-first.
-            -- (Note: End of input may not be word-aligned.)
+            -- This ensures the output is left-aligned even for partial inputs.
+            -- If zero padding is enabled, first write clears the entire register.
             for n in 0 to WMAX loop
                 if (in_write = '1' and wcount = WMAX-n) then
                     fin_data((n+1)*IN_WIDTH-1 downto n*IN_WIDTH) <= in_data;
+                elsif (ZERO_PAD and in_write = '1' and wcount = 0) then
+                    fin_data((n+1)*IN_WIDTH-1 downto n*IN_WIDTH) <= (others => '0');
                 end if;
             end loop;
 
@@ -172,6 +180,8 @@ u_fifo : entity work.fifo_smol_sync
     fifo_empty  => mid_empty,
     fifo_hfull  => mid_hfull,
     fifo_hempty => mid_hempty,
+    fifo_qfull  => mid_qfull,
+    fifo_qempty => mid_qempty,
     fifo_error  => mid_error,
     clk         => clk,
     reset_p     => reset_p);
@@ -180,6 +190,8 @@ u_fifo : entity work.fifo_smol_sync
 fifo_full   <= mid_full;
 fifo_hfull  <= mid_hfull;
 fifo_hempty <= mid_hempty;
+fifo_qfull  <= mid_qfull;
+fifo_qempty <= mid_qempty;
 fifo_error  <= mid_error;
 
 -- Output stage:

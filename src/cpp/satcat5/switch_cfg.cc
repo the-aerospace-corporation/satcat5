@@ -12,6 +12,7 @@ namespace log = satcat5::log;
 namespace util = satcat5::util;
 using satcat5::eth::SwitchConfig;
 using satcat5::eth::VlanRate;
+using satcat5::eth::VtagPolicy;
 
 // Define ConfigBus register map (see also: switch_types.vhd)
 constexpr unsigned REG_PORTCOUNT    = 0;    // Number of ports (read-only)
@@ -200,8 +201,10 @@ void SwitchConfig::vlan_reset(bool lockdown)
 
     // Reset each port with default policy and VID = 1.
     u32 pcount = m_reg[REG_PORTCOUNT];
-    for (unsigned port = 0 ; port < pcount ; ++port)
-        m_reg[REG_VLAN_PORT] = vlan_portcfg(port, policy, eth::VTAG_DEFAULT);
+    for (unsigned port = 0 ; port < pcount ; ++port) {
+        VtagPolicy vtag(port, policy, eth::VTAG_DEFAULT);
+        m_reg[REG_VLAN_PORT] = vtag.value;
+    }
 
     // Reset every VID so it connects the designated ports.
     // (Write base address, then repeated masks with auto-increment.)
@@ -228,9 +231,9 @@ void SwitchConfig::vlan_set_mask(u16 vid, u32 mask)
     m_reg[REG_VLAN_MASK] = mask;
 }
 
-void SwitchConfig::vlan_set_port(u32 cfg)
+void SwitchConfig::vlan_set_port(const VtagPolicy& cfg)
 {
-    m_reg[REG_VLAN_PORT] = cfg;
+    m_reg[REG_VLAN_PORT] = cfg.value;
 }
 
 void SwitchConfig::vlan_set_rate(u16 vid, const VlanRate& cfg)

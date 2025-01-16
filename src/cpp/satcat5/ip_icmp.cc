@@ -7,7 +7,7 @@
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/ip_icmp.h>
 #include <satcat5/log.h>
-#include <satcat5/timer.h>
+#include <satcat5/timeref.h>
 
 // Enable more detailed ICMP error messages?
 // Disabling this feature can save some code-size.
@@ -33,8 +33,7 @@ static constexpr unsigned ECHO_WORDS = 4;
 static constexpr unsigned TIME_WORDS = 10;
 
 // Translate ICMP type-code to a human-readable error message, if applicable.
-inline const char* code2msg(u16 code)
-{
+static inline const char* code2msg(u16 code) {
     if (SATCAT5_ICMP_DETAIL >= 2) {
         // Full error for less-common messages.
         if (code == ip::ICMP_FRAG_REQUIRED)
@@ -146,7 +145,7 @@ bool ProtoIcmp::send_error(u16 type, satcat5::io::Readable* src, u32 arg)
 bool ProtoIcmp::send_ping(ip::Address& dst)
 {
     // Embed current time in the request packet.
-    u32 now = m_iface->m_timer->now();
+    u32 now = SATCAT5_CLOCK->raw();
 
     // Formulate the ICMP echo request:
     u16 buff[ECHO_WORDS];
@@ -163,7 +162,7 @@ bool ProtoIcmp::send_ping(ip::Address& dst)
 bool ProtoIcmp::send_timereq(ip::Address& dst)
 {
     // "Originate" timestamp uses the arbitrary-units flag.
-    u32 now = m_iface->m_timer->now() | TIMESTAMP_ARB;
+    u32 now = SATCAT5_CLOCK->raw() | TIMESTAMP_ARB;
 
     // Formulate the timestamp request:
     u16 buff[TIME_WORDS];
@@ -204,8 +203,8 @@ void ProtoIcmp::frame_rcvd(satcat5::io::LimitedRead& src)
     auto src_ip  = m_iface->reply_ip();
     if (code == ip::ICMP_ECHO_REPLY) {
         // Ping response: Extract the timestamp we inserted earlier.
-        u32 tref = src.read_u32();
-        u32 elapsed = m_iface->m_timer->elapsed_usec(tref);
+        satcat5::util::TimeVal tref = {SATCAT5_CLOCK, src.read_u32()};
+        u32 elapsed = tref.elapsed_usec();
         // Notify listeners of the elapsed round-trip time.
         satcat5::ip::PingListener* item = m_listeners.head();
         while (item) {
@@ -236,7 +235,7 @@ void ProtoIcmp::frame_rcvd(satcat5::io::LimitedRead& src)
         log::Log(log::INFO, "Timestamp response").write(stamp);
     } else if (code == ip::ICMP_TIME_REQUEST && wlen >= 8) {
         // Timestamp request: Reply uses the arbitrary-units flag.
-        u32 now = m_iface->m_timer->now() | TIMESTAMP_ARB;
+        u32 now = SATCAT5_CLOCK->raw() | TIMESTAMP_ARB;
         // Construct and send the timestamp response (10 words).
         buff[0] = ip::ICMP_TIME_REPLY;      // Message type
         buff[1] = 0;                        // Placeholder for checksum

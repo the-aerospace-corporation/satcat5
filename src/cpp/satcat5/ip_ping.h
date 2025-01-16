@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2023 The Aerospace Corporation.
+// Copyright 2022-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Automatic "ping" functionality using an ICMP dispatch object
@@ -55,7 +55,7 @@ namespace satcat5 {
 
             satcat5::ip::Dispatch* const m_iface;
             satcat5::ip::Address m_addr;
-            u32         m_arp_tref;
+            satcat5::util::TimeVal m_arp_tref;
             unsigned    m_arp_remct;
             unsigned    m_icmp_remct;
             bool        m_reply_rcvd;

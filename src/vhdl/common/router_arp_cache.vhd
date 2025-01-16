@@ -5,6 +5,9 @@
 --
 -- Address Resolution Cache
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block queries and updates a table mapping 32-bit IPv4 addresses to
 -- 48-bit MAC addresses, and signals a request for new information after
 -- each cache miss.

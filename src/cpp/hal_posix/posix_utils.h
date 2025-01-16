@@ -6,11 +6,14 @@
 
 #pragma once
 
+#include <satcat5/eth_switch.h>
 #include <satcat5/io_buffer.h>
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
+#include <satcat5/multi_buffer.h>
 #include <satcat5/pkt_buffer.h>
-#include <satcat5/timer.h>
+#include <satcat5/timeref.h>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -21,17 +24,66 @@
 #endif
 
 namespace satcat5 {
+    namespace util {
+        // Helper object for heap allocation.
+        class HeapAllocator {
+        protected:
+            // Constructor/destructor through child class only.
+            explicit HeapAllocator(unsigned nbytes)
+                : m_buffptr(new u8[nbytes]) {}
+            ~HeapAllocator()
+                {delete[] m_buffptr;}
+
+            // Disable auto-generated assignment and copy methods.
+            HeapAllocator(const HeapAllocator&) = delete;
+            void operator=(const HeapAllocator&) = delete;
+
+            // Pointer to the underlying buffer.
+            u8* const m_buffptr;
+        };
+    }
+
+    namespace eth {
+        class SwitchCoreHeap
+            : public satcat5::util::HeapAllocator
+            , public satcat5::eth::SwitchCore {
+        public:
+            explicit SwitchCoreHeap(unsigned nbytes = 65536);
+        };
+    }
+
     namespace io {
         // Read contents of a SatCat5 buffer as a string.
         std::string read_str(satcat5::io::Readable* src);
 
+        // BufferedTee copies incoming data to any number of destinations.
+        class BufferedTee final
+            : public satcat5::util::HeapAllocator
+            , public satcat5::io::ArrayWrite {
+        public:
+            explicit BufferedTee(unsigned nbytes = 4096);
+
+            // Update the list of destination objects.
+            inline void add(satcat5::io::Writeable* dst)
+                { m_list.push_back(dst); }
+            inline void remove(satcat5::io::Writeable* dst)
+                { m_list.remove(dst); }
+
+            // Override end-of-packet handling.
+            bool write_finalize() override;
+
+        protected:
+            std::list<satcat5::io::Writeable*> m_list;
+        };
+
         // BufferedWriter with heap allocation.
-        class BufferedWriterHeap : public satcat5::io::BufferedWriter {
+        class BufferedWriterHeap
+            : public satcat5::util::HeapAllocator
+            , public satcat5::io::BufferedWriter {
         public:
             explicit BufferedWriterHeap(
                 satcat5::io::Writeable* dst,
                 unsigned nbytes = 4096);
-            virtual ~BufferedWriterHeap();
         };
 
         // Stream keyboard input to a Writeable interface.
@@ -49,22 +101,40 @@ namespace satcat5 {
             const bool m_line_buffer;
         };
 
+        // Multi-buffer with heap allocation.
+        class MultiBufferHeap
+            : public satcat5::util::HeapAllocator
+            , public satcat5::io::MultiBuffer {
+        public:
+            explicit MultiBufferHeap(unsigned nbytes=65536);
+        };
+
         // Packet buffer with heap allocation.
-        class PacketBufferHeap : public satcat5::io::PacketBuffer {
+        class PacketBufferHeap
+            : public satcat5::util::HeapAllocator
+            , public satcat5::io::PacketBuffer {
         public:
             explicit PacketBufferHeap(unsigned nbytes=4096);
-            virtual ~PacketBufferHeap();
+        };
+
+        // Stream buffer with heap allocation.
+        // (As PacketBufferHeap, but ignores packet boundaries.)
+        class StreamBufferHeap
+            : public satcat5::util::HeapAllocator
+            , public satcat5::io::PacketBuffer {
+        public:
+            explicit StreamBufferHeap(unsigned nbytes=4096);
         };
     }
 
     namespace util {
         // Timer object using ctime::clock().
         // (This gives millisecond resolution on most platforms.)
-        class PosixTimer : public satcat5::util::GenericTimer {
+        class PosixTimer : public satcat5::util::TimeRef {
         public:
             PosixTimer();
-            u32 now() override;     // Monotonic millisecond counter
-            s64 gps() const;        // Milliseconds since GPS epoch
+            u32 raw() override;         // Monotonic millisecond counter
+            s64 gps() const;            // Milliseconds since GPS epoch
         };
 
         // Link a PosixTimer to the main polling timekeeper.
@@ -74,10 +144,11 @@ namespace satcat5 {
             PosixTimekeeper();
             ~PosixTimekeeper();
 
-            inline s64 gps() {return m_timer.gps();}
-            inline u32 now() {return m_timer.now();}
+            inline s64 gps()        {return m_timer.gps();}
+            inline TimeVal now()    {return m_timer.now();}
+            inline u32 raw()        {return m_timer.raw();}
 
-            satcat5::util::GenericTimer* timer() {return &m_timer;}
+            satcat5::util::TimeRef* timer() {return &m_timer;}
 
         protected:
             satcat5::util::PosixTimer m_timer;
@@ -124,7 +195,7 @@ namespace satcat5 {
             void log_event(s8 priority, unsigned nbytes, const char* msg) override;
             std::vector<std::string> m_suppress;
             satcat5::util::PosixTimer m_timer;
-            u32 m_tref;
+            satcat5::util::TimeVal m_tref;
         };
     }
 }

@@ -9,10 +9,11 @@
 #include <satcat5/interrupts.h>
 #include <unistd.h>
 
+static const char* SLOW_IRQ_LBL = "SlowHandler";
 class SlowInterruptHandler : public satcat5::irq::Handler {
 public:
     SlowInterruptHandler(satcat5::irq::Controller* ctrl, int irq)
-        : satcat5::irq::Handler("MockHandler", irq) {}
+        : satcat5::irq::Handler(SLOW_IRQ_LBL, irq) {}
 
 protected:
     void irq_event() override {
@@ -84,8 +85,8 @@ protected:
 };
 
 TEST_CASE("interrupts") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Use system time for statistics monitoring.
     satcat5::util::PosixTimer timer;
@@ -213,6 +214,7 @@ TEST_CASE("interrupts") {
         // Very slow interrupt handler, to make sure max_irqtime is updated.
         SlowInterruptHandler irq3(&ctrl, 3);
         ctrl.trigger(&irq3);
+        CHECK(satcat5::irq::worst_irq.m_label == SLOW_IRQ_LBL);
     }
 
     // Cleanup.
@@ -221,8 +223,8 @@ TEST_CASE("interrupts") {
 }
 
 TEST_CASE("interrupts-null-timer") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Unit under test: One controller and two handlers.
     MockInterruptController ctrl;
@@ -271,8 +273,8 @@ TEST_CASE("interrupts-null-timer") {
 }
 
 TEST_CASE("ControllerNull") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Use system time for statistics monitoring.
     satcat5::util::PosixTimer timer;

@@ -152,17 +152,13 @@ public:
 };
 
 TEST_CASE("net_telemetry") {
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
+
     // Configuration constants.
     constexpr satcat5::eth::MacType TYPE_ETH = {0x4321};
     constexpr satcat5::udp::Port    PORT_UDP = {0x4321};
-
-    // Logging and timing infrastructure.
-    satcat5::log::ToConsole logger;
-    satcat5::test::TimerAlways timekeeper;
-    satcat5::test::FastPosixTimer timer;
-
-    // Network infrastructure for client and server.
-    satcat5::test::CrosslinkIp xlink;
 
     // Client-side telemetry aggregators for each protocol.
     satcat5::eth::Telemetry tx_eth(&xlink.net0.m_eth, TYPE_ETH);
@@ -177,7 +173,7 @@ TEST_CASE("net_telemetry") {
     // If all tiers are disabled, then no messages should be sent.
     SECTION("none") {
         TestSource src(&tx_eth);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         CHECK(rx_eth.get_read_ready() == 0);
         CHECK(rx_udp.get_read_ready() == 0);
     }
@@ -187,7 +183,7 @@ TEST_CASE("net_telemetry") {
         // Enable tier and wait long enough for a single message.
         TestSource src(&tx_eth);
         src.m_tier0.set_interval(700);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         REQUIRE(rx_eth.get_read_ready() > 0);
         // Inspect the contents of the received message.
         satcat5::test::CborParser rcvd(&rx_eth);
@@ -237,7 +233,7 @@ TEST_CASE("net_telemetry") {
         // Enable tier and wait long enough for a single message.
         TestSource src(&tx_udp);
         src.m_tier1.set_interval(800);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         REQUIRE(rx_udp.get_read_ready() > 0);
         // Inspect the contents of the received message.
         satcat5::test::CborParser rcvd(&rx_udp);
@@ -258,7 +254,7 @@ TEST_CASE("net_telemetry") {
         // Enable tier and wait long enough for a single message.
         TestSource src(&tx_udp);
         src.m_tier2.set_interval(900);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         REQUIRE(rx_udp.get_read_ready() > 0);
         // Inspect the format of the received message.
         // TODO: Just type and length for now. Inspect array contents?
@@ -301,7 +297,7 @@ TEST_CASE("net_telemetry") {
         // Enable tier and wait long enough for a single message.
         TestSource src(&tx_eth);
         src.m_tier3.set_interval(700);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         REQUIRE(rx_eth.get_read_ready() > 0);
         // Inspect the contents of the received message.
         satcat5::test::CborParser rcvd(&rx_eth);
@@ -351,7 +347,7 @@ TEST_CASE("net_telemetry") {
         // Enable tier and wait long enough for a single message.
         TestSource src(&tx_udp);
         src.m_tier4.set_interval(800);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         REQUIRE(rx_udp.get_read_ready() > 0);
         // Inspect the contents of the received message.
         satcat5::test::CborParser rcvd(&rx_udp);
@@ -372,7 +368,7 @@ TEST_CASE("net_telemetry") {
         // Enable tier and wait long enough for a single message.
         TestSource src(&tx_udp);
         src.m_tier5.set_interval(900);
-        timekeeper.sim_wait(1000);
+        xlink.timer.sim_wait(1000);
         REQUIRE(rx_udp.get_read_ready() > 0);
         // Inspect the format of the received message.
         // TODO: Just type and length for now. Inspect array contents?
@@ -416,22 +412,22 @@ TEST_CASE("net_telemetry") {
         TestSource src(&tx_udp);
         src.m_tier2.set_interval(1000);
         // Confirm the first message goes out at the expected time.
-        timekeeper.sim_wait(900);   // T = 900
+        xlink.timer.sim_wait(900);   // T = 900
         CHECK(rx_udp.get_read_ready() == 0);
-        timekeeper.sim_wait(200);   // T = 1100
+        xlink.timer.sim_wait(200);   // T = 1100
         CHECK(rx_udp.get_read_ready() > 0);
         rx_udp.read_finalize();
-        timekeeper.sim_wait(800);   // T = 1900
+        xlink.timer.sim_wait(800);   // T = 1900
         CHECK(rx_udp.get_read_ready() == 0);
         // Disable tier just before the second message.
         src.m_tier2.set_interval(0);
-        timekeeper.sim_wait(200);   // T = 2100
+        xlink.timer.sim_wait(200);   // T = 2100
         CHECK(rx_udp.get_read_ready() == 0);
         // Re-enable tier and confirm expected timing.
         src.m_tier2.set_interval(1000);
-        timekeeper.sim_wait(800);   // T = 2900
+        xlink.timer.sim_wait(800);   // T = 2900
         CHECK(rx_udp.get_read_ready() == 0);
-        timekeeper.sim_wait(200);   // T = 3100
+        xlink.timer.sim_wait(200);   // T = 3100
         CHECK(rx_udp.get_read_ready() > 0);
     }
 
@@ -445,7 +441,7 @@ TEST_CASE("net_telemetry") {
         src.m_tier1.set_interval(200);
         src.m_tier2.set_interval(200);
         // Wait for the first polling event.
-        timekeeper.sim_wait(250);
+        xlink.timer.sim_wait(250);
         // Confirm we received a single packet.
         CHECK(rx_udp.get_read_ready() > 0);
         rx_udp.read_finalize();
@@ -462,7 +458,7 @@ TEST_CASE("net_telemetry") {
         src.m_tier1.set_interval(200);
         src.m_tier2.set_interval(200);
         // Wait for the first polling event.
-        timekeeper.sim_wait(250);
+        xlink.timer.sim_wait(250);
         // Confirm we received three packets.
         CHECK(rx_udp.get_read_ready() > 0);
         rx_udp.read_finalize();

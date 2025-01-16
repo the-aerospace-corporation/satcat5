@@ -21,6 +21,9 @@ public:
 };
 
 TEST_CASE("NetworkStats") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     MockStats* mock = new MockStats();
     satcat5::cfg::NetworkStats uut(mock, 0);
 
@@ -46,7 +49,9 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.errct_pkt       == 7);
         CHECK(stats.errct_ptp_rx    == 0);
         CHECK(stats.errct_ptp_tx    == 8);
+        CHECK(stats.rate_mbps       == 0);
         CHECK(stats.status          == 9);
+        CHECK(stats.delta_freq      == 10);
     }
 
     SECTION("port1") {
@@ -64,7 +69,9 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.errct_pkt       == 23);
         CHECK(stats.errct_ptp_rx    == 0);
         CHECK(stats.errct_ptp_tx    == 24);
+        CHECK(stats.rate_mbps       == 0);
         CHECK(stats.status          == 25);
+        CHECK(stats.delta_freq      == 26);
     }
 
     SECTION("port999") {
@@ -82,7 +89,9 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.errct_pkt       == 0);
         CHECK(stats.errct_ptp_rx    == 0);
         CHECK(stats.errct_ptp_tx    == 0);
+        CHECK(stats.rate_mbps       == 0);
         CHECK(stats.status          == 0);
+        CHECK(stats.delta_freq      == 0);
     }
 
     delete mock;

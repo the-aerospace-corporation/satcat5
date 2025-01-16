@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020-2022 The Aerospace Corporation.
+-- Copyright 2020-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -46,6 +46,7 @@ entity port_sgmii_gpio is
     ptx_data    : in  port_tx_s2m;
     ptx_ctrl    : out port_tx_m2s;
     port_shdn   : in  std_logic;
+    port_test   : in  std_logic := '0';
 
     -- Reference clocks and reset.
     clk_125     : in  std_logic;
@@ -57,6 +58,7 @@ end port_sgmii_gpio;
 architecture xilinx of port_sgmii_gpio is
 
 signal lcl_tstamp   : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tfreq    : tfreq_t := TFREQ_DISABLED;
 signal lcl_tvalid   : std_logic := '0';
 
 signal tx_data      : std_logic_vector(9 downto 0);
@@ -81,6 +83,7 @@ gen_ptp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => clk_125,
         user_ctr    => lcl_tstamp,
+        user_freq   => lcl_tfreq,
         user_lock   => lcl_tvalid,
         user_rst_p  => port_shdn);
 end generate;
@@ -123,6 +126,8 @@ u_rx : entity work.sgmii_serdes_rx
     reset_p     => port_shdn);
 
 -- Detect bit transitions in oversampled data.
+-- TODO: Support receiver frequency offset estimation for Doppler-PTP?
+--       To support this, need to add tracking estimate to "lcl_tfreq".
 u_sync : entity work.sgmii_data_sync
     generic map(
     LANE_COUNT  => 10,
@@ -147,13 +152,16 @@ u_if : entity work.port_sgmii_common
     tx_cken     => '1',
     tx_data     => tx_data,
     tx_tstamp   => lcl_tstamp,
+    tx_tfreq    => lcl_tfreq,
     tx_tvalid   => lcl_tvalid,
+    port_test   => port_test,
     rx_clk      => clk_200,
     rx_cken     => rx_sync_next,
     rx_lock     => rx_lock,
     rx_data     => rx_sync_data,
     rx_tstamp   => rx_sync_tsof,
-    rx_tvalid   => lcl_tvalid,
+    rx_tfreq    => TFREQ_DISABLED,
+    rx_tvalid   => lcl_tvalid,  -- Async OK
     prx_data    => prx_data,
     ptx_data    => ptx_data,
     ptx_ctrl    => ptx_ctrl,

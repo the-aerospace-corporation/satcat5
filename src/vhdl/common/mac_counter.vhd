@@ -36,7 +36,6 @@ entity mac_counter is
     IO_BYTES    : positive);        -- Width of main data port
     port (
     -- Main input
-    -- PSRC is the input port-index and must be held for the full frame.
     in_wcount   : in  mac_bcount_t;
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     in_last     : in  std_logic;

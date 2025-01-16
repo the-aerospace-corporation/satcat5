@@ -90,6 +90,8 @@ signal rd_done      : std_logic;
 begin
 
 -- Address conversion.
+-- Note: This truncates two LSBs. If these are nonzero, strobe SLVERR.
+--   Unaligned access is undefined in APB3 and "unpredictable" in APB4.
 addr_trim <= convert_address(apb_paddr, BASE_ADDR, 30);
 
 -- Drive top-level APB slave outputs:

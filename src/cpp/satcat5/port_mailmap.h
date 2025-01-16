@@ -25,6 +25,7 @@
 
 namespace satcat5 {
     namespace port {
+        // Standard driver.
         class Mailmap
             : public satcat5::io::Readable
             , public satcat5::io::Writeable
@@ -45,11 +46,18 @@ namespace satcat5 {
             void read_finalize() override;
 
             // Implement the ptp::Interface API.
+            // (Requires CFG_CLK_HZ and VCONFIG to be set in the HDL.)
+            satcat5::ptp::Time ptp_time_now() override;
             satcat5::ptp::Time ptp_tx_start() override;
             satcat5::ptp::Time ptp_tx_timestamp() override;
             satcat5::ptp::Time ptp_rx_timestamp() override;
             satcat5::io::Writeable* ptp_tx_write() override;
             satcat5::io::Readable* ptp_rx_read() override;
+
+            // Control register for creating a cfg::PtpRealtime object.
+            // (Requires CFG_CLK_HZ and VCONFIG to be set in the HDL.)
+            inline satcat5::cfg::Register ptp_clock_reg() const
+                { return m_clock_reg; }
 
         protected:
             // Internal event-handlers.
@@ -74,6 +82,7 @@ namespace satcat5 {
                 volatile u32 tx_ctrl;               // Reg 1023
             };
             ctrl_reg* const m_ctrl;
+            satcat5::cfg::Register m_clock_reg;
 
             // Internal state.
             unsigned m_wridx;   // Current write-index in transmit buffer
@@ -81,6 +90,26 @@ namespace satcat5 {
             unsigned m_rdidx;   // Current read-index in receive buffer
             unsigned m_rdlen;   // Length of frame in receive buffer
             unsigned m_rdovr;   // Receive buffer underflow?
+        };
+
+        // Alternate driver using word-aligned access only.
+        // (Sometimes required for diagnostics or interface workarounds.)
+        class MailmapAligned : public satcat5::port::Mailmap {
+        public:
+            // Constructor
+            MailmapAligned(satcat5::cfg::ConfigBusMmap* cfg, unsigned devaddr);
+
+            // Override behavior of specific API methods.
+            void write_bytes(unsigned nbytes, const void* src) override;
+            bool read_bytes(unsigned nbytes, void* dst) override;
+
+        protected:
+            // Override behavior of specific API methods.
+            void write_next(u8 data) override;
+            u8 read_next() override;
+
+            // Accumulator for partial writes in progress.
+            u32 m_wrtmp;
         };
     }
 }

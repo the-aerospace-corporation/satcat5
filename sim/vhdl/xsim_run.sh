@@ -90,6 +90,12 @@ simulate_one()
 simulate_all()
 {
     # Run each unit test for the designated time:
+    simulate_one aes_cipher_tb 10us
+    simulate_one aes_gcm_gf_mult_tb 10us
+    simulate_one aes_gcm_tb 20us
+    simulate_one aes_gcm_tb 20us KEY_LEN 128
+    simulate_one aes_gcm_tb 20us IS_ENCRYPT false
+    simulate_one aes_gcm_tb 10us DATA_WIDTH 32
     simulate_one cfgbus_common_tb 1ms
     simulate_one cfgbus_host_apb_tb 1ms
     simulate_one cfgbus_host_axi_tb 2ms
@@ -112,22 +118,29 @@ simulate_all()
     simulate_one eth_frame_parcrc_tb 1ms
     simulate_one eth_frame_vstrip_tb 1ms
     simulate_one eth_frame_vtag_tb 1ms
+    simulate_one eth_macsec_filter_tb 1ms
+    simulate_one eth_macsec_framer_tb 1ms TEST_DATA_FOLDER $test_data_folder
+    simulate_one eth_macsec_deframer_tb 1ms TEST_DATA_FOLDER $test_data_folder
     simulate_one eth_pause_ctrl_tb 3ms
     simulate_one eth_preamble_tb 2ms
     simulate_one fifo_large_sync_tb 10ms
     simulate_one fifo_packet_tb 10ms
+    simulate_one fifo_pktmeta_tb 3ms
     simulate_one fifo_priority_tb 7ms
     simulate_one fifo_repack_tb 1ms
     simulate_one fifo_smol_async_tb 5ms
     simulate_one fifo_smol_resize_tb 1ms
     simulate_one fifo_smol_sync_tb 10ms
+    simulate_one hdlc_encoder_tb 4ms
     simulate_one io_clock_tolerance_tb 2ms
     simulate_one io_error_reporting_tb 10ms
+    simulate_one io_hdlc_tb 300us
     simulate_one io_i2c_tb 1ms
     simulate_one io_mdio_readwrite_tb 3ms
     simulate_one io_resample_fixed_tb 1ms
     simulate_one io_spi_tb 1ms
     simulate_one io_text_lcd_tb 280ms
+    simulate_one io_uart_tb 3ms
     simulate_one mac_counter_tb 1ms
     simulate_one mac_igmp_simple_tb 4ms
     simulate_one mac_lookup_tb 2ms
@@ -135,6 +148,7 @@ simulate_all()
     simulate_one mac_query_tb 1ms
     simulate_one mac_vlan_mask_tb 2ms
     simulate_one mac_vlan_rate_tb 2ms
+    simulate_one packet_augment_tb 5ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_inject_tb 15ms
     simulate_one packet_round_robin_tb 20ms
@@ -146,7 +160,7 @@ simulate_all()
     simulate_one port_sgmii_common_tb 1ms
     simulate_one port_serial_auto_tb 200ms
     simulate_one port_serial_i2c_tb 400ms
-    simulate_one port_serial_spi_tb 85ms
+    simulate_one port_serial_spi_tb 90ms
     simulate_one port_serial_uart_4wire_tb 700ms
     simulate_one port_serial_uart_2wire_tb 470ms
     simulate_one port_statistics_tb 2ms
@@ -157,6 +171,7 @@ simulate_all()
     simulate_one ptp_counter_tb 40ms
     simulate_one ptp_egress_tb 5ms
     simulate_one ptp_filter_tb 5ms
+    simulate_one ptp_pps_tb 1ms
     simulate_one ptp_realsync_tb 7ms
     simulate_one ptp_realtime_tb 1ms
     simulate_one router_arp_cache_tb 2ms
@@ -167,6 +182,15 @@ simulate_all()
     simulate_one router_ip_gateway_tb 22ms
     simulate_one router_mac_replace_tb 11ms
     simulate_one router_inline_top_tb 2ms
+    simulate_one router2_basic_nat_tb 5ms
+    simulate_one router2_core_tb 12ms
+    simulate_one router2_ecn_red_tb 2ms
+    simulate_one router2_gateway_tb 3ms
+    simulate_one router2_ipchksum_tb 3ms
+    simulate_one router2_mailmap_tb 1ms
+    simulate_one router2_offload_tb 1ms
+    simulate_one router2_qdepth_tb 10ms
+    simulate_one router2_table_tb 1ms
     simulate_one sgmii_data_slip_tb 16ms
     simulate_one sgmii_serdes_rx_tb 1ms
     simulate_one sgmii_data_sync_tb 110ms

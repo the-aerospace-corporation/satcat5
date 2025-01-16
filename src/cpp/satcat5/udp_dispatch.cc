@@ -8,6 +8,7 @@
 #include <satcat5/udp_dispatch.h>
 #include <satcat5/utils.h>
 
+using satcat5::io::ArrayWriteStatic;
 using satcat5::ip::PROTO_UDP;
 using satcat5::net::Type;
 using satcat5::udp::Dispatch;
@@ -19,9 +20,15 @@ static const unsigned DEBUG_VERBOSE = 0;
 // UDP header has a fixed length of 8 bytes (src/dst/len/checksum)
 static const unsigned UDP_HDR_LEN   = 8;
 
+// Maximum number of dynamically assigned ports?
+#ifndef SATCAT5_UDP_MAXDYN
+#define SATCAT5_UDP_MAXDYN 16384
+#endif
+
 // Reserved range for dynamically allocated UDP ports.
-static const u16 DYNAMIC_PORT_MIN   = 0xC000;
-static const u16 DYNAMIC_PORT_MAX   = 0xFFFF;
+static_assert(SATCAT5_UDP_MAXDYN <= 49152);
+static constexpr u16 DYNAMIC_PORT_MAX   = 0xFFFF;
+static constexpr u16 DYNAMIC_PORT_MIN   = DYNAMIC_PORT_MAX + 1 - SATCAT5_UDP_MAXDYN;
 
 Dispatch::Dispatch(satcat5::ip::Dispatch* iface)
     : satcat5::net::Protocol(Type(PROTO_UDP))
@@ -119,10 +126,11 @@ void Dispatch::frame_rcvd(satcat5::io::LimitedRead& src)
     }
 
     // Attempt delivery based on destination port only or source + destination.
+    // (Src + Dst matches with higher priority than Dst port alone.)
     // Use length from UDP header to trim any padding from upper layers.
     Type type1 = Type(m_reply_dst.value);
     Type type2 = Type(m_reply_src.value, m_reply_dst.value);
-    bool ok = deliver(type1, &src, len_eff) || deliver(type2, &src, len_eff);
+    bool ok = deliver(type2, &src, len_eff) || deliver(type1, &src, len_eff);
 
     if (DEBUG_VERBOSE > 0 && !ok)
         log::Log(log::INFO, "UdpDispatch: No such port").write(m_reply_dst.value);
@@ -134,14 +142,15 @@ void Dispatch::frame_rcvd(satcat5::io::LimitedRead& src)
     if (!ok && dst.is_unicast()) {
         // Reconstruct the first N bytes of the original message.
         // (ICMP needs at least 8, which is equal to the UDP header size.)
-        u8 temp[satcat5::ip::ICMP_ECHO_BYTES];
-        satcat5::io::ArrayWrite wr(temp, sizeof(temp));
+        ArrayWriteStatic<satcat5::ip::ICMP_ECHO_BYTES> wr;
         wr.write_obj(m_reply_src);
         wr.write_obj(m_reply_dst);
         wr.write_u16(len);
         wr.write_u16(chk);
+        src.copy_to(&wr);
+        wr.write_finalize();
         // Forward that data to the ICMP block.
-        satcat5::io::ArrayRead rd(temp, sizeof(temp));
+        satcat5::io::ArrayRead rd(wr.buffer(), wr.written_len());
         m_iface->m_icmp.send_error(satcat5::ip::ICMP_UNREACHABLE_PORT, &rd);
     }
 }

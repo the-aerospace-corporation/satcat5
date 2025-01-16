@@ -119,6 +119,9 @@ axi_rvalid  <= dfifo_valid and axi_aresetn;
 axi_rresp   <= "10" when (axi_rerror = '1') else "00";
 
 -- Address conversion for read and write addresses.
+-- Note: This forces the output to 30 bits regardless of input width.
+-- Note: The AMBA specification's "byte-invariance" property ensures
+--       that it is safe to ignore the truncated LSBs of the address.
 awaddr_trim <= convert_address(axi_awaddr, BASE_ADDR, 30);
 araddr_trim <= convert_address(axi_araddr, BASE_ADDR, 30);
 

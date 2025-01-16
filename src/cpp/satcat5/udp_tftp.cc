@@ -46,7 +46,7 @@ static constexpr u16 FLAG_FIRST     = 0x0004;   // Waiting for first response
 
 // TFTP should only be used on a LAN, so set an aggressive timeout
 // for the first timeout and double on every subsequent attempt.
-static constexpr unsigned RETRY_MAX = 3;
+static constexpr unsigned RETRY_MAX = 4;
 static constexpr unsigned RETRY_MSEC = 100;
 
 // Convert TFTP error-code to a user-readable error string.
@@ -75,13 +75,11 @@ TftpTransfer::TftpTransfer(satcat5::udp::Dispatch* iface)
     m_addr.m_iface->add(this);
 }
 
-TftpTransfer::~TftpTransfer()
-{
+TftpTransfer::~TftpTransfer() {
     m_addr.m_iface->remove(this);
 }
 
-void TftpTransfer::reset(const char* msg)
-{
+void TftpTransfer::reset(const char* msg) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "TftpTransfer::reset", msg);
 
     // Always clean up the source.
@@ -136,8 +134,22 @@ void TftpTransfer::request(
     send_packet(pkt.written_len(), 0);
 }
 
-void TftpTransfer::accept()
-{
+bool TftpTransfer::is_duplicate_request() {
+    // If we've got an open connection from the same endpoint,
+    // treat it as a duplicate and retransmit the first message.
+    satcat5::udp::Dispatch* iface = m_addr.m_iface;
+    bool duplicate = active()
+        && iface->reply_ip() == m_addr.dstaddr()
+        && iface->reply_mac() == m_addr.dstmac()
+        && iface->reply_src() == m_addr.dstport();
+    if (duplicate) send_packet(m_retry_len, 0);
+    return duplicate;
+}
+
+void TftpTransfer::accept() {
+    // Sanity check: Close leftover I/O from previous sessions.
+    if (m_dst || m_src) reset("Transfer interrupted.");
+
     // Open UDP socket on the next available source port.
     satcat5::udp::Port dstport = m_addr.m_iface->reply_src();
     satcat5::udp::Port srcport = m_addr.m_iface->next_free_port();
@@ -155,9 +167,9 @@ void TftpTransfer::accept()
         .write(dstport.value).write(srcport.value);
 }
 
-void TftpTransfer::file_send(satcat5::io::Readable* src, bool now)
-{
-    if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "TftpTransfer::file_send");
+void TftpTransfer::file_send(satcat5::io::Readable* src, bool now) {
+    if (DEBUG_VERBOSE > 1)
+        log::Log(log::DEBUG, "TftpTransfer::file_send").write10((u32)src->get_read_ready());
 
     // Reset transfer state.
     m_src = src;
@@ -175,8 +187,7 @@ void TftpTransfer::file_send(satcat5::io::Readable* src, bool now)
     }
 }
 
-void TftpTransfer::file_recv(satcat5::io::Writeable* dst, bool now)
-{
+void TftpTransfer::file_recv(satcat5::io::Writeable* dst, bool now) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "TftpTransfer::file_recv");
 
     // Reset transfer state.
@@ -195,8 +206,7 @@ void TftpTransfer::file_recv(satcat5::io::Writeable* dst, bool now)
     }
 }
 
-void TftpTransfer::frame_rcvd(satcat5::io::LimitedRead& src)
-{
+void TftpTransfer::frame_rcvd(satcat5::io::LimitedRead& src) {
     // All valid TFTP packets start with the opcode.
     u16 opcode = src.read_u16();
     if (DEBUG_VERBOSE > 1)
@@ -210,18 +220,14 @@ void TftpTransfer::frame_rcvd(satcat5::io::LimitedRead& src)
     if (m_flags & FLAG_FIRST) {
         clr_mask_u16(m_flags, FLAG_FIRST);
         // Update the destination for outgoing packets.
-        satcat5::udp::Port dstport = m_addr.m_iface->reply_src();
-        satcat5::udp::Port srcport = m_addr.srcport();
-        m_addr.connect(
-            m_addr.m_iface->reply_ip(),
-            m_addr.m_iface->reply_mac(),
-            dstport, srcport);
+        m_addr.save_reply_address();
         // Update the filter for incoming packets.
-        m_filter = Type(dstport.value, srcport.value);
+        m_filter = Type(m_addr.dstport().value, m_addr.srcport().value);
         // Log the new connection.
         log::Log(log::INFO, "TFTP: Connected to server")
-            .write(m_addr.m_iface->reply_ip())
-            .write(dstport.value).write(srcport.value);
+            .write(m_addr.dstaddr())
+            .write(m_addr.dstport().value)
+            .write(m_addr.srcport().value);
     }
 
     // Take further action based on the opcode:
@@ -244,14 +250,13 @@ void TftpTransfer::frame_rcvd(satcat5::io::LimitedRead& src)
     }
 }
 
-void TftpTransfer::timer_event()
-{
+void TftpTransfer::timer_event() {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "TftpTransfer::timer_event").write10((u32)m_retry_count);
 
     // Timeout waiting for remote response...
-    if (m_flags & FLAG_EOF) {
-        // Normal termination (RFC 1350, Section 6)
+    if (m_dst && (m_flags & FLAG_EOF)) {
+        // Delayed termination (RFC 1350, Section 6)
         reset("Transfer completed.");
     } else if (m_retry_count <= RETRY_MAX) {
         // Retry last packet up to N times.
@@ -262,8 +267,7 @@ void TftpTransfer::timer_event()
     }
 }
 
-void TftpTransfer::read_data(u16 block_id, satcat5::io::LimitedRead& src)
-{
+void TftpTransfer::read_data(u16 block_id, satcat5::io::LimitedRead& src) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "TftpTransfer::read_data").write(block_id);
 
@@ -287,8 +291,7 @@ void TftpTransfer::read_data(u16 block_id, satcat5::io::LimitedRead& src)
     }
 }
 
-void TftpTransfer::read_error(satcat5::io::LimitedRead& src)
-{
+void TftpTransfer::read_error(satcat5::io::LimitedRead& src) {
     // Unpack the error string into the internal buffer.
     // (We're about to close the connection, so it's OK to overwrite.)
     u16 errcode = src.read_u16();
@@ -300,8 +303,7 @@ void TftpTransfer::read_error(satcat5::io::LimitedRead& src)
         .write(errcode).write(": ").write(errstr);
 }
 
-void TftpTransfer::send_ack(u16 block_id)
-{
+void TftpTransfer::send_ack(u16 block_id) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "TftpTransfer::send_ack").write(block_id);
 
@@ -324,8 +326,7 @@ void TftpTransfer::send_ack(u16 block_id)
     }
 }
 
-void TftpTransfer::send_data(u16 block_id)
-{
+void TftpTransfer::send_data(u16 block_id) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "TftpTransfer::send_data").write(block_id);
 
@@ -339,6 +340,7 @@ void TftpTransfer::send_data(u16 block_id)
         send_packet(m_retry_len, 0);
     } else if (m_flags & FLAG_EOF) {
         // Transfer completed, nothing left to send.
+        // Close connection immediately (RFC 1350, Section 6)
         reset("Transfer completed.");
     } else if (diff == 1) {
         // Write the packet header.
@@ -358,8 +360,7 @@ void TftpTransfer::send_data(u16 block_id)
     }
 }
 
-void TftpTransfer::send_error(u16 errcode)
-{
+void TftpTransfer::send_error(u16 errcode) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "TftpTransfer::send_error").write(errcode);
 
@@ -379,8 +380,7 @@ void TftpTransfer::send_error(u16 errcode)
     reset(errstr);
 }
 
-void TftpTransfer::send_packet(unsigned len, u16 retry)
-{
+void TftpTransfer::send_packet(unsigned len, u16 retry) {
     if (DEBUG_VERBOSE > 1) {
         u16 opcode = satcat5::util::extract_be_u16(m_retry_buff);
         log::Log(log::DEBUG, "TftpTransfer::send_packet").write(opcode);
@@ -390,9 +390,17 @@ void TftpTransfer::send_packet(unsigned len, u16 retry)
     if (len > sizeof(m_retry_buff)) return;
 
     // Exponential timeout doubles after each failed attempt.
+    bool last_ack = m_dst && (m_flags & FLAG_EOF);
     m_retry_len   = (u16)len;
     m_retry_count = retry;
-    timer_once(RETRY_MSEC * (1u << retry));
+    u32 timeout = RETRY_MSEC * (1u << retry);
+
+    // Extended timeout when sending the last ACK message.
+    // (This prevents the dangling ACK from RFC1350, Section 6.)
+    if (last_ack) timeout <<= RETRY_MAX;
+
+    // Add 50% randomization to reduce lockstep retransmission.
+    timer_once(timeout + satcat5::util::prng.next(0, timeout/2));
 
     // Attempt to send the packet.
     auto wr = m_addr.open_write(len);
@@ -439,14 +447,16 @@ TftpServerCore::TftpServerCore(satcat5::udp::Dispatch* iface)
     m_iface->add(this);
 }
 
-TftpServerCore::~TftpServerCore()
-{
+TftpServerCore::~TftpServerCore() {
     m_iface->remove(this);
 }
 
-void TftpServerCore::frame_rcvd(satcat5::io::LimitedRead& src)
-{
+void TftpServerCore::frame_rcvd(satcat5::io::LimitedRead& src) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "TftpServer::frame_rcvd");
+
+    // De-duplicate requests: If we've already opened a connection,
+    // don't open a new one with a different port number.
+    if (m_xfer.is_duplicate_request()) return;
 
     // Only respond to read-requests and write-requests.
     char filename[256];

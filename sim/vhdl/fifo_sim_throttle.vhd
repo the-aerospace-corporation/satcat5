@@ -40,6 +40,7 @@ entity fifo_sim_throttle is
     out_nlast       : out integer range 0 to OUTPUT_BYTES;
     out_valid       : out std_logic;
     out_ready       : in  std_logic;
+    out_empty       : out std_logic;        -- Internal FIFO is drained
     out_reset       : out std_logic;        -- Synchronized copy of reset_p
     out_pause       : in  std_logic := '0'; -- Optional: Don't start next packet
     out_rate        : in  real := 1.0;      -- Max output duty-cycle (0-100%)
@@ -130,6 +131,7 @@ end process;
 out_data    <= out_data_i;
 out_meta    <= out_meta_i;
 out_nlast   <= out_nlast_i;
+out_empty   <= not (mid_valid or out_valid_i);
 out_valid   <= out_valid_i;
 out_reset   <= out_reset_i;
 

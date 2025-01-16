@@ -1,4 +1,4 @@
-# Copyright 2022 The Aerospace Corporation.
+# Copyright 2022-2024 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 onerror {resume}
@@ -13,15 +13,15 @@ add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/out_data
 add wave -noupdate /ptp_adjust_tb/uut0/out_nlast
 add wave -noupdate /ptp_adjust_tb/uut0/out_valid
 add wave -noupdate /ptp_adjust_tb/uut0/out_ready
-add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/out_meta_v
+add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/out_mvec
 add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/frm_pmask
-add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/frm_pmode
-add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/frm_tstamp
+add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/frm_meta
 add wave -noupdate /ptp_adjust_tb/uut0/frm_valid
 add wave -noupdate /ptp_adjust_tb/uut0/frm_ready
 add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/ref_data
 add wave -noupdate /ptp_adjust_tb/uut0/ref_nlast
-add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/ref_meta_v
+add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/ref_meta
+add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/ref_mvec
 add wave -noupdate /ptp_adjust_tb/uut0/ref_pkvalid
 add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/ref_pkmeta
 add wave -noupdate -radix hexadecimal /ptp_adjust_tb/uut0/frm_pkmeta

@@ -41,8 +41,12 @@ namespace satcat5 {
                 {return m_iface->ipaddr();}
             inline satcat5::eth::MacAddr macaddr() const
                 {return m_iface->macaddr();}
+            inline satcat5::eth::VlanTag reply_vtag() const
+                { return m_iface->reply_vtag(); }
             inline satcat5::eth::MacAddr reply_mac() const
                 {return m_iface->reply_mac();}
+            inline bool reply_is_multicast() const
+                {return m_iface->reply_is_multicast();}
             inline satcat5::ip::Addr reply_ip() const
                 {return m_iface->reply_ip();}
             inline satcat5::udp::Port reply_src() const

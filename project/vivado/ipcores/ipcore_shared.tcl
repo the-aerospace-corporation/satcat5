@@ -256,6 +256,7 @@ proc ipcore_add_ethport { label pname type } {
     set_property physical_name ${pname}_rx_error    [ipx::add_port_map "rx_error"   $intf]
     set_property physical_name ${pname}_rx_rate     [ipx::add_port_map "rx_rate"    $intf]
     set_property physical_name ${pname}_rx_status   [ipx::add_port_map "rx_status"  $intf]
+    set_property physical_name ${pname}_rx_tfreq    [ipx::add_port_map "rx_tfreq"   $intf]
     set_property physical_name ${pname}_rx_tsof     [ipx::add_port_map "rx_tsof"    $intf]
     set_property physical_name ${pname}_rx_reset    [ipx::add_port_map "rx_reset"   $intf]
     set_property physical_name ${pname}_tx_clk      [ipx::add_port_map "tx_clk"     $intf]
@@ -265,6 +266,7 @@ proc ipcore_add_ethport { label pname type } {
     set_property physical_name ${pname}_tx_ready    [ipx::add_port_map "tx_ready"   $intf]
     set_property physical_name ${pname}_tx_error    [ipx::add_port_map "tx_error"   $intf]
     set_property physical_name ${pname}_tx_pstart   [ipx::add_port_map "tx_pstart"  $intf]
+    set_property physical_name ${pname}_tx_tfreq    [ipx::add_port_map "tx_tfreq"   $intf]
     set_property physical_name ${pname}_tx_tnow     [ipx::add_port_map "tx_tnow"    $intf]
     set_property physical_name ${pname}_tx_reset    [ipx::add_port_map "tx_reset"   $intf]
     return $intf
@@ -286,6 +288,7 @@ proc ipcore_add_xgeport { label pname type } {
     set_property physical_name ${pname}_rx_error    [ipx::add_port_map "rx_error"   $intf]
     set_property physical_name ${pname}_rx_rate     [ipx::add_port_map "rx_rate"    $intf]
     set_property physical_name ${pname}_rx_status   [ipx::add_port_map "rx_status"  $intf]
+    set_property physical_name ${pname}_rx_tfreq    [ipx::add_port_map "rx_tfreq"   $intf]
     set_property physical_name ${pname}_rx_tsof     [ipx::add_port_map "rx_tsof"    $intf]
     set_property physical_name ${pname}_rx_reset    [ipx::add_port_map "rx_reset"   $intf]
     set_property physical_name ${pname}_tx_clk      [ipx::add_port_map "tx_clk"     $intf]
@@ -295,6 +298,7 @@ proc ipcore_add_xgeport { label pname type } {
     set_property physical_name ${pname}_tx_ready    [ipx::add_port_map "tx_ready"   $intf]
     set_property physical_name ${pname}_tx_error    [ipx::add_port_map "tx_error"   $intf]
     set_property physical_name ${pname}_tx_pstart   [ipx::add_port_map "tx_pstart"  $intf]
+    set_property physical_name ${pname}_tx_tfreq    [ipx::add_port_map "tx_tfreq"   $intf]
     set_property physical_name ${pname}_tx_tnow     [ipx::add_port_map "tx_tnow"    $intf]
     set_property physical_name ${pname}_tx_reset    [ipx::add_port_map "tx_reset"   $intf]
     return $intf

@@ -18,21 +18,6 @@ using satcat5::io::Writeable;
 
 ChatProto::ChatProto(
         eth::Dispatch* dispatch,
-        const char* username)
-    : eth::Protocol(dispatch, eth::ETYPE_CHAT_TEXT)
-    , m_reply_type(eth::ETYPE_CHAT_TEXT.value)
-    , m_username(username)
-    , m_userlen(strlen(username))
-    , m_vtag(eth::VTAG_NONE)
-    , m_callback(0)
-{
-    if (dispatch->macaddr() == eth::MACADDR_NONE) return;
-    timer_every(1000);  // Heartbeat every N msec
-}
-
-#if SATCAT5_VLAN_ENABLE
-ChatProto::ChatProto(
-        eth::Dispatch* dispatch,
         const char* username,
         const eth::VlanTag& vtag)
     : eth::Protocol(dispatch, eth::ETYPE_CHAT_TEXT, vtag)
@@ -45,7 +30,6 @@ ChatProto::ChatProto(
     if (dispatch->macaddr() == eth::MACADDR_NONE) return;
     timer_every(1000);  // Heartbeat every N msec
 }
-#endif
 
 Writeable* ChatProto::open_inner(
     const eth::MacAddr& dst,
@@ -53,14 +37,8 @@ Writeable* ChatProto::open_inner(
     unsigned msg_bytes)
 {
     // All the chat-protocol messages have the same format.
-    #ifdef SATCAT5_VLAN_ENABLE
     Writeable* wr = m_iface->open_write(dst, typ, m_vtag);
-    #else
-    Writeable* wr = m_iface->open_write(dst, typ);
-    #endif
-
     if (wr) {wr->write_u16((u16)msg_bytes);}
-
     return wr;
 }
 

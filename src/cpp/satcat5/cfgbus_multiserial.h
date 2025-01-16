@@ -75,7 +75,7 @@ namespace satcat5 {
 
         private:
             // Internal event handlers
-            void data_rcvd();           // Received data in queue
+            void data_rcvd(satcat5::io::Readable* src) override;
             void irq_event();           // ConfigBus interrupt
             void poll_demand();         // Deferred interrupt
 

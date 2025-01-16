@@ -49,10 +49,12 @@ rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1);
 rx_data.status  <= (others => '0');
 rx_data.tsof    <= TSTAMP_DISABLED;
+rx_data.tfreq   <= TFREQ_DISABLED;
 rx_data.reset_p <= reset_p;
 tx_ctrl.clk     <= sys_clk;
 tx_ctrl.pstart  <= '1';
 tx_ctrl.tnow    <= TSTAMP_DISABLED;
+tx_ctrl.tfreq   <= TFREQ_DISABLED;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= reset_p;
 

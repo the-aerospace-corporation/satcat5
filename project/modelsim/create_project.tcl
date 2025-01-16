@@ -66,6 +66,7 @@ project addfile ../../src/vhdl/common/eth_frame_common.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/prng_lfsr_common.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/ptp_types.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/router_common.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/router2_common.vhd VHDL common_lib
 project addfile ../../src/vhdl/xilinx/7series_io.vhd VHDL common_lib
 project addfile ../../src/vhdl/xilinx/7series_mem.vhd VHDL common_lib
 project addfile ../../src/vhdl/xilinx/7series_sync.vhd VHDL common_lib
@@ -77,6 +78,7 @@ project addfile ../../src/vhdl/common/fifo_smol_sync.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/fifo_smol_bytes.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/fifo_smol_resize.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/fifo_packet.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/fifo_pktmeta.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/fifo_repack.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/io_leds.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/sine_table.vhd VHDL common_lib
@@ -87,23 +89,26 @@ project addfile ../../src/vhdl/common/switch_types.vhd VHDL common_lib
 
 # Common VHDL (switch functions):
 project addfolder common_sw
+project addfile ../../src/vhdl/common/aes_cipher.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/aes_gcm_gf_mult.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/aes_gcm.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_clock_detect.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_clock_tolerance.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_i2c_controller.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_i2c_peripheral.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_mdio_readwrite.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_mdio_writer.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_resample_fixed.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_spi_controller.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_spi_peripheral.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_text_lcd.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_uart.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_error_reporting.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/packet_delay.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/packet_inject.vhd VHDL common_sw
-project addfile ../../src/vhdl/common/packet_round_robin.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/prng_lfsr_gen.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/prng_lfsr_sync.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/ptp_dither.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_pps_in.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_pps_out.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realsof.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realsync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_realtime.vhd VHDL common_sw
@@ -123,11 +128,17 @@ project addfile ../../src/vhdl/common/eth_frame_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_check.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_vstrip.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_vtag.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/eth_macsec_deframer.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/eth_macsec_framer.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_pause_ctrl.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_preamble_rx.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_preamble_tx.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_statistics.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_traffic_src.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/packet_augment.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/packet_delay.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/packet_inject.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/packet_round_robin.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_clksynth.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_filter.vhd VHDL common_sw
@@ -135,6 +146,7 @@ project addfile ../../src/vhdl/common/ptp_counter_free.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_gen.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_sync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_egress.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_ingress.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_wavesynth.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_fifo.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_gpio.vhd VHDL common_sw
@@ -148,6 +160,7 @@ project addfile ../../src/vhdl/common/cfgbus_multiserial.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_i2c_controller.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_led.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_mdio.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/cfgbus_piezo.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_spi_controller.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_text_lcd.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_timer.vhd VHDL common_sw
@@ -202,11 +215,23 @@ project addfile ../../src/vhdl/common/router_config_axi.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/router_config_static.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/router_ip_gateway.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/router_inline_top.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_basic_nat.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_ecn_red.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_forward.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_ipchksum.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_mailmap.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_offload.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_qdepth.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_qsel.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_table.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_gateway.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_pipeline.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/switch_aux.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/switch_port_rx.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/switch_port_tx.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/switch_core.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/switch_dual.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/router2_core.vhd VHDL common_sw
 
 # Xilinx-specific VHDL:
 project addfolder xilinx
@@ -220,21 +245,28 @@ project addfile ../../src/vhdl/xilinx/sgmii_serdes_rx.vhd VHDL xilinx
 project addfile ../../src/vhdl/xilinx/sgmii_serdes_tx.vhd VHDL xilinx
 project addfile ../../src/vhdl/xilinx/port_sgmii_gpio.vhd VHDL xilinx
 project addfile ../../src/vhdl/xilinx/port_sgmii_gtx.vhd VHDL xilinx
+project addfile ../../src/vhdl/xilinx/port_sgmii_lvds.vhd VHDL xilinx
 project addfile ../../examples/ac701_proto_v1/switch_top_ac701_base.vhd VHDL xilinx
 project addfile ../../examples/ac701_proto_v1/switch_top_ac701_rgmii.vhd VHDL xilinx
 project addfile ../../examples/ac701_proto_v1/switch_top_ac701_sgmii.vhd VHDL xilinx
 project addfile ../../examples/proto_v2/switch_top_proto_v2.vhd VHDL xilinx
 
-# Unit tests:
+# Test infrastructure
 project addfolder test
 project addfile ../../sim/vhdl/cfgbus_sim_tools.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_multiserial_helper.vhd VHDL test
 project addfile ../../sim/vhdl/eth_traffic_sim.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_sim_throttle.vhd VHDL test
+project addfile ../../sim/vhdl/ip_traffic_sim.vhd VHDL test
 project addfile ../../sim/vhdl/lfsr_sim.vhd VHDL test
 project addfile ../../sim/vhdl/port_test_common.vhd VHDL test
 project addfile ../../sim/vhdl/port_stats_refsrc.vhd VHDL test
 project addfile ../../sim/vhdl/router_sim_tools.vhd VHDL test
+
+# Unit tests:
+project addfile ../../sim/vhdl/aes_cipher_tb.vhd VHDL test
+project addfile ../../sim/vhdl/aes_gcm_gf_mult_tb.vhd VHDL test
+project addfile ../../sim/vhdl/aes_gcm_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_common_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_host_apb_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_host_axi_tb.vhd VHDL test
@@ -256,10 +288,13 @@ project addfile ../../sim/vhdl/eth_frame_check_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_parcrc_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_vstrip_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_vtag_tb.vhd VHDL test
+project addfile ../../sim/vhdl/eth_macsec_deframer_tb.vhd VHDL test
+project addfile ../../sim/vhdl/eth_macsec_framer_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_pause_ctrl_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_preamble_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_large_sync_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_packet_tb.vhd VHDL test
+project addfile ../../sim/vhdl/fifo_pktmeta_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_priority_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_repack_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_smol_async_tb.vhd VHDL test
@@ -270,6 +305,7 @@ project addfile ../../sim/vhdl/io_i2c_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_mdio_readwrite_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_spi_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_text_lcd_tb.vhd VHDL test
+project addfile ../../sim/vhdl/io_uart_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_counter_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_igmp_simple_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_lookup_tb.vhd VHDL test
@@ -277,6 +313,7 @@ project addfile ../../sim/vhdl/mac_priority_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_query_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_vlan_mask_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_vlan_rate_tb.vhd VHDL test
+project addfile ../../sim/vhdl/packet_augment_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_delay_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_inject_tb.vhd VHDL test
 project addfile ../../sim/vhdl/packet_round_robin_tb.vhd VHDL test
@@ -299,6 +336,8 @@ project addfile ../../sim/vhdl/ptp_clksynth_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_counter_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_egress_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_filter_tb.vhd VHDL test
+project addfile ../../sim/vhdl/ptp_ingress_tb.vhd VHDL test
+project addfile ../../sim/vhdl/ptp_pps_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_realsync_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_realtime_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_arp_cache_tb.vhd VHDL test
@@ -309,6 +348,16 @@ project addfile ../../sim/vhdl/router_config_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_mac_replace_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_ip_gateway_tb.vhd VHDL test
 project addfile ../../sim/vhdl/router_inline_top_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_basic_nat_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_core_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_ecn_red_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_gateway_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_ipchksum_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_mailmap_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_offload_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_qdepth_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_qsel_tb.vhd VHDL test
+project addfile ../../sim/vhdl/router2_table_tb.vhd VHDL test
 project addfile ../../sim/vhdl/sgmii_data_slip_tb.vhd VHDL test
 project addfile ../../sim/vhdl/sgmii_data_sync_tb.vhd VHDL test
 project addfile ../../sim/vhdl/sgmii_serdes_rx_tb.vhd VHDL test

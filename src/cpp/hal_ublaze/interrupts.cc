@@ -16,7 +16,7 @@ satcat5::irq::ControllerMicroblaze::ControllerMicroblaze(XIntc* xintc)
 }
 
 void satcat5::irq::ControllerMicroblaze::irq_start(
-    u16 dev_id, satcat5::util::GenericTimer* timer, u32 opts)
+    u16 dev_id, satcat5::util::TimeRef* timer, u32 opts)
 {
     // Initialize the Xilinx interrupt controller.
     XIntc_Initialize(m_xintc, dev_id);

@@ -90,6 +90,7 @@ out_port.reset_p    <= reset_p;
 out_port.rate       <= get_rate_word(1000);
 out_port.status     <= (others => '0');
 out_port.tsof       <= (others => '0');
+out_port.tfreq      <= (others => '0');
 out_port.rxerr      <= '0';
 out_port.data       <= out_data;
 out_port.write      <= out_valid_i and out_ready;

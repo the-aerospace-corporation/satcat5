@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation.
+// Copyright 2022-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -159,7 +159,7 @@ PosixUart::~PosixUart()
     delete[] m_rx.get_buff_dtor();
 }
 
-void PosixUart::data_rcvd()
+void PosixUart::data_rcvd(satcat5::io::Readable* src)
 {
     // Copy data from transmit buffer to the UART object.
     while (m_ok && chunk_tx()) {}   // Copy data until none is left.

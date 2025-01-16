@@ -22,6 +22,14 @@ using log::LogBuffer;
 // Global pointer to a linked list of active destination objects, if any.
 log::EventHandler* g_log_dst = 0;
 
+// Forcibly unregister any EventHandler objects.
+bool log::pre_test_reset()
+{
+    bool ok = true;
+    if (g_log_dst) {g_log_dst = 0; ok = false;}
+    return ok;
+}
+
 // Helper function for looking up hex values.
 inline char hex_lookup(unsigned val) {
     switch (val & 0xF) {
@@ -151,10 +159,6 @@ void log::ToWriteable::log_event(
     m_dst->write_finalize();
 }
 
-// Suppress static-analysis warnings for uninitialized members.
-// (Large array "m_buff" is always written before use.)
-// cppcheck-suppress uninitMemberVar
-
 Log::Log(s8 priority)
     : m_priority(priority)
 {
@@ -224,11 +228,8 @@ Log& Log::write(u32 val) {
 }
 
 Log& Log::write(u64 val) {
-    u32 msb = (u32)(val >> 32);
-    u32 lsb = (u32)(val >> 0);
     m_buff.wr_str(" = 0x");
-    m_buff.wr_hex(msb, 8);
-    m_buff.wr_hex(lsb, 8);
+    m_buff.wr_h64(val, 16);
     return *this;
 }
 
@@ -252,44 +253,26 @@ Log& Log::write(const satcat5::eth::MacAddr& mac)
     // Convention is six hex bytes with ":" delimeter.
     // e.g., "DE:AD:BE:EF:CA:FE"
     m_buff.wr_str(" = ");
-    for (unsigned a = 0 ; a < 6 ; ++a) {
-        if (a) m_buff.wr_str(":");
-        m_buff.wr_hex(mac.addr[a], 2);
-    }
+    mac.log_to(m_buff);
     return *this;
 }
 
 Log& Log::write(const satcat5::ip::Addr& ip)
 {
-    // Extract individual bytes from the 32-bit IP-address.
-    u32 ip_bytes[] = {
-        (ip.value >> 24) & 0xFF,    // MSB-first
-        (ip.value >> 16) & 0xFF,
-        (ip.value >>  8) & 0xFF,
-        (ip.value >>  0) & 0xFF,
-    };
-
-    // Convention is 4 decimal numbers with "." delimiter.
-    // e.g., "192.168.1.42"
     m_buff.wr_str(" = ");
-    for (unsigned a = 0 ; a < 4 ; ++a) {
-        if (a) m_buff.wr_str(".");
-        m_buff.wr_dec(ip_bytes[a]);
-    }
+    ip.log_to(m_buff);
     return *this;
 }
 
 Log& Log::write10(s32 val) {
-    // Decimal string with sign prefix.
-    m_buff.wr_str(val < 0 ? " = -" : " = +");
-    m_buff.wr_dec(satcat5::util::abs_s32(val));
+    m_buff.wr_str(" = ");
+    m_buff.wr_s32(val);
     return *this;
 }
 
 Log& Log::write10(s64 val) {
-    // Decimal string with sign prefix.
-    m_buff.wr_str(val < 0 ? " = -" : " = +");
-    m_buff.wr_d64(satcat5::util::abs_s64(val));
+    m_buff.wr_str(" = ");
+    m_buff.wr_s64(val);
     return *this;
 }
 
@@ -328,7 +311,15 @@ void LogBuffer::wr_hex(u32 val, unsigned nhex)
     }
 }
 
-void LogBuffer::wr_dec(u32 val)
+void LogBuffer::wr_h64(u64 val, unsigned nhex)
+{
+    for (unsigned a = 0 ; m_wridx < SATCAT5_LOG_MAXLEN && a < nhex ; ++a) {
+        unsigned shift = 4 * (nhex-a-1);    // Most significant nybble first
+        m_buff[m_wridx++] = hex_lookup(val >> shift);
+    }
+}
+
+void LogBuffer::wr_d32(u32 val)
 {
     char temp[LOG_ITOA_BUFF32];
     log_itoa32(temp, val);
@@ -340,4 +331,16 @@ void LogBuffer::wr_d64(u64 val)
     char temp[LOG_ITOA_BUFF64];
     log_itoa64(temp, val);
     wr_str(temp);
+}
+
+void LogBuffer::wr_s32(s32 val)
+{
+    wr_str(val < 0 ? "-" : "+");
+    wr_d32(satcat5::util::abs_s32(val));
+}
+
+void LogBuffer::wr_s64(s64 val)
+{
+    wr_str(val < 0 ? "-" : "+");
+    wr_d64(satcat5::util::abs_s64(val));
 }

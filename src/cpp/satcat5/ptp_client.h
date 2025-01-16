@@ -9,25 +9,37 @@
 // It uses a single network port and acts as an "Ordinary Clock" as defined
 // in IEEE 1588-2019 Section 9.
 //
+// This client also supports Meta's proposed "Simple Precision Time Protocol"
+// (SPTP) extention, which reduces overhead for unicast PTP exchanges.
+//  https://engineering.fb.com/2024/02/07/production-engineering/simple-precision-time-protocol-sptp-meta/
+//  https://ieeexplore.ieee.org/document/10296989
+//
+// Long-term feature wishlist:
+//  * Support for automatic configuration and master/grandmaster selection.
+//  * Support for asymmetric handshakes (i.e., many SYNC, few DELAY_REQ).
+//
 
 #pragma once
 
 #include <satcat5/io_readable.h>
+#include <satcat5/list.h>
 #include <satcat5/polling.h>
 #include <satcat5/ptp_dispatch.h>
 #include <satcat5/ptp_header.h>
 #include <satcat5/ptp_measurement.h>
+#include <satcat5/ptp_source.h>
 
 namespace satcat5 {
     namespace ptp {
-        // Configure the operating mode of a given Client.
-        // TODO: Add support for auto-config.
+        // Configure the operating mode of a given PTP Client.
+        // TODO: Add support for auto-config?
         enum class ClientMode {
             DISABLED,       // Complete shutdown (Section 9.2.5)
             MASTER_L2,      // Master only, Ethernet mode (Section 9.2.2.1)
             MASTER_L3,      // Master only, UDP mode (Section 9.2.2.1)
-            SLAVE_ONLY,     // Slave only (Section 9.2.2.2)
-            PASSIVE         // Passive mode (for Pdelay) (Section 9.2.5)
+            SLAVE_ONLY,     // Slave only, ordinary mode (Section 9.2.2.2)
+            SLAVE_SPTP,     // Slave only, SPTP mode
+            PASSIVE,        // Passive mode (for Pdelay) (Section 9.2.5)
         };
 
         // Internal states correspond to Section 9.2.5 and Table 27, except that
@@ -63,24 +75,30 @@ namespace satcat5 {
                 { m_clock_local = clk; }
             inline satcat5::ptp::ClockInfo get_clock() const
                 { return m_clock_local; }
+            inline satcat5::ptp::Time get_time_now()
+                { return m_iface.ptp_time_now(); }
 
             // Mode and state accessors.
             void set_mode(satcat5::ptp::ClientMode mode);
             inline satcat5::ip::Dispatch* get_iface() const {return m_iface.iface();}
             inline satcat5::ptp::ClientMode get_mode() const {return m_mode;}
             inline satcat5::ptp::ClientState get_state() const {return m_state;}
+            inline satcat5::ptp::PortId get_source() const {return m_current_source;}
 
             // Master only: Set the SYNC message rate to 2^N / sec.
-            void set_sync_rate(u8 rate);
+            // (Range 0-8. Negative rates disable outgoing SYNC messages.)
+            void set_sync_rate(int rate);
 
             // Set the pdelay message rate to 0.9 x 2^N / sec.
-            void set_pdelay_rate(u8 rate);
+            // (Range 0-8. Negative rates disable outgoing PDELAY_REQ messages.)
+            void set_pdelay_rate(int rate);
 
             // Send a unicast Sync message to the designated address.
             // (Unicast allows higher message rates than broadcast mode.)
             bool send_sync_unicast(
                 const satcat5::eth::MacAddr& mac,
-                const satcat5::ip::Addr& ip = satcat5::ip::ADDR_NONE);
+                const satcat5::ip::Addr& ip = satcat5::ip::ADDR_NONE,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
             // Dispatch calls this method for each incoming packet.
             void ptp_rcvd(satcat5::io::LimitedRead& rd);
@@ -92,31 +110,42 @@ namespace satcat5 {
             // Timer setup based on current state.
             void timer_reset();
 
+            // Handling for various error events.
+            void cache_miss();
+            void client_timeout();
+
+            // Handlers for TLV and measurement events.
+            unsigned tlv_send(
+                const satcat5::ptp::Header& hdr,
+                satcat5::io::Writeable* wr);
+            void notify_if_complete(
+                const satcat5::ptp::Measurement* meas);
+
             // Handlers for specific incoming messages.
             void rcvd_announce(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_delay_req(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_pdelay_req(
                 const Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_delay_resp(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_pdelay_resp(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_follow_up(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_pdelay_follow_up(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_sync(
                 const satcat5::ptp::Header& hdr,
-                satcat5::io::LimitedRead& rd);
+                satcat5::io::ArrayRead& rd);
             void rcvd_unexpected(
                 const satcat5::ptp::Header& hdr);
 
@@ -124,18 +153,28 @@ namespace satcat5 {
             satcat5::ptp::Header make_header(u8 type, u16 seq_id);
 
             // Generate and send specific outgoing messages.
+            // TODO: Update ALL messages to use ptp::Header objects???
             void send_announce_maybe();
             bool send_announce();
-            bool send_delay_req(const satcat5::ptp::Header& ref);
-            bool send_pdelay_req();
+            bool send_sync(
+                satcat5::ptp::DispatchTo addr,
+                u16 seq_id, u16 flags = 0, u64 tref = 0);
+            bool send_follow_up(
+                satcat5::ptp::DispatchTo addr,
+                u16 seq_id, u16 flags = 0, u64 tref = 0);
+            void send_delay_req_sptp();
+            bool send_delay_req(u16 seq_id, u16 flags = 0);
             bool send_delay_resp(const satcat5::ptp::Header& ref);
+            bool send_pdelay_req();
             bool send_pdelay_resp(const satcat5::ptp::Header& ref);
             bool send_pdelay_follow_up(const satcat5::ptp::Header& ref);
-            bool send_follow_up(satcat5::ptp::DispatchTo addr);
-            bool send_sync(satcat5::ptp::DispatchTo addr);
 
             // PTP dispatch object.
             satcat5::ptp::Dispatch m_iface;
+
+            // List of registered TLV handlers (see "ptp_tlv.h").
+            friend satcat5::ptp::TlvHandler;
+            satcat5::util::List<satcat5::ptp::TlvHandler> m_tlv_list;
 
             // Other working state.
             satcat5::ptp::ClientMode m_mode;
@@ -146,8 +185,10 @@ namespace satcat5 {
             satcat5::ptp::PortId m_current_source;
             unsigned m_announce_count;
             unsigned m_announce_every;
-            unsigned m_sync_rate;
-            unsigned m_pdelay_rate;
+            unsigned m_cache_wdog;
+            unsigned m_request_wdog;
+            int m_sync_rate;
+            int m_pdelay_rate;
             u16 m_announce_id;
             u16 m_sync_id;
             u16 m_pdelay_id;

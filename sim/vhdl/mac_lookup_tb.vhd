@@ -503,6 +503,7 @@ ref_rd <= out_valid and out_ready;
 uut : entity work.mac_lookup
     generic map(
     ALLOW_RUNT      => ALLOW_RUNT,
+    INPUT_HAS_FCS   => false,
     IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => TABLE_SIZE,

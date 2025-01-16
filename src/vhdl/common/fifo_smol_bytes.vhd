@@ -38,8 +38,10 @@ entity fifo_smol_bytes is
     -- Status signals (each is optional)
     fifo_full   : out std_logic;        -- FIFO full (write may overflow)
     fifo_empty  : out std_logic;        -- FIFO empty (no data available)
-    fifo_hfull  : out std_logic;        -- Half-full flag
-    fifo_hempty : out std_logic;        -- Half-empty flag
+    fifo_hfull  : out std_logic;        -- Half-full flag (n > N/2)
+    fifo_hempty : out std_logic;        -- Half-empty flag (n <= N/2)
+    fifo_qfull  : out std_logic;        -- Three-quarters-full flag (n > 3N/4)
+    fifo_qempty : out std_logic;        -- Three-quarters-empty flag (n <= 3N/4)
     fifo_error  : out std_logic;        -- Overflow error strobe
     -- Common
     clk         : in  std_logic;        -- Clock for both ports
@@ -80,6 +82,8 @@ u_fifo : entity work.fifo_smol_sync
     fifo_empty  => fifo_empty,
     fifo_hfull  => fifo_hfull,
     fifo_hempty => fifo_hempty,
+    fifo_qfull  => fifo_qfull,
+    fifo_qempty => fifo_qempty,
     fifo_error  => fifo_error,
     clk         => clk,
     reset_p     => reset_p);

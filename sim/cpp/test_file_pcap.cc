@@ -9,7 +9,6 @@
 #include <hal_posix/file_pcap.h>
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
-#include <satcat5/datetime.h>
 
 using satcat5::io::ReadPcap;
 using satcat5::io::WritePcap;
@@ -22,10 +21,8 @@ static const std::string PKT_DATA[PKT_COUNT] = {
 };
 
 TEST_CASE("File-PCAP") {
-    // Test infrastructure.
-    satcat5::log::ToConsole log;
-    satcat5::util::PosixTimer timer;
-    satcat5::datetime::Clock clock(&timer);
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Scan through several known-good example files.
     SECTION("Read-Examples") {
@@ -50,12 +47,13 @@ TEST_CASE("File-PCAP") {
     SECTION("Write-Loopback") {
         // Test each mode...
         const std::string filename = GENERATE(
-            "simulations/pcap1.pcap",
-            "simulations/pcap2.pcapng");
+            "simulations/test_file_pcap_001.pcap",
+            "simulations/test_file_pcap_002.pcapng");
         bool mode_ng = filename.find(".pcapng") != std::string::npos;
 
         // Write a handful of test packets to the unit under test.
-        WritePcap uut_wr(&clock, filename.c_str(), mode_ng);
+        WritePcap uut_wr(mode_ng);
+        uut_wr.open(filename, satcat5::io::LINKTYPE_USER0);
         for (unsigned a = 0 ; a < PKT_COUNT ; ++a) {
             uut_wr.write_str(PKT_DATA[a].c_str());
             CHECK(uut_wr.write_finalize());

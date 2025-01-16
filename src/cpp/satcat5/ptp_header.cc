@@ -3,11 +3,22 @@
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
+#include <satcat5/log.h>
 #include <satcat5/ptp_header.h>
 
 using satcat5::ptp::PortId;
 using satcat5::ptp::Header;
 using satcat5::ptp::ClockInfo;
+
+void PortId::log_to(satcat5::log::LogBuffer& wr) const
+{
+    wr.wr_str("0x");
+    wr.wr_hex(u32(clock_id >> 32), 8);
+    wr.wr_str("-");
+    wr.wr_hex(u32(clock_id >>  0), 8);
+    wr.wr_str("-");
+    wr.wr_hex(port_num, 4);
+}
 
 bool PortId::read_from(satcat5::io::Readable* rd)
 {
@@ -24,6 +35,41 @@ void PortId::write_to(satcat5::io::Writeable* wr) const
 {
     wr->write_u64(clock_id);
     wr->write_u16(port_num);
+}
+
+unsigned Header::msglen() const
+{
+    switch (type) {
+    // Defined PTP message types.
+    case TYPE_SYNC:         return 10;  // Section 13.6
+    case TYPE_DELAY_REQ:    return 10;  // Section 13.6
+    case TYPE_PDELAY_REQ:   return 20;  // Section 13.9
+    case TYPE_PDELAY_RESP:  return 20;  // Section 13.10
+    case TYPE_FOLLOW_UP:    return 10;  // Section 13.7
+    case TYPE_DELAY_RESP:   return 20;  // Section 13.8
+    case TYPE_PDELAY_RFU:   return 20;  // Section 13.11
+    case TYPE_ANNOUNCE:     return 30;  // Section 13.5
+    case TYPE_SIGNALING:    return 10;  // Section 13.12
+    case TYPE_MANAGEMENT:   return 14;  // Section 15.4.1
+    // All other message types are reserved.
+    default:                return 0;   // Unknown / invalid
+    }
+}
+
+void Header::log_to(satcat5::log::LogBuffer& wr) const
+{
+    wr.wr_str("\n  MsgType: 0x");   wr.wr_hex(type, 1);
+    wr.wr_str("\n  Version: ");     wr.wr_dec(version);
+    wr.wr_str("\n  Length:  ");     wr.wr_dec(length);
+    wr.wr_str("\n  Domain:  ");     wr.wr_dec(domain);
+    wr.wr_str("\n  SdoID:   0x");   wr.wr_hex(sdo_id, 4);
+    wr.wr_str("\n  Flags:   0x");   wr.wr_hex(flags, 4);
+    wr.wr_str("\n  CorrFld: ");     wr.wr_d64(correction);
+    wr.wr_str("\n  Subtype: 0x");   wr.wr_hex(subtype, 8);
+    wr.wr_str("\n  SrcPort: ");     src_port.log_to(wr);
+    wr.wr_str("\n  SeqID:   0x");   wr.wr_hex(seq_id, 4);
+    wr.wr_str("\n  Control: 0x");   wr.wr_hex(control, 2);
+    wr.wr_str("\n  Intrval: 0x");   wr.wr_hex(log_interval, 2);
 }
 
 bool Header::read_from(satcat5::io::Readable* rd)

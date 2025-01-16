@@ -170,7 +170,7 @@ namespace satcat5 {
             }
 
             // Internal helper functions.
-            template <typename T> inline constexpr u32 sign_extend(T x)
+            template <typename T> static inline constexpr u32 sign_extend(T x)
                 { return u32((x < 0) ? -1 : 0); }
 
             template <unsigned W2>
@@ -412,6 +412,15 @@ namespace satcat5 {
                 mod = is_negative() ? -umod : umod;
             }
 
+            WideSigned<W> div_round(const WideSigned<W>& rhs) const {
+                // Unsigned division on the absolute value of each input.
+                satcat5::util::WideUnsigned<W> unum(this->abs());
+                satcat5::util::WideUnsigned<W> urhs(rhs.abs());
+                satcat5::util::WideUnsigned<W> udiv = unum.div_round(urhs);
+                // Convert sign of outputs using the "x = d*y + m" identity.
+                return (is_negative() == rhs.is_negative()) ? udiv : -udiv;
+            }
+
             // Comparison operators.
             bool operator<(const WideSigned<W>& rhs) const {
                 if (W == 0) return false;
@@ -510,6 +519,8 @@ namespace satcat5 {
                 { WideInteger<W> tmp(*this); tmp.bitwise_and(rhs); return tmp; }
             inline WideUnsigned<W> operator^(const WideInteger<W>& rhs) const
                 { WideInteger<W> tmp(*this); tmp.bitwise_xor(rhs); return tmp; }
+            inline WideUnsigned<W> div_round(const WideUnsigned<W>& rhs) const
+                { return (*this + (rhs >> 1)) / rhs; }
 
             // Combined divide + modulo function.
             void divmod(const WideUnsigned<W>& rhs,

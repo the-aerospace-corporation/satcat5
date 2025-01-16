@@ -13,7 +13,7 @@
 *.swp
 *.swo
 backups
-build_tmp
+build_tmp*
 .vscode/
 sim/cpp/coverage*
 
@@ -23,9 +23,12 @@ cppcheck.xml
 cpplint.log
 
 # Ignore temporary files from example designs.
-examples/vc707_ptp_client/vc707_ptp/*
+examples/*/*/*
 examples/vc707_ptp_master/
 test/log_viewer/build_tmp
+
+# Ignore rendered documentation
+doc/docs_html/
 
 # Ignore most Lattice-created project files
 project/icecube2_2017.8/**
@@ -61,6 +64,7 @@ project/modelsim/work
 *.runs
 *.srcs
 *.str
+*.wcfg
 *.xpr
 .Xil
 examples/*/*/*.xdc

@@ -56,6 +56,8 @@ entity mac_core is
     PRI_TABLE_SIZE  : natural;          -- Max high-priority EtherTypes (0 = disable)
     ALLOW_RUNT      : boolean;          -- Allow undersize frames?
     ALLOW_PRECOMMIT : boolean;          -- Allow output FIFO cut-through?
+    INPUT_HAS_FCS   : boolean;          -- Does input stream include FCS field?
+    PTP_DOPPLER     : boolean;          -- Enable Doppler-TLV tags?
     PTP_STRICT      : boolean;          -- Drop frames with missing timestamps?
     SUPPORT_PTP     : boolean;          -- Support Precision Time Protocol?
     SUPPORT_VPORT   : boolean;          -- Support virtual-LAN port control?
@@ -91,8 +93,7 @@ entity mac_core is
     error_change    : out std_logic;    -- MAC address changed ports
     error_other     : out std_logic;    -- Other internal error
     error_table     : out std_logic;    -- Table integrity check failed
-    error_ptp       : out std_logic;
-    ptp_err_psrc    : out integer range 0 to PORT_COUNT-1;
+    error_ptp       : out std_logic_vector(PORT_COUNT-1 downto 0);
 
     -- System interface
     clk             : in  std_logic;
@@ -150,8 +151,7 @@ signal igmp_error   : std_logic := '0';
 
 -- PTP routing and timestamps (optional)
 signal ptpf_mask    : port_mask := (others => '1');
-signal ptpf_pmode   : ptp_mode_t := PTP_MODE_NONE;
-signal ptpf_tstamp  : tstamp_t := TSTAMP_DISABLED;
+signal ptpf_meta    : switch_meta_t := SWITCH_META_NULL;
 signal ptpf_valid   : std_logic := '1';
 
 -- VLAN lookup (optional)
@@ -185,7 +185,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_portcount : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_PORT_COUNT)
+        REGADDR     => SW_ADDR_PORT_COUNT)
         port map(
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(0),
@@ -193,7 +193,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_datawidth : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_DATA_WIDTH)
+        REGADDR     => SW_ADDR_DATA_WIDTH)
         port map(
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(1),
@@ -201,7 +201,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_coreclock : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_CORE_CLOCK)
+        REGADDR     => SW_ADDR_CORE_CLOCK)
         port map(
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(2),
@@ -209,7 +209,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_mactable : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_TABLE_SIZE)
+        REGADDR     => SW_ADDR_TABLE_SIZE)
         port map(
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(3),
@@ -217,7 +217,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_frmsize : cfgbus_readonly
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_FRAME_SIZE)
+        REGADDR     => SW_ADDR_FRAME_SIZE)
         port map(
         cfg_cmd     => cfg_cmd,
         cfg_ack     => cfg_acks(4),
@@ -228,7 +228,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_counter : entity work.mac_counter
         generic map(
         DEV_ADDR    => DEV_ADDR,
-        REG_ADDR    => REGADDR_PKT_COUNT,
+        REG_ADDR    => SW_ADDR_PKT_COUNT,
         IO_BYTES    => IO_BYTES)
         port map(
         in_wcount   => buf_wcount,
@@ -244,7 +244,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_mbword : cfgbus_register_sync
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_MISS_BCAST,
+        REGADDR     => SW_ADDR_MISS_BCAST,
         RSTVAL      => (others => MISS_BCAST),
         WR_ATOMIC   => true,
         WR_MASK     => cfgbus_mask_lsb(PORT_COUNT))
@@ -258,7 +258,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
     u_prword : cfgbus_register_sync
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_PROMISCUOUS,
+        REGADDR     => SW_ADDR_PROMISCUOUS,
         WR_ATOMIC   => true,
         WR_MASK     => cfgbus_mask_lsb(PORT_COUNT))
         port map(
@@ -301,7 +301,7 @@ gen_2step : if (DEV_ADDR > CFGBUS_ADDR_NONE and SUPPORT_PTP and PTP_MIXED_STEP) 
     u_register : cfgbus_register
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_PTP_2STEP,
+        REGADDR     => SW_ADDR_PTP_2STEP,
         WR_ATOMIC   => true,
         WR_MASK     => cfgbus_mask_lsb(PORT_COUNT))
         port map(
@@ -320,6 +320,7 @@ gen_ptp1 : if SUPPORT_PTP generate
         generic map(
         IO_BYTES    => IO_BYTES,
         PORT_COUNT  => PORT_COUNT,
+        PTP_DOPPLER => PTP_DOPPLER,
         PTP_STRICT  => PTP_STRICT,
         MIXED_STEP  => PTP_MIXED_STEP)
         port map(
@@ -337,12 +338,10 @@ gen_ptp1 : if SUPPORT_PTP generate
         out_ready   => '1',
         cfg_2step   => cfg_stpmask,
         frm_pmask   => ptpf_mask,
-        frm_pmode   => ptpf_pmode,
-        frm_tstamp  => ptpf_tstamp,
+        frm_meta    => ptpf_meta,
         frm_valid   => ptpf_valid,
         frm_ready   => packet_done,
-        ptp_err     => error_ptp,
-        ptp_err_psrc=> ptp_err_psrc,
+        error_mask  => error_ptp,
         clk         => clk,
         reset_p     => reset_p);
 end generate;
@@ -397,8 +396,10 @@ u_delay : entity work.packet_delay
     reset_p     => reset_p);
 
 -- Final "KEEP" flag is the bitwise-AND of all port masks.
-out_meta.pmode  <= ptpf_pmode;
-out_meta.tstamp <= ptpf_tstamp;
+out_meta.pmsg   <= ptpf_meta.pmsg;
+out_meta.pfreq  <= ptpf_meta.pfreq;
+out_meta.tstamp <= ptpf_meta.tstamp;
+out_meta.tfreq  <= ptpf_meta.tfreq;
 out_meta.vtag   <= vport_vtag;
 out_write       <= dly_write;
 out_nlast       <= dly_nlast;
@@ -416,6 +417,7 @@ port_2step      <= cfg_stpmask;
 u_lookup : entity work.mac_lookup
     generic map(
     ALLOW_RUNT      => ALLOW_RUNT,
+    INPUT_HAS_FCS   => INPUT_HAS_FCS,
     IO_BYTES        => IO_BYTES,
     PORT_COUNT      => PORT_COUNT,
     TABLE_SIZE      => MAC_TABLE_SIZE,
@@ -478,7 +480,7 @@ gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
     u_priority : entity work.mac_priority
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_PRIORITY,
+        REGADDR     => SW_ADDR_PRIORITY,
         IO_BYTES    => IO_BYTES,
         TABLE_SIZE  => PRI_TABLE_SIZE)
         port map(
@@ -501,8 +503,8 @@ gen_vport : if SUPPORT_VPORT generate
     u_vport : entity work.mac_vlan_mask
         generic map(
         DEV_ADDR    => DEV_ADDR,
-        REG_ADDR_V  => REGADDR_VLAN_VID,
-        REG_ADDR_M  => REGADDR_VLAN_MASK,
+        REG_ADDR_V  => SW_ADDR_VLAN_VID,
+        REG_ADDR_M  => SW_ADDR_VLAN_MASK,
         PORT_COUNT  => PORT_COUNT)
         port map(
         in_psrc     => buf_psrc,
@@ -524,7 +526,7 @@ gen_vrate : if SUPPORT_VRATE generate
     u_vrate : entity work.mac_vlan_rate
         generic map(
         DEV_ADDR    => DEV_ADDR,
-        REG_ADDR    => REGADDR_VLAN_RATE,
+        REG_ADDR    => SW_ADDR_VLAN_RATE,
         IO_BYTES    => IO_BYTES,
         PORT_COUNT  => PORT_COUNT,
         CORE_CLK_HZ => CORE_CLK_HZ)

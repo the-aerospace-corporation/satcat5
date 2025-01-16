@@ -59,6 +59,7 @@ signal reset_sync       : std_logic;
 
 -- Precision timestamps, if enabled.
 signal lcl_tstamp       : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tfreq        : tfreq_t := TFREQ_DISABLED;
 signal lcl_tvalid       : std_logic := '0';
 
 -- Rate limiter state machine.
@@ -74,11 +75,13 @@ rxa_data.rxerr      <= '0';
 rxa_data.rate       <= get_rate_word(1000 / RATE_DIV);
 rxa_data.status     <= (0 => reset_sync, others => '0');
 rxa_data.tsof       <= lcl_tstamp;
+rxa_data.tfreq      <= lcl_tfreq;
 rxa_data.reset_p    <= reset_sync;
 rxa_data.write      <= rxa_data_valid and xfer_ready;
 
 txa_ctrl.clk        <= ref_clk;
 txa_ctrl.tnow       <= lcl_tstamp;
+txa_ctrl.tfreq      <= lcl_tfreq;
 txa_ctrl.pstart     <= xfer_ready;
 txa_ctrl.txerr      <= '0';
 txa_ctrl.reset_p    <= reset_sync;
@@ -88,12 +91,14 @@ rxb_data.rxerr      <= '0';
 rxb_data.rate       <= get_rate_word(1000 / RATE_DIV);
 rxb_data.status     <= (others => '0');
 rxb_data.tsof       <= lcl_tstamp;
+rxb_data.tfreq      <= lcl_tfreq;
 rxb_data.reset_p    <= reset_sync;
 rxb_data.write      <= rxb_data_valid and xfer_ready;
 
 txb_ctrl.clk        <= ref_clk;
 txb_ctrl.pstart     <= xfer_ready;
 txb_ctrl.tnow       <= lcl_tstamp;
+txb_ctrl.tfreq      <= lcl_tfreq;
 txb_ctrl.txerr      <= '0';
 txb_ctrl.reset_p    <= reset_sync;
 
@@ -114,6 +119,7 @@ gen_ptp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => ref_clk,
         user_ctr    => lcl_tstamp,
+        user_freq   => lcl_tfreq,
         user_lock   => lcl_tvalid,
         user_rst_p  => reset_sync);
 end generate;

@@ -17,13 +17,15 @@ use     work.common_functions.all;
 
 entity wrap_cfgbus_spi_controller is
     generic (
-    DEV_ADDR    : integer);     -- ConfigBus device address
+    DEV_ADDR    : integer;      -- ConfigBus device address
+    DCX_COUNT   : integer);     -- Enable DCX flag for this interface?
     port (
     -- External SPI signals (4-wire)
     spi_csb     : out std_logic;        -- Chip-select, active-low (CSb)
     spi_sck     : out std_logic;        -- Serial clock out (SCK)
     spi_sdo     : out std_logic;        -- Serial data out (COPI)
     spi_sdi     : in  std_logic;        -- Serial data in (CIPO, if present)
+    dcx_out     : out std_logic;        -- Optional DCX signal
 
     -- ConfigBus interface.
     cfg_clk     : in  std_logic;
@@ -62,15 +64,19 @@ cfg_rdack       <= cfg_ack.rdack;
 cfg_rderr       <= cfg_ack.rderr;
 cfg_irq         <= cfg_ack.irq;
 
+
 -- Unit being wrapped.
 u_wrap : entity work.cfgbus_spi_controller
-    generic map(DEVADDR => DEV_ADDR)
+    generic map(
+    DEVADDR     => DEV_ADDR,
+    DCX_COUNT   => DCX_COUNT)
     port map(
     spi_csb(0)  => spi_csb,
     spi_sck     => spi_sck,
     spi_sdo     => spi_sdo,
     spi_sdi     => spi_sdi,
     spi_sdt     => open,
+    dcx_out     => dcx_out,
     cfg_cmd     => cfg_cmd,
     cfg_ack     => cfg_ack);
 

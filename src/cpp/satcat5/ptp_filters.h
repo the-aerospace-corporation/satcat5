@@ -2,27 +2,28 @@
 // Copyright 2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Chainable filters for use with ptp::TrackingController.
-//
-// This file defines various "filter" objects that can be chained together
-// to implement the ptp::TrackingController loop-filter.  Filters can be
-// applied before or after the primary PID loop defined in that class,
-// which is usually "ptp::ControllerPI".
-//
-// The optimal filter configuration depends on the quality and refresh rate
-// of the upstream source.  A median-filter of order 3-5 is recommend for
-// most applications to remove outliers.  Additional filtering can mitigate
-// measurement noise, at the cost of a slower loop response.  Excessive
-// filter delays can cause tracking loops to become unstable.
-//
-// At runtime, all filters in this file use fixed-point arithmetic.
-// Floating-point is only used for one-time calculations during build.
-//
-// Most filters are configurable at runtime, but certain upper limits must
-// be set at build-time to avoid using excessive amounts of memory.  Where
-// practical, template parameters are used to make these limits adjustable,
-// since filter requirements vary widely by application.
-//
+//!\file
+//! Chainable filters for use with ptp::TrackingController.
+//!
+//!\details
+//! This file defines various "filter" objects that can be chained together
+//! to implement the ptp::TrackingController loop-filter.  Filters can be
+//! applied before or after the primary PID loop defined in that class,
+//! which is usually "ptp::ControllerPI".
+//!
+//! The optimal filter configuration depends on the quality and refresh rate
+//! of the upstream source.  A median-filter of order 3-5 is recommend for
+//! most applications to remove outliers.  Additional filtering can mitigate
+//! measurement noise, at the cost of a slower loop response.  Excessive
+//! filter delays can cause tracking loops to become unstable.
+//!
+//! At runtime, all filters in this file use fixed-point arithmetic.
+//! Floating-point is only used for one-time calculations during build.
+//!
+//! Most filters are configurable at runtime, but certain upper limits must
+//! be set at build-time to avoid using excessive amounts of memory.  Where
+//! practical, template parameters are used to make these limits adjustable,
+//! since filter requirements vary widely by application.
 
 #pragma once
 
@@ -32,34 +33,65 @@
 
 namespace satcat5 {
     namespace ptp {
-        // Define the basic input/output chaining functionality.
+        //! Define the basic chain-of-filters API.
+        //! \see ptp_filters.h
         class Filter {
         public:
-            // Flush previous inputs and reset to a neutral state.
+            //! Flush previous inputs and reset to a neutral state.
+            //! Child class MUST override this method.
             virtual void reset() = 0;
 
-            // Optional handler for fast-acquisition; override if required.
-            // Upstream controller provides estimated rate (i.e., rise/run).
-            // The "elapsed_usec" parameter will be between 10^5 and 10^7.
+            //! Optional handler for fast-acquisition; override if required.
+            //! Upstream controller provides estimated rate (i.e., rise/run).
+            //! The "elapsed_usec" parameter will be between 10^5 and 10^7.
+            //! Child class MAY override this method.
             virtual void rate(s64 delta_subns, u32 elapsed_usec) {}
 
-            // Method called for each new input sample.
-            // Input or output of INT64_MAX indicates the sample should be
-            // discarded.  Otherwise, return the resulting output sample.
-            // The "elapsed_usec" parameter will be between 10^3 and 10^6.
+            //! Method called for each new input sample.
+            //! Input or output of INT64_MAX indicates the sample should be
+            //! discarded.  Otherwise, return the resulting output sample.
+            //! The "elapsed_usec" parameter will be between 10^3 and 10^6.
+            //! Child class MUST override this method.
             virtual s64 update(s64 next, u32 elapsed_usec) = 0;
 
         protected:
-            // Private constructor and destructor.
-            Filter() : m_next(0) {}
+            //! Private constructor and destructor.
+            constexpr Filter() : m_next(0) {}
             ~Filter() {}
 
+        private:
             // Linked-list of chained filter objects.
             friend satcat5::util::ListCore;
             satcat5::ptp::Filter* m_next;
         };
 
-        // A sliding-window circular buffer, retaining the last N samples.
+        //! DebugFilter remembers the last received call to `update`.
+        //! It can be placed inline with other filters to aid diagnostics.
+        class DebugFilter final : public satcat5::ptp::Filter {
+        public:
+            constexpr DebugFilter()
+                : m_prev(0), m_usec(0) {}
+
+            //! Reset history.
+            void reset() override
+                { m_prev = 0; m_usec = 0; }
+
+            //! Simple passthrough, storing both parameters.
+            s64 update(s64 next, u32 elapsed_usec) override
+                { m_prev = next; m_usec = elapsed_usec; return next; }
+
+            //! Accessors for received parameters.
+            //!@{
+            inline s64 prev() const { return m_prev; }
+            inline u32 usec() const { return m_usec; }
+            //!@}
+
+        protected:
+            s64 m_prev;
+            u32 m_usec;
+        };
+
+        //! A sliding-window circular buffer, retaining the last N samples.
         template<typename T, unsigned MAX_WINDOW>
         class SlidingWindow final {
         public:
@@ -93,25 +125,13 @@ namespace satcat5 {
             T m_window[MAX_WINDOW];
         };
 
-        // Coarse frequency adjustment:
-        //  * Input scaling: 1 usec offset = SUBNS_PER_USEC LSBs.
-        //  * Frequency calculation: Scale by 1 / interval_usec.
-        //  * NCO scaling: 1 LSB = ref_scale seconds per second.
-        // (Note: Result is typically between 2^7 and 2^28.)
-        constexpr double freq_gain(double ref_scale)
-            { return 1.0 / (double(satcat5::ptp::SUBNS_PER_USEC) * ref_scale); }
-
-        // Max slew rate of 10 msec per second, converted to LSBs.
-        // (Note: Result is typically between 2^33 and 2^54.)
-        constexpr double slew_limit(double ref_scale)
-            { return 0.010 / ref_scale; }
-
         // Low-level functions implemented outside the template classes.
         s64 boxcar_filter(const s64* data, unsigned order);
         s64 median_filter(s64* data, unsigned samps);
 
-        // Amplitude-based outlier rejection.  Iteratively estimate RMS power
-        // of the input, then reject outliers based on that estimate.
+        //! Amplitude-based outlier rejection.
+        //! Iteratively estimate RMS power of the input, then reject
+        //! outliers that greatly exceed that estimate.
         class AmplitudeReject : public satcat5::ptp::Filter {
         public:
             explicit AmplitudeReject(unsigned tau_msec = 10000);
@@ -133,8 +153,8 @@ namespace satcat5 {
             u32 m_tau_usec;
         };
 
-        // An FIR low-pass filter using "boxcar" averaging over 2^N samples.
-        // Note: Order 0 is a simple passthrough.
+        //! An FIR low-pass filter using "boxcar" averaging over 2^N samples.
+        //! Note: Order 0 is a simple passthrough.
         template<unsigned MAX_ORDER>
         class BoxcarFilter : public satcat5::ptp::Filter {
         public:
@@ -161,8 +181,8 @@ namespace satcat5 {
             satcat5::ptp::SlidingWindow<s64, MAX_WINDOW> m_window;
         };
 
-        // A median filter for an odd number of elements.
-        // Note: Order 1 is a simple passthrough.
+        //! A median filter for an odd number of elements.
+        //! Note: Order 1 is a simple passthrough.
         template<unsigned MAX_ORDER>
         class MedianFilter : public satcat5::ptp::Filter {
         public:
@@ -188,42 +208,32 @@ namespace satcat5 {
             satcat5::ptp::SlidingWindow<s64, MAX_ORDER|1> m_window;
         };
 
-        // Loop-filter coefficients for use with the "ControllerPI" class.
-        // All floating-point calculations can be run at build-time.
-        //
-        // The process requires three arguments:
-        // * "ref_scale" is a unitless quantity that indicates the scaling
-        //   factor for "ptp::TrackingClock::clock_rate(...)".  It is measured
-        //   in seconds-per-second per LSB, i.e., a value of X indicates that
-        //   an offset of one LSB, sustained for one second, shifts RefClock
-        //   by a total of X seconds.  For best results, this quantity should
-        //   be greater than 10^-16 and less than 10^-10.  For less precise
-        //   clocks (i.e., larger ref_scale), use RefDither.
-        // * "tau_secs" is the desired filter time constant in seconds.
-        //   A time constant of about 5.0 seconds is typical.
-        // * "damping" is the unitless damping ratio, zeta.
-        //   Default 0.707 is slightly underdamped for reduced settling time.
-        //
-        // See also: Stephens & Thomas, "Controlled-root formulation for
-        //  digital phase-locked loops", IEEE Transactions on Aerospace and
-        //  Electronic Systems 1995, doi: 10.1109/7.366295.
-        // https://ieeexplore.ieee.org/abstract/document/366295
+        //! Loop-filter coefficients for use with the "ControllerPI" class.
+        //! All floating-point calculations can be run at build-time.
+        //!
+        //! The process requires three arguments:
+        //! * "tau_secs" is the desired filter time constant in seconds.
+        //!   A time constant of about 5.0 seconds is typical.
+        //! * "damping" is the unitless damping ratio, zeta.
+        //!   Default 0.707 is slightly underdamped for reduced settling time.
+        //!
+        //! See also: Stephens & Thomas, "Controlled-root formulation for
+        //!  digital phase-locked loops", IEEE Transactions on Aerospace and
+        //!  Electronic Systems 1995, doi: 10.1109/7.366295.
+        //! https://ieeexplore.ieee.org/abstract/document/366295
         struct CoeffPI {
         public:
-            // Calculate tracking-loop coefficients.
-            constexpr CoeffPI(
-                double ref_scale, double tau_secs, double damping = 0.707)
-                : kp(satcat5::util::round_u64z(k1(tau_secs, damping) / fw_gain(ref_scale)))
-                , ki(satcat5::util::round_u64z(k2(tau_secs, damping) / fw_gain(ref_scale)))
-                , kf(satcat5::util::round_u64z(freq_gain(ref_scale)))
-                , ymax(satcat5::util::round_u64z(slew_limit(ref_scale)))
+            //! Calculate tracking-loop coefficients.
+            explicit constexpr CoeffPI(double tau_secs)
+                : kp(satcat5::util::round_u64z(k1(tau_secs, 0.707) / fw_gain()))
+                , ki(satcat5::util::round_u64z(k2(tau_secs, 0.707) / fw_gain()))
                 {} // No other initialization required.
 
-            // Are all coefficients large enough to mitigate rounding error?
-            bool ok() const {return (kp > 7) && (ki > 7) && (kf > 7);}
+            //! Are all coefficients large enough to mitigate rounding error?
+            bool ok() const {return (kp > 7) && (ki > 7);}
 
-            // Fixed-point scaling of each coefficient by 2^-N.
-            // Optimized for time constants circa 1-3600 seconds.
+            //! Fixed-point scaling of each coefficient by 2^-N.
+            //! Optimized for time constants circa 1-3600 seconds.
             static constexpr unsigned SCALE = 60;
 
         protected:
@@ -236,69 +246,69 @@ namespace satcat5 {
             static constexpr double k2(double tau, double zeta)
                 { return alpha(zeta) * k1(tau, zeta) * k1(tau, zeta); }
             // End-to-end loop gain including intermediate scaling:
-            //  * Input scaling: 1 second offset = SUBNS_PER_SEC LSBs.
             //  * T0 compensation: Multiply by assumed T0 = 1 sec.
-            //  * NCO scaling: 1 LSB = ref_scale seconds per second.
             //  * Cycles to radians: Effective gain = 1 / (2*pi).
             //  * Output scaling: Divide final output by 2^SCALE.
-            static constexpr double fw_gain(double ref_scale)
-                { return double(satcat5::ptp::SUBNS_PER_SEC)
-                       * double(satcat5::ptp::USEC_PER_SEC)
-                       * ref_scale / 6.28318530717958647693
+            static constexpr double fw_gain()
+                { return double(satcat5::ptp::USEC_PER_SEC)
+                       / 6.28318530717958647693
                        / satcat5::util::pow2d(SCALE); }
 
             friend satcat5::ptp::ControllerPI;
             u64 kp;     // Proportional coefficient (LSB per subns)
             u64 ki;     // Integral coefficient (LSB per subns)
-            u64 kf;     // Coarse frequency adjustment (LSB per subns/usec)
-            u64 ymax;   // Maximum steady-state output (LSB)
         };
 
-        // Loop-filter for a proportional-integral (PI) controller.
-        // This 2nd-order linear filter can accurately track a steady-state
-        // frequency offset.  It is the recommended option for most users.
+        //! Loop-filter for a proportional-integral (PI) controller.
+        //! This 2nd-order linear filter can accurately track a steady-state
+        //! frequency offset.  It is the recommended option for most users.
         class ControllerPI : public satcat5::ptp::Filter {
         public:
-            // Constructor sets loop bandwidth, which can be changed later.
+            //! Constructor sets loop bandwidth, which can be changed later.
             explicit ControllerPI(const satcat5::ptp::CoeffPI& coeff);
 
-            // Adjust tracking-loop bandwidth.
+            //! Adjust tracking-loop bandwidth.
             void set_coeff(const satcat5::ptp::CoeffPI& coeff);
 
-            // Required API from ptp::Filter.
+            //! Adjust maximum slew-rate.
+            inline void set_slew(u64 slew) { m_slew = slew; }
+
+            //! Required API from ptp::Filter.
+            //!@{
             void reset() override;
             void rate(s64 delta, u32 elapsed_usec) override;
             s64 update(s64 next, u32 elapsed_usec) override;
+            //!@}
 
         protected:
             // Internal state.
             satcat5::ptp::CoeffPI m_coeff;
             satcat5::util::int128_t m_accum;
+            u64 m_slew;
         };
 
-        // Loop-filter coefficients for use with the "ControllerPII" class.
-        // All floating-point calculations can be run at build-time.
-        // (This is also based on Stephens & Thomas 1995.)
+        //! Loop-filter coefficients for use with the "ControllerPII" class.
+        //! All floating-point calculations can be run at build-time.
+        //! (This is also based on Stephens & Thomas 1995.)
         struct CoeffPII {
         public:
-            // Calculate tracking-loop coefficients.
-            constexpr CoeffPII(
-                double ref_scale, double tau_secs)
-                : kp(satcat5::util::round_u64z(k1(tau_secs) / fw_gain(ref_scale)))
-                , ki(satcat5::util::round_u64z(k2(tau_secs) / fw_gain(ref_scale)))
+            //! Calculate tracking-loop coefficients.
+            explicit constexpr CoeffPII(double tau_secs)
+                : kp(satcat5::util::round_u64z(k1(tau_secs) / fw_gain()))
+                , ki(satcat5::util::round_u64z(k2(tau_secs) / fw_gain()))
                 , kr(satcat5::util::round_u64z(kratio(tau_secs)))
-                , kf(satcat5::util::round_u64z(freq_gain(ref_scale)))
-                , ymax(satcat5::util::round_u64z(slew_limit(ref_scale)))
                 {} // No other initialization required.
 
-            // Are all coefficients large enough to mitigate rounding error?
-            bool ok() const {return (kp > 7) && (ki > 7) && (kr > 7) && (kf > 7);}
+            //! Are all coefficients large enough to mitigate rounding error?
+            bool ok() const {return (kp > 7) && (ki > 7) && (kr > 7);}
 
-            // Fixed-point scaling of each coefficient by 2^-N.
-            // Optimized for time constants circa 1-3600 seconds.
+            //! Fixed-point scaling of each coefficient by 2^-N.
+            //! Optimized for time constants circa 1-3600 seconds.
+            //!@{
             static constexpr unsigned SCALE1 = 70;
             static constexpr unsigned SCALE2 = 64;
             static constexpr unsigned SCALE = SCALE1 + SCALE2;
+            //!@}
 
         protected:
             // "Standard underdamped" K1, K2, and K2 from Stephens & Thomas Table III.
@@ -311,99 +321,111 @@ namespace satcat5 {
                 { return (2.0/27.0) * k1(tau) * k1(tau) * k1(tau); }
             // Ratio of K3 / K2, used for nested-accumulator updates.
             static constexpr double kratio(double tau)
-                { return k3(tau) / k2(tau) * satcat5::util::pow2d(SCALE2)
+                { return k3(tau) / k2(tau)
+                       * satcat5::util::pow2d(SCALE2)
                        / double(satcat5::ptp::USEC_PER_SEC); }
             // End-to-end loop gain for including intermediate scaling:
-            //  * Input scaling: 1 second offset = SUBNS_PER_SEC LSBs.
             //  * T0 compensation: Multiply by assumed T0 = 1 sec.
-            //  * NCO scaling: 1 LSB = ref_scale seconds per second.
             //  * Cycles to radians: Effective gain = 1 / (2*pi).
             //  * Output scaling: Divide final output by 2^SCALE1.
-            static constexpr double fw_gain(double ref_scale)
-                { return double(satcat5::ptp::SUBNS_PER_SEC)
-                       * double(satcat5::ptp::USEC_PER_SEC)
-                       * ref_scale / 6.28318530717958647693
+            static constexpr double fw_gain()
+                { return double(satcat5::ptp::USEC_PER_SEC)
+                       / 6.28318530717958647693
                        / satcat5::util::pow2d(SCALE1); }
 
             friend satcat5::ptp::ControllerPII;
             u64 kp;     // Proportional coefficient (LSB per subns)
             u64 ki;     // Integral coefficient (LSB per subns)
             u64 kr;     // Double-integral coefficient (K3 / K2)
-            u64 kf;     // Coarse frequency adjustment (LSB per subns/usec)
-            u64 ymax;   // Maximum steady-state output (LSB)
         };
 
-        // Loop-filter for a proportional-integral (PI) controller.
-        // This 3rd-order linear filter can accurately track a steady-state
-        // frequency chirp.  This improves performance for some oscillators.
+        //! Loop-filter for a proportional-double-integral (PII) controller.
+        //! This 3rd-order linear filter can accurately track a steady-state
+        //! frequency chirp.  This improves performance for some oscillators.
         class ControllerPII : public satcat5::ptp::Filter {
         public:
-            // Constructor sets loop bandwidth, which can be changed later.
+            //! Constructor sets loop bandwidth, which can be changed later.
             explicit ControllerPII(const satcat5::ptp::CoeffPII& coeff);
 
-            // Adjust tracking-loop bandwidth.
+            //! Adjust tracking-loop bandwidth.
             void set_coeff(const satcat5::ptp::CoeffPII& coeff);
 
-            // Required API from ptp::Filter.
+            //! Adjust maximum slew-rate.
+            inline void set_slew(u64 slew) { m_slew = slew; }
+
+            //! Required API from ptp::Filter.
+            //!@{
             void reset() override;
             void rate(s64 delta, u32 elapsed_usec) override;
             s64 update(s64 next, u32 elapsed_usec) override;
+            //!@}
 
         protected:
             // Internal state.
             satcat5::ptp::CoeffPII m_coeff;
             satcat5::util::int128_t m_accum1;
             satcat5::util::int256_t m_accum2;
+            u64 m_slew;
         };
 
-        // Loop-filter coefficients for use with the "ControllerLR" class.
-        // All floating-point calculations can be run at build-time.
+        //! Stateless linear regression calculator.
+        struct LinearRegression {
+            //! Parameters for the best-fit line.
+            //!@{
+            static constexpr unsigned TSCALE = 48;
+            satcat5::util::int128_t alpha;  // Intercept at x = 0
+            satcat5::util::int128_t beta;   // Slope * 2^TSCALE
+            //!@}
+
+            //! Placeholder constructor.
+            constexpr LinearRegression()
+                : alpha(satcat5::util::INT128_ZERO)
+                , beta(satcat5::util::INT128_ZERO) {}
+
+            //! Given input samples, calculate the best-fit line.
+            LinearRegression(const unsigned n, const s64* x, const s64* y);
+
+            //! Extrapolate relative to the most recent sample.
+            s64 extrapolate(s64 x) const;
+        };
+
+        //! Loop-filter coefficients for use with the "ControllerLR" class.
+        //! All floating-point calculations can be run at build-time.
         struct CoeffLR {
         public:
-            // Calculate tracking-loop coefficients.
-            constexpr CoeffLR(double ref_scale, double tau_secs)
-                : ki(satcat5::util::round_u64z(ki_gain(ref_scale) / tau_secs))
-                , kf(satcat5::util::round_u64z(ki_gain(ref_scale)))
+            //! Calculate tracking-loop coefficients.
+            explicit constexpr CoeffLR(double tau_secs)
+                : ki(satcat5::util::round_u64z(ki_gain() / tau_secs))
                 , kw(satcat5::util::round_u64z(kw_gain() * 2.0 / tau_secs))
-                , ymax(satcat5::util::round_u64z(slew_limit(ref_scale)))
                 {} // No other initialization required.
 
-            // Are all coefficients large enough to mitigate rounding error?
-            bool ok() const {return (ki > 7) && (kf > 7) && (kw > 7);}
-
-            // Fixed-point scaling of each coefficient by 2^-N.
-            // Optimized for time constants circa 1-3600 seconds.
-            static constexpr unsigned SCALE1 = 32;
-            static constexpr unsigned SCALE2 = 32;
-            static constexpr unsigned SCALE = SCALE1 + SCALE2;
+            //! Are all coefficients large enough to mitigate rounding error?
+            bool ok() const {return (ki > 7) && (kw > 7);}
 
         protected:
-            static constexpr double ki_gain(double ref_scale)
-                { return satcat5::util::pow2d(SCALE2)
-                       / double(satcat5::ptp::SUBNS_PER_USEC) / ref_scale; }
+            static constexpr double ki_gain()
+                { return double(satcat5::ptp::USEC_PER_SEC); }
             static constexpr double kw_gain()
-                { return satcat5::util::pow2d(SCALE1 + SCALE2)
+                { return satcat5::util::pow2d(LinearRegression::TSCALE)
                        / double(satcat5::ptp::USEC_PER_SEC); }
 
             friend class satcat5::ptp::ControllerLR_Inner;
             u64 ki;     // Integral coefficient (LSB per subns)
-            u64 kf;     // Coarse frequency adjustment (LSB per subns/usec)
             u64 kw;     // Intercept scaling factor (LSB per usec)
-            u64 ymax;   // Maximum steady-state output (LSB)
         };
 
-        // Helper class for "ControllerLR" is never used directly.
-        // (It minimizes the amount of code in the class-template wrapper.)
+        //! Helper class for "ControllerLR" is never used directly.
+        //! (It minimizes the amount of code in the class-template wrapper.)
         class ControllerLR_Inner : public satcat5::ptp::Filter {
         public:
-            // Adjust loop bandwidth.
+            //! Adjust loop bandwidth.
             void set_coeff(const satcat5::ptp::CoeffLR& coeff);
 
-            // Partial API from ptp::Filter.
+            //! Partial API from ptp::Filter.
             void rate(s64 delta, u32 elapsed_usec) override;
 
         protected:
-            // Private constructor and destructor.
+            //! Private constructor and destructor.
             ControllerLR_Inner(const satcat5::ptp::CoeffLR& coeff, unsigned window);
             ~ControllerLR_Inner() {}
 
@@ -416,32 +438,33 @@ namespace satcat5 {
             unsigned m_window;
         };
 
-        // Loop-filter for a linear-regression (LR) controller.
-        // This filter uses linear regression to estimate phase and frequency
-        // offsets over a short window, then applies an IIR filter to track
-        // that piecewise-linear estimate with a controlled time-constant.
+        //! Loop-filter for a linear-regression (LR) controller.
+        //! This filter uses linear regression to estimate phase and frequency
+        //! offsets over a short window, then applies an IIR filter to track
+        //! that piecewise-linear estimate with a controlled time-constant.
         template<unsigned MAX_WINDOW>
         class ControllerLR : public satcat5::ptp::ControllerLR_Inner {
         public:
-            // Constructor sets loop bandwidth, which can be changed later.
+            //! Constructor sets loop bandwidth, which can be changed later.
             explicit ControllerLR(const satcat5::ptp::CoeffLR& coeff)
                 : satcat5::ptp::ControllerLR_Inner(coeff, MAX_WINDOW)
                 , m_count(0), m_elapsed(0) {}
             static_assert(MAX_WINDOW >= 2, "MAX_WINDOW must be at least 2.");
 
-            // Adjust window-size.
-            // Also note "set_coeff(...)" inherited from parent.
+            //! Adjust window-size.
+            //! Also note "set_coeff(...)" inherited from parent.
             void set_window(unsigned window) {
                 if (2 <= window && window <= MAX_WINDOW) m_window = window;
             }
 
-            // Remaining API from ptp::Filter.
+            //! Remaining API from ptp::Filter.
             void reset() override {
                 m_dly.reset();
                 m_dat.reset();
                 m_accum = satcat5::util::INT128_ZERO;
             }
 
+            //! Implement the required API from ptp::Filter.
             s64 update(s64 next, u32 elapsed_usec) override {
                 // Push valid samples into the sliding-window buffers.
                 // (Elapsed time still increments even if we drop a sample.)
@@ -464,6 +487,77 @@ namespace satcat5 {
             u32 m_elapsed;
             satcat5::ptp::SlidingWindow<u32, MAX_WINDOW> m_dly;
             satcat5::ptp::SlidingWindow<s64, MAX_WINDOW> m_dat;
+        };
+
+        //! An inline filter that iteratively estimates linear trends.
+        //! The LinearPrediction filter allows use of "controller" blocks
+        //! (e.g., ControllerPI, ControllerPII, etc.) for general-purpose
+        //! iterative estimation of linear trends.  This is often less
+        //! compute-intensive than a sliding-window linear regression.
+        class LinearPrediction : public satcat5::ptp::Filter {
+        public:
+            //! Create this object, and optionally add the first filter.
+            //! Additional filters can be chained with add_filter(...).
+            //! One filter in the chain must be of the "controller" type.
+            explicit constexpr LinearPrediction(satcat5::ptp::Filter* ctrl = 0)
+                : m_filters(ctrl), m_first(true), m_rate(0)
+                , m_accum(satcat5::util::INT128_ZERO) {}
+
+            //! Add to the chain of processing filters.
+            //! Filters are applied in the order added.
+            inline void add_filter(satcat5::ptp::Filter* filter)
+                { m_filters.push_back(filter); }
+
+            //! Required API from ptp::Filter.
+            //!@{
+            void reset() override;
+            void rate(s64 delta, u32 elapsed_usec) override;
+            s64 update(s64 next, u32 elapsed_usec) override;
+            //!@}
+
+            //! Extrapolate trendline relative to most recent update() event.
+            s64 predict(u32 elapsed_usec) const;
+
+        protected:
+            // Convert normalized rate to match accumulator scale.
+            static constexpr unsigned SCALE = 32;
+            satcat5::util::int128_t incr(u32 elapsed_usec) const;
+
+            // Internal state.
+            satcat5::util::List<satcat5::ptp::Filter> m_filters;
+            bool m_first;
+            s64 m_rate;
+            satcat5::util::int128_t m_accum;
+        };
+
+        //! Convert normalized frequency offset to ticks-per-clock.
+        //!  Input:   65536 LSB = 1 PPB = 1 nanosecond per second
+        //!  Output:  2^scale LSB = 1 nanosecond per reference clock
+        //! All floating-point calculations can be run at build-time.
+        class RateConversion {
+        public:
+            //! Specify the nominal clock frequency and the scale (see above).
+            //! Negative "ref_clk_hz" inverts the usual fast/slow sign convention.
+            constexpr RateConversion(double ref_clk_hz, unsigned scale_ns)
+                : m_scale(satcat5::util::round_s64z(fw_gain(scale_ns) / ref_clk_hz)) {}
+
+            //! Is the scale coefficient large enough to mitigate rounding error?
+            bool ok() const {return satcat5::util::abs_s64(m_scale) > 1000000;}
+
+            //! Forward conversion (normalized rate ==> ticks-per-clock)
+            s64 convert(s64 offset) const;
+
+            //! Inverse conversion (ticks-per-clock ==> normalized rate)
+            s64 invert(s64 rate) const;
+
+        protected:
+            // Internal scaling is optimized for 1-200 MHz clocks.
+            static constexpr unsigned SHIFT = 48;
+            static constexpr double fw_gain(unsigned scale_ns) {
+                return satcat5::util::pow2d(scale_ns + SHIFT)
+                     / double(satcat5::ptp::SUBNS_PER_NSEC);
+            }
+            s64 m_scale;
         };
     }
 }

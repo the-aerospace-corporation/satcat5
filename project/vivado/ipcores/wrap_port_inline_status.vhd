@@ -38,6 +38,7 @@ entity wrap_port_inline_status is
     lcl_rx_rate     : out std_logic_vector(15 downto 0);
     lcl_rx_status   : out std_logic_vector(7 downto 0);
     lcl_rx_tsof     : out std_logic_vector(47 downto 0);
+    lcl_rx_tfreq    : out std_logic_vector(39 downto 0);
     lcl_rx_reset    : out std_logic;
     lcl_tx_clk      : out std_logic;
     lcl_tx_data     : in  std_logic_vector(7 downto 0);
@@ -47,6 +48,7 @@ entity wrap_port_inline_status is
     lcl_tx_error    : out std_logic;
     lcl_tx_pstart   : out std_logic;
     lcl_tx_tnow     : out std_logic_vector(47 downto 0);
+    lcl_tx_tfreq    : out std_logic_vector(39 downto 0);
     lcl_tx_reset    : out std_logic;
 
     -- Remote network port.
@@ -58,6 +60,7 @@ entity wrap_port_inline_status is
     net_rx_rate     : in  std_logic_vector(15 downto 0);
     net_rx_status   : in  std_logic_vector(7 downto 0);
     net_rx_tsof     : in  std_logic_vector(47 downto 0);
+    net_rx_tfreq    : in  std_logic_vector(39 downto 0);
     net_rx_reset    : in  std_logic;
     net_tx_clk      : in  std_logic;
     net_tx_data     : out std_logic_vector(7 downto 0);
@@ -67,6 +70,7 @@ entity wrap_port_inline_status is
     net_tx_error    : in  std_logic;
     net_tx_pstart   : in  std_logic;
     net_tx_tnow     : in  std_logic_vector(47 downto 0);
+    net_tx_tfreq    : in  std_logic_vector(39 downto 0);
     net_tx_reset    : in  std_logic;
 
     -- Optional status message and write-toggle.
@@ -90,12 +94,14 @@ lcl_rx_write    <= lcl_rxd.write;
 lcl_rx_error    <= lcl_rxd.rxerr;
 lcl_rx_rate     <= lcl_rxd.rate;
 lcl_rx_tsof     <= std_logic_vector(lcl_rxd.tsof);
+lcl_rx_tfreq    <= std_logic_vector(lcl_rxd.tfreq);
 lcl_rx_status   <= lcl_rxd.status;
 lcl_rx_reset    <= lcl_rxd.reset_p;
 lcl_tx_clk      <= lcl_txc.clk;
 lcl_tx_ready    <= lcl_txc.ready;
 lcl_tx_pstart   <= lcl_txc.pstart;
 lcl_tx_tnow     <= std_logic_vector(lcl_txc.tnow);
+lcl_tx_tfreq    <= std_logic_vector(lcl_txc.tfreq);
 lcl_tx_error    <= lcl_txc.txerr;
 lcl_tx_reset    <= lcl_txc.reset_p;
 lcl_txd.data    <= lcl_tx_data;
@@ -109,12 +115,14 @@ net_rxd.write   <= net_rx_write;
 net_rxd.rxerr   <= net_rx_error;
 net_rxd.rate    <= net_rx_rate;
 net_rxd.tsof    <= unsigned(net_rx_tsof);
+net_rxd.tfreq   <= signed(net_rx_tfreq);
 net_rxd.status  <= net_rx_status;
 net_rxd.reset_p <= net_rx_reset;
 net_txc.clk     <= net_tx_clk;
 net_txc.ready   <= net_tx_ready;
 net_txc.pstart  <= net_tx_pstart;
 net_txc.tnow    <= unsigned(net_tx_tnow);
+net_txc.tfreq   <= signed(net_tx_tfreq);
 net_txc.txerr   <= net_tx_error;
 net_txc.reset_p <= net_tx_reset;
 net_tx_data     <= net_txd.data;

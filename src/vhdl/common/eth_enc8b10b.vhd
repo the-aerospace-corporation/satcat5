@@ -16,6 +16,10 @@
 -- encoded stream of 10-bit code groups, with bit "a" in the MSB, suitable
 -- for SGMII serialization.
 --
+-- The optional "out_test" flag replaces the 8b/10b output with a pseudorandom
+-- binary sequence (PRBS). The default is ITU-PRBS23, which is compatible with
+-- most off-the-shelf bit-error-rate testing units.
+--
 -- The full 802.3 standard can be downloaded here:
 --   http://standards.ieee.org/getieee802/802.3.html
 --   https://ieeexplore.ieee.org/xpl/mostRecentIssue.jsp?punumber=7428774
@@ -26,8 +30,11 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_enc8b10b_table.all;
+use     work.prng_lfsr_common.all;
 
 entity eth_enc8b10b is
+    generic (
+    LFSR_SPEC   : lfsr_spec_t := create_prbs(23));
     port (
     -- Input stream
     in_data     : in  std_logic_vector(7 downto 0);
@@ -40,9 +47,10 @@ entity eth_enc8b10b is
     cfg_xmit    : in  std_logic := '0'; -- Transmit config?
     cfg_word    : in  std_logic_vector(15 downto 0);
 
-    -- Output stream
+    -- Output stream (MSB-first)
     out_data    : out std_logic_vector(9 downto 0);
     out_cken    : out std_logic;
+    out_test    : in  std_logic := '0';
 
     -- System interface
     io_clk      : in  std_logic;        -- Data clock
@@ -80,6 +88,11 @@ signal rom_lookup   : rom_word := (others => '0');
 signal enc_data     : std_logic_vector(9 downto 0) := (others => '0');
 signal enc_rdp      : std_logic := '0'; -- Running disparity for this token?
 signal enc_cken     : std_logic := '0';
+
+-- Optional PRBS
+signal test_reset   : std_logic := '1';
+signal test_valid   : std_logic := '0';
+signal test_prbs    : std_logic_vector(9 downto 0) := (others => '0');
 
 begin
 
@@ -194,12 +207,32 @@ begin
             enc_rdp  <= enc_rdp xor rom_lookup(10);
         end if;
         -- Remap output bits from ROM order (abcdefghij)
-        -- to IEEE 802.3 order (abcdeifghj)
-        enc_data <= rom_lookup(9 downto 5) & rom_lookup(1)
-                  & rom_lookup(4 downto 2) & rom_lookup(0);
+        -- to IEEE 802.3 order (abcdeifghj) or select PRBS.
+        if (LFSR_SPEC.order > 1 and test_valid = '1') then
+            enc_data <= test_prbs; -- Real output or test pattern?
+        else
+            enc_data <= rom_lookup(9 downto 5) & rom_lookup(1)
+                      & rom_lookup(4 downto 2) & rom_lookup(0);
+        end if;
         enc_cken <= strm_cken;
     end if;
 end process;
+
+-- Optional PRBS
+gen_prbs : if (LFSR_SPEC.order > 1) generate
+    test_reset <= reset_p or not out_test;
+    u_prbs : entity work.prng_lfsr_gen
+        generic map(
+        IO_WIDTH    => 10,
+        LFSR_SPEC   => LFSR_SPEC,
+        MSB_FIRST   => true)
+        port map(
+        out_data    => test_prbs,
+        out_valid   => test_valid,
+        out_ready   => strm_cken,
+        clk         => io_clk,
+        reset_p     => test_reset);
+end generate;
 
 -- Drive outputs.
 out_data <= enc_data;

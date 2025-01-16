@@ -299,7 +299,7 @@ p_test : process
     end function;
 
     function router_to_server(
-        eth : std_logic_vector) 
+        eth : std_logic_vector)
         return eth_packet
     is
         -- First, decrement the TTL field.
@@ -329,7 +329,7 @@ p_test : process
     end function;
 
     function router_to_client(
-        eth : std_logic_vector) 
+        eth : std_logic_vector)
         return eth_packet
     is
         -- First, decrement the TTL field.

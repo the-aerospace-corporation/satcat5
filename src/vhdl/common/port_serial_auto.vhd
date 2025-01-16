@@ -200,11 +200,13 @@ rx_data.clk     <= refclk;
 rx_data.rate    <= est_rate;
 rx_data.status  <= status_word(7 downto 0);
 rx_data.tsof    <= TSTAMP_DISABLED;
+rx_data.tfreq   <= TFREQ_DISABLED;
 rx_data.reset_p <= codec_reset;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= codec_reset;
 tx_ctrl.pstart  <= '1';     -- Timestamps discarded
 tx_ctrl.tnow    <= TSTAMP_DISABLED;
+tx_ctrl.tfreq   <= TFREQ_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No error states
 
 -- Upstream status reporting.

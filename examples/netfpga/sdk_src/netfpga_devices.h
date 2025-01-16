@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation.
+// Copyright 2022-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Define hardware constants relating to the NetFPGA-Managed design.
@@ -22,6 +22,12 @@ static const unsigned DEVADDR_PTPREF    = 6;    // PTP time reference
 static const unsigned DEVADDR_MDIO      = 7;    // MDIO for the Ethernet PHYs
 static const unsigned DEVADDR_SWCORE    = 8;    // Switch management
 static const unsigned DEVADDR_TRAFFIC   = 9;    // Traffic statistics
+
+// The design operates from a nominal 100 MHz on-board clock.
+// The vernier reference synthesizes a 9.98 MHz clock from that signal.
+// Preferred multiplier and divider copied from "7series_mem.vhd".
+static constexpr double MAIN_CLK_HZ = 100e6;
+static constexpr double VREF_CLK_HZ = 0.5 * MAIN_CLK_HZ * 11.75 / 58.875;
 
 // TODO: Find MDIO address for each PHY (Realtek RTL8211)
 

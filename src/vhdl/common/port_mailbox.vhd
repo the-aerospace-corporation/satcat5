@@ -95,6 +95,7 @@ signal port_reset_p : std_logic;
 
 -- Precision timestamps, if enabled.
 signal lcl_tstamp   : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tfreq    : tfreq_t := TFREQ_DISABLED;
 signal lcl_tvalid   : std_logic := '0';
 
 -- Parse and execute commands from CPU.
@@ -127,11 +128,13 @@ rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1);
 rx_data.status  <= (0 => port_reset_p, 1 => lcl_tvalid, others => '0');
 rx_data.tsof    <= lcl_tstamp;
+rx_data.tfreq   <= lcl_tfreq;
 rx_data.reset_p <= port_reset_p;
 
 tx_ctrl.clk     <= cfg_cmd.clk;
 tx_ctrl.pstart  <= not rd_adj_valid;
 tx_ctrl.tnow    <= lcl_tstamp;
+tx_ctrl.tfreq   <= lcl_tfreq;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= port_reset_p;
 
@@ -154,6 +157,7 @@ gen_ptp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => cfg_cmd.clk,
         user_ctr    => lcl_tstamp,
+        user_freq   => lcl_tfreq,
         user_lock   => lcl_tvalid,
         user_rst_p  => port_reset_p);
 end generate;

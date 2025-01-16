@@ -112,7 +112,7 @@ void oled_demo(io::SlipUart* uart)
 {
     // Open remote-control interface.
     auto dispatch = new eth::Dispatch(LOCAL_MAC, uart, uart);
-    auto cfgbus = new eth::ConfigBus(dispatch, timer.timer());
+    auto cfgbus = new eth::ConfigBus(dispatch);
     cfgbus->connect(REMOTE_MAC);
     cfgbus->set_timeout_rd(200000);
 

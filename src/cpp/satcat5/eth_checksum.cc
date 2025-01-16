@@ -8,6 +8,9 @@
 using satcat5::eth::ChecksumTx;
 using satcat5::eth::ChecksumRx;
 using satcat5::eth::SlipCodec;
+using satcat5::eth::SlipCodecInverse;
+using satcat5::io::Readable;
+using satcat5::io::Writeable;
 
 // Set default table size.
 #ifndef SATCAT5_CRC_TABLE_BITS
@@ -132,7 +135,7 @@ u32 satcat5::eth::crc32(unsigned nbytes, const void* data)
     return crc_format(crc);
 }
 
-u32 satcat5::eth::crc32(satcat5::io::Readable* src)
+u32 satcat5::eth::crc32(Readable* src)
 {
     // Byte-by-byte CRC32 calculation.
     u32 crc = CRC_INIT;
@@ -143,7 +146,7 @@ u32 satcat5::eth::crc32(satcat5::io::Readable* src)
     return crc_format(crc);
 }
 
-ChecksumTx::ChecksumTx(satcat5::io::Writeable* dst)
+ChecksumTx::ChecksumTx(Writeable* dst)
     : satcat5::io::ChecksumTx<u32,4>(dst, CRC_INIT)
 {
     // Nothing else to initialize
@@ -162,7 +165,7 @@ void ChecksumTx::write_next(u8 data)
     m_dst->write_u8(data);              // Forward new data
 }
 
-ChecksumRx::ChecksumRx(satcat5::io::Writeable* dst)
+ChecksumRx::ChecksumRx(Writeable* dst)
     : satcat5::io::ChecksumRx<u32,4>(dst, CRC_INIT)
 {
     // Nothing else to initialize
@@ -178,16 +181,26 @@ void ChecksumRx::write_next(u8 data)
     if (sreg_push(data)) crc_update(m_chk, data);
 }
 
-SlipCodec::SlipCodec(
-        satcat5::io::Writeable* dst,
-        satcat5::io::Readable* src)
-    : satcat5::io::ReadableRedirect(&m_rx)  // Reads pull from Rx buffer
-    , satcat5::eth::ChecksumTx(&m_tx_slip)  // CRC append (self) -> SLIP encoder
+SlipCodec::SlipCodec(Writeable* dst, Readable* src)
+    : ReadableRedirect(&m_rx_buff)          // Reads pull from Rx buffer
+    , ChecksumTx(&m_tx_slip)                // CRC append (self) -> SLIP encoder
     , m_tx_slip(dst)                        // Connect SLIP encoder -> output
     , m_rx_copy(src, &m_rx_slip)            // Connect source -> SLIP decoder
     , m_rx_slip(&m_rx_fcs)                  // Connect SLIP decoder -> FCS check
-    , m_rx_fcs(&m_rx)                       // Connect FCS check -> Rx buffer
-    , m_rx(m_rxbuff, SATCAT5_SLIP_BUFFSIZE, SATCAT5_SLIP_PACKETS)
+    , m_rx_fcs(&m_rx_buff)                  // Connect FCS check -> Rx buffer
+    , m_rx_buff(m_rawbuff, SATCAT5_SLIP_BUFFSIZE, SATCAT5_SLIP_PACKETS)
+{
+    // Nothing else to initialize
+}
+
+SlipCodecInverse::SlipCodecInverse(Writeable* dst, Readable* src)
+    : ReadableRedirect(&m_tx_buff)          // Reads pull from Tx buffer
+    , SlipDecoder(&m_rx_fcs)                // SLIP decode (self) -> Verify FCS
+    , m_rx_fcs(dst)                         // Connect FCS check -> output
+    , m_tx_copy(src, &m_tx_fcs)             // Connect source -> FCS append
+    , m_tx_fcs(&m_tx_slip)                  // Connect FCS append -> SLIP encode
+    , m_tx_slip(&m_tx_buff)                 // Connect SLIP encode -> Tx buffer
+    , m_tx_buff(m_rawbuff, SATCAT5_SLIP_BUFFSIZE, 0)
 {
     // Nothing else to initialize
 }

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -95,6 +95,7 @@ signal cfg_etype    : mac_type_t := (others => '0');
 signal cfg_word     : cfgbus_word;
 signal cfg_valid    : std_logic;
 signal cfg_ready    : std_logic;
+signal cfg_busy     : std_logic;
 signal cfg_fifowr   : std_logic;
 
 begin
@@ -134,6 +135,7 @@ u_cam : entity work.tcam_core
     cfg_plen    => cfg_plen,
     cfg_valid   => cfg_valid,
     cfg_ready   => cfg_ready,
+    cfg_done    => cfg_done,
     clk         => clk,
     reset_p     => reset_p);
 
@@ -171,7 +173,6 @@ u_fifo_cfg : entity work.fifo_smol_async
 cfg_index   <= safe_int(cfg_word(31 downto 24), TABLE_SIZE);
 cfg_plen    <= safe_plen(cfg_word(23 downto 16));
 cfg_etype   <= cfg_word(15 downto 0);
-cfg_done    <= not cfg_valid;
 
 -- Report configuration metadata.
 u_read_cfg : cfgbus_readonly

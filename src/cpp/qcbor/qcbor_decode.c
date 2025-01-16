@@ -2808,7 +2808,7 @@ MemPool_Function(void *pPool, void *pMem, size_t uNewSize)
       }
    }
 
-   Pool = {pPool, uPoolSize};
+   Pool = (UsefulBuf){pPool, uPoolSize};
    MemPool_Pack(Pool, uFreeOffset);
 
 Done:

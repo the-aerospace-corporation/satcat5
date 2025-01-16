@@ -7,7 +7,8 @@
 --
 -- This file implements a generic, byte-at-a-time blocks for transmit
 -- and receive UARTs.  Each is a separate entity for maximum flexibility.
--- Baud-rates may be adjusted at any time.
+-- Baud-rates may be adjusted at any time.  Includes optional support for
+-- generating or detecting the "break" condition (i.e., extended zeros).
 --
 -- See also: https://en.wikipedia.org/wiki/Universal_asynchronous_receiver-transmitter
 -- See also: common_functions::clocks_per_baud_uart(...)
@@ -31,8 +32,9 @@ entity io_uart_rx is
     -- Generic internal byte interface.
     rx_data     : out byte_t;
     rx_write    : out std_logic;
+    rx_break    : out std_logic;
 
-    -- Rate control (clocks per bit)
+    -- Rate control (clocks per bit, from 2 to 2**RATE_WIDTH-1)
     rate_div    : in  unsigned(RATE_WIDTH-1 downto 0);
 
     -- Clock and reset
@@ -48,6 +50,7 @@ signal rx, rxd      : std_logic := '1';
 -- Receiver state machine
 signal r_data       : byte_t := (others => '0');
 signal r_write      : std_logic := '0';
+signal r_break      : std_logic := '0';
 signal r_bit_count  : integer range 0 to 9 := 0;
 signal r_clk_count  : unsigned(RATE_WIDTH-1 downto 0) := (others => '0');
 
@@ -63,13 +66,14 @@ B1: sync_buffer
 -- Drive block-level outputs.
 rx_data  <= r_data;
 rx_write <= r_write;
+rx_break <= r_break;
 
 -- Receiver state machine
 p_rx : process(refclk)
 begin
     if rising_edge(refclk) then
         -- Sanity check on rate-divider setting.
-        assert (reset_p = '1' or rate_div /= 0)
+        assert (reset_p = '1' or rate_div > 1)
             report "Invalid rate-divider setting." severity error;
 
         -- Read in each bit (LSB first)
@@ -87,6 +91,9 @@ begin
             r_write <= '0';
         end if;
 
+        -- Break condition? (Too many consecutive zeros.)
+        r_break <= bool2bit(r_clk_count = 0 and r_bit_count = 0 and rxd = '0' and rx = '0');
+
         -- Update counters
         if (reset_p = '1') then
             r_bit_count <= 0;
@@ -100,7 +107,8 @@ begin
             r_bit_count <= 9; -- Start + 8 data + stop bit
             r_clk_count <= rate_div / 2;
         end if;
-        -- Delayed rx signal
+
+        -- Delayed RX signal for detecting start-bit falling edge.
         rxd <= rx;
     end if;
 end process;
@@ -128,8 +136,9 @@ entity io_uart_tx is
     tx_data     : in  byte_t;
     tx_valid    : in  std_logic;
     tx_ready    : out std_logic;
+    tx_break    : in  std_logic := '0';
 
-    -- Rate control (clocks per bit)
+    -- Rate control (clocks per bit, from 1 to 2**RATE_WIDTH-1)
     rate_div    : in  unsigned(RATE_WIDTH-1 downto 0);
 
     -- Clock and reset
@@ -143,6 +152,7 @@ architecture io_uart_tx of io_uart_tx is
 signal t_ready      : std_logic := '0';
 signal t_bit_count  : integer range 0 to 9 := 0;
 signal t_clk_count  : unsigned(RATE_WIDTH-1 downto 0) := (others => '0');
+signal t_brk_hold   : std_logic := '0';
 signal t_sreg       : byte_t := (others => '1');
 signal uart_tx_i    : std_logic := '1';
 
@@ -150,41 +160,52 @@ begin
 
 -- Drive block outputs
 uart_txd    <= uart_tx_i;
-tx_ready    <= t_ready;
+tx_ready    <= t_ready and not (tx_break or reset_p);
 
 -- Transmitter state machine
 p_tx : process (refclk)
 begin
     if rising_edge(refclk) then
         -- Sanity check on rate-divider setting.
-        assert (reset_p = '1' or rate_div /= 0)
+        assert (reset_p = '1' or rate_div > 0)
             report "Invalid rate-divider setting." severity error;
 
         -- Upstream flow control: Will we be idle next cycle?
-        t_ready <= bool2bit(t_bit_count = 0 and t_clk_count = 0 and tx_valid = '0')
-                or bool2bit(t_bit_count = 0 and t_clk_count = 1);
+        t_ready <= (bool2bit(t_bit_count = 0 and t_clk_count = 0 and tx_valid = '0')
+                 or bool2bit(t_bit_count = 0 and t_clk_count = 1)) and not t_brk_hold;
 
         -- Counter and shift-register updates:
         if (reset_p = '1') then
             -- Port reset
             t_clk_count <= (others => '0');
             t_bit_count <= 0;
+            t_brk_hold  <= '0';
             uart_tx_i   <= '1';
         elsif (t_clk_count > 0) then
             -- Countdown to start of next bit interval.
             t_clk_count <= t_clk_count - 1;
         elsif (t_bit_count > 0) then
             -- Tx in progress, emit next bit (including stop bit).
-            uart_tx_i   <= t_sreg(0);       -- LSB first.
-            t_sreg      <= '1' & t_sreg(7 downto 1);
             t_clk_count <= rate_div - 1;
             t_bit_count <= t_bit_count - 1;
+            uart_tx_i   <= t_sreg(0);   -- LSB first.
+            t_sreg      <= '1' & t_sreg(7 downto 1);
+        elsif (tx_break = '1' or t_brk_hold = '1') then
+            -- From idle, start or continue "break" condition.
+            -- (Zero output as long as "break" is asserted + 10 more bits.)
+            t_clk_count <= rate_div - 1;
+            if (tx_break = '0') then    -- Once released, now + nine more
+                t_bit_count <= 9;
+            end if;
+            t_brk_hold  <= tx_break;    -- Hold flag for minimum duration
+            uart_tx_i   <= '0';         -- Start sending zeros
+            t_sreg      <= (others => '0');
         elsif (tx_valid = '1') then
             -- Start a new byte.
             t_clk_count <= rate_div - 1;
-            t_bit_count <= 9;       -- Start + 8 data + stop bit
-            uart_tx_i   <= '0';     -- Send start bit
-            t_sreg      <= tx_data; -- Latch output byte
+            t_bit_count <= 9;           -- Start + 8 data + stop bit
+            uart_tx_i   <= '0';         -- Send start bit
+            t_sreg      <= tx_data;     -- Latch output byte
         else
             -- Idle.
             uart_tx_i   <= '1';

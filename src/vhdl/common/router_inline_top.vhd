@@ -5,6 +5,9 @@
 --
 -- Top-level for IP router, configured to act inline with a switch port
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block is a high-level wrapper that implements an IPv4 router.
 -- It is designed to use the switch_core's "port" interface, so that it
 -- can be used inline with any of the usual port types.  The local subnet
@@ -19,6 +22,7 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.common_primitives.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.router_common.all;
 use     work.switch_types.all;
 
@@ -158,13 +162,15 @@ lcl_rx_data.write   <= ig_out.valid;
 lcl_rx_data.rxerr   <= error_combined;
 lcl_rx_data.rate    <= net_rx_data.rate;
 lcl_rx_data.status  <= net_rx_data.status;
-lcl_rx_data.tsof    <= net_tx_ctrl.tnow;
+lcl_rx_data.tsof    <= TSTAMP_DISABLED;
+lcl_rx_data.tfreq   <= TFREQ_DISABLED;
 lcl_rx_data.reset_p <= reset_p;
 ig_out.ready        <= '1';
 
 lcl_tx_ctrl.clk     <= clk_main;
 lcl_tx_ctrl.pstart  <= '1'; -- PTP not supported
-lcl_tx_ctrl.tnow    <= net_tx_ctrl.tnow;
+lcl_tx_ctrl.tnow    <= TSTAMP_DISABLED;
+lcl_tx_ctrl.tfreq   <= TFREQ_DISABLED;
 lcl_tx_ctrl.txerr   <= net_tx_ctrl.txerr;
 lcl_tx_ctrl.reset_p <= reset_p;
 lcl_tx_ctrl.ready   <= eg_inraw.ready;

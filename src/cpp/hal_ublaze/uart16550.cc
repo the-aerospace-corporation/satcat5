@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -69,7 +69,7 @@ void Uart16550::timer_event()
     irq_event();
 }
 
-void Uart16550::data_rcvd()
+void Uart16550::data_rcvd(satcat5::io::Readable* src)
 {
     // Just got new data in our transmit buffer.
     // If the UART is idle, start a new transmission.

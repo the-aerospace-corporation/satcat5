@@ -114,6 +114,9 @@ package body cfgbus_sim_tools is
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.wrcmd   <= '0';
         cfg_cmd.rdcmd   <= '0';
+        -- Fail loudly for integer-truncation bugs in certain simulator tools.
+        assert (cfg_cmd.devaddr = dev and cfg_cmd.regaddr = reg)
+            report "Address mismatch due to simulator bug." severity failure;
     end procedure;
 
     procedure cfgbus_read(
@@ -133,6 +136,9 @@ package body cfgbus_sim_tools is
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.wrcmd   <= '0';
         cfg_cmd.rdcmd   <= '0';
+        -- Fail loudly for integer-truncation bugs in certain simulator tools.
+        assert (cfg_cmd.devaddr = dev and cfg_cmd.regaddr = reg)
+            report "Address mismatch due to simulator bug." severity failure;
     end procedure;
 
     procedure cfgbus_wait(

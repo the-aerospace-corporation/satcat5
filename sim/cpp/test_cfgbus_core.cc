@@ -12,8 +12,8 @@
 static constexpr unsigned BULK_LEN = 100;
 
 TEST_CASE("cfgbus_core") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Instantiate simulated register map.
     satcat5::test::CfgDevice regs;

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2022 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -299,6 +299,31 @@ package cfgbus_common is
         evt_rd_tog  : out std_logic);   -- Toggle on read
     end component;
 
+    -- Addressable read-only ConfigBus register
+    -- To query this register, user writes the "sub-address" to be read,
+    -- then reads the associated value. To instantiate this block, use
+    -- the "reg_addr" output to drive a combinational MUX controlling
+    -- "reg_val", typically selecting from one of many options.  This
+    -- block is often used to provide readback of build-time parameters.
+    component cfgbus_readonly_addr is
+        generic (
+        DEVADDR     : integer;          -- Peripheral address
+        REGADDR     : integer;          -- Register address
+        AWIDTH      : positive := 8);   -- Subaddress width
+        port (
+        -- ConfigBus interface
+        cfg_cmd     : in  cfgbus_cmd;
+        cfg_ack     : out cfgbus_ack;
+        -- Local interface (sub-address and reply)
+        reg_addr    : out unsigned(AWIDTH-1 downto 0);
+        reg_val     : in  cfgbus_word;
+        -- Event indicators (optional)
+        evt_wr_str  : out std_logic;    -- Strobe on write
+        evt_wr_tog  : out std_logic;    -- Toggle on write
+        evt_rd_str  : out std_logic;    -- Strobe on read
+        evt_rd_tog  : out std_logic);   -- Toggle on read
+    end component;
+
     -- Clock-crossing wrapper for cfgbus_readonly.
     -- In AUTO_UPDATE mode, the input register is sampled at regular
     -- intervals.  Otherwise, it is sampled on each write event.
@@ -319,7 +344,7 @@ package cfgbus_common is
         sync_rd     : out std_logic);   -- Strobe on read
     end component;
 
-    -- Variant of "cfgbus_readonly_wide" for data wider than 32 bits.
+    -- Variant of "cfgbus_readonly_sync" for data wider than 32 bits.
     -- To use: Write once, then read multiple times.  Data will be packed
     -- MSW-first with leading zeros as needed.  An example with 112 bits:
     --  Write once to latch the new input value.
@@ -340,6 +365,23 @@ package cfgbus_common is
         sync_clk    : in  std_logic;    -- I/O reference clock
         sync_val    : in  std_logic_vector(DWIDTH-1 downto 0);
         sync_rd     : out std_logic);   -- Strobe on update
+    end component;
+
+    -- Count discrete events.
+    -- Write-before-read from a single register.  Write any value to
+    -- refresh, then read the number of events since the previous write.
+    component cfgbus_counter is
+        generic (
+        DEVADDR     : integer;                  -- Peripheral address
+        REGADDR     : integer := CFGBUS_ADDR_ANY;
+        COUNT_WIDTH : positive := CFGBUS_WORD_SIZE);
+        port (
+        -- ConfigBus interface
+        cfg_cmd     : in  cfgbus_cmd;
+        cfg_ack     : out cfgbus_ack;
+        -- Local interface
+        sync_clk    : in  std_logic;    -- I/O reference clock
+        sync_evt    : in  std_logic);   -- Event strobe
     end component;
 
     -- Interrupt controller using a single register.
@@ -1085,6 +1127,68 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
+
+entity cfgbus_readonly_addr is
+    generic (
+    DEVADDR     : integer;          -- Peripheral address
+    REGADDR     : integer;          -- Register address
+    AWIDTH      : positive := 8);   -- Subaddress width
+    port (
+    -- ConfigBus interface
+    cfg_cmd     : in  cfgbus_cmd;
+    cfg_ack     : out cfgbus_ack;
+    -- Local interface
+    reg_addr    : out unsigned(AWIDTH-1 downto 0);
+    reg_val     : in  cfgbus_word;  -- Read-only value
+    -- Event indicators (optional)
+    evt_wr_str  : out std_logic;    -- Strobe on write
+    evt_wr_tog  : out std_logic;    -- Toggle on write
+    evt_rd_str  : out std_logic;    -- Strobe on read
+    evt_rd_tog  : out std_logic);   -- Toggle on read
+end cfgbus_readonly_addr;
+
+architecture cfgbus_readonly_addr of cfgbus_readonly_addr is
+
+signal sub_addr : cfgbus_word;
+
+begin
+
+reg_addr <= unsigned(sub_addr(AWIDTH-1 downto 0));
+
+-- Write the sub-address.
+u_wr : cfgbus_register
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => REGADDR,
+    WR_ATOMIC   => true,
+    WR_MASK     => cfgbus_mask_lsb(AWIDTH))
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => open,
+    reg_val     => sub_addr,
+    evt_wr_str  => evt_wr_str,
+    evt_wr_tog  => evt_wr_tog,
+    evt_rd_str  => evt_rd_str,
+    evt_rd_tog  => evt_rd_tog);
+
+-- Read the reply.
+u_rd : cfgbus_readonly
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => REGADDR)
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_ack,
+    reg_val     => reg_val);
+
+end cfgbus_readonly_addr;
+
+--------------------------------------------------------------------------
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
 use     work.common_primitives.sync_toggle2pulse;
 
 entity cfgbus_readonly_sync is
@@ -1345,6 +1449,81 @@ gen1 : if cfgbus_reg_enable(DEVADDR, REGADDR) generate
 end generate;
 
 end cfgbus_readonly_wide;
+
+--------------------------------------------------------------------------
+
+library ieee;
+use     ieee.std_logic_1164.all;
+use     ieee.numeric_std.all;
+use     work.cfgbus_common.all;
+use     work.common_functions.all;
+use     work.common_primitives.sync_toggle2pulse;
+
+entity cfgbus_counter is
+    generic (
+    DEVADDR     : integer;                  -- Peripheral address
+    REGADDR     : integer := CFGBUS_ADDR_ANY;
+    COUNT_WIDTH : positive := CFGBUS_WORD_SIZE);
+    port (
+    -- ConfigBus interface
+    cfg_cmd     : in  cfgbus_cmd;
+    cfg_ack     : out cfgbus_ack;
+    -- Local interface
+    sync_clk    : in  std_logic;    -- I/O reference clock
+    sync_evt    : in  std_logic);   -- Event strobe
+end cfgbus_counter;
+
+architecture cfgbus_counter of cfgbus_counter is
+
+subtype count_t is unsigned(COUNT_WIDTH-1 downto 0);
+signal ctr_incr     : count_t;
+signal ctr_read     : count_t := (others => '0');
+signal ctr_work     : count_t := (others => '0');
+signal reg_word     : cfgbus_word;
+signal refresh_t    : std_logic;
+signal refresh_i    : std_logic;
+
+begin
+
+-- Count events strobes in the input clock domain.
+-- Resetting the working counter with each refresh,
+-- transferring contents to be read over ConfigBus.
+ctr_incr <= (0 => sync_evt, others => '0');
+
+p_count : process(sync_clk)
+begin
+    if rising_edge(sync_clk) then
+        if (refresh_i = '1') then
+            ctr_read <= ctr_work;
+            ctr_work <= ctr_incr;
+        elsif (sync_evt = '1') then
+            ctr_work <= ctr_work + ctr_incr;
+        end if;
+    end if;
+end process;
+
+-- Resize the counter to match the ConfigBus word size.
+reg_word <= std_logic_vector(resize(ctr_read, CFGBUS_WORD_SIZE));
+
+-- Read-only ConfigBus register.
+u_reg : cfgbus_readonly
+    generic map(
+    DEVADDR     => DEVADDR,
+    REGADDR     => REGADDR)
+    port map(
+    cfg_cmd     => cfg_cmd,
+    cfg_ack     => cfg_ack,
+    reg_val     => reg_word,
+    evt_wr_tog  => refresh_t);
+
+-- Cross-clock crossing for the write/refresh event.
+u_refresh : sync_toggle2pulse
+    port map(
+    in_toggle   => refresh_t,
+    out_strobe  => refresh_i,
+    out_clk     => sync_clk);
+
+end cfgbus_counter;
 
 --------------------------------------------------------------------------
 

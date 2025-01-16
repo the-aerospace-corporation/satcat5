@@ -61,7 +61,7 @@ gen0 : if IO_BYTES = 1 generate
     dly_data    <= in_data;
     dly_nlast   <= in_nlast;
     dly_write   <= in_write;
-    
+
     -- Byte-at-a-time CRC calculation.
     p_crc : process(clk)
         variable first_byte : std_logic := '1';
@@ -72,7 +72,7 @@ gen0 : if IO_BYTES = 1 generate
             crc_error <= in_error;
             crc_nlast <= in_nlast;
             crc_write <= in_write;
-    
+
             -- Update CRC whenever we receive new data.
             if (in_write = '1') then
                 if (first_byte = '1') then
@@ -81,7 +81,7 @@ gen0 : if IO_BYTES = 1 generate
                     crc_result <= crc_next(crc_result, in_data);
                 end if;
             end if;
-    
+
             -- Set the "first-byte" flag after reset or end-of-frame.
             if (reset_p = '1') then
                 first_byte := '1';
@@ -90,7 +90,7 @@ gen0 : if IO_BYTES = 1 generate
             end if;
         end if;
     end process;
-    
+
     -- Final output conversion.
     out_data  <= crc_data;
     out_crc   <= flip_bits_each_byte(not crc_result);

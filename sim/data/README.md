@@ -6,10 +6,14 @@ The files in this folder are used in VHDL unit tests.  (e.g., config_mdio_rom_tb
 
 * test_bin.dat (Binary test sequence 0x00, 0x01, ... 0xFF)
 * test_hex.txt (Plaintext hexadecimal, same sequence, random mix of lowercase and uppercase)
+* random_ethernet.txt (ascii hexadecimal random ethernet frames, one per line, without the FCS)
+* random_macsec.txt (ascii hexadecimal macsec frames, one per line, generated from
+    the frames in random_ethernet.txt using the configuration from macsec_config.txt)
+* macsec_config.txt (the macsec configuration used to generate random_macsec.txt from random_ethernet.txt)
 
 # Copyright Notice
 
-Copyright 2019 The Aerospace Corporation.
+Copyright 2019-2024 The Aerospace Corporation.
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 

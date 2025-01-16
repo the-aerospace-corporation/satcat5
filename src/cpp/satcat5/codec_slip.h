@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Inline SLIP encoder and decoder objects
@@ -89,11 +89,34 @@ namespace satcat5 {
                 satcat5::io::Readable* src);
 
         protected:
-            // Rx path: Pull input -> SLIP decode -> buffer
-            satcat5::io::PacketBuffer m_rx;         // Decoder writes to buffer
+            // Tx path: Write (*this) -> SLIP encode (parent) -> Write (*dst)
+            // Rx path: Read (*src) -> SLIP decode -> Buffer -> Read (*this)
+            satcat5::io::PacketBuffer m_buff;       // Decoder writes to buffer
             satcat5::io::SlipDecoder m_decode;      // Decoder object
             satcat5::io::BufferedCopy m_copy;       // Push/pull adapter
-            u8 m_rxbuff[SATCAT5_SLIP_BUFFSIZE];     // Working buffer for m_rx
+            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    // Working buffer for m_rx
+        };
+
+        // Buffered SLIP encoder / decoder pair with opposite polarity.
+        // (Suitable for use in unit testing and verification.)
+        class SlipCodecInverse
+            : public satcat5::io::SlipDecoder
+            , public satcat5::io::ReadableRedirect
+        {
+        public:
+            // Constructor links to specified source and destination.
+            // (Which are often the same BufferedIO object.)
+            SlipCodecInverse(
+                satcat5::io::Writeable* dst,
+                satcat5::io::Readable* src);
+
+        protected:
+            // Rx path: Write (*this) -> SLIP decode (parent) -> Write (*dst)
+            // Tx path: Read (*src) -> SLIP encode -> Buffer -> Read (*this)
+            satcat5::io::PacketBuffer m_buff;       // Encoder writes to buffer
+            satcat5::io::SlipEncoder m_encode;      // Encoder object
+            satcat5::io::BufferedCopy m_copy;       // Push/pull adapter
+            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    // Working buffer for m_rx
         };
     }
 }

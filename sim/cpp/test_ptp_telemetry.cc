@@ -20,21 +20,21 @@ using satcat5::ptp::Telemetry;
 using satcat5::ptp::Time;
 
 class DummyClock : public satcat5::ptp::TrackingClock {
-    Time clock_adjust(const Time& amount) {return amount;}
-    void clock_rate(s64 offset) {m_offset = offset;}
+    Time clock_adjust(const Time& amount) override {return amount;}
+    Time clock_now() override {return satcat5::ptp::TIME_ZERO;}
+    void clock_rate(s64 offset) override {m_offset = offset;}
 };
 
 TEST_CASE("ptp_logger") {
-    // Basic test infrastructure.
-    satcat5::log::ToConsole log;
-    satcat5::test::TimerAlways sim;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Suppress routine log messages.
-    log.suppress("PtpClient state");
+    log.suppress("PtpClient status");
     log.suppress("Selected master");
 
     // Set up a network with a PTP master and slave.
-    satcat5::test::CrosslinkIp xlink;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
     Client ptp0(&xlink.eth0, &xlink.net0.m_ip, ClientMode::MASTER_L2);
     Client ptp1(&xlink.eth1, &xlink.net1.m_ip, ClientMode::SLAVE_ONLY);
 
@@ -44,22 +44,21 @@ TEST_CASE("ptp_logger") {
     // Basic test confirms that a message is generated.
     SECTION("basic") {
         // Run the simulation for a few seconds...
-        sim.sim_wait(5000);
-        CHECK(log.contains("PtpClient state"));
+        xlink.timer.sim_wait(5000);
+        CHECK(log.contains("PtpClient status"));
     }
 };
 
 TEST_CASE("ptp_telemetry") {
-    // Basic test infrastructure.
-    satcat5::log::ToConsole log;
-    satcat5::test::TimerAlways sim;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
     DummyClock clk;
 
     // Suppress routine log messages.
     log.suppress("Selected master");
 
     // Set up a network with a PTP master and slave.
-    satcat5::test::CrosslinkIp xlink;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
     Client ptp0(&xlink.eth0, &xlink.net0.m_ip, ClientMode::MASTER_L2);
     Client ptp1(&xlink.eth1, &xlink.net1.m_ip, ClientMode::SLAVE_ONLY);
 
@@ -75,11 +74,10 @@ TEST_CASE("ptp_telemetry") {
     SECTION("basic") {
         // Run the simulation for a few seconds...
         uut.set_level(999);
-        sim.sim_wait(5000);
+        xlink.timer.sim_wait(5000);
 
         // Parse the first received CBOR message.
         satcat5::test::CborParser rcvd(&rx_udp);
-        CHECK(rcvd.get("client_state").uDataType == QCBOR_TYPE_TEXT_STRING);
         CHECK(rcvd.get("mean_path_delay").uDataType == QCBOR_TYPE_INT64);
         CHECK(rcvd.get("offset_from_master").uDataType == QCBOR_TYPE_INT64);
         CHECK(rcvd.get("tuning_offset").uDataType == QCBOR_TYPE_INT64);

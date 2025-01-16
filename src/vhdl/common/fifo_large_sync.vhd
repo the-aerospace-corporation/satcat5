@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2022 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -8,10 +8,15 @@
 -- This block is a synchronous FIFO, suitable for depths of a few hundred
 -- or a few thousand words, depending on available FPGA memory.
 --
--- The input has no flow-control (write/last only), and the output has AXI
--- valid/ready flow control.  Implementation uses the DPRAM cross-platform
--- primitive (typically implemented as block-RAM), with control logic acting
--- as circular-buffer (aka ring-buffer).
+-- Since this FIFO may be used in different circumstances, the input accepts
+-- either "write" or "valid/ready" flow control signals.  Choose one or the
+-- other; do not use both simultaneously.
+--
+-- The output always uses AXI-stream "valid/ready" signals, but can be
+-- readily converted to "write" mode by tying "ready" to constant '1'.
+--
+-- Implementation uses the DPRAM cross-platform primitive (typically maps to
+-- block-RAM), with control logic acting as circular-buffer (aka ring-buffer).
 --
 
 library ieee;
@@ -29,14 +34,17 @@ entity fifo_large_sync is
     -- Formal verification mode? (See common_primitives)
     SIMTEST     : boolean := false);
     port (
-    -- Primary input port (no flow control)
+    -- Primary input port (optional flow control)
+    -- Note: Use "in_write" or "in_valid/in_ready", never both.
     in_data     : in  std_logic_vector(FIFO_WIDTH-1 downto 0);
     in_meta     : in  std_logic_vector(META_WIDTH-1 downto 0) := (others => '0');
-    in_last     : in  std_logic;
-    in_write    : in  std_logic;
-    in_error    : out std_logic;    -- Optional
+    in_last     : in  std_logic := '0';     -- Optional
+    in_write    : in  std_logic := '0';     -- Choose one (see above)
+    in_valid    : in  std_logic := '0';     -- Choose one (see above)
+    in_ready    : out std_logic;
+    in_error    : out std_logic;            -- Optional
 
-    -- Buffered output port (AXI flow control)
+    -- Buffered output port (AXI-stream flow control)
     out_data    : out std_logic_vector(FIFO_WIDTH-1 downto 0);
     out_meta    : out std_logic_vector(META_WIDTH-1 downto 0);
     out_last    : out std_logic;
@@ -64,7 +72,7 @@ signal fifo_full        : std_logic := '0';
 -- Primary input FIFO.
 signal fifo_wr_addr     : fifo_addr_t := (others => '0');
 signal fifo_wr_word     : fifo_word_t := (others => '0');
-signal fifo_wr_safe     : std_logic;
+signal fifo_wr_safe     : std_logic := '1';
 signal fifo_wr_en_d     : std_logic;
 signal fifo_wr_en_q     : std_logic := '0';
 signal fifo_rd_addr_d   : fifo_addr_t := (others => '0');
@@ -76,13 +84,14 @@ begin
 
 -- Drive top-level outputs.
 in_error    <= fifo_error;
+in_ready    <= fifo_wr_safe;
 out_data    <= fifo_rd_word(FIFO_WIDTH-1 downto 0);
 out_meta    <= fifo_rd_word(META_WIDTH+FIFO_WIDTH-1 downto FIFO_WIDTH);
 out_last    <= fifo_rd_word(META_WIDTH+FIFO_WIDTH);
 out_valid   <= not fifo_empty;
 
 -- Platform-specific dual-port block RAM.
-fifo_wr_en_d   <= in_write;
+fifo_wr_en_d   <= (in_write) or (in_valid and fifo_wr_safe);
 fifo_wr_word   <= in_last & in_meta & in_data;
 fifo_rd_next   <= out_ready and not fifo_empty;
 fifo_rd_addr_d <= fifo_rd_addr_q + u2i(fifo_rd_next);
@@ -142,6 +151,10 @@ begin
         else
             fifo_error <= '0';
         end if;
+
+        -- Internal calculation of queue depth is used for AXI mode.
+        -- Due to deferred write updates (see above), some margin is required.
+        fifo_wr_safe <= fifo_empty or bool2bit(fifo_rd_addr_q - fifo_wr_addr > 1);
     end if;
 end process;
 

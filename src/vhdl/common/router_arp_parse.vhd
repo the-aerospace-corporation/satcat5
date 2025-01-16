@@ -5,6 +5,9 @@
 --
 -- Address Resolution Protocol (ARP) incoming packet parser
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block screens incoming packets, looking for valid Address
 -- Resolution Protocol frames (IETF RFC 826) of the IPv4-to-Ethernet
 -- type.  All other traffic is ignored.

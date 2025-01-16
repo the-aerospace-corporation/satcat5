@@ -23,14 +23,20 @@ We've tried to make it easy to use these libraries on nearly any platform, embed
 
 There are three key steps:
 * Create an instance of each applicable driver object.
-* Call the `init()` method for the interrupt handler of choice.  (See "Hardware Abstraction Layer")
-* Call the `satcat5::poll::service()` function at regular intervals.
+* Call the `init()` or `irq_start()` method for the interrupt handler of choice.  (See "Hardware Abstraction Layer")
+* Call the `satcat5::poll::service()` or `satcat5::poll:;service_all()` function at regular intervals.
+* If applicable, connect the ConfigBus interrupt.
 
 If you use any `satcat5::poll::Timer` object, you must also call `satcat5::poll::timekeeper.request_poll()`
-once every millisecond.  (See also: `irq::Adapter`, `irq::VirtualTimer`)
+once every millisecond.  (See also: `cfg::Timer`, `irq::Adapter`, `irq::VirtualTimer`)
+
+Interrupt handling varies widely by platform and operating system.
+If your platform already has a hardware abstraction layer, use the associated interrupt handler.
+Otherwise, you must implement the missing methods from `irq::Controller` (see "satcat5/interrupts.h").
 
 In an embedded environment, instances should be statically allocated as global variables.
-The service() function can then be called from inside your main loop.
+The `service()` function can then be called from inside your main loop.
+(It may even be the only item in that loop.)
 
 Here is an example for the Xilinx Microblaze:
 
@@ -45,6 +51,9 @@ Here is an example for the Xilinx Microblaze:
         irq_satcat5.irq_start(XPAR_UBLAZE_CORE_MICROBLAZE_0_AXI_INTC_DEVICE_ID);
         while (1) satcat5::poll::service();
     }
+
+On a FreeRTOS system, use a task to call the `poll::service_all()` function.
+The task should wake up on the system tick, call `service_all()` once, then go back to sleep.
 
 On a POSIX system, driver instances can be created on the stack or on the heap.
 However, the same rules apply: create your objects, then call service() frequently.
@@ -196,7 +205,7 @@ which is redistributed under the terms of the Boost license.
 
 # Copyright Notice
 
-Copyright 2021-2023 The Aerospace Corporation.
+Copyright 2021-2024 The Aerospace Corporation.
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 

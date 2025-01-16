@@ -21,6 +21,7 @@ use     work.common_functions.all;
 use     work.eth_frame_common.all;
 use     work.ptp_types.all;
 use     work.router_sim_tools.all;
+use     work.switch_types.all;
 
 entity ptp_egress_tb_single is
     generic (
@@ -29,8 +30,6 @@ entity ptp_egress_tb_single is
 end ptp_egress_tb_single;
 
 architecture single of ptp_egress_tb_single is
-
-constant META_WIDTH : integer := PTP_MODE_WIDTH + 2*TSTAMP_WIDTH;
 
 -- Clock and reset generation.
 signal clk          : std_logic := '0';
@@ -41,8 +40,10 @@ signal fifo_din     : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0')
 signal fifo_dref    : std_logic_vector(8*IO_BYTES-1 downto 0) := (others => '0');
 signal fifo_nlast   : integer range 0 to IO_BYTES := 0;
 signal fifo_write   : std_logic := '0';
-signal fifo_meta    : std_logic_vector(META_WIDTH-1 downto 0);
-signal in_meta      : std_logic_vector(META_WIDTH-1 downto 0);
+signal fifo_mvec_i  : std_logic_vector(SWITCH_META_WIDTH-1 downto 0) := (others => '0');
+signal fifo_mvec_p  : std_logic_vector(SWITCH_META_WIDTH-1 downto 0) := (others => '0');
+signal ref_mvec     : std_logic_vector(SWITCH_META_WIDTH-1 downto 0) := (others => '0');
+signal ref_meta     : switch_meta_t := SWITCH_META_NULL;
 signal ref_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
 signal ref_nlast    : integer range 0 to IO_BYTES;
 signal ref_valid    : std_logic;
@@ -50,8 +51,8 @@ signal ref_ready    : std_logic;
 
 -- Unit under test.
 signal port_tnow    : tstamp_t;
-signal in_tref      : tstamp_t;
-signal in_pmode     : ptp_mode_t;
+signal in_mvec      : std_logic_vector(SWITCH_META_WIDTH-1 downto 0);
+signal in_meta      : switch_meta_t := SWITCH_META_NULL;
 signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0);
 signal in_nlast     : integer range 0 to IO_BYTES;
 signal in_valid     : std_logic;
@@ -61,15 +62,15 @@ signal out_error    : std_logic;
 signal out_nlast    : integer range 0 to IO_BYTES;
 signal out_valid    : std_logic;
 signal out_ready    : std_logic := '0';
+signal out_vtag     : vlan_hdr_t;
 
 -- High-level test control.
 signal test_index   : natural := 0;
 signal test_2step   : std_logic := '0';
 signal test_rate_i  : real := 0.0;
 signal test_rate_o  : real := 0.0;
-signal test_pmode   : ptp_mode_t := PTP_MODE_NONE;
-signal test_tref    : tstamp_t := (others => '0');
-signal test_tnow    : tstamp_t := (others => '0');
+signal test_meta_i  : switch_meta_t := SWITCH_META_NULL;
+signal test_meta_p  : switch_meta_t := SWITCH_META_NULL;
 
 begin
 
@@ -77,27 +78,27 @@ begin
 clk <= not clk after 5 ns;  -- 1 / (2*5ns) = 100 MHz
 
 -- FIFO for loading test data.
-fifo_meta   <= test_pmode & std_logic_vector(test_tref & test_tnow);
-port_tnow   <= unsigned(in_meta(TSTAMP_WIDTH-1 downto 0));
-in_tref     <= unsigned(in_meta(2*TSTAMP_WIDTH-1 downto TSTAMP_WIDTH));
-in_pmode    <= in_meta(in_meta'left downto 2*TSTAMP_WIDTH);
+fifo_mvec_i <= switch_m2v(test_meta_i);
+fifo_mvec_p <= switch_m2v(test_meta_p);
+in_meta     <= switch_v2m(in_mvec);
+ref_meta    <= switch_v2m(ref_mvec);
 ref_ready   <= out_valid and out_ready;
 
 u_fifo_in : entity work.fifo_sim_throttle
     generic map(
     INPUT_BYTES     => IO_BYTES,
     OUTPUT_BYTES    => IO_BYTES,
-    META_WIDTH      => META_WIDTH)
+    META_WIDTH      => SWITCH_META_WIDTH)
     port map(
     in_clk          => clk,
     in_data         => fifo_din,
     in_nlast        => fifo_nlast,
-    in_meta         => fifo_meta,
+    in_meta         => fifo_mvec_i,
     in_write        => fifo_write,
     out_clk         => clk,
     out_data        => in_data,
     out_nlast       => in_nlast,
-    out_meta        => in_meta,
+    out_meta        => in_mvec,
     out_valid       => in_valid,
     out_ready       => in_ready,
     out_rate        => test_rate_i,
@@ -106,15 +107,18 @@ u_fifo_in : entity work.fifo_sim_throttle
 u_fifo_ref : entity work.fifo_sim_throttle
     generic map(
     INPUT_BYTES     => IO_BYTES,
-    OUTPUT_BYTES    => IO_BYTES)
+    OUTPUT_BYTES    => IO_BYTES,
+    META_WIDTH      => SWITCH_META_WIDTH)
     port map(
     in_clk          => clk,
     in_data         => fifo_dref,
     in_nlast        => fifo_nlast,
+    in_meta         => fifo_mvec_p,
     in_write        => fifo_write,
     out_clk         => clk,
     out_data        => ref_data,
     out_nlast       => ref_nlast,
+    out_meta        => ref_mvec,
     out_valid       => ref_valid,
     out_ready       => ref_ready,
     reset_p         => reset_p);
@@ -122,20 +126,20 @@ u_fifo_ref : entity work.fifo_sim_throttle
 -- Unit under test.
 uut : entity work.ptp_egress
     generic map(
-    IO_BYTES => IO_BYTES,
-    PTP_STRICT => true)
+    IO_BYTES    => IO_BYTES,
+    PTP_DOPPLER => true,
+    PTP_STRICT  => true)
     port map(
-    port_tnow   => port_tnow,
+    port_tnow   => ref_meta.tstamp,
+    port_tfreq  => ref_meta.tfreq,
     port_pstart => '1',     -- Not tested
     port_dvalid => out_valid,
-    in_tref     => in_tref,
-    in_pmode    => in_pmode,
-    in_vtag     => (others => '0'),
+    in_meta     => in_meta,
     in_data     => in_data,
     in_nlast    => in_nlast,
     in_valid    => in_valid,
     in_ready    => in_ready,
-    out_vtag    => open,    -- Not tested
+    out_vtag    => out_vtag,
     out_data    => out_data,
     out_error   => out_error,
     out_nlast   => out_nlast,
@@ -157,6 +161,8 @@ begin
                 report "DATA mismatch" severity error;
             assert (out_nlast = ref_nlast)
                 report "NLAST mismatch" severity error;
+            assert (out_vtag = ref_meta.vtag)
+                report "VTAG mismatch" severity error;
         end if;
 
         -- Flow-control randomization.
@@ -167,41 +173,62 @@ end process;
 -- High-level test control.
 p_test : process
     -- Load packet into the input and reference FIFOs.
-    procedure wr_pkt(typ: ptp_mode_t; din: std_logic_vector; tstamp_err:boolean) is
+    type ptp_mode_t is (PTP_MODE_NONE, PTP_MODE_ETH, PTP_MODE_UDP);
+    procedure wr_pkt(typ: ptp_mode_t; din: std_logic_vector; tstamp_err, tfreq_err: boolean) is
         variable tmp1, tmp2 : byte_t := (others => '0');
         variable dref   : std_logic_vector(din'range) := din;
-        variable ihl    : nybb_u := (others => '0');
         variable nbytes : integer := (din'length) / 8;
         variable rdpos  : natural := 0;
         variable pktpos : natural := 0;
+        variable tlvpos : natural := 0;
         variable bitpos : natural := 0;
         variable tcorr  : signed(63 downto 0) := (others => '0');
+        variable tfreq  : signed(47 downto 0) := (others => '0');
+        variable vtag   : vlan_hdr_t := rand_vec(VLAN_HDR_WIDTH);
     begin
-        -- Randomize test parameters.
-        test_pmode  <= typ;
-        test_2step  <= rand_bit;
-        test_tref   <= unsigned(rand_vec(TSTAMP_WIDTH));
+        -- Set start position for the PTP message and Doppler TLV.
+        if (typ = PTP_MODE_ETH) then
+            pktpos := ETH_HDR_DATA;
+        elsif (typ = PTP_MODE_UDP) then
+            pktpos := UDP_HDR_DAT(IP_IHL_MIN);
+        end if;
+        if (tfreq_err or rand_float > 0.5) then
+            tlvpos := pktpos + 16;
+        end if;
+
+        -- Configure test parameters and packet metadata.
+        test_2step          <= rand_bit;
+        test_meta_i.pmsg    <= bidx_to_tlvpos(pktpos);
+        test_meta_i.pfreq   <= bidx_to_tlvpos(tlvpos);
+        test_meta_i.tstamp  <= unsigned(rand_vec(TSTAMP_WIDTH));
+        test_meta_i.tfreq   <= signed(rand_vec(TFREQ_WIDTH));
+        test_meta_i.vtag    <= vtag;
+        test_meta_p.pmsg    <= bidx_to_tlvpos(pktpos);
+        test_meta_p.pfreq   <= bidx_to_tlvpos(tlvpos);
+        test_meta_p.vtag    <= vtag;
         if (tstamp_err) then
-            test_tnow   <= unsigned(TSTAMP_DISABLED);
+            test_meta_p.tstamp <= TSTAMP_DISABLED;
         else
-            test_tnow   <= unsigned(rand_vec(TSTAMP_WIDTH));
+            test_meta_p.tstamp <= unsigned(rand_vec(TSTAMP_WIDTH));
+        end if;
+        if (tfreq_err) then
+            test_meta_p.tfreq <= TFREQ_DISABLED;
+        else
+            test_meta_p.tfreq <= signed(rand_vec(TFREQ_WIDTH));
         end if;
         wait until rising_edge(clk);
 
-        -- Calculate start position of the PTP message, if applicable.
-        if (typ = PTP_MODE_ETH) then
-            pktpos  := ETH_HDR_DATA;        -- Start of PTP-L2 frame
-        elsif (typ = PTP_MODE_UDP) then
-            bitpos  := din'length - 8 * (IP_HDR_VERSION + 1);
-            ihl     := unsigned(din(bitpos+3 downto bitpos));
-            pktpos  := UDP_HDR_DAT(ihl);    -- Start of PTP-L3 frame
-        end if;
-
-        -- Calculate and apply the new correctionField value.
-        tcorr := resize(signed(test_tref + test_tnow), tcorr'length);
+        -- Calculate and apply the new correctionField value(s).
+        tcorr := resize(signed(test_meta_i.tstamp + test_meta_p.tstamp), tcorr'length);
         if (pktpos > 0) then
             bitpos := dref'length - (tcorr'length + 8*(pktpos + PTP_HDR_CORR));
             dref(bitpos+63 downto bitpos) := std_logic_vector(tcorr);
+        end if;
+
+        tfreq := resize(signed(test_meta_i.tfreq + test_meta_p.tfreq), tfreq'length);
+        if (tlvpos > 0) then
+            bitpos := dref'length - (tfreq'length + 8*tlvpos);
+            dref(bitpos+47 downto bitpos) := std_logic_vector(tfreq);
         end if;
 
         -- If applicable, apply the new twoStepFlag.
@@ -220,13 +247,8 @@ p_test : process
                 fifo_write  <= '1';     -- Normal write
             end if;
             for n in 0 to IO_BYTES-1 loop
-                if (rdpos < nbytes) then
-                    tmp1 := strm_byte_value(rdpos, din);
-                    tmp2 := strm_byte_value(rdpos, dref);
-                else
-                    tmp1 := (others => '0');
-                    tmp2 := (others => '0');
-                end if;
+                tmp1 := strm_byte_zpad(rdpos, din);
+                tmp2 := strm_byte_zpad(rdpos, dref);
                 fifo_din(8*IO_BYTES-8*n-1 downto 8*IO_BYTES-8*n-8)  <= tmp1;
                 fifo_dref(8*IO_BYTES-8*n-1 downto 8*IO_BYTES-8*n-8) <= tmp2;
                 rdpos := rdpos + 1;
@@ -243,7 +265,7 @@ p_test : process
     end procedure;
 
     -- Run a complete test with a single packet.
-    procedure test_single(ri, ro: real; typ: ptp_mode_t; pkt: std_logic_vector; tstamp_err:boolean) is
+    procedure test_single(ri, ro: real; typ: ptp_mode_t; pkt: std_logic_vector; tstamp_err, tfreq_err:boolean) is
         variable timeout : natural := 10_000;
     begin
         -- Pre-test setup.
@@ -251,7 +273,7 @@ p_test : process
         test_rate_i <= 0.0;
         test_rate_o <= 0.0;
         wait for 1 us;
-        wr_pkt(typ, pkt, tstamp_err);
+        wr_pkt(typ, pkt, tstamp_err, tfreq_err);
         -- Run test to completion or timeout.
         wait for 1 us;
         test_rate_i <= ri;
@@ -259,7 +281,8 @@ p_test : process
         while (timeout > 0 and ref_valid = '1') loop
             timeout := timeout - 1;
             if (ref_nlast /= 0) then
-                assert (out_error = bool2bit(tstamp_err)) report "ptp timestamp error undetected" severity error;
+                assert (out_error = bool2bit(tstamp_err or tfreq_err))
+                    report "ptp timestamp error undetected" severity error;
             end if;
             wait until rising_edge(clk);
         end loop;
@@ -285,26 +308,25 @@ p_test : process
             MAC_DST, MAC_SRC, ETYPE_ARP, rand_vec(8*nbytes));
     begin
         -- no timestamp error for non-ptp packet
-        test_single(ri, ro, PTP_MODE_NONE, eth.all, false);
+        test_single(ri, ro, PTP_MODE_NONE, eth.all, false, false);
     end procedure;
 
-    procedure test_l2(ri, ro: real; nbytes: natural; tstamp_err:boolean) is
+    procedure test_l2(ri, ro: real; nbytes: natural; tstamp_err, tfreq_err: boolean) is
         variable eth : eth_packet := make_eth_fcs(
             MAC_DST, MAC_SRC, ETYPE_PTP, rand_vec(8*nbytes));
     begin
-        test_single(ri, ro, PTP_MODE_ETH, eth.all, tstamp_err);
+        test_single(ri, ro, PTP_MODE_ETH, eth.all, tstamp_err, tfreq_err);
     end procedure;
 
-    procedure test_l3(ri, ro: real; nbytes: natural; tstamp_err:boolean) is
-        variable nopt : natural := rand_int(10);
+    procedure test_l3(ri, ro: real; nbytes: natural; tstamp_err, tfreq_err: boolean) is
         variable udp : std_logic_vector(63 downto 0) :=
             rand_vec(16) & x"013F" & rand_vec(32);
         variable ip : ip_packet := make_ipv4_pkt(
-            IP_HDR, udp & rand_vec(8*nbytes), rand_vec(32*nopt));
+            IP_HDR, udp & rand_vec(8*nbytes));
         variable eth : eth_packet := make_eth_fcs(
             MAC_DST, MAC_SRC, ETYPE_IPV4, ip.all);
     begin
-        test_single(ri, ro, PTP_MODE_UDP, eth.all, tstamp_err);
+        test_single(ri, ro, PTP_MODE_UDP, eth.all, tstamp_err, tfreq_err);
     end procedure;
 begin
     reset_p <= '1';
@@ -316,18 +338,20 @@ begin
         test_no(0.1, 0.9, 64);
         test_no(0.9, 0.1, 64);
         test_no(0.9, 0.9, 128);
-        test_l2(0.1, 0.9, 64, false);
-        test_l2(0.9, 0.1, 64, false);
-        test_l2(0.9, 0.9, 128, false);
-        test_l3(0.1, 0.9, 64, false);
-        test_l3(0.9, 0.1, 64, false);
-        test_l3(0.9, 0.9, 128, false);
-        test_l2(0.1, 0.9, 64, true);
-        test_l2(0.9, 0.1, 64, true);
-        test_l2(0.9, 0.9, 128, true);
-        test_l3(0.1, 0.9, 64, true);
-        test_l3(0.9, 0.1, 64, true);
-        test_l3(0.9, 0.9, 128, true);
+        test_l2(0.1, 0.9, 64,  false, false);
+        test_l2(0.9, 0.1, 64,  false, false);
+        test_l2(0.9, 0.9, 128, false, false);
+        test_l2(0.9, 0.9, 128, false, true);
+        test_l3(0.1, 0.9, 64,  false, false);
+        test_l3(0.9, 0.1, 64,  false, false);
+        test_l3(0.9, 0.9, 128, false, false);
+        test_l3(0.9, 0.9, 128, false, true);
+        test_l2(0.1, 0.9, 64,  true,  false);
+        test_l2(0.9, 0.1, 64,  true,  false);
+        test_l2(0.9, 0.9, 128, true,  false);
+        test_l3(0.1, 0.9, 64,  true,  false);
+        test_l3(0.9, 0.1, 64,  true,  false);
+        test_l3(0.9, 0.9, 128, true,  false);
         if (n mod 10 = 0) then
             report "Completed run #" & integer'image(n);
         end if;
@@ -355,7 +379,7 @@ uut0 : entity work.ptp_egress_tb_single
 uut1 : entity work.ptp_egress_tb_single
     generic map(IO_BYTES => 2, TEST_ITER => 40);
 uut2 : entity work.ptp_egress_tb_single
-    generic map(IO_BYTES => 4, TEST_ITER => 60);
+    generic map(IO_BYTES => 4, TEST_ITER => 55);
 uut3 : entity work.ptp_egress_tb_single
     generic map(IO_BYTES => 8, TEST_ITER => 70);
 

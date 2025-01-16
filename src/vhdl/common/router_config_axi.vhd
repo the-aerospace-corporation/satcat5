@@ -5,6 +5,9 @@
 --
 -- Configuration helper for use with router_inline_top
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block presents an AXI-Lite memory-mapped interface for configuring
 -- the inline IPv4-router.  Parameters such as subnet configuration and
 -- current time are written to a series of memory-mapped registers, which

@@ -6,7 +6,7 @@
 #include <satcat5/eth_dispatch.h>
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
-#include <satcat5/timer.h>
+#include <satcat5/timeref.h>
 
 namespace eth = satcat5::eth;
 using satcat5::eth::Dispatch;
@@ -15,24 +15,22 @@ using satcat5::net::Type;
 // Set verbosity level (0/1/2)
 static const unsigned DEBUG_VERBOSE = 0;
 
-// Baseline Ethenret header is 14 bytes (dst + src + type).
+// Baseline Ethernet header is 14 bytes (dst + src + type).
 // IEEE 802.1q VLAN tags add another four bytes.
 constexpr unsigned ETH_HEADER_BYTES = SATCAT5_VLAN_ENABLE ? 18 : 14;
 
 Dispatch::Dispatch(
         const eth::MacAddr& addr,
         satcat5::io::Writeable* dst,
-        satcat5::io::Readable* src,
-        satcat5::util::GenericTimer* timer)
+        satcat5::io::Readable* src)
     : m_addr(addr)  // MAC address for this endpoint
     , m_dst(dst)    // Destination pipe (Writeable)
     , m_src(src)    // Source pipe (Readable)
-    , m_timer(timer)
-    , m_reply_macaddr(eth::MACADDR_BROADCAST)
-    #if SATCAT5_VLAN_ENABLE
+    , m_reply_dstaddr(eth::MACADDR_NONE)
+    , m_reply_srcaddr(eth::MACADDR_NONE)
+    , m_reply_type(eth::ETYPE_NONE)
     , m_reply_vtag(eth::VTAG_NONE)
     , m_default_vid(eth::VTAG_NONE)
-    #endif
 {
     m_src->set_callback(this);
 }
@@ -40,7 +38,7 @@ Dispatch::Dispatch(
 #if SATCAT5_ALLOW_DELETION
 Dispatch::~Dispatch()
 {
-    m_src->set_callback(0);
+    if (m_src) m_src->set_callback(0);
 }
 #endif
 
@@ -65,24 +63,18 @@ satcat5::io::Writeable* Dispatch::open_reply(const Type& type, unsigned len)
         type.as_pair(vtag.value, etype.value);
         // Use specified VID if present; otherwise use the stored reply VID.
         if (vtag.vid() == 0) vtag.value |= m_reply_vtag.value;
-        return open_write(m_reply_macaddr, etype, vtag);
+        return open_write(m_reply_srcaddr, etype, vtag);
     } else {
         // No VLAN support, EtherType is the only parameter.
         type.as_u16(etype.value);
-        return open_write(m_reply_macaddr, etype);
+        return open_write(m_reply_srcaddr, etype);
     }
 }
 
-#if SATCAT5_VLAN_ENABLE
 satcat5::io::Writeable* Dispatch::open_write(
     const eth::MacAddr& dst,
     const eth::MacType& type,
     eth::VlanTag vtag)
-#else
-satcat5::io::Writeable* Dispatch::open_write(
-    const eth::MacAddr& dst,
-    const eth::MacType& type)
-#endif
 {
     if (DEBUG_VERBOSE > 0)
         log::Log(log::DEBUG, "EthDispatch: open_write").write(type.value);
@@ -98,25 +90,21 @@ satcat5::io::Writeable* Dispatch::open_write(
     // If not, wait a few microseconds and try again before giving up.
     // (Workaround for edge-case where MailMap block is still busy.)
     if (m_dst->get_write_space() < ETH_HEADER_BYTES) {
-        if (m_timer) m_timer->busywait_usec(20);
+        SATCAT5_CLOCK->busywait_usec(20);
         if (m_dst->get_write_space() < ETH_HEADER_BYTES) return 0;
     }
 
     // Override outgoing VID, if none is specified.
     // (Useful for ports where VLAN tags are mandatory.)
-    #if SATCAT5_VLAN_ENABLE
     if (vtag.vid() == 0) vtag.value |= m_default_vid.value;
-    #endif
 
     // Write out the Ethernet frame header:
     m_dst->write_obj(dst);          // Destination
     m_dst->write_obj(m_addr);       // Source
-    #if SATCAT5_VLAN_ENABLE
-    if (vtag.value) {
+    if (SATCAT5_VLAN_ENABLE && vtag.value) {
         m_dst->write_obj(satcat5::eth::ETYPE_VTAG);
         m_dst->write_obj(vtag);     // VLAN tag (optional)
     }
-    #endif
     m_dst->write_obj(type);         // EtherType
 
     // Ready to start writing frame contents.
@@ -128,7 +116,7 @@ void Dispatch::set_macaddr(const satcat5::eth::MacAddr& macaddr)
     m_addr = macaddr;
 }
 
-void Dispatch::data_rcvd()
+void Dispatch::data_rcvd(satcat5::io::Readable* src)
 {
     // Attempt to read the Ethernet frame header.
     eth::Header hdr;
@@ -138,7 +126,9 @@ void Dispatch::data_rcvd()
         log::Log(log::DEBUG, "EthDispatch: data_rcvd ").write(pending ? "OK" : "Error");
 
     // Store reply address.
-    m_reply_macaddr = hdr.src;
+    m_reply_dstaddr = hdr.dst;
+    m_reply_srcaddr = hdr.src;
+    m_reply_type    = hdr.type;
 
     // Attempt delivery using specific VLAN tag, if applicable (VID > 0)
     // (This allows VLAN-specific handlers to take priority over generic ones.)
@@ -151,6 +141,8 @@ void Dispatch::data_rcvd()
     #endif
 
     // Attempt delivery using EtherType only (basic service or catch-all).
+    // (This allows generic handlers to catch tagged packets AND allows
+    //  untagged packets to match the VLAN-specific handlers.)
     if (pending) {
         Type typ_basic(hdr.type.value);
         pending = !deliver(typ_basic, m_src, m_src->get_read_ready());
@@ -163,3 +155,5 @@ void Dispatch::data_rcvd()
     // Clean-up rest of packet, if applicable.
     m_src->read_finalize();
 }
+
+void Dispatch::data_unlink(satcat5::io::Readable* src) {m_src = 0;} // GCOVR_EXCL_LINE

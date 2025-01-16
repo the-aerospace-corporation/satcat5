@@ -66,6 +66,10 @@ signal dly1_write   : std_logic := '0';
 
 begin
 
+-- Sanity check: Fail loudly if user specifies an invalid LFSR.
+-- (When practical, this should throw a synthesis or simulation error.)
+assert lfsr_is_valid(LFSR_SPEC) report "Invalid LFSR." severity failure;
+
 -- Convert input to match internal format.
 in_convert <= leap_format(LEAP_LFSR, in_rcvd);
 

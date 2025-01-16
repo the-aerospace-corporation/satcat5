@@ -1,4 +1,4 @@
-# Copyright 2021-2023 The Aerospace Corporation.
+# Copyright 2021-2024 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 # Synthesis constraints for arty_managed
@@ -84,14 +84,21 @@ set_property PACKAGE_PIN H1     [get_ports spi_sdo];        # CK_MOSI
 set_property PACKAGE_PIN D10    [get_ports uart_txd];
 set_property PACKAGE_PIN A9     [get_ports uart_rxd];
 
-# Debug LCD on ChipKit header
-set_property PACKAGE_PIN V15    [get_ports {text_lcd_db[0]}];
-set_property PACKAGE_PIN U16    [get_ports {text_lcd_db[1]}];
-set_property PACKAGE_PIN P14    [get_ports {text_lcd_db[2]}];
-set_property PACKAGE_PIN T11    [get_ports {text_lcd_db[3]}];
-set_property PACKAGE_PIN R12    [get_ports text_lcd_e];
-set_property PACKAGE_PIN T14    [get_ports text_lcd_rw];
-set_property PACKAGE_PIN T15    [get_ports text_lcd_rs];
+# Text-mode LCD on ChipKit header
+set_property PACKAGE_PIN V15    [get_ports {text_lcd_db[0]}];   # CK_IO0
+set_property PACKAGE_PIN U16    [get_ports {text_lcd_db[1]}];   # CK_IO1
+set_property PACKAGE_PIN P14    [get_ports {text_lcd_db[2]}];   # CK_IO2
+set_property PACKAGE_PIN T11    [get_ports {text_lcd_db[3]}];   # CK_IO3
+set_property PACKAGE_PIN R12    [get_ports text_lcd_e];         # CK_IO4
+set_property PACKAGE_PIN T14    [get_ports text_lcd_rw];        # CK_IO5
+set_property PACKAGE_PIN T15    [get_ports text_lcd_rs];        # CK_IO6
+
+# Adafruit LCD (ISI9341) on ChipKit header
+set_property PACKAGE_PIN N15    [get_ports tft_csb];    # CK_IO8
+set_property PACKAGE_PIN M16    [get_ports tft_dcx];    # CK_IO9
+set_property PACKAGE_PIN V17    [get_ports tft_sck];    # CK_IO10
+set_property PACKAGE_PIN U18    [get_ports tft_sdi];    # CK_IO11
+set_property PACKAGE_PIN R17    [get_ports tft_sdo];    # CK_IO12
 
 #####################################################################
 ### Set all voltages and signaling standards
@@ -107,6 +114,7 @@ set_property IOSTANDARD LVCMOS33 [get_ports rmii*];
 set_property IOSTANDARD LVCMOS33 [get_ports spi*];
 set_property IOSTANDARD LVCMOS33 [get_ports uart*];
 set_property IOSTANDARD LVCMOS33 [get_ports text_lcd*];
+set_property IOSTANDARD LVCMOS33 [get_ports tft_*];
 
 # CFGBVS pin = 3.3V.
 set_property CFGBVS VCCO [current_design];

@@ -13,6 +13,7 @@ but use physical layer protocols that are more amenable to use with simple micro
 All interfaces transmit and receive standard Ethernet Frames.
 
 The following is a complete listing of supported interfaces,
+the generic VHDL interface for integrating custom port types,
 plus further information on how to use each option.
 
 ## Nontraditional Media
@@ -275,9 +276,76 @@ The SatCat5 GMII port is intended to connect third-party Ethernet IPs,
 such as the Xilinx Zynq-7000 PS Ethernet MAC, to a SatCat5 switch or network.
 Support for use with external GMII interfaces may be added in a future release.
 
+## Custom Ports
+
+If none of these interfaces matches your needs,
+you can define custom ports that interface with the SatCat5 switch.
+
+The SatCat5 port interface requires three VHDL records defined in "src/vhdl/common/switch_types.vhd".
+The "port" variant is used for ports from 0-1 Gbps.
+The "portx" variant is used for ports from 2-10 Gbps.
+
+* `port_rx_m2s` or `port_rx_m2sx` = Received data (Ethernet MAC to switch)
+* `port_tx_s2m` or `port_tx_s2mx` = Transmit data (Ethernet switch to MAC)
+* `port_tx_m2s` or `port_tx_m2sx` = Received data (Ethernet MAC to switch)
+
+In all cases, the data stream must contain the entire Ethernet frame with header, data, and FCS.
+However, it must not contain additional data from the physical coding sublayer (PCS),
+such as preambles or the start-of-frame delimiter (SFD).
+
+The "port" signals are defined as follows:
+
+* `port_rx_m2s/clk` is the clock for all signals in the "rx_m2s" record.
+* `port_rx_m2s/data` contains each incoming received byte.
+* `port_rx_m2s/last` indicates the last byte in each Ethernet frame.
+* `port_rx_m2s/write` is the write-enable strobe for `data` and `last`.
+* `port_rx_m2s/rxerr` should be asserted for serious PHY or MAC errors.
+* `port_rx_m2s/rate` is the estimated line-rate. Use the `get_rate_word` function.
+* `port_rx_m2s/status` is a set of user-defined status flags.
+* `port_rx_m2s/tsof` is the optional PTP start-of-frame timestamp.
+* `port_rx_m2s/tfreq` is the optional Doppler-PTP frequency offset.
+* `port_rx_m2s/reset_p` indicates this port is held in reset.
+* `port_tx_m2s/clk` is the clock for all signals in the "tx_s2m" and "tx_m2s" records.
+* `port_tx_s2m/data` contains each outgoing transmit byte.
+* `port_tx_s2m/last` indicates the last byte in each Ethernet frame.
+* `port_tx_s2m/valid` is the AXI-stream "TVALID" flow-control strobe.
+* `port_tx_m2s/ready` is the AXI-stream "TREADY" flow-control strobe.
+* `port_tx_m2s/pstart` is the optional PTP safe-to-start strobe (usually '1').
+* `port_tx_m2s/tnow` is the current PTP timestamp. (Use TSTAMP_DISABLED if unused.)
+* `port_tx_m2s/tfreq` is the optional Doppler-PTP frequency offset.
+* `port_tx_m2s/txerr` should be asserted for serious PHY or MAC errors.
+* `port_tx_m2s/reset_p` indicates this port is held in reset.
+
+The Rx and Tx streams denote incoming and outgoing data, with respect to the switch_core block.
+The Rx stream uses a simple write-enable strobe with no back-pressure or flow-control.
+The Tx stream uses AXI-stream flow-control semantics (TVALID/TREADY).
+However, the SatCat5 switch also guarantees continuity within each frame.
+i.e., Once TVALID is asserted for the first byte in a frame,
+TVALID will not be deasserted until the end of that frame.
+
+The PSTART, TSOF, and TNOW fields are used for IEEE1588 Precision Time Protocol (PTP).
+They are used to timestamp packets as they enter and leave the switch.
+If this feature is not required, drive PSTART to '1' and TSOF/TNOW to TSTAMP_DISABLED.
+Otherwise, use the "ptp_counter_sync" block to generate the timestamps.
+If the transmit and receive clock domains are separate, instantiate one synchronizer for each.
+For more information regarding the PSTART strobe, refer to "ptp_egress.vhd".
+(If in doubt, tie this signal to '1'.)
+
+The Rx and Tx TFREQ fields are used for Doppler-PTP,
+an experimental extention that adds frequency-offset metadata to PTP messages.
+This allows measurement of motion-induced Doppler effects for mobile PTP support.
+Ports that do not support PTP or Doppler-PTP should tie this field to TFREQ_DISABLED.
+
+The "portx" signals are the same,
+except that "data" is 64 bits wide and "last" is replaced by "nlast".
+The data word is always big-endian (most significant byte first) and partial words are left-packed.
+If "nlast" is zero, the data word is not the end of the frame.
+Otherwise, "nlast" indicates the number of remaining bytes (1-8).
+Leftover bytes are discarded, and the next frame starts with the MSB of the next data word.
+
 # Copyright Notice
 
-Copyright 2019, 2021 The Aerospace Corporation
+Copyright 2019, 2021, 2024 The Aerospace Corporation
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 

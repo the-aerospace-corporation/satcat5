@@ -77,14 +77,38 @@ namespace satcat5 {
                 satcat5::io::Readable* src);
 
         protected:
-            // Tx path: Raw input -> append FCS (parent) -> SLIP encode -> output
+            // Tx path: Write (*this) -> Append FCS (parent) -> SLIP encode -> Write (*dst)
             satcat5::io::SlipEncoder m_tx_slip;     // SLIP encoder object
-            // Rx path: Pull input -> SLIP decode -> check FCS -> buffer
+            // Rx path: Read (*src) -> SLIP decode -> Verify FCS -> Buffer -> Read (*this)
             satcat5::io::BufferedCopy m_rx_copy;    // Push/pull adapter
             satcat5::io::SlipDecoder m_rx_slip;     // SLIP decoder object
-            satcat5::eth::ChecksumRx m_rx_fcs;      // Verify Rx-checksums
-            satcat5::io::PacketBuffer m_rx;         // Decoder writes to buffer
-            u8 m_rxbuff[SATCAT5_SLIP_BUFFSIZE];     // Working buffer for m_rx
+            satcat5::eth::ChecksumRx m_rx_fcs;      // Verify received checksums
+            satcat5::io::PacketBuffer m_rx_buff;    // Decoder writes to buffer
+            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    // Working buffer for m_rx_buff
+        };
+
+        // Inverted SLIP encoder / decoder pair with Ethernet FCS.
+        // (Suitable for use in unit testing and simulation.)
+        class SlipCodecInverse
+            : public satcat5::io::ReadableRedirect
+            , public satcat5::io::SlipDecoder
+        {
+        public:
+            // Constructor links to specified source and destination.
+            // (Which are often the same BufferedIO object.)
+            SlipCodecInverse(
+                satcat5::io::Writeable* dst,
+                satcat5::io::Readable* src);
+
+        protected:
+            // Rx path: Write (*this) -> SLIP decode (parent) -> Verify FCS -> Write (*dst)
+            satcat5::eth::ChecksumRx m_rx_fcs;      // Verify received checksums
+            // Tx path: Read (*src) -> Append FCS -> SLIP encode -> Buffer -> Read (*this)
+            satcat5::io::BufferedCopy m_tx_copy;    // Push/pull adapter
+            satcat5::eth::ChecksumTx m_tx_fcs;      // Append outgoing checksums
+            satcat5::io::SlipEncoder m_tx_slip;     // SLIP encoder object
+            satcat5::io::PacketBuffer m_tx_buff;    // Decoder writes to buffer
+            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    // Working buffer for m_tx_buff
         };
     }
 }

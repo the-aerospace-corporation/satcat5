@@ -26,6 +26,11 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>hal_devices</name>
+			<type>2</type>
+			<locationURI>$%7BPARENT-3-PROJECT_LOC%7D/src/cpp/hal_devices</locationURI>
+		</link>
+		<link>
 			<name>hal_ublaze</name>
 			<type>2</type>
 			<locationURI>$%7BPARENT-3-PROJECT_LOC%7D/src/cpp/hal_ublaze</locationURI>

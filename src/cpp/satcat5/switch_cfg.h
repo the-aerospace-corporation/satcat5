@@ -56,14 +56,38 @@ namespace satcat5 {
         constexpr u32 VLAN_CONNECT_ALL  = (u32)(-1);
         constexpr u32 VLAN_CONNECT_NONE = 0;
 
-        // Set configuration word for a given port index:
-        inline constexpr u32 vlan_portcfg(u32 port, u32 policy,
-            satcat5::eth::VlanTag vtag = satcat5::eth::VTAG_DEFAULT)
-        {
-            return policy                       // VLAN_ADMIT_ALL, etc (see above)
-                | ((port & 0xFF)    << 24)      // Port index (0-255)
-                | (vtag.value);                 // VLAN identifier and/or priority
-        }
+        // Data structure for configuring VLAN tagging policy of each port.
+        struct VtagPolicy {
+            // Packed value holds the tag policy, port number, and default VID.
+            // (Format matches "eth_frame_vstrip.vhd" configuration register.)
+            u32 value;
+
+            // Accessors for each individual field.
+            inline u32 policy() const
+                { return u32(value & 0x00FF0000); }
+            inline unsigned port() const
+                { return unsigned(value >> 24); }
+            inline satcat5::eth::VlanTag vtag() const
+                { return VlanTag{u16(value & 0x0000FFFF)}; }
+
+            // Constructor creates a packed value:
+            //  Bits 31..24 = Port index (0 - 255)
+            //  Bits 23..16 = Tagging policy (e.g., VTAG_ADMIT_ALL)
+            //  Bits 15..00 = Default tag value (VID + DEI + PCP)
+            constexpr VtagPolicy(u32 port, u32 policy, VlanTag vtag = VTAG_DEFAULT)
+                : value(policy | vtag.value | ((port & 0xFF) << 24)) {}
+            constexpr VtagPolicy()
+                : value(0) {}
+            explicit constexpr VtagPolicy(u32 other)
+                : value(other) {}
+            constexpr VtagPolicy(const VtagPolicy& other)
+                : value(other.value) {}
+            VtagPolicy& operator=(const VtagPolicy& other)
+                { value = other.value; return *this; }
+        };
+
+        constexpr satcat5::eth::VtagPolicy
+            VCFG_DEFAULT(0, VTAG_ADMIT_ALL, VTAG_DEFAULT);
 
         // Data structure for configuring VLAN rate-limiter parameters.
         // See "mac_vlan_rate.vhd" for details on the token-bucket algorithm.
@@ -72,6 +96,16 @@ namespace satcat5 {
             u32 tok_rate;               // Tokens per millisecond
             u32 tok_max;                // Maximum accumulated tokens
 
+            static constexpr u32 bps2rate(u64 rate_bps) {
+                return (rate_bps < VRATE_THRESHOLD)
+                    ? u32(rate_bps / 8000)
+                    : u32(rate_bps / 2000000);
+            }
+
+            constexpr VlanRate()        // Default constructor
+                : tok_policy(VPOL_UNLIMITED)
+                , tok_rate(0)
+                , tok_max(0) {}
             constexpr VlanRate(
                 u32 policy,             // Policy (e.g., VPOL_STRICT)
                 u64 rate_bps,           // Rate limit (bits per second)
@@ -80,27 +114,35 @@ namespace satcat5 {
                     rate_bps < VRATE_THRESHOLD
                     ? (policy | VRATE_SCALE_1X)
                     : (policy | VRATE_SCALE_256X))
-                , tok_rate(
-                    rate_bps < VRATE_THRESHOLD
-                    ? (rate_bps / 8000)
-                    : (rate_bps / 2000000))
-                , tok_max(tok_rate * burst_msec)
+                , tok_rate(bps2rate(rate_bps))
+                , tok_max(burst_msec * bps2rate(rate_bps))
             {
                 // Nothing else to initialize.
             }
         };
 
         // Define some commonly-used rate-limiter configurations.
+        // Note: For moderate rates, it is safe to increase "burst_msec"
+        //  without requiring large buffers. Default target is ~4 kiB.
         constexpr satcat5::eth::VlanRate
-            VRATE_ZERO          (VPOL_STRICT, 0),
-            VRATE_8KBPS         (VPOL_STRICT, 8000ull),
-            VRATE_64KBPS        (VPOL_STRICT, 64000ull),
-            VRATE_1MBPS         (VPOL_STRICT, 1000000ull),
-            VRATE_10MBPS        (VPOL_STRICT, 10000000ull),
-            VRATE_100MBPS       (VPOL_STRICT, 100000000ull),
-            VRATE_1GBPS         (VPOL_STRICT, 1000000000ull),
+            VRATE_ZERO          (VPOL_STRICT, 0, 0),
+            VRATE_8KBPS         (VPOL_STRICT,        8000ull, 4096),
+            VRATE_16KBPS        (VPOL_STRICT,       16000ull, 2048),
+            VRATE_32KBPS        (VPOL_STRICT,       32000ull, 1024),
+            VRATE_64KBPS        (VPOL_STRICT,       64000ull,  512),
+            VRATE_128KBPS       (VPOL_STRICT,      128000ull,  256),
+            VRATE_256KBPS       (VPOL_STRICT,      256000ull,  128),
+            VRATE_512KBPS       (VPOL_STRICT,      512000ull,   64),
+            VRATE_1MBPS         (VPOL_STRICT,     1000000ull,   32),
+            VRATE_2MBPS         (VPOL_STRICT,     2000000ull,   16),
+            VRATE_4MBPS         (VPOL_STRICT,     4000000ull,    8),
+            VRATE_8MBPS         (VPOL_STRICT,     8000000ull,    4),
+            VRATE_10MBPS        (VPOL_STRICT,    10000000ull,    3),
+            VRATE_16MBPS        (VPOL_STRICT,    16000000ull,    2),
+            VRATE_100MBPS       (VPOL_STRICT,   100000000ull),
+            VRATE_1GBPS         (VPOL_STRICT,  1000000000ull),
             VRATE_10GBPS        (VPOL_STRICT, 10000000000ull),
-            VRATE_UNLIMITED     (VPOL_UNLIMITED, 0);
+            VRATE_UNLIMITED     (VPOL_UNLIMITED, 0, 0);
 
         class SwitchConfig {
         public:
@@ -159,7 +201,7 @@ namespace satcat5 {
             void vlan_reset(bool lockdown = false);     // Revert all settings to default
             u32 vlan_get_mask(u16 vid);                 // Get port-mask for designated VID
             void vlan_set_mask(u16 vid, u32 mask);      // Limit VID to designated ports
-            void vlan_set_port(u32 cfg);                // Port settings (see vlan_portcfg)
+            void vlan_set_port(const VtagPolicy& cfg);  // Port settings (e.g., tag policy)
             void vlan_join(u16 vid, unsigned port);     // Port should join VLAN
             void vlan_leave(u16 vid, unsigned port);    // Port should leave VLAN
             void vlan_set_rate(u16 vid, const satcat5::eth::VlanRate& cfg);

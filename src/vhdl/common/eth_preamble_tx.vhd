@@ -43,6 +43,7 @@ entity eth_preamble_tx is
     tx_cken     : in  std_logic := '1'; -- Clock-enable strobe
     tx_idle     : in  std_logic_vector(3 downto 0) := (others => '0');
     tx_tstamp   : in  tstamp_t := TSTAMP_DISABLED;
+    tx_tfreq    : in  tfreq_t := TFREQ_DISABLED;
 
     -- Byte-repetition: Each input byte is repeated N+1 times.
     -- (Optional. If unused, leave this port disconnected or tied to zero.)
@@ -95,6 +96,7 @@ tx_ctrl.clk     <= tx_clk;
 tx_ctrl.ready   <= not fifo_full;
 tx_ctrl.pstart  <= reg_pstart;
 tx_ctrl.tnow    <= tx_tstamp;
+tx_ctrl.tfreq   <= tx_tfreq;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= not tx_pwren;
 

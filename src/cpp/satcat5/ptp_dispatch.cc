@@ -10,6 +10,7 @@
 
 using satcat5::eth::MacAddr;
 using satcat5::eth::MacType;
+using satcat5::eth::VlanTag;
 using satcat5::ptp::Dispatch;
 using satcat5::ptp::DispatchTo;
 using satcat5::ptp::PortId;
@@ -23,6 +24,8 @@ Dispatch::Dispatch(
     , m_callback(0)
     , m_reply_mac(satcat5::eth::MACADDR_NONE)
     , m_stored_mac(satcat5::eth::MACADDR_NONE)
+    , m_reply_vtag(satcat5::eth::VTAG_NONE)
+    , m_stored_vtag(satcat5::eth::VTAG_NONE)
     , m_reply_ip(satcat5::ip::ADDR_NONE)
     , m_stored_ip(satcat5::ip::ADDR_NONE)
 {
@@ -46,10 +49,7 @@ satcat5::io::Writeable* Dispatch::ptp_send(DispatchTo addr, unsigned num_bytes, 
     if (!iface || iface->get_write_space() < max_bytes) return 0;
 
     // Create and write the ethernet header
-    satcat5::eth::Header eth_header;
-    eth_header.dst = get_dst_mac(addr);
-    eth_header.src = m_ip->macaddr();
-    eth_header.type = get_eth_type(addr);
+    satcat5::eth::Header eth_header = get_dst_eth(addr);
     eth_header.write_to(iface);
 
     // Write IPv4 and UDP headers if this is a L3 PTP message
@@ -76,14 +76,17 @@ satcat5::io::Writeable* Dispatch::ptp_send(DispatchTo addr, unsigned num_bytes, 
 
 void Dispatch::store_reply_addr()
 {
-    m_stored_mac = m_reply_mac;
-    m_stored_ip  = m_reply_ip;
+    m_stored_mac    = m_reply_mac;
+    m_stored_vtag   = m_reply_vtag;
+    m_stored_ip     = m_reply_ip;
 }
 
-void Dispatch::store_addr(const MacAddr& mac, const satcat5::ip::Addr& ip)
+void Dispatch::store_addr(
+    const MacAddr& mac, const satcat5::ip::Addr& ip, const VlanTag& vtag)
 {
-    m_stored_mac = mac;
-    m_stored_ip  = ip;
+    m_stored_mac    = mac;
+    m_stored_vtag   = vtag;
+    m_stored_ip     = ip;
 }
 
 void Dispatch::poll_demand()
@@ -94,6 +97,7 @@ void Dispatch::poll_demand()
     satcat5::eth::Header eth_header;
     eth_header.read_from(readable);
     m_reply_mac = eth_header.src;
+    m_reply_vtag = eth_header.vtag;
 
     // If mac_type is IPv4, then store the L3 reply address.
     if (eth_header.type == satcat5::eth::ETYPE_IPV4) {
@@ -118,29 +122,32 @@ void Dispatch::poll_demand()
     readable->read_finalize();
 }
 
-satcat5::eth::MacAddr Dispatch::get_dst_mac(DispatchTo addr) const
-{
-    switch (addr) {
-        case DispatchTo::REPLY:         return m_reply_mac;
-        case DispatchTo::STORED:        return m_stored_mac;
-        default:                        return satcat5::eth::MACADDR_BROADCAST;
-    }
-}
-
 // A valid IPv4 address indicates an L3 packet; otherwise choose L2.
 static constexpr MacType infer_etype(const satcat5::ip::Addr& addr) {
     return (addr == satcat5::ip::ADDR_NONE)
         ? satcat5::eth::ETYPE_PTP : satcat5::eth::ETYPE_IPV4;
 }
 
-satcat5::eth::MacType Dispatch::get_eth_type(DispatchTo addr) const
+satcat5::eth::Header Dispatch::get_dst_eth(DispatchTo addr) const
 {
+    // Ethernet header fields = {dst, src, etype, vtag}
     switch (addr) {
-        case DispatchTo::BROADCAST_L2:  return satcat5::eth::ETYPE_PTP;
-        case DispatchTo::BROADCAST_L3:  return satcat5::eth::ETYPE_IPV4;
-        case DispatchTo::REPLY:         return infer_etype(m_reply_ip);
-        case DispatchTo::STORED:        // Fallthrough
-        default:                        return infer_etype(m_stored_ip);
+        case DispatchTo::BROADCAST_L2:
+            return satcat5::eth::Header {
+            satcat5::eth::MACADDR_BROADCAST, m_ip->macaddr(),
+            satcat5::eth::ETYPE_PTP, satcat5::eth::VTAG_NONE};
+        case DispatchTo::BROADCAST_L3:
+            return satcat5::eth::Header {
+            satcat5::eth::MACADDR_BROADCAST, m_ip->macaddr(),
+            satcat5::eth::ETYPE_IPV4, satcat5::eth::VTAG_NONE};
+        case DispatchTo::REPLY:
+            return satcat5::eth::Header {
+            m_reply_mac, m_ip->macaddr(),
+            infer_etype(m_reply_ip), m_reply_vtag};
+        default: // DispatchTo::STORED
+            return satcat5::eth::Header {
+            m_stored_mac, m_ip->macaddr(),
+            infer_etype(m_stored_ip), m_stored_vtag};
     }
 }
 

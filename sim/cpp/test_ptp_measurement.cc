@@ -5,7 +5,7 @@
 // Test cases for "ptp::Measurement" and "ptp::MeasurementCache"
 
 #include <hal_test/catch.hpp>
-#include <hal_test/ptp_clock.h>
+#include <hal_test/ptp_simclock.h>
 #include <satcat5/ptp_measurement.h>
 
 using satcat5::ptp::Header;
@@ -14,8 +14,8 @@ using satcat5::ptp::MeasurementCache;
 using satcat5::ptp::Time;
 
 TEST_CASE("ptp_measurement") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Test headers
     const Header hdr1 =     // Basic template
@@ -81,9 +81,9 @@ TEST_CASE("ptp_measurement") {
     SECTION("notifications") {
         // Set up a dummy tracking controller.
         // Network communication infrastructure.
-        satcat5::util::PosixTimer timer;
+        satcat5::ptp::SimulatedTimer timer;
         satcat5::ptp::SimulatedClock clock(125e6, 125e6);
-        satcat5::ptp::TrackingController uut(&timer, &clock, 0);
+        satcat5::ptp::TrackingController uut(&clock, &timer);
         // Confirm event counts before and after the PTP callback.
         CHECK(clock.num_fine() == 1);
         uut.ptp_ready(test1);

@@ -60,7 +60,7 @@ namespace satcat5 {
         public:
             explicit LedActivityCtrl(
                 satcat5::cfg::NetworkStats* stats,
-                unsigned delay=33);         // Default speed = 30 fps
+                unsigned delay_msec = 33);  // Default speed = 30 fps
             inline void add(LedActivity* led) {m_list.add(led);}
 
         private:

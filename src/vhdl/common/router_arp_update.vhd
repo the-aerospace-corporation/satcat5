@@ -5,6 +5,9 @@
 --
 -- Address Resolution Protocol (ARP) interface for updates
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block handles byte-by-byte implementation of the Address Resolution
 -- Protocol (IETF RFC 826) for keeping the local ARP-cache up to date.  The
 -- input is a filtered byte stream containing specific ARP fields only

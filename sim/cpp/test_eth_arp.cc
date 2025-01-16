@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test the Address Resolution Protocol handler
@@ -8,15 +8,22 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/eth_arp.h>
 #include <satcat5/eth_dispatch.h>
+#include <satcat5/ip_table.h>
 
+using satcat5::ip::Route;
 using satcat5::test::write;
 using satcat5::test::read;
 
 TEST_CASE("ethernet-arp") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Define addresses used during the test.
     const satcat5::eth::MacAddr MAC_UUT =
         {{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00}};
     const satcat5::ip::Addr IP_UUT = {0x12345678};
     const satcat5::ip::Addr IP_ALT = {0x55555555};
+    const satcat5::ip::Subnet SUB_ALT = {IP_ALT, satcat5::ip::MASK_24};
 
     // Transmit and receive buffers.
     // (Named with respect to the test device.)
@@ -116,6 +123,17 @@ TEST_CASE("ethernet-arp") {
     SECTION("ipchange") {
         // Once IP is changed, Query2 expects a response.
         uut.set_ipaddr(IP_ALT);
+        CHECK(TEST_WRITE(REF_QUERY2));
+        satcat5::poll::service_all();
+        CHECK(TEST_READ(REF_REPLY2));
+    }
+
+    SECTION("proxy") {
+        // Enable proxy-ARP for a specific subnet.
+        satcat5::ip::Table table;
+        table.route_static(SUB_ALT, IP_ALT, MAC_UUT, 0, Route::FLAG_PROXY_ARP);
+        uut.set_proxy(&table);
+        // Unit under test should respond as if it has that address.
         CHECK(TEST_WRITE(REF_QUERY2));
         satcat5::poll::service_all();
         CHECK(TEST_READ(REF_REPLY2));

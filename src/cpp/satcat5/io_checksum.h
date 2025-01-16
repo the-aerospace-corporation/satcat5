@@ -2,24 +2,31 @@
 // Copyright 2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Inline checksum insertion and verification
+// Inline checksum insertion (ChecksumTx) and verification (ChecksumRx).
 //
-// Many frame formats consist of frame data followed by a checksum.
-// This file defines two templates for working with such streams.
-// The templates are able to work with any byte-aligned checksum with
-// byte-aligned inputs, including most CRC types and many other formats.
-//
-// Each template accepts data using the io::Writeable interface and writes
-// modified data to a designated io::Writeable pointer:
-//  * "ChecksumTx": For each incoming frame, append the calculated checksum.
-//  * "ChecksumRx": For each incoming frame, strip the last N bytes and
-//     compare against the calculated checksum. If it is a match call
-//     write_finalize(), and otherwise call write_abort().
-//
-// Both templates require the user to override the methods write_next(),
-// and write_finalize() to calculate and format the checksum. For example
-// usage, refer to "eth_checksum.h".
-//
+//! \file
+//! \details
+//! Many frame formats consist of frame data followed by a checksum.
+//! io::ChecksumTx and io::ChecksumRx define two templates for working with
+//! such streams. The templates are able to work with any byte-aligned checksum
+//! with byte-aligned inputs, including most CRC types and many other formats.
+//!
+//! Each template accepts data using the io::Writeable interface and writes
+//! modified data to a designated io::Writeable pointer:
+//!  * `ChecksumTx`: For each incoming frame, append the calculated checksum.
+//!  * `ChecksumRx`: For each incoming frame, strip the last N bytes and
+//!    compare against the calculated checksum. If it is a match call
+//!    write_finalize(), and otherwise call write_abort().
+//!
+//! In all child classes of either template, the user MUST override the methods
+//! write_next() and write_finalize() to calculate and format the checksum. For
+//! child classes of io::ChecksumTx, the implementation of write_finalize()
+//! MUST call chk_finalize(). For example usage, refer to eth::ChecksumTx and
+//! eth::ChecksumRx.
+//!
+//! Template type `T` stores the checksum (u8/u16/u32/u64).
+//! Template value `N` is the checksum length in bytes.
+//!
 
 #pragma once
 
@@ -28,9 +35,8 @@
 
 namespace satcat5 {
     namespace io {
-        // Append FCS to each outgoing frame.
-        // Template type "T" stores the checksum (u8/u16/u32/u64).
-        // Template value "N" is the checksum length in bytes.
+        //! Inline checksum insertion, appends FCS to each outgoing frame.
+        //! \copydoc io_checksum.h
         template <class T, unsigned N> class ChecksumTx
             : public satcat5::io::Writeable
         {
@@ -49,7 +55,7 @@ namespace satcat5 {
             }
 
         protected:
-            // Only the child class has access to the constructor.
+            //! Only the child class has access to the constructor.
             ChecksumTx(satcat5::io::Writeable* dst, T init)
                 : m_dst(dst), m_chk(init), m_ovr(false), m_init(init)
             {
@@ -60,8 +66,8 @@ namespace satcat5 {
                 m_ovr = true;                       // Flag until end-of-frame.
             }
 
-            // Reset internal state and return true if the frame is valid.
-            // i.e., If false, do not forward the write_finalize() event.
+            //! Reset internal state and return true if the frame is valid.
+            //! i.e., If false, do not forward the write_finalize() event.
             bool chk_finalize() {
                 bool ovr = m_ovr;
                 if (ovr) m_dst->write_abort();      // Forward error event?
@@ -70,21 +76,15 @@ namespace satcat5 {
                 return !ovr;                        // Continue finalize event?
             }
 
-            // Child class MUST define the following methods:
-            //  bool write_finalize() override;
-            //  void write_next(u8 data) override;
-            // Note: The child's write_finalize() MUST call chk_finalize().
-
             // Internal state:
-            satcat5::io::Writeable* const m_dst;    // Output object
-            T m_chk;                                // Checksum state
-            bool m_ovr;                             // Overflow flag
-            const T m_init;                         // State after reset
+            satcat5::io::Writeable* const m_dst;    //!< Output object
+            T m_chk;                                //!< Checksum state
+            bool m_ovr;                             //!< Overflow flag
+            const T m_init;                         //!< State after reset
         };
 
-        // Check and remove FCS from each incoming frame.
-        // Template type "T" stores the checksum (u8/u16/u32/u64).
-        // Template value "N" is the checksum length in bytes.
+        //! Check and remove FCS from each incoming frame.
+        //! \copydoc io_checksum.h
         template <class T, unsigned N> class ChecksumRx
             : public satcat5::io::Writeable
         {
@@ -103,15 +103,15 @@ namespace satcat5 {
             }
 
         protected:
-            // Only the child class has access to the constructor.
+            //! Only the child class has access to the constructor.
             ChecksumRx(satcat5::io::Writeable* dst, T init)
                 : m_dst(dst), m_chk(init), m_init(init), m_sreg(0), m_bidx(0)
             {
                 // Nothing else to initialize.
             }
 
-            // Child class MUST call sreg_match(...) during write_finalize().
-            // The child provides the FCS in a format that matches SREG.
+            //! Child class MUST call sreg_match(...) during write_finalize().
+            //! The child provides the FCS in a format that matches SREG.
             inline bool sreg_match(T fcs) {
                 // Does the calculated FCS match the last N bytes in SREG?
                 constexpr T MASK = satcat5::util::mask_lower<T>(8*N);
@@ -128,8 +128,8 @@ namespace satcat5 {
                 }
             }
 
-            // Child class MUST call sreg_push(...) during write_next().
-            // If it returns true, update the checksum state appropriately.
+            //! Child class MUST call sreg_push(...) during write_next().
+            //! If it returns true, update the checksum state appropriately.
             inline bool sreg_push(u8& data) {
                 // FCS is in the last N bytes, but we can't predict end-of-frame.
                 // Instead, buffer previous N bytes of input in a shift register.
@@ -147,16 +147,12 @@ namespace satcat5 {
                 }
             }
 
-            // Child class must define the following methods:
-            //  bool write_finalize() override;
-            //  void write_next(u8 data) override;
-
             // Internal state:
-            satcat5::io::Writeable* const m_dst;    // Output object
-            T m_chk;                                // Checksum state
-            const T m_init;                         // State after reset
-            T m_sreg;                               // Big-endian input buffer
-            unsigned m_bidx;                        // Bytes received
+            satcat5::io::Writeable* const m_dst;    //!< Output object
+            T m_chk;                                //!< Checksum state
+            const T m_init;                         //!< State after reset
+            T m_sreg;                               //!< Big-endian input buffer
+            unsigned m_bidx;                        //!< Bytes received
         };
     }
 }

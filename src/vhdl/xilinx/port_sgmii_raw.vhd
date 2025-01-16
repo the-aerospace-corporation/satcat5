@@ -40,7 +40,7 @@ use     work.switch_types.all;
 
 entity port_sgmii_raw is
     generic (
-    MGT_TYPE    : string;               -- "gtx", "gty", etc.
+    MGT_TYPE    : string;               -- "gtx", "gty", "gty_plus", etc.
     REFCLK_SRC  : integer := 1;         -- 7-series only: REFCLK0 or REFCLK1?
     SHAKE_WAIT  : boolean := false;     -- Wait for MAC/PHY handshake?
     SHARED_EN   : boolean := true;      -- Does the IP-core include shared logic?
@@ -57,6 +57,7 @@ entity port_sgmii_raw is
     ptx_data    : in  port_tx_s2m;
     ptx_ctrl    : out port_tx_m2s;
     port_shdn   : in  std_logic;
+    port_test   : in  std_logic := '0';
 
     -- Global reference for PTP timestamps, if enabled.
     ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
@@ -119,10 +120,14 @@ component sgmii_raw_gtx0 is
     gt0_gtrxreset_in            : in  std_logic;
     gt0_rxpmareset_in           : in  std_logic;
     gt0_rxresetdone_out         : out std_logic;
+    gt0_txpostcursor_in         : in  std_logic_vector(4 downto 0);
+    gt0_txprecursor_in          : in  std_logic_vector(4 downto 0);
     gt0_gttxreset_in            : in  std_logic;
     gt0_txuserrdy_in            : in  std_logic;
     gt0_txusrclk_in             : in  std_logic;
     gt0_txusrclk2_in            : in  std_logic;
+    gt0_txprbsforceerr_in       : in  std_logic;
+    gt0_txdiffctrl_in           : in  std_logic_vector(3 downto 0);
     gt0_txdata_in               : in  std_logic_vector(19 downto 0);
     gt0_gtxtxn_out              : out std_logic;
     gt0_gtxtxp_out              : out std_logic;
@@ -130,6 +135,8 @@ component sgmii_raw_gtx0 is
     gt0_txoutclkfabric_out      : out std_logic;
     gt0_txoutclkpcs_out         : out std_logic;
     gt0_txresetdone_out         : out std_logic;
+    gt0_txpolarity_in           : in  std_logic;
+    gt0_txprbssel_in            : in  std_logic_vector(2 downto 0);
     gt0_qplloutclk_in           : in  std_logic;
     gt0_qplloutrefclk_in        : in  std_logic);
 end component;
@@ -176,10 +183,14 @@ component sgmii_raw_gtx1 is
     gt0_gtrxreset_in            : in  std_logic;
     gt0_rxpmareset_in           : in  std_logic;
     gt0_rxresetdone_out         : out std_logic;
+    gt0_txpostcursor_in         : in  std_logic_vector(4 downto 0);
+    gt0_txprecursor_in          : in  std_logic_vector(4 downto 0);
     gt0_gttxreset_in            : in  std_logic;
     gt0_txuserrdy_in            : in  std_logic;
     gt0_txusrclk_in             : in  std_logic;
     gt0_txusrclk2_in            : in  std_logic;
+    gt0_txprbsforceerr_in       : in  std_logic;
+    gt0_txdiffctrl_in           : in  std_logic_vector(3 downto 0);
     gt0_txdata_in               : in  std_logic_vector(19 downto 0);
     gt0_gtxtxn_out              : out std_logic;
     gt0_gtxtxp_out              : out std_logic;
@@ -187,13 +198,14 @@ component sgmii_raw_gtx1 is
     gt0_txoutclkfabric_out      : out std_logic;
     gt0_txoutclkpcs_out         : out std_logic;
     gt0_txresetdone_out         : out std_logic;
+    gt0_txpolarity_in           : in  std_logic;
+    gt0_txprbssel_in            : in  std_logic_vector(2 downto 0);
     gt0_qplloutclk_in           : in  std_logic;
     gt0_qplloutrefclk_in        : in  std_logic);
 end component;
 
 component sgmii_raw_gty0 is
     port (
-    gtwiz_userclk_tx_reset_in           : in  std_logic_vector(0 downto 0);
     gtwiz_userclk_tx_active_in          : in  std_logic_vector(0 downto 0);
     gtwiz_userclk_rx_active_in          : in  std_logic_vector(0 downto 0);
     gtwiz_buffbypass_tx_reset_in        : in  std_logic_vector(0 downto 0);
@@ -221,6 +233,12 @@ component sgmii_raw_gty0 is
     gtyrxp_in               : in  std_logic_vector(0 downto 0);
     rxusrclk_in             : in  std_logic_vector(0 downto 0);
     rxusrclk2_in            : in  std_logic_vector(0 downto 0);
+    txdiffctrl_in           : in  std_logic_vector(4 downto 0);
+    txpolarity_in           : in  std_logic_vector(0 downto 0);
+    txpostcursor_in         : in  std_logic_vector(4 downto 0);
+    txprbsforceerr_in       : in  std_logic_vector(0 downto 0);
+    txprbssel_in            : in  std_logic_vector(3 downto 0);
+    txprecursor_in          : in  std_logic_vector(4 downto 0);
     txusrclk_in             : in  std_logic_vector(0 downto 0);
     txusrclk2_in            : in  std_logic_vector(0 downto 0);
     gtpowergood_out         : out std_logic_vector(0 downto 0);
@@ -244,6 +262,7 @@ signal tx_clk125    : std_logic;
 signal tx_data10    : std_logic_vector(9 downto 0);
 signal tx_data20    : std_logic_vector(19 downto 0);
 signal tx_tstamp    : tstamp_t := TSTAMP_DISABLED;
+signal tx_tfreq     : tfreq_t := TFREQ_DISABLED;
 signal tx_tvalid    : std_logic := '0';
 
 -- Receive datapath.
@@ -253,6 +272,7 @@ signal rx_data10    : std_logic_vector(9 downto 0);
 signal rx_data20    : std_logic_vector(19 downto 0);
 signal rx_tstamp10  : tstamp_t;
 signal rx_tstamp20  : tstamp_t := TSTAMP_DISABLED;
+signal rx_tfreq     : tfreq_t := TFREQ_DISABLED;
 signal rx_tvalid    : std_logic := '0';
 
 -- MGT control signals.
@@ -306,6 +326,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => rx_clk125,
         user_ctr    => rx_tstamp20,
+        user_freq   => rx_tfreq,
         user_lock   => rx_tvalid,
         user_rst_p  => rx_reset_p);
 
@@ -317,6 +338,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => tx_clk125,
         user_ctr    => tx_tstamp,
+        user_freq   => tx_tfreq,
         user_lock   => tx_tvalid,
         user_rst_p  => tx_reset_p);
 end generate;
@@ -331,11 +353,14 @@ u_sgmii : entity work.port_sgmii_common
     tx_clk      => tx_clk125,
     tx_data     => tx_data10,
     tx_tstamp   => tx_tstamp,
+    tx_tfreq    => tx_tfreq,
     tx_tvalid   => tx_tvalid,
+    port_test   => port_test,
     rx_clk      => rx_clk125,
     rx_lock     => rx_locked,
     rx_data     => rx_data10,
     rx_tstamp   => rx_tstamp10,
+    rx_tfreq    => rx_tfreq,
     rx_tvalid   => rx_tvalid,
     prx_data    => prx_data,
     ptx_data    => ptx_data,
@@ -502,10 +527,14 @@ gen_gtx0 : if MGT_TYPE = "gtx" generate
             gt0_gtrxreset_in            => reset_req,
             gt0_rxpmareset_in           => reset_req,
             gt0_rxresetdone_out         => open,
+            gt0_txpostcursor_in         => (others => '0'),
+            gt0_txprecursor_in          => (others => '0'),
             gt0_gttxreset_in            => reset_req,
             gt0_txuserrdy_in            => '1',
             gt0_txusrclk_in             => tx_clk125,
             gt0_txusrclk2_in            => tx_clk125,
+            gt0_txprbsforceerr_in       => '0',
+            gt0_txdiffctrl_in           => (others => '0'),
             gt0_txdata_in               => tx_data20,
             gt0_gtxtxn_out              => sgmii_txn,
             gt0_gtxtxp_out              => sgmii_txp,
@@ -513,6 +542,8 @@ gen_gtx0 : if MGT_TYPE = "gtx" generate
             gt0_txoutclkfabric_out      => open,
             gt0_txoutclkpcs_out         => open,
             gt0_txresetdone_out         => open,
+            gt0_txpolarity_in           => '0',
+            gt0_txprbssel_in            => (others => '0'),
             gt0_qplloutclk_in           => gtrefclk_q1,
             gt0_qplloutrefclk_in        => gtrefclk_q2);
     end generate;
@@ -560,10 +591,14 @@ gen_gtx0 : if MGT_TYPE = "gtx" generate
             gt0_gtrxreset_in            => reset_req,
             gt0_rxpmareset_in           => reset_req,
             gt0_rxresetdone_out         => open,
+            gt0_txpostcursor_in         => (others => '0'),
+            gt0_txprecursor_in          => (others => '0'),
             gt0_gttxreset_in            => reset_req,
             gt0_txuserrdy_in            => '1',
             gt0_txusrclk_in             => tx_clk125,
             gt0_txusrclk2_in            => tx_clk125,
+            gt0_txprbsforceerr_in       => '0',
+            gt0_txdiffctrl_in           => (others => '0'),
             gt0_txdata_in               => tx_data20,
             gt0_gtxtxn_out              => sgmii_txn,
             gt0_gtxtxp_out              => sgmii_txp,
@@ -571,6 +606,8 @@ gen_gtx0 : if MGT_TYPE = "gtx" generate
             gt0_txoutclkfabric_out      => open,
             gt0_txoutclkpcs_out         => open,
             gt0_txresetdone_out         => open,
+            gt0_txpolarity_in           => '0',
+            gt0_txprbssel_in            => (others => '0'),
             gt0_qplloutclk_in           => gtrefclk_q1,
             gt0_qplloutrefclk_in        => gtrefclk_q2);
     end generate;
@@ -580,7 +617,7 @@ gen_gty0 : if MGT_TYPE = "gty" generate
     -- Shared signals are not required in this mode.
     shared_out <= (others => '0');
 
-    u_refclk : ibufds_gte4
+    u_refclk : ibufds_gte3
         port map(
         CEB     => '0',
         I       => gtrefclk_p,
@@ -590,29 +627,28 @@ gen_gty0 : if MGT_TYPE = "gty" generate
 
     u_mgt : sgmii_raw_gty0
         port map(
-        drpclk_in                           => (others => gtsysclk),
+        drpclk_in(0)                        => gtsysclk,
         gtpowergood_out                     => open,
         gtrefclk0_in(0)                     => gtrefclk_bb,
         gtwiz_buffbypass_rx_done_out        => open,
         gtwiz_buffbypass_rx_error_out       => open,
-        gtwiz_buffbypass_rx_reset_in        => (others => async_reset),
+        gtwiz_buffbypass_rx_reset_in(0)     => async_reset,
         gtwiz_buffbypass_rx_start_user_in   => (others => '0'),
         gtwiz_buffbypass_tx_done_out        => open,
         gtwiz_buffbypass_tx_error_out       => open,
-        gtwiz_buffbypass_tx_reset_in        => (others => async_reset),
+        gtwiz_buffbypass_tx_reset_in(0)     => async_reset,
         gtwiz_buffbypass_tx_start_user_in   => (others => '0'),
-        gtwiz_reset_all_in                  => (others => reset_req),
-        gtwiz_reset_clk_freerun_in          => (others => gtsysclk),
+        gtwiz_reset_all_in(0)               => reset_req,
+        gtwiz_reset_clk_freerun_in(0)       => gtsysclk,
         gtwiz_reset_rx_cdr_stable_out       => open,
-        gtwiz_reset_rx_datapath_in          => (others => reset_req),
+        gtwiz_reset_rx_datapath_in(0)       => reset_req,
         gtwiz_reset_rx_done_out(0)          => gt_ready_rx,
-        gtwiz_reset_rx_pll_and_datapath_in  => (others => reset_req),
-        gtwiz_reset_tx_datapath_in          => (others => reset_req),
+        gtwiz_reset_rx_pll_and_datapath_in(0) => reset_req,
+        gtwiz_reset_tx_datapath_in(0)       => reset_req,
         gtwiz_reset_tx_done_out(0)          => gt_ready_tx,
-        gtwiz_reset_tx_pll_and_datapath_in  => (others => reset_req),
+        gtwiz_reset_tx_pll_and_datapath_in(0) => reset_req,
         gtwiz_userclk_rx_active_in          => (others => '1'),
         gtwiz_userclk_tx_active_in          => (others => '1'),
-        gtwiz_userclk_tx_reset_in           => (others => reset_req),
         gtwiz_userdata_rx_out               => rx_data20,
         gtwiz_userdata_tx_in                => tx_data20,
         gtyrxn_in(0)                        => sgmii_rxn,
@@ -626,6 +662,72 @@ gen_gty0 : if MGT_TYPE = "gty" generate
         txoutclk_out(0)                     => tx_clk125,
         txpmaresetdone_out                  => open,
         txprgdivresetdone_out               => open,
+        txdiffctrl_in                       => (others => '0'),
+        txpolarity_in(0)                    => '0',
+        txpostcursor_in                     => (others => '0'),
+        txprbsforceerr_in(0)                => '0',
+        txprbssel_in                        => (others => '0'),
+        txprecursor_in                      => (others => '0'),
+        txusrclk_in(0)                      => tx_clk125,
+        txusrclk2_in(0)                     => tx_clk125);
+end generate;
+
+
+gen_gty0p : if MGT_TYPE = "gty_plus" generate
+    -- Shared signals are not required in this mode.
+    shared_out <= (others => '0');
+
+    u_refclk : ibufds_gte4
+        port map(
+        CEB     => '0',
+        I       => gtrefclk_p,
+        IB      => gtrefclk_n,
+        O       => gtrefclk_bb,
+        ODIV2   => open);
+
+    u_mgt : sgmii_raw_gty0
+        port map(
+        drpclk_in(0)                        => gtsysclk,
+        gtpowergood_out                     => open,
+        gtrefclk0_in(0)                     => gtrefclk_bb,
+        gtwiz_buffbypass_rx_done_out        => open,
+        gtwiz_buffbypass_rx_error_out       => open,
+        gtwiz_buffbypass_rx_reset_in(0)     => async_reset,
+        gtwiz_buffbypass_rx_start_user_in   => (others => '0'),
+        gtwiz_buffbypass_tx_done_out        => open,
+        gtwiz_buffbypass_tx_error_out       => open,
+        gtwiz_buffbypass_tx_reset_in(0)     => async_reset,
+        gtwiz_buffbypass_tx_start_user_in   => (others => '0'),
+        gtwiz_reset_all_in(0)               => reset_req,
+        gtwiz_reset_clk_freerun_in(0)       => gtsysclk,
+        gtwiz_reset_rx_cdr_stable_out       => open,
+        gtwiz_reset_rx_datapath_in(0)       => reset_req,
+        gtwiz_reset_rx_done_out(0)          => gt_ready_rx,
+        gtwiz_reset_rx_pll_and_datapath_in(0) => reset_req,
+        gtwiz_reset_tx_datapath_in(0)       => reset_req,
+        gtwiz_reset_tx_done_out(0)          => gt_ready_tx,
+        gtwiz_reset_tx_pll_and_datapath_in(0) => reset_req,
+        gtwiz_userclk_rx_active_in          => (others => '1'),
+        gtwiz_userclk_tx_active_in          => (others => '1'),
+        gtwiz_userdata_rx_out               => rx_data20,
+        gtwiz_userdata_tx_in                => tx_data20,
+        gtyrxn_in(0)                        => sgmii_rxn,
+        gtyrxp_in(0)                        => sgmii_rxp,
+        gtytxn_out(0)                       => sgmii_txn,
+        gtytxp_out(0)                       => sgmii_txp,
+        rxoutclk_out(0)                     => rx_clk125,
+        rxpmaresetdone_out                  => open,
+        rxusrclk_in(0)                      => rx_clk125,
+        rxusrclk2_in(0)                     => rx_clk125,
+        txoutclk_out(0)                     => tx_clk125,
+        txpmaresetdone_out                  => open,
+        txprgdivresetdone_out               => open,
+        txdiffctrl_in                       => (others => '0'),
+        txpolarity_in(0)                    => '0',
+        txpostcursor_in                     => (others => '0'),
+        txprbsforceerr_in(0)                => '0',
+        txprbssel_in                        => (others => '0'),
+        txprecursor_in                      => (others => '0'),
         txusrclk_in(0)                      => tx_clk125,
         txusrclk2_in(0)                     => tx_clk125);
 end generate;

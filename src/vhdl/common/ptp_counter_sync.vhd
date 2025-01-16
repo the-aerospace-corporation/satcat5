@@ -7,15 +7,27 @@
 --
 -- SatCat5 timestamps are referenced to a global free-running counter.
 -- However, the global counter operates in its own time-domain.  This
--- block synthesizes an equivalent free-running counter in the user
--- clock domain, that is asymptotically synchronized to the original
--- with sub-nanosecond precision.  (i.e., It follows exactly the same
--- best-fit line for counter value vs. time.)
+-- block synthesizes an equivalent free-running counter in the user clock
+-- clock domain, which is asymptotically collinear to the original with
+-- sub-picosecond precision.  (i.e., It follows exactly the same best-fit
+-- line for counter value vs. time.)
 --
 -- To accomplish this, the global reference distributes two clocks at
--- slightly different frequencies.  This block locks a Vernier PLL to
--- both references, to obtain a precise estimate of the relative phase
--- of the user clock and the two global reference clocks.
+-- slightly different frequencies, also known as a vernier reference.
+-- This block samples both clock signals in the target clock domain,
+-- compares the sampled signals against a prediction, and adjusts the
+-- predictor. The closed-loop process forms a precise estimate of the
+-- relative phase of all clocks, which remains accurate regardless of
+-- the relative frequencies.  The phase is added to the free-running
+-- reference counter to form a collinear timestamp in the target clock
+-- domain.  We call this system the "vernier-referenced digital
+-- asynchronous collinear timestamp" (VERDACT).
+--
+-- For a more detailed explanation of VERDACT's theory of operation and
+-- lab measurements of the system's performance, please refer to:
+--  A. C. Utter, "Beyond DDMTD: Sub-Picosecond Timestamps for Asynchronous
+--  Clocks," in IEEE Access, vol 11, 2023, doi: 10.1109/ACCESS.2023.3345833.
+--  https://ieeexplore.ieee.org/document/10367970
 --
 -- PLL coefficients are derived at build-time based on the time-constant
 -- "tau" and the user clock rate.  Typical time-to-first-lock is about
@@ -27,6 +39,12 @@
 -- effects, override the default by setting PHA_SCALE (phase accumulator)
 -- or TAU_SCALE (slope or frequency accumulator) to a positive value.  In
 -- both cases, the internal fixed-point scale is 1 LSB = 2^-N nanoseconds.
+--
+-- The VERDACT circuit is sensitive to clock quality.  Defaults parameters
+-- assume that both the vernier reference and the target clock have high
+-- stability over the filter timescale (i.e., circa 50 msec typ).  For less
+-- stable clocks, consider reducing the LOCK_THRESH parameter to tolerate
+-- additional jitter and frequency wander without losing lock.
 --
 -- An optional ConfigBus register can be used to add an adjustable time
 -- offset to the output counter.  Scale matches PTP format (i.e., one
@@ -57,6 +75,9 @@ entity ptp_counter_sync is
     generic (
     VCONFIG     : vernier_config;   -- Vernier configuration
     USER_CLK_HZ : positive;         -- User clock frequency (Hz)
+    DEBUG_MODE  : boolean := false; -- Enable additional diagnostics?
+    LOCK_SETTLE : real := 6.0;      -- Multiplier for pre-lock settling time
+    LOCK_THRESH : positive := 16;   -- Threshold for lock? (Higher = Strict)
     PHA_SCALE   : natural := 0;     -- Phase scale (0=auto, 1+ override)
     TAU_SCALE   : natural := 0;     -- Slope scale (0=auto, 1+ override)
     WAIT_LOCKED : boolean := true;  -- Suppress output until locked?
@@ -74,9 +95,19 @@ entity ptp_counter_sync is
     -- (Deassert clock-enable to freeze output if desired.)
     user_clk    : in  std_logic;
     user_cken   : in  std_logic := '1';
-    user_ctr    : out tstamp_t;
-    user_lock   : out std_logic;
-    user_rst_p  : in  std_logic := '0');
+    user_rst_p  : in  std_logic := '0';
+    user_lock   : out std_logic;    -- Timestamp locked?
+    user_ctr    : out tstamp_t;     -- Timestamp value
+    user_rate   : out tstamp_t;     -- Timestamp increment
+    user_freq   : out tfreq_t;      -- Normalized frequency
+    user_idx    : out unsigned(31 downto 0);
+    -- Synchronized outputs are updated when pll_pha overflows.
+    -- (Useful for phase-comparisons of nearly-syntonized clocks.)
+    sync_ref    : out tstamp_t;     -- Reference timestamp
+    sync_ctr    : out tstamp_t;     -- Timestamp value
+    sync_rate   : out tstamp_t;     -- Timestamp increment
+    sync_freq   : out tfreq_t;      -- Normalized frequency
+    sync_idx    : out unsigned(31 downto 0));
 end ptp_counter_sync;
 
 architecture ptp_counter_sync of ptp_counter_sync is
@@ -125,13 +156,13 @@ subtype subclk_t is unsigned(SUB_WIDTH-1 downto 0);
 function freq2phase(freq_hz: real) return phase_t is
     constant ONE_SEC : real := real(1e9) * (2.0 ** PHA_SCALE2);
 begin
-    return r2u(ONE_SEC / freq_hz, PHA_WIDTH);
+    return r2ur(ONE_SEC / freq_hz, PHA_WIDTH);
 end function;
 
 function freq2period(freq_hz: real) return period_t is
     constant ONE_SEC : real := real(1e9) * (2.0 ** TAU_SCALE2);
 begin
-    return r2u(ONE_SEC / freq_hz, TAU_WIDTH);
+    return r2ur(ONE_SEC / freq_hz, TAU_WIDTH);
 end function;
 
 -- Set lock-detector window to ~0.2 milliseconds. (Nearest power of two.)
@@ -162,15 +193,22 @@ begin
 end function;
 
 function lpd(k : positive) return positive is       -- Settling time (msec)
-    constant MIN_MSEC : positive := 1;
-    constant TRK_MSEC : real := 3.0 * VCONFIG.sync_tau_ms / real(k);
+    constant MIN_MSEC : positive := 2;
+    constant TRK_MSEC : real := LOCK_SETTLE * VCONFIG.sync_tau_ms / real(k);
 begin
     -- Set the minimum expected settling time, in milliseconds.
     if (TRK_MSEC < real(MIN_MSEC)) then
         return MIN_MSEC;
-    else    
+    else
         return integer(ceil(TRK_MSEC));
     end if;
+end function;
+
+function lth(k : positive) return positive is
+begin
+    -- Lock threshold sets the penalty for prediction mismatch.  Strict (large)
+    -- thresholds increase the risk of false-alarm due to normal clock wander.
+    return int_min(k, LOCK_THRESH);
 end function;
 
 -- Record holding a set of loop parameters:
@@ -188,13 +226,13 @@ end record;
 constant MODE_FIRST : integer := 4;     -- Number of acquisition modes
 type pll_mode_array is array(MODE_FIRST downto 0) of mode_t;
 
---       Dly      Pha      Tau  Sub  Freq?
+--       Dly      Pha      Tau    LkSub   Freq?
 constant PLL_MODES : pll_mode_array := (
-    (lpd(16), lpp(16), lpt(16),   2, false),   -- Coarse freq+phase
-    (lpd( 8), lpp( 8),  lpt(8),   4, false),   -- Progressively finer
-    (lpd( 4), lpp( 4),  lpt(4),   8, false),   -- Progressively finer
-    (lpd( 2), lpp( 2),  lpt(2),  16, false),   -- Progressively finer
-    (lpd( 1), lpp( 1),  lpt(1),  16, false));  -- Normal operation
+    (lpd(16), lpp(16), lpt(16), lth( 2), false),    -- Coarse freq+phase
+    (lpd( 8), lpp( 8), lpt( 8), lth( 4), false),    -- Progressively finer
+    (lpd( 4), lpp( 4), lpt( 4), lth( 8), false),    -- Progressively finer
+    (lpd( 2), lpp( 2), lpt( 2), lth(16), false),    -- Progressively finer
+    (lpd( 1), lpp( 1), lpt( 1), lth(32), false));   -- Normal operation
 
 -- Calculate accumulator frequency hints and initial values.
 -- (Initial values are scaled to match average delay of the DDMTD strobe.)
@@ -216,10 +254,12 @@ signal ref_toga     : std_logic := '0';
 signal ref_togb     : std_logic := '0';
 signal ref_ddmtd    : std_logic := '0';
 signal ref_msec     : std_logic;
+signal ref_diag     : std_logic;
 signal sync_clka    : std_logic;
 signal sync_clkb    : std_logic;
 signal sync_ddmtd   : std_logic;
 signal sync_msec    : std_logic;
+signal sync_diag    : std_logic;
 
 -- Vernier PLL state.
 subtype pll_state_t is integer range 0 to MODE_FIRST;
@@ -248,15 +288,37 @@ signal lock_ctr     : integer range 0 to LOCK_SET := 0;
 signal lock_any     : std_logic := '0';             -- Pre-lock (any stage)
 signal lock_final   : std_logic := '0';             -- Final stage locked
 
--- Output counter generation.
+-- Counter generation and unit conversions.
+subtype idx_word is unsigned(31 downto 0);
 signal ctr_rden     : std_logic := '0';
+signal ctr_idx      : idx_word := (others => '0');
 signal ctr_base     : tstamp_t := (others => '0');
 signal ctr_incr     : tstamp_t := (others => '0');
 signal ctr_phase    : tstamp_t;
+signal ctr_rate     : tstamp_t;
 signal ctr_offset   : tstamp_t;
 signal ctr_total    : tstamp_t;
-signal ctr_filter   : tstamp_t := (others => '0');
-signal ctr_outreg   : tstamp_t := (others => '0');
+signal freq_product : signed(TAU_WIDTH+31 downto 0) := (others => '0');
+signal freq_scale   : tfreq_t;
+
+-- Optional auxiliary filter.
+signal filt_ctr     : tstamp_t := TSTAMP_DISABLED;
+signal filt_rate    : tstamp_t := TSTAMP_DISABLED;
+signal filt_freq    : tfreq_t := TFREQ_DISABLED;
+
+-- Output selection and registers.
+signal out_ctr      : tstamp_t;
+signal out_rate     : tstamp_t;
+signal out_ref      : tstamp_t;
+signal out_freq     : tfreq_t;
+signal user_ctr_r   : tstamp_t := TSTAMP_DISABLED;
+signal user_rate_r  : tstamp_t := TSTAMP_DISABLED;
+signal user_freq_r  : tfreq_t := TFREQ_DISABLED;
+signal user_idx_r   : idx_word := (others => '0');
+signal sync_ctr_r   : tstamp_t := TSTAMP_DISABLED;
+signal sync_rate_r  : tstamp_t := TSTAMP_DISABLED;
+signal sync_freq_r  : tfreq_t := TFREQ_DISABLED;
+signal sync_idx_r   : idx_word := (others => '0');
 
 -- ConfigBus interface.
 signal cfg_offset   : cfgbus_word;
@@ -269,6 +331,20 @@ attribute dont_touch of ctr_base, ref_ddmtd, ref_toga, ref_togb : signal is true
 attribute keep : boolean;
 attribute keep of ctr_base, ref_ddmtd, ref_toga, ref_togb : signal is true;
 
+-- If debug mode is enabled, apply additional attribute-constraints.
+-- (This makes it easier to enable an ILA for signals of interest.)
+attribute mark_debug : boolean;
+attribute keep of
+    lock_any, lock_ctr, lock_final,
+    pll_clka, pll_clkb, pll_cmp, pll_cneg, pll_dlyct,
+    pll_midx, pll_peda, pll_pedb, pll_run, pll_tau,
+    sync_clka, sync_clkb, sync_diag : signal is DEBUG_MODE;
+attribute mark_debug of
+    lock_any, lock_ctr, lock_final,
+    pll_clka, pll_clkb, pll_cmp, pll_cneg, pll_dlyct,
+    pll_midx, pll_peda, pll_pedb, pll_run, pll_tau,
+    sync_clka, sync_clkb, sync_diag : signal is DEBUG_MODE;
+
 -- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
 -- (Vivado explicitly DOES NOT allow such constraints to be set in the HDL.)
 attribute satcat5_cross_clock_dst : boolean;
@@ -279,8 +355,17 @@ attribute satcat5_cross_clock_src of ref_ddmtd, ref_toga, ref_togb : signal is t
 begin
 
 -- Drive top-level outputs.
-user_ctr    <= ctr_outreg;
+user_ctr    <= user_ctr_r;
+user_freq   <= user_freq_r;
+user_rate   <= user_rate_r;
+user_idx    <= user_idx_r;
 user_lock   <= lock_final;
+
+sync_ctr    <= sync_ctr_r;
+sync_freq   <= sync_freq_r;
+sync_rate   <= sync_rate_r;
+sync_idx    <= sync_idx_r;
+sync_ref    <= out_ref;
 
 -- Sanity check on clock configuration.
 assert (VCONFIG.vclka_hz < VCONFIG.vclkb_hz and VCONFIG.vclkb_hz < 1.1*VCONFIG.vclka_hz)
@@ -323,6 +408,10 @@ end process;
 -- (This bit toggles every 2^20 nsec = 1.04 msec.)
 ref_msec <= ref_time.tstamp(TSTAMP_SCALE + 20);
 
+-- Diagnostic logging signal toggles 16x per millisecond.
+-- (This is a good sampling rate for logging step response parameters.)
+ref_diag <= ref_time.tstamp(TSTAMP_SCALE + 16);
+
 -- Resynchronize each reference signal.
 u_sync_clka : sync_buffer
     port map(
@@ -344,6 +433,11 @@ u_sync_msec : sync_toggle2pulse
     port map (
     in_toggle   => ref_msec,
     out_strobe  => sync_msec,
+    out_clk     => user_clk);
+u_sync_diag : sync_toggle2pulse
+    port map(
+    in_toggle   => ref_diag,
+    out_strobe  => sync_diag,
     out_clk     => user_clk);
 
 -- Select the active set of loop parameters.
@@ -379,6 +473,21 @@ p_pll : process(user_clk)
             return phase;
         end if;
     end function;
+
+    -- Forcing function for ratiometric balancing.
+    -- Max error in round(PHA_MOD_A) or round(PHA_MOD_B) is +/- 0.5 LSB
+    --  so a forcing function of +/- 1 LSB has adequate control authority.
+    -- (Old function with floor(...) and 0/1 could sometimes be marginal.)
+    function rbal(cneg : std_logic) return phase_t is
+        constant PLUS_ONE   : phase_t := (0 => '1', others => '0');
+        constant MINUS_ONE  : phase_t := (others => '1');
+    begin
+        if cneg = '1' then
+            return PLUS_ONE;
+        else
+            return MINUS_ONE;
+        end if;
+    end function;     
 
     -- Phase error detector compares two pseudo-clock signals.  On mismatch,
     -- make an early/late decision based on time since last change.
@@ -472,8 +581,8 @@ begin
             pll_pha <= PHA_INIT;            -- Frequency-sync mode
             pll_phb <= PHA_INIT;
         else                                -- Normal operation
-            pll_pha <= accum_mod(next_pha, PHA_MOD_A + u2i(pll_cneg));
-            pll_phb <= accum_mod(next_phb, PHA_MOD_B + u2i(not pll_cneg));
+            pll_pha <= accum_mod(next_pha, PHA_MOD_A + rbal(pll_cneg));
+            pll_phb <= accum_mod(next_phb, PHA_MOD_B + rbal(not pll_cneg));
         end if;
 
         if (pll_run = '0' and pll_midx = MODE_FIRST) then
@@ -582,30 +691,63 @@ end process;
 
 -- Unit conversion: PLL phase indicates the time offset between clocks.
 -- This is added to the latched value from the global reference (see below).
-ctr_phase   <= resize(shift_right(pll_pha, PHA_SCALE2 - TSTAMP_SCALE), TSTAMP_WIDTH);
-ctr_offset  <= unsigned(resize(signed(cfg_offset), TSTAMP_WIDTH));
 ctr_total   <= ctr_base + ctr_incr;
+ctr_offset  <= unsigned(resize(signed(cfg_offset), TSTAMP_WIDTH));
+ctr_phase   <= resize(shift_right(pll_pha, PHA_SCALE2 - TSTAMP_SCALE), TSTAMP_WIDTH);
+ctr_rate    <= resize(shift_right(pll_tau, TAU_SCALE2 - TSTAMP_SCALE), TSTAMP_WIDTH);
+freq_scale  <= resize(shift_right(freq_product, TAU_SCALE2 - TFREQ_SCALE), TFREQ_WIDTH);
 
--- Output counter generation.
+-- Intermediate output selection based on selected mode.
+out_ctr     <= TSTAMP_DISABLED when (WAIT_LOCKED and lock_final = '0') else
+               filt_ctr when (VCONFIG.sync_aux_en) else
+               ctr_total;
+out_rate    <= TSTAMP_DISABLED when (WAIT_LOCKED and lock_final = '0') else
+               filt_rate when (VCONFIG.sync_aux_en) else
+               ctr_rate;
+out_freq    <= TFREQ_DISABLED when (WAIT_LOCKED and lock_final = '0') else
+               filt_freq when (VCONFIG.sync_aux_en) else
+               freq_scale;
+out_ref     <= TSTAMP_DISABLED when (WAIT_LOCKED and lock_final = '0') else
+               ctr_base;
+
+-- Counter generation and output registers.
 p_ctr : process(user_clk)
     constant FIXED_DELAY : tstamp_t := get_tstamp_incr(USER_CLK_HZ / 3);
 begin
     if rising_edge(user_clk) then
-        -- Pipeline stage 2: Final output selection.
-        if (user_cken = '0') then
-            ctr_outreg <= ctr_outreg;           -- Freeze output
-        elsif (WAIT_LOCKED and lock_final = '0') then
-            ctr_outreg <= TSTAMP_DISABLED;      -- Not locked
-        elsif (VCONFIG.sync_aux_en) then
-            ctr_outreg <= ctr_filter;           -- Filtered output
-        else
-            ctr_outreg <= ctr_total;            -- Direct output
+        -- Pipeline stage 2: Final output registers.
+        if (user_cken = '1') then
+            -- User outputs updated on-demand (default = every clock).
+            user_ctr_r  <= out_ctr;
+            user_freq_r <= out_freq;
+            user_rate_r <= out_rate;
+            user_idx_r  <= ctr_idx;
+        end if;
+
+        if (ctr_rden = '1') then
+            -- Synchronized outputs updated when pll_a overflows.
+            sync_ctr_r  <= out_ctr;
+            sync_freq_r <= out_freq;
+            sync_rate_r <= out_rate;
+            sync_idx_r  <= ctr_idx;
         end if;
 
         -- Pipeline stage 1: Pre-add inputs + Cross-clock latch.
         ctr_incr <= ctr_phase + ctr_offset + FIXED_DELAY;
         if (ctr_rden = '1') then
             ctr_base <= ref_time.tstamp;
+        end if;
+
+        if (user_rst_p = '1') then
+            ctr_idx <= (others => '0');
+        else
+            ctr_idx <= ctr_idx + 1;
+        end if;
+
+        -- Unsynchronized pipeline: Scale tau into normalized frequency units.
+        -- (Slope does not change rapidly enough for extra delay to matter.)
+        if (VCONFIG.sync_frq_en) then
+            freq_product <= signed(TAU_INIT - pll_tau) * to_signed(USER_CLK_HZ, 32);
         end if;
     end if;
 end process;
@@ -616,12 +758,15 @@ gen_filter : if VCONFIG.sync_aux_en generate
         generic map(
         LOOP_TAU    => 0.01 * TRK_TAU,
         USER_CLK_HZ => USER_CLK_HZ,
+        SYNC_FRQ_EN => VCONFIG.sync_frq_en,
         PHA_SCALE   => PHA_SCALE,
         TAU_SCALE   => TAU_SCALE)
         port map(
         in_locked   => pll_run,
         in_tstamp   => ctr_total,
-        out_tstamp  => ctr_filter,
+        out_tstamp  => filt_ctr,
+        out_trate   => filt_rate,
+        out_tfreq   => filt_freq,
         user_clk    => user_clk);
 end generate;
 

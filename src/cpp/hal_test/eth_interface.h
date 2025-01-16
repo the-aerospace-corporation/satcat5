@@ -2,7 +2,9 @@
 // Copyright 2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Simulated Ethernet interface with PTP compatibility
+// Simulated point-to-point network interface with PTP compatibility
+// This is usually used for simulating Ethernet networks, but is also
+// compatible with any other packet-based messaging procotols.
 // See also: "eth_crosslink.h"
 
 #pragma once
@@ -18,12 +20,13 @@ namespace satcat5 {
         // Simulation of a PTP-compatible Ethernet interface controller.
         class EthernetInterface
             : public satcat5::ptp::Interface
+            , public satcat5::io::ArrayWrite
             , public satcat5::io::EventListener
             , public satcat5::io::ReadableRedirect
-            , public satcat5::io::WriteableRedirect
         {
         public:
-            EthernetInterface();
+            // Create a simulated interface, with optional packet-capture.
+            explicit EthernetInterface(satcat5::io::Writeable* pcap);
 
             // Crosslink to specified destination object.
             void connect(satcat5::test::EthernetInterface* dst);
@@ -33,6 +36,7 @@ namespace satcat5 {
                 { m_support_one_step = en; }
 
             // Precision Time Protocol API (ptp::Interface)
+            satcat5::ptp::Time ptp_time_now() override;
             satcat5::ptp::Time ptp_tx_start() override;
             satcat5::ptp::Time ptp_tx_timestamp() override;
             satcat5::ptp::Time ptp_rx_timestamp() override;
@@ -54,12 +58,14 @@ namespace satcat5 {
 
         protected:
             // Event handler for new-packet notifications.
-            void data_rcvd() override;
+            void data_rcvd(satcat5::io::Readable* src) override;
 
             // Update internal state at start of each packet.
             void read_begin_packet();
 
             // Internal state.
+            satcat5::io::Writeable* m_txpcap;
+            satcat5::io::Writeable* m_txbuff_data;
             satcat5::io::Writeable* m_txbuff_time;
             satcat5::io::PacketBufferHeap m_rxbuff_data;
             satcat5::io::PacketBufferHeap m_rxbuff_time;
@@ -70,6 +76,10 @@ namespace satcat5 {
             unsigned m_rx_count;
             bool m_support_one_step;
             u32 m_loss_threshold;
+
+            // Working buffer for cloning incoming data.
+            // (Large enough for a full-size Ethernet packet.)
+            u8 m_txbuff[1600];
         };
     }
 }

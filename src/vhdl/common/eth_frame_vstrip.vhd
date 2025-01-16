@@ -45,11 +45,14 @@ use     work.eth_frame_common.all;
 
 entity eth_frame_vstrip is
     generic (
-    DEVADDR     : integer;      -- ConfigBus device address
-    REGADDR     : integer;      -- ConfigBus register address
-    IO_BYTES    : positive;     -- Width of main data ports
-    PORT_INDEX  : natural;      -- Index of the current port
-    VID_DEFAULT : vlan_vid_t := x"001");
+    -- To disable ConfigBus, set DEV_ADDR = CFGBUS_ADDR_NONE.
+    DEVADDR     : integer;          -- ConfigBus device address
+    REGADDR     : integer;          -- ConfigBus register address
+    IO_BYTES    : positive;         -- Width of main data ports
+    PORT_INDEX  : integer := -1;    -- Port index (for ConfigBus filtering)
+    VID_DEFAULT : vlan_vid_t := x"001";
+    -- Default policy on reset, or adjust through ConfigBus.
+    VTAG_POLICY : tag_policy_t := VTAG_ADMIT_ALL);
     port (
     -- Main input stream
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -68,8 +71,8 @@ entity eth_frame_vstrip is
     out_revert  : out std_logic;
     out_error   : out std_logic;
 
-    -- Configuration interface (write-only)
-    cfg_cmd     : in  cfgbus_cmd;
+    -- Configuration interface (optional, write-only)
+    cfg_cmd     : in  cfgbus_cmd := CFGBUS_CMD_NULL;
 
     -- System interface
     clk         : in  std_logic;
@@ -117,7 +120,7 @@ signal parse_error  : std_logic := '0';
 signal parse_panic  : std_logic := '0';
 signal parse_write  : std_logic := '0';
 
--- Buffered per-packet metdata
+-- Buffered per-packet metadata
 signal frm_vtag     : std_logic;
 signal frm_vhdr     : vlan_hdr_t := (others => '0');
 signal frm_commit   : std_logic := '0';
@@ -136,7 +139,7 @@ signal out_meta_i   : std_logic_vector(META_WIDTH-1 downto 0);
 signal out_last_i   : std_logic;
 
 -- ConfigBus interface
-signal cfg_policy   : tag_policy_t := VTAG_ADMIT_ALL;
+signal cfg_policy   : tag_policy_t := VTAG_POLICY;
 signal cfg_default  : vlan_hdr_t := VTAG_DEFAULT;
 
 begin
@@ -390,22 +393,24 @@ out_revert  <= out_last_i and out_meta_i(VLAN_HDR_WIDTH+1);
 out_error   <= out_last_i and out_meta_i(VLAN_HDR_WIDTH+0);
 out_vtag    <= out_meta_i(VLAN_HDR_WIDTH-1 downto 0);
 
--- ConfigBus interface handling.
-p_cfg : process(cfg_cmd.clk)
-begin
-    if rising_edge(cfg_cmd.clk) then
-        if (cfg_cmd.reset_p = '1') then
-            -- Global reset reverts to required default under 802.1Q.
-            cfg_policy  <= VTAG_ADMIT_ALL;
-            cfg_default <= VTAG_DEFAULT;
-        elsif (cfgbus_wrcmd(cfg_cmd, DEVADDR, REGADDR)) then
-            -- Ignore writes unless they have a matching port-index.
-            if (u2i(cfg_cmd.wdata(31 downto 24)) = PORT_INDEX) then
-                cfg_policy  <= cfg_cmd.wdata(17 downto 16);
-                cfg_default <= cfg_cmd.wdata(15 downto 0);
+-- Optional ConfigBus interface handling.
+gen_cfg : if cfgbus_reg_enable(DEVADDR, REGADDR) generate
+    p_cfg : process(cfg_cmd.clk)
+    begin
+        if rising_edge(cfg_cmd.clk) then
+            if (cfg_cmd.reset_p = '1') then
+                -- Global reset reverts to required default under 802.1Q.
+                cfg_policy  <= VTAG_POLICY;
+                cfg_default <= VTAG_DEFAULT;
+            elsif (cfgbus_wrcmd(cfg_cmd, DEVADDR, REGADDR)) then
+                -- Ignore writes unless they have a matching port-index.
+                if (u2i(cfg_cmd.wdata(31 downto 24)) = PORT_INDEX) then
+                    cfg_policy  <= cfg_cmd.wdata(17 downto 16);
+                    cfg_default <= cfg_cmd.wdata(15 downto 0);
+                end if;
             end if;
         end if;
-    end if;
-end process;
+    end process;
+end generate;
 
 end eth_frame_vstrip;

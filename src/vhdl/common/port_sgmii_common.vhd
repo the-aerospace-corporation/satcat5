@@ -13,6 +13,9 @@
 -- Generally, this block is instantiated inside a platform-specific
 -- module that instantiates and controls the external interfaces.
 --
+-- The optional "port_test" flag replaces the SGMII output with an ITU
+-- compatible pseudorandom binary sequence (PRBS) for error-rate testing.
+--
 -- Note: 10/100/1000 Mbps modes are all supported.  SGMII handles
 --       these modes through byte-repetition, which is detected
 --       and removed by the "eth_preamble_rx" block.  The same
@@ -37,15 +40,18 @@ entity port_sgmii_common is
     tx_clk      : in  std_logic;    -- 125 MHz typical
     tx_cken     : in  std_logic := '1';
     tx_data     : out std_logic_vector(9 downto 0);
-    tx_tstamp   : in  tstamp_t := (others => '0');
+    tx_tstamp   : in  tstamp_t := TSTAMP_DISABLED;
+    tx_tfreq    : in  tfreq_t := TFREQ_DISABLED;
     tx_tvalid   : in  std_logic := '0';
+    port_test   : in  std_logic := '0';
 
     -- Receiver/Deserializer interface.
     rx_clk      : in  std_logic;    -- 125 MHz minimum
     rx_cken     : in  std_logic := '1';
     rx_lock     : in  std_logic := '1';
     rx_data     : in  std_logic_vector(9 downto 0);
-    rx_tstamp   : in  tstamp_t := (others => '0');
+    rx_tstamp   : in  tstamp_t := TSTAMP_DISABLED;
+    rx_tfreq    : in  tfreq_t := TFREQ_DISABLED;
     rx_tvalid   : in  std_logic := '0';
 
     -- Generic internal port interface.
@@ -69,6 +75,7 @@ signal tx_cfg_reg   : std_logic_vector(15 downto 0);
 signal tx_pwren     : std_logic;
 signal tx_pkten     : std_logic;
 signal tx_frmst     : std_logic;
+signal tx_test      : std_logic;
 
 -- Receive chain
 signal rx_data_msb  : std_logic_vector(9 downto 0);
@@ -117,6 +124,11 @@ hs_cfg_rcvd : sync_buffer
     in_flag     => rx_cfg_ack,
     out_flag    => tx_cfg_ack,
     out_clk     => tx_clk);
+hs_cfg_test : sync_buffer
+    port map(
+    in_flag     => port_test,
+    out_flag    => tx_test,
+    out_clk     => tx_clk);
 
 -- Set configuration register for auto-negotiate handshake.
 -- Handshake defined by IEEE 802.3-2015, Section 37.2.1 (Config_Reg)
@@ -144,6 +156,7 @@ u_txamb : entity work.eth_preamble_tx
     tx_frmst    => tx_frmst,
     tx_cken     => tx_cken,
     tx_tstamp   => tx_tstamp,
+    tx_tfreq    => tx_tfreq,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl,
     rep_rate    => rx_rep_rate);
@@ -160,6 +173,7 @@ u_txenc : entity work.eth_enc8b10b
     cfg_word    => tx_cfg_reg,
     out_data    => tx_data_msb,
     out_cken    => open,
+    out_test    => tx_test,
     io_clk      => tx_clk,
     reset_p     => reset_p);
 
@@ -209,6 +223,7 @@ u_rxamb : entity work.eth_preamble_rx
     rate_word   => rate_word,
     aux_err     => rate_error,
     rx_tstamp   => rx_dec_tsof,
+    rx_tfreq    => rx_tfreq,
     status      => status_word,
     rx_data     => prx_data);
 

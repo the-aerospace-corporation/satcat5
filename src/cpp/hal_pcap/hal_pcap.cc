@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -242,7 +242,7 @@ const char* spcap::Socket::desc() const
     return m_device ? m_device->desc() : "";
 }
 
-void spcap::Socket::data_rcvd()
+void spcap::Socket::data_rcvd(satcat5::io::Readable* src)
 {
     // New data ready for transmission?
     unsigned nread = m_tx.get_read_ready();

@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <fstream>
 #include <hal_test/catch.hpp>
-#include <hal_test/ptp_clock.h>
+#include <hal_test/ptp_simclock.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/ptp_tracking.h>
 #include <satcat5/utils.h>
@@ -17,10 +17,20 @@ using satcat5::ptp::CoeffLR;
 using satcat5::ptp::CoeffPI;
 using satcat5::ptp::CoeffPII;
 using satcat5::ptp::SimulatedClock;
+using satcat5::util::sign;
 
 static const u32 DEFAULT_INTERVAL_USEC = 125000;
 
+// Signed random numbers with a triangular distribution.
+static inline s64 rand_s64() {
+    using satcat5::test::rand_u32;
+    return s64(rand_u32()) - s64(rand_u32());
+}
+
 TEST_CASE("AmplitudeReject") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     // Unit under test.
     satcat5::ptp::AmplitudeReject uut(2000);
 
@@ -28,11 +38,9 @@ TEST_CASE("AmplitudeReject") {
     unsigned scale = GENERATE(0, 2, 4, 8, 16);
 
     // Generate a randomized input sequence.
-    auto rng = Catch::rng();
     std::vector<s64> input;
     for (unsigned a = 0 ; a < 2048 ; ++a) {
-        s64 delta = s64(rng()) - s64(rng());
-        input.push_back(delta >> scale);
+        input.push_back(rand_s64() >> scale);
     }
 
     SECTION("normal") {
@@ -79,14 +87,16 @@ static s64 boxcar(
 }
 
 TEST_CASE("BoxcarFilter") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     // Unit under test.
     satcat5::ptp::BoxcarFilter<4> uut;
 
     // Generate a randomized input sequence.
-    auto rng = Catch::rng();
     std::vector<s64> input;
     for (unsigned a = 0 ; a < 1024 ; ++a)
-        input.push_back(s64(rng()) - s64(rng()));
+        input.push_back(rand_s64());
 
     SECTION("filter") {
         unsigned order = GENERATE(0, 1, 2, 3, 4);
@@ -105,14 +115,14 @@ TEST_CASE("BoxcarFilter") {
 
 TEST_CASE("CoeffLR") {
     // Simulation infrastructure.
-    satcat5::log::ToConsole log;
+    SATCAT5_TEST_START;
 
     SECTION("bad_coeff") {
         // Large time constants will eventually overflow.
         SimulatedClock clk(125e6, 125e6);
-        CoeffLR coeff1(clk.ref_scale(), 1.0);
-        CoeffLR coeff2(clk.ref_scale(), 3600.0);
-        CoeffLR coeff3(clk.ref_scale(), 1e15);
+        CoeffLR coeff1(1.0);
+        CoeffLR coeff2(3600.0);
+        CoeffLR coeff3(1e15);
         CHECK(coeff1.ok());
         CHECK(coeff2.ok());
         CHECK_FALSE(coeff3.ok());
@@ -122,25 +132,35 @@ TEST_CASE("CoeffLR") {
         CHECK(log.contains("Bad config"));
     }
 
-    SECTION("dynamic_range") {
-        // Confirm rated limits on minimum and maximum parameters.
-        CHECK(CoeffLR(1e-10,    1.0).ok());
-        CHECK(CoeffLR(1e-10, 3600.0).ok());
-        CHECK(CoeffLR(1e-16,    1.0).ok());
-        CHECK(CoeffLR(1e-16, 3600.0).ok());
+    SECTION("linear_regression") {
+        // Define input points on the line "y = 5 - 10x".
+        const s64 x[]  = {-10, -6, -3, -1, 0};
+        const s64 y[]  = {105, 65, 35, 15, 5};
+        satcat5::ptp::LinearRegression uut(5, x, y);
+        // Confirm slope and intercept match expectations.
+        CHECK(s64(uut.alpha) == 5);
+        CHECK(s64(uut.beta >> uut.TSCALE) == -10LL);
+        // Extrapolate to a few test points.
+        CHECK(uut.extrapolate(-3) == 35);
+        CHECK(uut.extrapolate(-2) == 25);
+        CHECK(uut.extrapolate(-1) == 15);
+        CHECK(uut.extrapolate(0) == 5);
+        CHECK(uut.extrapolate(1) == -5);
+        CHECK(uut.extrapolate(2) == -15);
+        CHECK(uut.extrapolate(3) == -25);
     }
 }
 
 TEST_CASE("CoeffPI") {
     // Simulation infrastructure.
-    satcat5::log::ToConsole log;
+    SATCAT5_TEST_START;
 
     SECTION("bad_coeff") {
         // Large time constants will eventually overflow.
         SimulatedClock clk(125e6, 125e6);
-        CoeffPI coeff1(clk.ref_scale(), 1.0);
-        CoeffPI coeff2(clk.ref_scale(), 3600.0);
-        CoeffPI coeff3(clk.ref_scale(), 1e9);
+        CoeffPI coeff1(1.0);
+        CoeffPI coeff2(3600.0);
+        CoeffPI coeff3(1e9);
         CHECK(coeff1.ok());
         CHECK(coeff2.ok());
         CHECK_FALSE(coeff3.ok());
@@ -149,26 +169,18 @@ TEST_CASE("CoeffPI") {
         satcat5::ptp::ControllerPI uut(coeff3);
         CHECK(log.contains("Bad config"));
     }
-
-    SECTION("dynamic_range") {
-        // Confirm rated limits on minimum and maximum parameters.
-        CHECK(CoeffPI(1e-10,    1.0).ok());
-        CHECK(CoeffPI(1e-10, 3600.0).ok());
-        CHECK(CoeffPI(1e-16,    1.0).ok());
-        CHECK(CoeffPI(1e-16, 3600.0).ok());
-    }
 }
 
 TEST_CASE("CoeffPII") {
     // Simulation infrastructure.
-    satcat5::log::ToConsole log;
+    SATCAT5_TEST_START;
 
     SECTION("bad_coeff") {
         // Large time constants will eventually overflow.
         SimulatedClock clk(125e6, 125e6);
-        CoeffPII coeff1(clk.ref_scale(),1.0);
-        CoeffPII coeff2(clk.ref_scale(), 3600.0);
-        CoeffPII coeff3(clk.ref_scale(), 1e9);
+        CoeffPII coeff1(1.0);
+        CoeffPII coeff2(3600.0);
+        CoeffPII coeff3(1e9);
         CHECK(coeff1.ok());
         CHECK(coeff2.ok());
         CHECK_FALSE(coeff3.ok());
@@ -176,14 +188,6 @@ TEST_CASE("CoeffPII") {
         log.suppress("Bad config");
         satcat5::ptp::ControllerPII uut(coeff3);
         CHECK(log.contains("Bad config"));
-    }
-
-    SECTION("dynamic_range") {
-        // Confirm rated limits on minimum and maximum parameters.
-        CHECK(CoeffPII(1e-10,    1.0).ok());
-        CHECK(CoeffPII(1e-10, 3600.0).ok());
-        CHECK(CoeffPII(1e-16,    1.0).ok());
-        CHECK(CoeffPII(1e-16, 3600.0).ok());
     }
 }
 
@@ -203,14 +207,16 @@ static s64 median(
 }
 
 TEST_CASE("MedianFilter") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     // Unit under test.
     satcat5::ptp::MedianFilter<15> uut;
 
     // Generate a randomized input sequence.
-    auto rng = Catch::rng();
     std::vector<s64> input;
     for (unsigned a = 0 ; a < 1024 ; ++a)
-        input.push_back(s64(rng()) - s64(rng()));
+        input.push_back(rand_s64());
 
     SECTION("passthrough") {
         uut.set_order(1);
@@ -233,5 +239,84 @@ TEST_CASE("MedianFilter") {
             if (ref != INT64_MAX && next != ref) ++errors;
         }
         CHECK(errors == 0);
+    }
+}
+
+TEST_CASE("LinearPrediction") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Unit under test and its counterpart.
+    CoeffPI coeff1(1.0);    // Time constant = 1.0 seconds
+    satcat5::ptp::ControllerPI ctrl(coeff1);
+    satcat5::ptp::LinearPrediction uut(&ctrl);
+
+    // Run some sample data through the filter.
+    // Note: TEST_SLOPE is in LSBs per microsecond.
+    static const unsigned TEST_SAMPS = 1000;
+    static const s64 TEST_TIME   = TEST_SAMPS * DEFAULT_INTERVAL_USEC;
+    static const s64 TEST_SLOPE  = 42;
+    static const s64 TEST_OFFSET = 123456;
+    uut.reset();
+    for (unsigned n = 1 ; n <= TEST_SAMPS ; ++n) {
+        s64 t = n * DEFAULT_INTERVAL_USEC;
+        s64 y = TEST_OFFSET + TEST_SLOPE * t;
+        uut.update(y, DEFAULT_INTERVAL_USEC);
+    }
+
+    SECTION("predict") {
+        // Predict along the current trendline.
+        for (unsigned n = 1 ; n <= 20 ; ++n) {
+            u32 dt = n * DEFAULT_INTERVAL_USEC;
+            s64 y1 = TEST_OFFSET + TEST_SLOPE * (TEST_TIME + dt);
+            s64 y2 = uut.predict(dt);
+            CHECK(abs(y2 - y1) < 20);
+        }
+    }
+
+    SECTION("rate") {
+        // Make a sudden rate change.
+        static const s64 NEW_SLOPE  = -2 * TEST_SLOPE;
+        static const s64 NEW_OFFSET = TEST_OFFSET + TEST_SLOPE * TEST_TIME;
+        uut.rate(NEW_SLOPE, 1);
+        // Run more sample data through the filter.
+        for (unsigned n = 1 ; n <= TEST_SAMPS ; ++n) {
+            s64 t = n * DEFAULT_INTERVAL_USEC;
+            s64 y = NEW_OFFSET + NEW_SLOPE * t;
+            uut.update(y, DEFAULT_INTERVAL_USEC);
+        }
+        // Predict along the new trendline.
+        for (unsigned n = 1 ; n <= 20 ; ++n) {
+            u32 dt = n * DEFAULT_INTERVAL_USEC;
+            s64 y1 = NEW_OFFSET + NEW_SLOPE * (TEST_TIME + dt);
+            s64 y2 = uut.predict(dt);
+            CHECK(abs(y2 - y1) < 20);
+        }
+    }
+}
+
+TEST_CASE("RateConversion") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Repeat test at various reference frequencies.
+    double ref_hz = GENERATE(1e6, -10e6, 100e6, 1e9);
+
+    // Create the unit under test.
+    // Match PtpReference scale = 2^40 LSB per nsec.
+    satcat5::ptp::RateConversion uut(ref_hz, 40);
+    REQUIRE(uut.ok());
+
+    // Test that forward and inverse conversions are self-consistent.
+    // (Tolerance of a few LSB is inevitable from repeated rounding.)
+    SECTION("fwd_rev") {
+        for (unsigned a = 0 ; a < 10 ; ++a) {
+            s64 x = rand_s64();
+            s64 y = uut.convert(x);
+            s64 z = uut.invert(y);
+            CHECK(abs(x - z) < 64);
+            CHECK(sign(x) == sign(z));
+            CHECK(sign(x) == sign(y) * sign(ref_hz));
+        }
     }
 }

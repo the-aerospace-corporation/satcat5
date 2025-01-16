@@ -10,27 +10,27 @@
 -- all required clock-crossing logic.
 --
 -- To read a value from the lookup table:
---  * Read REGADDR_QUERY_CTRL until OPCODE is zero (idle).
---  * Write the table-index and opcode 0x01 to REGADDR_QUERY_CTRL.
---  * Read REGADDR_QUERY_CTRL until OPCODE is zero (done).
+--  * Read SW_ADDR_QUERY_CTRL until OPCODE is zero (idle).
+--  * Write the table-index and opcode 0x01 to SW_ADDR_QUERY_CTRL.
+--  * Read SW_ADDR_QUERY_CTRL until OPCODE is zero (done).
 --    (Port-index will replace the "argument" field.)
---  * Read reported MAC address from REGADDR_QUERY_MAC_MSB and _LSB.
+--  * Read reported MAC address from SW_ADDR_QUERY_MAC_MSB and _LSB.
 --    A value of FF:FF:FF:FF:FF:FF indicates the entry was empty.
 --
 -- To write a new value to the lookup table:
---  * Read REGADDR_QUERY_CTRL until OPCODE is zero (idle).
---  * Write the 32 LSBs of the MAC address to REGADDR_QUERY_MAC_LSB.
---  * Write the 16 MSBs of the MAC address to REGADDR_QUERY_MAC_MSB.
---  * Write the port-index and opcode 0x02 to REGADDR_QUERY_CTRL.
---  * Read REGADDR_QUERY_CTRL until OPCODE is zero (DONE).
+--  * Read SW_ADDR_QUERY_CTRL until OPCODE is zero (idle).
+--  * Write the 32 LSBs of the MAC address to SW_ADDR_QUERY_MAC_LSB.
+--  * Write the 16 MSBs of the MAC address to SW_ADDR_QUERY_MAC_MSB.
+--  * Write the port-index and opcode 0x02 to SW_ADDR_QUERY_CTRL.
+--  * Read SW_ADDR_QUERY_CTRL until OPCODE is zero (DONE).
 --
 -- The full register definitions are as follows:
---  * REGADDR_QUERY_MAC_LSB (Read/Write):
+--  * SW_ADDR_QUERY_MAC_LSB (Read/Write):
 --      Bits 31-00: 32 LSBs of MAC address
---  * REGADDR_QUERY_MAC_MSB (Read/Write):
+--  * SW_ADDR_QUERY_MAC_MSB (Read/Write):
 --      Bits 15-00: 16 MSBs of MAC address
 --      Bits 31-16: Reserved (write zeros)
---  * REGADDR_QUERY_CTRL (Read/Write):
+--  * SW_ADDR_QUERY_CTRL (Read/Write):
 --      Bits 15-00: Argument / Response (see below)
 --      Bits 23-16: Reserved (write zeros)
 --      Bits 31-24: Opcode
@@ -128,7 +128,7 @@ begin
         -- Update the OPCODE register, including clear when done.
         if (cfg_cmd.reset_p = '1' or cfg_done_c = '1') then
             cfg_opcode <= OPCODE_IDLE;
-        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL) and cfg_cmd.wstrb(3) = '1') then
+        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL) and cfg_cmd.wstrb(3) = '1') then
             cfg_opcode <= cfg_cmd.wdata(31 downto 24);
             cfg_start_t <= not cfg_start_t;
         end if;
@@ -137,19 +137,19 @@ begin
         if (cfg_done_c = '1' and cfg_opcode = OPCODE_READ) then
             cfg_macaddr <= read_addr;
             cfg_oparg   <= to_unsigned(read_psrc, cfg_oparg'length);
-        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_MAC_LSB)) then
+        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_MAC_LSB)) then
             for n in 31 downto 0 loop
                 if (cfg_cmd.wstrb(n/8) = '1') then
                     cfg_macaddr(n) <= cfg_cmd.wdata(n);
                 end if;
             end loop;
-        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_MAC_MSB)) then
+        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_MAC_MSB)) then
             for n in 15 downto 0 loop
                 if (cfg_cmd.wstrb(n/8) = '1') then
                     cfg_macaddr(n+32) <= cfg_cmd.wdata(n);
                 end if;
             end loop;
-        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL)) then
+        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL)) then
             for n in 15 downto 0 loop
                 if (cfg_cmd.wstrb(n/8) = '1') then
                     cfg_oparg(n) <= cfg_cmd.wdata(n);
@@ -158,11 +158,11 @@ begin
         end if;
 
         -- Register reads:
-        if (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_MAC_LSB)) then
+        if (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_MAC_LSB)) then
             cfg_ack_i <= cfgbus_reply(cfg_macaddr(31 downto 0));
-        elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_MAC_MSB)) then
+        elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_MAC_MSB)) then
             cfg_ack_i <= cfgbus_reply(x"0000" & cfg_macaddr(47 downto 32));
-        elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL)) then
+        elsif (cfgbus_rdcmd(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL)) then
             cfg_ack_i <= cfgbus_reply(cfg_opcode & x"00" & std_logic_vector(cfg_oparg));
         else
             cfg_ack_i <= cfgbus_idle;

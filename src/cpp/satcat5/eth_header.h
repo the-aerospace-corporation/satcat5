@@ -50,7 +50,17 @@ namespace satcat5 {
             inline bool operator!=(const satcat5::eth::MacAddr& other) const
                 {return !operator==(other);}
 
+            // Tests for various reserved address ranges:
+            bool is_broadcast() const;      // Broadcast (FF:FF:FF:FF:FF:FF)
+            bool is_l2multicast() const;    // L2 multicast (01:80:C2:*:*:* except link-local)
+            bool is_l3multicast() const;    // L3 multicast (01:00:5E:*:*:*)
+            bool is_multicast() const;      // Broadcast, L2 multicast, or L3 multicast
+            bool is_swcontrol() const;      // Link-local control (01:80:C2:00:00:*)
+            bool is_unicast() const;        // Any normal single-destination address
+            bool is_valid() const;          // Any nonzero address
+
             // I/O functions.
+            void log_to(satcat5::log::LogBuffer& wr) const;
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_bytes(6, addr);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -71,6 +81,7 @@ namespace satcat5 {
                 {return value != other.value;}
 
             // I/O functions.
+            void log_to(satcat5::log::LogBuffer& wr) const;
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -84,11 +95,24 @@ namespace satcat5 {
             u16 value;
 
             // Accessors for each individual field.
+            inline bool any() const {return !!value;}
             inline u16 vid() const {return ((value >> 0)  & 0xFFF);}
-            inline u16 dei() const {return ((value >> 12) & 0x1);}
-            inline u16 pcp() const {return ((value >> 13) & 0x7);}
+            inline u16 dei() const {return ((value >> 12) & 0x001);}
+            inline u16 pcp() const {return ((value >> 13) & 0x007);}
+            inline void set(u16 vid, u16 dei, u16 pcp) {
+                value = ((vid & 0xFFF) << 0)
+                      | ((dei & 0x001) << 12)
+                      | ((pcp & 0x007) << 13);
+            }
+
+            // Basic comparisons.
+            inline bool operator==(const satcat5::eth::VlanTag& other) const
+                {return value == other.value;}
+            inline bool operator!=(const satcat5::eth::VlanTag& other) const
+                {return value != other.value;}
 
             // I/O functions.
+            void log_to(satcat5::log::LogBuffer& wr) const;
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
             inline bool read_from(satcat5::io::Readable* rd)
@@ -102,9 +126,10 @@ namespace satcat5 {
             satcat5::eth::MacAddr dst;
             satcat5::eth::MacAddr src;
             satcat5::eth::MacType type;
-            #if SATCAT5_VLAN_ENABLE
             satcat5::eth::VlanTag vtag;
-            #endif
+
+            // Human-readable report of all fields.
+            void log_to(satcat5::log::LogBuffer& wr) const;
 
             // Write Ethernet header to the designated stream.
             void write_to(satcat5::io::Writeable* wr) const;
@@ -119,6 +144,14 @@ namespace satcat5 {
             {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
         constexpr satcat5::eth::MacAddr MACADDR_BROADCAST =
             {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
+        constexpr satcat5::eth::MacAddr MACADDR_FLOWCTRL =
+            {{0x01, 0x80, 0xC2, 0x00, 0x00, 0x01}};
+        constexpr satcat5::eth::MacAddr BASEADDR_LINKLOCAL =
+            {{0x01, 0x80, 0xC2, 0x00, 0x00, 0x00}};
+        constexpr satcat5::eth::MacAddr BASEADDR_L2MULTICAST =
+            {{0x01, 0x80, 0xC2, 0x00, 0x01, 0x00}};
+        constexpr satcat5::eth::MacAddr BASEADDR_L3MULTICAST =
+            {{0x01, 0x00, 0x5E, 0x00, 0x00, 0x00}};
 
         constexpr satcat5::eth::MacType
             ETYPE_NONE          = {0x0000},
@@ -130,6 +163,7 @@ namespace satcat5 {
             ETYPE_CBOR_TLM      = {0x5C04},
             ETYPE_VTAG          = {0x8100},
             ETYPE_FLOWCTRL      = {0x8808},
+            ETYPE_MACSEC        = {0x88E5},
             ETYPE_PTP           = {0x88F7};
 
         constexpr satcat5::eth::VlanTag

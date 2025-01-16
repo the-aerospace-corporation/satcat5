@@ -63,8 +63,7 @@ namespace satcat5 {
             // and replies routed through the designated Dispatcher object.
             ConfigBusRemote(
                 satcat5::net::Address* dst,             // Remote iface + address
-                const satcat5::net::Type& ack,          // Ack type parameter
-                satcat5::util::GenericTimer* timer);    // Reference for timeouts
+                const satcat5::net::Type& ack);         // Ack type parameter
             ~ConfigBusRemote() SATCAT5_OPTIONAL_DTOR;
 
             // Callback for incoming reply frames.
@@ -90,7 +89,6 @@ namespace satcat5 {
             satcat5::net::Address* const m_dst;
 
             // Timer for measuring timeouts.
-            satcat5::util::GenericTimer* const m_timer;
             unsigned m_timeout_rd;
             unsigned m_timeout_wr;
 
@@ -111,9 +109,7 @@ namespace satcat5 {
             , public satcat5::cfg::ConfigBusRemote
         {
         public:
-            ConfigBus(
-                satcat5::eth::Dispatch* iface,          // Network interface
-                satcat5::util::GenericTimer* timer);    // Reference for timeouts
+            ConfigBus(satcat5::eth::Dispatch* iface);   // Network interface
 
             void connect(const satcat5::eth::MacAddr& dst);
 

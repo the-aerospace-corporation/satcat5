@@ -133,11 +133,13 @@ rx_data.clk     <= ref_clk;
 rx_data.rate    <= get_rate_word(1);
 rx_data.status  <= status_word(7 downto 0);
 rx_data.tsof    <= TSTAMP_DISABLED;
+rx_data.tfreq   <= TFREQ_DISABLED;
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= ref_clk;
 tx_ctrl.reset_p <= wdog_rst_p;
 tx_ctrl.pstart  <= '1';     -- Timestamps discarded
 tx_ctrl.tnow    <= TSTAMP_DISABLED;
+tx_ctrl.tfreq   <= TFREQ_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No Tx error states
 
 -- Upstream status reporting.

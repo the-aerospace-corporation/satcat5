@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021-2023 The Aerospace Corporation.
+# Copyright 2021-2024 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -92,6 +92,11 @@ set spi_sck [ create_bd_port -dir O spi_sck ]
 set spi_sdi [ create_bd_port -dir I spi_sdi ]
 set spi_sdo [ create_bd_port -dir O spi_sdo ]
 set text_lcd [ create_bd_intf_port -mode Master -vlnv aero.org:satcat5:TextLCD_rtl:1.0 text ]
+set tft_csb [ create_bd_port -dir O tft_csb ]
+set tft_dcx [ create_bd_port -dir O tft_dcx ]
+set tft_sck [ create_bd_port -dir O tft_sck ]
+set tft_sdi [ create_bd_port -dir I tft_sdi ]
+set tft_sdo [ create_bd_port -dir O tft_sdo ]
 
 # Hierarchical cell: ublaze/mem
 current_bd_instance [create_bd_cell -type hier ublaze]
@@ -243,7 +248,7 @@ current_bd_instance ..
 
 set cfgbus_split_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:cfgbus_split cfgbus_split_0 ]
 set_property -dict [ list \
-    CONFIG.PORT_COUNT {11} \
+    CONFIG.PORT_COUNT {12} \
 ] $cfgbus_split_0
 
 set port_mailmap_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_mailmap port_mailmap_0 ]
@@ -324,6 +329,13 @@ set_property -dict [list \
     CONFIG.DEV_ADDR {11} \
 ] $cfgbus_spi_0
 
+set cfgbus_spi_1 [ create_bd_cell -type ip \
+    -vlnv aero.org:satcat5:cfgbus_spi_controller:1.0 cfgbus_spi_1 ]
+set_property -dict [list \
+    CONFIG.DEV_ADDR {12} \
+    CONFIG.DCX_COUNT {1} \
+] $cfgbus_spi_1
+
 set port_adapter_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_adapter port_adapter_0 ]
 set rmii_mode_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant rmii_mode_0 ]
 set rmii_reset_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:reset_hold rmii_reset_0 ]
@@ -355,6 +367,7 @@ connect_bd_intf_net -intf_net cfgbus_split_0_Port07 [get_bd_intf_pins cfgbus_spl
 connect_bd_intf_net -intf_net cfgbus_split_0_Port08 [get_bd_intf_pins cfgbus_split_0/Port08] [get_bd_intf_pins cfgbus_timer_0/Cfg]
 connect_bd_intf_net -intf_net cfgbus_split_0_Port09 [get_bd_intf_pins cfgbus_split_0/Port09] [get_bd_intf_pins cfgbus_i2c_0/Cfg]
 connect_bd_intf_net -intf_net cfgbus_split_0_Port10 [get_bd_intf_pins cfgbus_split_0/Port10] [get_bd_intf_pins cfgbus_spi_0/Cfg]
+connect_bd_intf_net -intf_net cfgbus_split_0_Port11 [get_bd_intf_pins cfgbus_split_0/Port11] [get_bd_intf_pins cfgbus_spi_1/Cfg]
 connect_bd_intf_net -intf_net pmod1_Eth [get_bd_intf_pins pmod1/Eth] [get_bd_intf_pins switch_core_0/Port01]
 connect_bd_intf_net -intf_net pmod2_Eth [get_bd_intf_pins pmod2/Eth] [get_bd_intf_pins switch_core_0/Port02]
 connect_bd_intf_net -intf_net pmod3_Eth [get_bd_intf_pins pmod3/Eth] [get_bd_intf_pins switch_core_0/Port03]
@@ -408,6 +421,11 @@ connect_bd_net [get_bd_ports spi_csb] [get_bd_pins cfgbus_spi_0/spi_csb]
 connect_bd_net [get_bd_ports spi_sck] [get_bd_pins cfgbus_spi_0/spi_sck]
 connect_bd_net [get_bd_ports spi_sdi] [get_bd_pins cfgbus_spi_0/spi_sdi]
 connect_bd_net [get_bd_ports spi_sdo] [get_bd_pins cfgbus_spi_0/spi_sdo]
+connect_bd_net [get_bd_ports tft_csb] [get_bd_pins cfgbus_spi_1/spi_csb]
+connect_bd_net [get_bd_ports tft_dcx] [get_bd_pins cfgbus_spi_1/dcx_out]
+connect_bd_net [get_bd_ports tft_sck] [get_bd_pins cfgbus_spi_1/spi_sck]
+connect_bd_net [get_bd_ports tft_sdi] [get_bd_pins cfgbus_spi_1/spi_sdi]
+connect_bd_net [get_bd_ports tft_sdo] [get_bd_pins cfgbus_spi_1/spi_sdo]
 connect_bd_net [get_bd_ports leds] [get_bd_pins cfgbus_led_0/led_out]
 connect_bd_intf_net [get_bd_intf_ports text] [get_bd_intf_pins switch_aux_0/text_lcd]
 

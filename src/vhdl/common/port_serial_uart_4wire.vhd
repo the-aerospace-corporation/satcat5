@@ -125,11 +125,13 @@ rx_data.clk     <= refclk;
 rx_data.rate    <= get_rate_word(clocks_per_baud(BAUD_HZ, 1_000_000));
 rx_data.status  <= status_word(7 downto 0);
 rx_data.tsof    <= TSTAMP_DISABLED;
+rx_data.tfreq   <= TFREQ_DISABLED;
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= wdog_rst_p;
 tx_ctrl.pstart  <= '1';     -- Timestamps discarded
 tx_ctrl.tnow    <= TSTAMP_DISABLED;
+tx_ctrl.tfreq   <= TFREQ_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No error states
 
 -- Upstream status reporting.

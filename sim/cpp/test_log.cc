@@ -33,7 +33,8 @@ const LogEvent MSG_F = {LOG_INFO,       "MsgF: Var1 = 1, Var2 = 0, Var3 = 0x4321
 const LogEvent MSG_G = {LOG_WARNING,    "MsgG: Var1 = 0, Var2 = 80, Var3 = 4294967295"};
 const LogEvent MSG_H = {LOG_WARNING,    "MsgH: Var1 = +0, Var2 = -2147483648, Var3 = +2147483647"};
 const LogEvent MSG_I = {LOG_WARNING,    "MsgI = DE:AD:BE:EF:CA:FE = 192.168.1.42"};
-const LogEvent MSG_J = {LOG_WARNING,    "MsgJ = 12345678901234567890 = -1234567890123456789 = +1234567890123456789"};
+const LogEvent MSG_J = {LOG_WARNING,    "MsgJ = +1234567890123456789 = -1234567890123456789"};
+const LogEvent MSG_K = {LOG_WARNING,    "MsgK = 12345678901234567890 = -123 = +12345"};
 const u8 MSG_D_BYTES[] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0};
 
 // Helper class for storing each Log message in a queue, then cross-checking
@@ -73,8 +74,13 @@ void check_buff(satcat5::io::Readable* src, const LogEvent& ref) {
 }
 
 TEST_CASE("log") {
-    // Start the logging system.
-    MockLog log;
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
+    log.disable();
+
+    // Log system under test.
+    // (Both get a carbon-copy of each log message.)
+    MockLog uut;
 
     SECTION("basic") {
         // Log a series of fixed messages.
@@ -92,8 +98,8 @@ TEST_CASE("log") {
 
         // Fixed message with decimal formatting.
         {Log(LOG_WARNING,   "MsgG")
-            .write(": Var1").write10(0u)
-            .write(", Var2").write10(80u)
+            .write(": Var1").write10((u8)0)
+            .write(", Var2").write10((u16)80)
             .write(", Var3").write10(UINT32_MAX);}
 
         // Fixed message with signed decimal formatting.
@@ -107,28 +113,34 @@ TEST_CASE("log") {
             .write(satcat5::eth::MacAddr {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE})
             .write(satcat5::ip::Addr(192, 168, 1, 42));}
 
-        // Test for signed and unsigned 64-bit decimals.
+        // Test for signed 64-bit decimals.
         {Log(LOG_WARNING,   "MsgJ")
+            .write10((s64)+1234567890123456789ll)
+            .write10((s64)-1234567890123456789ll);}
+
+        // Test for unsigned 64-bit and smaller signed decimals.
+        {Log(LOG_WARNING,   "MsgK")
             .write10((u64)12345678901234567890ull)
-            .write10((s64)-1234567890123456789ll)
-            .write10((s64)+1234567890123456789ll);}
+            .write10((s8)-123)
+            .write10((s16)12345);}
 
         // Check each one against the expected reference.
-        log.check_next(MSG_A);
-        log.check_next(MSG_B);
-        log.check_next(MSG_C);
-        log.check_next(MSG_D);
-        log.check_next(MSG_E);
-        log.check_next(MSG_F);
-        log.check_next(MSG_G);
-        log.check_next(MSG_H);
-        log.check_next(MSG_I);
-        log.check_next(MSG_J);
+        uut.check_next(MSG_A);
+        uut.check_next(MSG_B);
+        uut.check_next(MSG_C);
+        uut.check_next(MSG_D);
+        uut.check_next(MSG_E);
+        uut.check_next(MSG_F);
+        uut.check_next(MSG_G);
+        uut.check_next(MSG_H);
+        uut.check_next(MSG_I);
+        uut.check_next(MSG_J);
+        uut.check_next(MSG_K);
     }
 
     SECTION("fixed-len") {
         Log(LOG_DEBUG, "MsgA", 4).write((u8)0x12);
-        log.check_next(MSG_A);
+        uut.check_next(MSG_A);
     }
 
     SECTION("overflow") {
@@ -146,19 +158,23 @@ TEST_CASE("log") {
         }
 
         // Check for graceful overflow.
-        log.check_next(ref);
+        uut.check_next(ref);
     }
 
     SECTION("readable") {
         // Create an io::Readable wrapper for the raw-bytes test message.
-        satcat5::io::ArrayRead uut(MSG_D_BYTES, sizeof(MSG_D_BYTES));
+        satcat5::io::ArrayRead ard(MSG_D_BYTES, sizeof(MSG_D_BYTES));
         // The resulting message should have exactly the same formatting.
-        {Log(LOG_ERROR, "MsgD").write(&uut);}
-        log.check_next(MSG_D);
+        {Log(LOG_ERROR, "MsgD").write(&ard);}
+        uut.check_next(MSG_D);
     }
 }
 
 TEST_CASE("LogToWriteable") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
+    log.disable();
+
     // Unit under test is the LogToWriteable redirect.
     satcat5::io::PacketBufferHeap buff;
     satcat5::log::ToWriteable uut(&buff);

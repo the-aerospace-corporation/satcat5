@@ -29,7 +29,8 @@ entity ptp_counter_tb_single is
     generic (
     VREF_HZ     : positive;
     USER_HZ     : positive;
-    USER_PPM    : integer);
+    USER_PPM    : integer;
+    FILTER_EN   : boolean := false);
 end ptp_counter_tb_single;
 
 architecture single of ptp_counter_tb_single is
@@ -44,12 +45,19 @@ constant VCLKB_PSI  : positive := integer(round(0.5e12 / VNOMINAL.vclkb_hz));
 constant VCLKA_HZ   : real := 0.5e12 / real(VCLKA_PSI);
 constant VCLKB_HZ   : real := 0.5e12 / real(VCLKB_PSI);
 constant VACTUAL    : vernier_config :=
-    (VREF_HZ, VCLKA_HZ, VCLKB_HZ, 4.0, false, (others => 0.0));
+    (VREF_HZ, VCLKA_HZ, VCLKB_HZ, 4.0, FILTER_EN, true, (others => 0.0));
 
 -- Offset actual user clock from the nominal rate.
--- (To confirm pull-in range, unit under test gets the nominal rate only.)
-constant USER_HZO   : real := real(USER_HZ) * (1.0 + real(USER_PPM) * 1.0e-6);
+-- As above, recalculate the apparent frequency to match simulation constraints.
+constant USER_RATIO : real := 1.0 + real(USER_PPM) * 1.0e-6;
+constant USER_REF   : tfreq_t := tfreq_mult(TFREQ_FAST_1PPM, USER_PPM);
+constant USER_HZO   : real := real(USER_HZ) * USER_RATIO;
 constant USER_PSI   : positive := integer(round(0.5e12 / USER_HZO));
+constant USER_HZA   : real := 0.5e12 / real(USER_PSI);
+
+-- Finally, recalculate the nominal frequency to achieve requested offset.
+-- (Otherwise, the previous step may introduce 100+ ppm of unrequested error.)
+constant USER_HZN   : positive := integer(round(USER_HZA / USER_RATIO));
 
 -- Clock and reset generation.
 signal uclk         : std_logic := '0';
@@ -62,13 +70,14 @@ signal ref_time     : port_timeref;
 signal ref_tstamp   : tstamp_t := (others => '0');
 signal ref_simtime  : integer := 0;
 signal sync_time    : tstamp_t;
+signal sync_freq    : tfreq_t;
 signal sync_lock    : std_logic;
 
 -- Test measurement and control.
 signal sync_ref     : tstamp_t := (others => '0');
 signal sync_check   : std_logic := '0';
 signal sync_delta   : real := 0.0;
-signal sync_freq    : real := 0.0;
+signal sync_dfreq   : real := 0.0;
 signal delta_mean   : real := 0.0;
 signal delta_std    : real := 0.0;
 
@@ -106,13 +115,15 @@ end process;
 -- Unit under test: Synchronizer
 uut_sync : entity work.ptp_counter_sync
     generic map(
-    WAIT_LOCKED => false,
     VCONFIG     => VACTUAL,
-    USER_CLK_HZ => USER_HZ)
+    USER_CLK_HZ => USER_HZN,
+    LOCK_SETTLE => 3.0,
+    WAIT_LOCKED => false)
     port map(
     ref_time    => ref_time,
     user_clk    => uclk,
     user_ctr    => sync_time,
+    user_freq   => sync_freq,
     user_lock   => sync_lock,
     user_rst_p  => reset_p);
 
@@ -120,7 +131,7 @@ uut_sync : entity work.ptp_counter_sync
 p_user : process(uclk)
     constant TOL_NSEC : real := 0.3;
     variable delta_ns, sumdd, sumsq, count : real := 0.0;
-    variable cooldown : natural := 0;
+    variable cooldown, coolfreq : natural := 0;
 begin
     if rising_edge(uclk) then
         -- Synthesize current time from reference.
@@ -130,6 +141,7 @@ begin
 
         -- Calculate difference and convert to nanoseconds.
         sync_delta  <= get_time_nsec(sync_time - sync_ref);
+        sync_dfreq  <= get_freq_ppm(tfreq_diff(sync_freq, USER_REF));
 
         -- Is difference above threshold?
         if (sync_check = '0') then
@@ -145,6 +157,18 @@ begin
             -- Print a warning and reset cooldown timer.
             report "Counter mismatch: " & real'image(sync_delta) severity warning;
             cooldown := 1000;
+        end if;
+
+        if (sync_check = '0') then
+            -- Ignore difference until check flag is asserted.
+            coolfreq := 0;
+        elsif (coolfreq > 0) then
+            -- Waiting period after each minor error report.
+            coolfreq := coolfreq - 1;
+        elsif (sync_dfreq > 1.0) then
+            -- Print a warning and reset cooldown timer.
+            report "Frequency mismatch: " & real'image(sync_dfreq) severity warning;
+            coolfreq := 1000;
         end if;
 
         -- Once we reach the "check" phase, lock should be asserted.
@@ -206,5 +230,11 @@ uut5 : entity work.ptp_counter_tb_single
     generic map(VREF_HZ => 100_000_000, USER_HZ =>  50_000_000, USER_PPM => 0);
 uut6 : entity work.ptp_counter_tb_single
     generic map(VREF_HZ => 125_000_000, USER_HZ => 200_000_000, USER_PPM => 0);
+
+-- Demonstrate operation of the auxiliary IIR filter.
+uut7 : entity work.ptp_counter_tb_single
+    generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => 250, FILTER_EN => true);
+uut8 : entity work.ptp_counter_tb_single
+    generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => -250, FILTER_EN => true);
 
 end tb;

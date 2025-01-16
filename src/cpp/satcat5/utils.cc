@@ -7,6 +7,14 @@
 
 namespace util = satcat5::util;
 
+// Use GCC intrinsics where possible?
+#ifndef SATCAT5_GCC_INTRINSICS
+#define SATCAT5_GCC_INTRINSICS defined(__GNUC__)
+#endif
+
+// Instantiate the global PRNG object.
+util::Prng util::prng;
+
 u32 util::max_u32(u32 a, u32 b, u32 c) {
     if ((a > b) && (a > c)) return a;
     if (b > c) return b;
@@ -14,36 +22,47 @@ u32 util::max_u32(u32 a, u32 b, u32 c) {
 }
 
 // Check if A is a multiple of B:
-bool util::is_multiple_u32(u32 a, u32 b)
-{
+bool util::is_multiple_u32(u32 a, u32 b) {
     u32 c = (a / b) * b;
     return (a == c) ? 1 : 0;
 }
 
+// Count the number of '1' bits in an integer.
+unsigned util::popcount(u32 x) {
+#if SATCAT5_GCC_INTRINSICS
+    // On GCC and similar, use the built-in popcount function.
+    return (unsigned)__builtin_popcount(x);
+#else
+    // Otherwise, use a regular function definition.
+    // https://stackoverflow.com/questions/109023/
+    x = x - ((x >> 1) & 0x55555555);        // Add pairs of bits
+    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);  // Quads
+    x = (x + (x >> 4)) & 0x0F0F0F0F;        // Groups of 8
+    x *= 0x01010101;                        // Horizontal sum of bytes
+    return x >> 24;                         // Return the top byte
+#endif
+}
+
 // XOR-reduction of all bits in a word (returns 1/0).
-bool util::xor_reduce_u8(u8 x)
-{
+bool util::xor_reduce_u8(u8 x) {
     u8 result = 0;
     for (unsigned b = 0 ; b < 8 ; ++b)
         result ^= ((x >> b) & 1);
     return result ? 1 : 0;
 }
-bool util::xor_reduce_u16(u16 x)
-{
+bool util::xor_reduce_u16(u16 x) {
     u16 result = 0;
     for (unsigned b = 0 ; b < 16 ; ++b)
         result ^= ((x >> b) & 1);
     return result ? 1 : 0;
 }
-bool util::xor_reduce_u32(u32 x)
-{
+bool util::xor_reduce_u32(u32 x) {
     u32 result = 0;
     for (unsigned b = 0 ; b < 32 ; ++b)
         result ^= ((x >> b) & 1);
     return result ? 1 : 0;
 }
-bool util::xor_reduce_u64(u64 x)
-{
+bool util::xor_reduce_u64(u64 x) {
     u64 result = 0;
     for (unsigned b = 0 ; b < 64 ; ++b)
         result ^= ((x >> b) & 1);
@@ -51,8 +70,7 @@ bool util::xor_reduce_u64(u64 x)
 }
 
 // Given X and Y, find the minimum N such that X * 2^N >= Y.
-unsigned util::min_2n(u32 x, u32 y)
-{
+unsigned util::min_2n(u32 x, u32 y) {
     static const u32 HALF_MAX = (1u << 31);
 
     // Detect invalid input (i.e., divide by zero).
@@ -74,8 +92,7 @@ unsigned util::min_2n(u32 x, u32 y)
 
 // Find integer square root y = floor(sqrt(x))
 // https://stackoverflow.com/questions/4930307/fastest-way-to-get-the-integer-part-of-sqrtn
-u32 util::sqrt_u64(u64 x)
-{
+u32 util::sqrt_u64(u64 x) {
     u64 rem = 0, root = 0;
     for (unsigned i = 0 ; i < 32 ; ++i) {
         root <<= 1;
@@ -91,8 +108,7 @@ u32 util::sqrt_u64(u64 x)
     }
     return (u32) (root >> 1);
 }
-u16 util::sqrt_u32(u32 x)
-{
+u16 util::sqrt_u32(u32 x) {
     u32 rem = 0, root = 0;
     for (unsigned i = 0 ; i < 16 ; ++i) {
         root <<= 1;
@@ -108,8 +124,7 @@ u16 util::sqrt_u32(u32 x)
     }
     return (u16) (root >> 1);
 }
-u8 util::sqrt_u16(u16 x)
-{
+u8 util::sqrt_u16(u16 x) {
     u16 rem = 0, root = 0;
     int i;
     for (i = 0 ; i < 8 ; ++i) {
@@ -129,20 +144,17 @@ u8 util::sqrt_u16(u16 x)
 
 
 // Extract fields from a big-endian byte array.
-u16 util::extract_be_u16(const u8* src)
-{
+u16 util::extract_be_u16(const u8* src) {
     return 256 * (u16)src[0]
          +   1 * (u16)src[1];
 }
-u32 util::extract_be_u32(const u8* src)
-{
+u32 util::extract_be_u32(const u8* src) {
     return 16777216 * (u32)src[0]
          +    65536 * (u32)src[1]
          +      256 * (u32)src[2]
          +        1 * (u32)src[3];
 }
-u64 util::extract_be_u64(const u8* src)
-{
+u64 util::extract_be_u64(const u8* src) {
     return 72057594037927936ull * (u64)src[0]
          +   281474976710656ull * (u64)src[1]
          +     1099511627776ull * (u64)src[2]
@@ -154,20 +166,17 @@ u64 util::extract_be_u64(const u8* src)
 }
 
 // Store fields into a big-endian byte array.
-void util::write_be_u16(u8* dst, u16 val)
-{
+void util::write_be_u16(u8* dst, u16 val) {
     dst[0] = (u8)(val >> 8);
     dst[1] = (u8)(val >> 0);
 }
-void util::write_be_u32(u8* dst, u32 val)
-{
+void util::write_be_u32(u8* dst, u32 val) {
     dst[0] = (u8)(val >> 24);
     dst[1] = (u8)(val >> 16);
     dst[2] = (u8)(val >> 8);
     dst[3] = (u8)(val >> 0);
 }
-void util::write_be_u64(u8* dst, u64 val)
-{
+void util::write_be_u64(u8* dst, u64 val) {
     dst[0] = (u8)(val >> 56);
     dst[1] = (u8)(val >> 48);
     dst[2] = (u8)(val >> 40);
@@ -178,14 +187,18 @@ void util::write_be_u64(u8* dst, u64 val)
     dst[7] = (u8)(val >> 0);
 }
 
-u32 util::Prng::next()
-{
+u32 util::Prng::next() {
     // Marsaglia's XORSHIFT algorithm:
     m_state ^= (m_state >> 12);
     m_state ^= (m_state << 25);
     m_state ^= (m_state >> 27);
     u64 next = m_state * 0x2545F4914F6CDD1Dull;
     return (u32)(next >> 32);
+}
+
+u32 util::Prng::next(u32 mn, u32 mx) {
+    u64 scale = next() * (1ull + u64(mx) - u64(mn));
+    return mn + u32(scale >> 32);
 }
 
 static const char* LABEL_NONE = "None";
@@ -197,14 +210,12 @@ util::RunningMax::RunningMax()
     // Nothing else to initialize
 }
 
-void util::RunningMax::clear()
-{
+void util::RunningMax::clear() {
     m_label = LABEL_NONE;
     m_maximum = 0;
 }
 
-void util::RunningMax::update(const char* lbl, u32 value)
-{
+void util::RunningMax::update(const char* lbl, u32 value) {
     if (value > m_maximum) {
         m_label = lbl;
         m_maximum = value;

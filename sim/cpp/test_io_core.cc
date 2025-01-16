@@ -8,35 +8,12 @@
 
 #include <cstring>
 #include <hal_test/catch.hpp>
+#include <hal_test/sim_utils.h>
 #include <satcat5/build_date.h>
 #include <satcat5/io_core.h>
 #include <satcat5/utils.h>
 
 namespace io = satcat5::io;
-
-// Bare minimum implementations of Readable and Writeable
-class NullRead : public io::Readable {
-public:
-    unsigned get_read_ready() const {return 0;}
-    u8 read_next() {return 0;}
-};
-
-class NullWrite : public io::Writeable {
-public:
-    unsigned get_write_space() const {return 0;}
-    void write_next(u8 data) {}
-};
-
-class NullRedirect : public io::ReadableRedirect, public io::WriteableRedirect {
-public:
-    NullRedirect()
-        : io::ReadableRedirect(&m_rd)
-        , io::WriteableRedirect(&m_wr)
-    {}  // Nothing else to initialize
-
-    NullRead m_rd;
-    NullWrite m_wr;
-};
 
 // Test double-inheritance of ReadableRedirect and WriteableRedirect.
 class TestRedirect : public io::ReadableRedirect, public io::WriteableRedirect {
@@ -48,8 +25,9 @@ public:
 };
 
 TEST_CASE("ArrayRead") {
+    SATCAT5_TEST_START; // Simulation infrastructure
     const u8 buff[] = {1, 2, 3, 4, 5, 6, 7, 8};
-    u8 temp[16];    // Slightly larger
+    u8 temp[16];        // Slightly larger buffer
     io::ArrayRead uut(buff, sizeof(buff));
 
     SECTION("finalize") {
@@ -89,9 +67,19 @@ TEST_CASE("ArrayRead") {
         CHECK(uut.read_u16() == 0);
     }
 
+    SECTION("underflow_24") {
+        CHECK(uut.read_consume(6));
+        CHECK(uut.read_u24() == 0);
+    }
+
     SECTION("underflow_32") {
         CHECK(uut.read_consume(5));
         CHECK(uut.read_u32() == 0);
+    }
+
+    SECTION("underflow_48") {
+        CHECK(uut.read_consume(3));
+        CHECK(uut.read_u48() == 0);
     }
 
     SECTION("underflow_64") {
@@ -111,8 +99,9 @@ TEST_CASE("ArrayRead") {
 }
 
 TEST_CASE("ArrayWrite") {
-    u8 buff[8];
-    io::ArrayWrite uut(buff, sizeof(buff));
+    SATCAT5_TEST_START; // Simulation infrastructure
+    io::ArrayWriteStatic<8> uut;
+    const u8* buff = uut.buffer();
 
     SECTION("abort") {
         uut.write_bytes(5, "12345");
@@ -198,56 +187,89 @@ TEST_CASE("ArrayWrite") {
 
     SECTION("overflow-bytes") {
         uut.write_bytes(9, "123456789");
-        CHECK(uut.write_finalize());
+        CHECK_FALSE(uut.write_finalize());
         CHECK(uut.written_len() == 0);
     }
 
     SECTION("overflow-u16") {
         uut.write_bytes(7, "1234567");
         uut.write_u16(45678u);
-        CHECK(uut.write_finalize());
-        CHECK(uut.written_len() == 7);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
+    }
+
+    SECTION("overflow-u24") {
+        uut.write_bytes(6, "123456");
+        uut.write_u24(45678u);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
     }
 
     SECTION("overflow-u32") {
         uut.write_bytes(5, "12345");
         uut.write_u32(45678u);
-        CHECK(uut.write_finalize());
-        CHECK(uut.written_len() == 5);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
+    }
+
+    SECTION("overflow-u48") {
+        uut.write_bytes(3, "123");
+        uut.write_u48(45678u);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
     }
 
     SECTION("overflow-u64") {
-        uut.write_bytes(3, "123");
-        uut.write_u64(45678ull);
-        CHECK(uut.write_finalize());
-        CHECK(uut.written_len() == 3);
+        uut.write_bytes(1, "1");
+        uut.write_u64(2345678ull);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
     }
 
     SECTION("overflow-u16l") {
         uut.write_bytes(7, "1234567");
         uut.write_u16l(45678u);
-        CHECK(uut.write_finalize());
-        CHECK(uut.written_len() == 7);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
+    }
+
+    SECTION("overflow-u24l") {
+        uut.write_bytes(6, "123456");
+        uut.write_u24l(789u);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
     }
 
     SECTION("overflow-u32l") {
         uut.write_bytes(5, "12345");
-        uut.write_u32l(45678u);
-        CHECK(uut.write_finalize());
-        CHECK(uut.written_len() == 5);
+        uut.write_u32l(6789u);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
+    }
+
+    SECTION("overflow-u48l") {
+        uut.write_bytes(3, "123");
+        uut.write_u48l(45678u);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
     }
 
     SECTION("overflow-u64l") {
-        uut.write_bytes(3, "123");
-        uut.write_u64l(45678u);
-        CHECK(uut.write_finalize());
-        CHECK(uut.written_len() == 3);
+        uut.write_bytes(1, "1");
+        uut.write_u64l(2345678ull);
+        CHECK_FALSE(uut.write_finalize());
+        CHECK(uut.written_len() == 0);
     }
 
     SECTION("redirect") {
         TestRedirect tmp(0, &uut);
         tmp.write_bytes(3, "123");
         tmp.write_u64(45678ull);
+        CHECK_FALSE(tmp.write_finalize());
+        CHECK(uut.written_len() == 0);
+        tmp.write_bytes(3, "456");
+        tmp.write_abort();
+        tmp.write_bytes(3, "789");
         CHECK(tmp.write_finalize());
         CHECK(uut.written_len() == 3);
     }
@@ -279,9 +301,43 @@ TEST_CASE("ArrayWrite") {
     }
 }
 
+TEST_CASE("LimitedWrite") {
+    SATCAT5_TEST_START; // Simulation infrastructure
+    io::ArrayWriteStatic<32> buff;
+
+    SECTION("Limit1") {
+        io::LimitedWrite uut(&buff, 1);     // Limit = 1 byte
+        CHECK(uut.get_write_space() == 1);
+        uut.write_u8(42);                   // Write 1 byte
+        CHECK(uut.get_write_space() == 0);
+        CHECK(uut.write_finalize());        // Not forwarded
+        CHECK(buff.written_len() == 0);
+        CHECK(buff.write_finalize());       // Call directly
+        CHECK(buff.written_len() == 1);
+    }
+
+    SECTION("Limit8") {
+        io::LimitedWrite uut(&buff, 8);     // Limit = 8 bytes
+        CHECK(uut.get_write_space() == 8);
+        uut.write_bytes(7, "1234567");      // Write 7 bytes
+        CHECK(uut.get_write_space() == 1);
+        CHECK(buff.write_finalize());       // Call directly
+        CHECK(buff.written_len() == 7);
+    }
+
+    SECTION("Limit999") {
+        io::LimitedWrite uut(&buff, 999);   // Larger than output!?
+        CHECK(uut.get_write_space() == 32); // Whichever comes first
+        uut.write_str("Writing 33 bytes should overflow.");
+        CHECK(buff.write_finalize());       // Call directly (empty)
+        CHECK(buff.written_len() == 0);
+    }
+}
+
 TEST_CASE("WriteConversions") {
-    u8 buff[32];
-    io::ArrayWrite uut(buff, sizeof(buff));
+    SATCAT5_TEST_START; // Simulation infrastructure
+    io::ArrayWriteStatic<32> uut;
+    const u8* buff = uut.buffer();
 
     SECTION("LittleEndian") {
         uut.write_s16l(12345);
@@ -324,45 +380,90 @@ TEST_CASE("WriteConversions") {
         CHECK(rd.read_s64() == -1234567890123456789ll);
         CHECK(rd.read_s64() == +1234567890123456789ll);
     }
+
+    SECTION("OddSizes") {
+        uut.write_u24 (12345678);
+        uut.write_u24l(12345678);
+        uut.write_s24 (-1234567);
+        uut.write_s24l(-1234567);
+        CHECK(uut.write_finalize());
+        CHECK(uut.written_len() == 12);
+
+        io::ArrayRead rd1(buff, uut.written_len());
+        CHECK(rd1.read_u24()  == 12345678);
+        CHECK(rd1.read_u24l() == 12345678);
+        CHECK(rd1.read_s24()  == -1234567);
+        CHECK(rd1.read_s24l() == -1234567);
+
+        uut.write_u48 (123456789012345ll);
+        uut.write_u48l(123456789012345ll);
+        uut.write_s48 (-123456789012345ll);
+        uut.write_s48l(-123456789012345ll);
+        CHECK(uut.write_finalize());
+        CHECK(uut.written_len() == 24);
+
+        io::ArrayRead rd2(buff, uut.written_len());
+        CHECK(rd2.read_u48()  == 123456789012345ll);
+        CHECK(rd2.read_u48l() == 123456789012345ll);
+        CHECK(rd2.read_s48()  == -123456789012345ll);
+        CHECK(rd2.read_s48l() == -123456789012345ll);
+    }
 }
 
 TEST_CASE("NullIO") {
+    SATCAT5_TEST_START; // Simulation infrastructure
+
     SECTION("NullRead") {
-        NullRead uut;
-        uut.read_finalize();
+        CHECK(io::null_read.get_read_ready() == 0);
+        io::null_read.read_finalize();
     }
 
-    SECTION("NullWrite") {
-        NullWrite uut;
-        uut.write_u64(12345);
-        CHECK(uut.write_finalize());
-        uut.write_u64(12345);
-        uut.write_abort();
+    SECTION("NullSink") {
+        satcat5::test::RandomSource src(256);
+        src.set_callback(&io::null_sink);
+        src.notify();
+    }
+
+    SECTION("NullWrite0") {
+        io::NullWrite uut(0);               // Do not accept writes
+        uut.write_u64(12345);               // Should overflow
+        CHECK(uut.write_finalize());        // Overflows are not tracked
+        uut.write_u64(12345);               // Should overflow
+        uut.write_abort();                  // Should succeed
+    }
+
+    SECTION("NullWrite1") {
+        io::NullWrite uut(1024);            // Accept writes
+        uut.write_u64(12345);               // Accept and discard
+        CHECK(uut.write_finalize());        // Should "succeed"
+        uut.write_u64(12345);               // Accept and discard
+        uut.write_abort();                  // Should succeed
     }
 
     SECTION("NullRedirect") {
         u8 temp[64];
-        NullRedirect uut;
+        TestRedirect uut(&io::null_read, &io::null_write);
         uut.set_callback(0);
         CHECK_FALSE(uut.read_consume(5));           // Should underflow
         CHECK(uut.read_u32() == 0);                 // Should underflow
         CHECK(!uut.read_bytes(sizeof(temp), temp)); // Should underflow
+        CHECK(uut.get_write_space() > 0);           // Default accepts writes
         uut.write_bytes(sizeof(temp), temp);        // No effect
         CHECK(uut.write_finalize());                // Should "succeed"
     }
 }
 
 TEST_CASE("LimitedRead") {
-    u8 buff[8];
+    SATCAT5_TEST_START; // Simulation infrastructure
 
     // Initial setup fills buffer with data.
-    io::ArrayWrite wr(buff, sizeof(buff));
+    io::ArrayWriteStatic<8> wr;
     wr.write_u32(0x12345678u);
     wr.write_u32(0x9ABCDEF0u);
     REQUIRE(wr.write_finalize());
 
     // Create backing Readable object.
-    io::ArrayRead rd(buff, wr.written_len());
+    io::ArrayRead rd(wr.buffer(), wr.written_len());
     REQUIRE(rd.get_read_ready() == 8);              // Initial state
 
     SECTION("read_normal") {
@@ -376,12 +477,18 @@ TEST_CASE("LimitedRead") {
     }
 
     SECTION("read_bytes") {
+        u8 temp[8];
         io::LimitedRead uut(&rd, 5);                // Stop at 5 of 8 bytes
-        CHECK_FALSE(uut.read_bytes(8, buff));       // Expect underflow
+        CHECK_FALSE(uut.read_bytes(8, temp));       // Expect underflow
     }
 
     SECTION("read_consume") {
         io::LimitedRead uut(&rd, 3);                // Stop at 3 of 8 bytes
         CHECK_FALSE(uut.read_consume(4));           // Expect underflow
+    }
+
+    SECTION("too_long") {
+        io::LimitedRead uut(&rd, 10);               // Limit exceeds input
+        CHECK(uut.get_read_ready() == 8);           // Should stop early
     }
 }

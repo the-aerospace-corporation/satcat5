@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2022 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -19,9 +19,11 @@ entity tcam_core_tb_helper is
     generic (
     TEST_LABEL  : string;           -- Label for this instance
     INPUT_WIDTH : positive;         -- Width of the search term
-    TABLE_SIZE  : positive;         -- Max stored MAC addresses
+    TABLE_SIZE  : positive;         -- Max stored table entries
     REPL_MODE   : repl_policy;      -- Replacement mode (see above)
-    TCAM_MODE   : write_policy);    -- Enable wildcard searches?
+    TCAM_MODE   : write_policy;     -- Enable wildcard searches?
+    LUT_WIDTH   : positive;         -- Platform spec (address width)
+    LUT_WRBIT   : boolean);         -- Platform spec (bitwise write-enable)
     port (
     test_done   : out std_logic);
 end tcam_core_tb_helper;
@@ -178,7 +180,9 @@ uut : entity work.tcam_core
     INPUT_WIDTH => INPUT_WIDTH,
     TABLE_SIZE  => TABLE_SIZE,
     REPL_MODE   => REPL_MODE,
-    TCAM_MODE   => TCAM_MODE)
+    TCAM_MODE   => TCAM_MODE,
+    LUT_WIDTH   => LUT_WIDTH,
+    LUT_WRBIT   => LUT_WRBIT)
     port map(
     in_data     => in_data,
     in_next     => in_next,
@@ -262,9 +266,7 @@ p_test : process
         cfg_plen    <= test_table(ref_new).keylen;
         wait until rising_edge(clk_100);
         -- Note where we're writing the new entry.
-        -- This should remain constant until we release VALID (write done)
-        -- or UUT asserts REJECT strobe (write cancelled due to preexisting
-        -- match at the new specified index).
+        -- This should remain constant until we release VALID (write done).
         idx_ovr     := test_table(ref_new).index;
         idx_wr      := cfg_index;
         -- Are we overwriting something else?
@@ -279,15 +281,16 @@ p_test : process
             test_table(ref_old).index <= INDEX_UNKNOWN;
         end if;
         -- Wait for write to complete.
+        -- Confirm the recommended write index doesn't change.
         while (cfg_ready = '0') loop
             wait until rising_edge(clk_100);
-            assert (idx_wr = cfg_index or cfg_reject = '1')
+            assert (idx_wr = cfg_index)
                 report TEST_LABEL & "Invalid change to cfg_index." severity error;
         end loop;
         cfg_valid <= '0';
         -- Should we have gotten a REJECT strobe?
         nowrite := cfg_reject;
-        if (dupe_wr = '1') then 
+        if (dupe_wr = '1') then
             assert (cfg_reject = '1')
                 report TEST_LABEL & "Missing REJECT strobe." severity error;
         else
@@ -334,13 +337,14 @@ p_test : process
         -- Confirm results match the corresponding reference, if any.
         if (ref_idx = INDEX_NOT_FOUND) then
             assert (scan_found = '0')
-                report "Read: Expected empty table entry." severity error;
+                report TEST_LABEL & "Read: Expected empty table entry." severity error;
         elsif (scan_found = '0') then
-            report "Read: Missing table entry." severity error;
+            report TEST_LABEL & "Read: Missing table entry." severity error;
         else
             assert (scan_data = test_table(ref_idx).keyword and
                     scan_mask = test_table(ref_idx).keymask)
-                report "Read: Mismatched table entry #" & integer'image(ref_idx) severity error;
+                report TEST_LABEL & "Read: Mismatched table entry #"
+                    & integer'image(ref_idx) severity error;
         end if;
         -- End of scan command.
         scan_valid  <= '0';
@@ -429,53 +433,105 @@ end tcam_core_tb;
 
 architecture tb of tcam_core_tb is
 
-signal test_done : std_logic_vector(3 downto 0) := (others => '1');
+signal test_done : std_logic_vector(7 downto 0) := (others => '1');
 
 begin
 
 -- Simple-write test case.
 uut0 : entity work.tcam_core_tb_helper
     generic map(
-    TEST_LABEL  => "SIMPLE: ",
+    TEST_LABEL  => "SIMPLE0: ",
     INPUT_WIDTH => 12,
     TABLE_SIZE  => 4,
     REPL_MODE   => TCAM_REPL_NONE,
-    TCAM_MODE   => TCAM_MODE_SIMPLE)
+    TCAM_MODE   => TCAM_MODE_SIMPLE,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => false)
     port map(
     test_done   => test_done(0));
-
--- Typical configuration for MAC-address lookup.
 uut1 : entity work.tcam_core_tb_helper
     generic map(
-    TEST_LABEL  => "CONFIRM: ",
-    INPUT_WIDTH => 48,
-    TABLE_SIZE  => 8,
-    REPL_MODE   => TCAM_REPL_NRU2,
-    TCAM_MODE   => TCAM_MODE_CONFIRM)
+    TEST_LABEL  => "SIMPLE1: ",
+    INPUT_WIDTH => 12,
+    TABLE_SIZE  => 4,
+    REPL_MODE   => TCAM_REPL_NONE,
+    TCAM_MODE   => TCAM_MODE_SIMPLE,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => true)
     port map(
     test_done   => test_done(1));
 
--- Typical configuration for ARP-cacheing.
+-- Typical configuration for MAC-address lookup.
 uut2 : entity work.tcam_core_tb_helper
     generic map(
-    TEST_LABEL  => "ARPCACHE: ",
+    TEST_LABEL  => "CONFIRM2: ",
+    INPUT_WIDTH => 48,
+    TABLE_SIZE  => 8,
+    REPL_MODE   => TCAM_REPL_NRU2,
+    TCAM_MODE   => TCAM_MODE_CONFIRM,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => false)
+    port map(
+    test_done   => test_done(2));
+uut3 : entity work.tcam_core_tb_helper
+    generic map(
+    TEST_LABEL  => "CONFIRM3: ",
+    INPUT_WIDTH => 48,
+    TABLE_SIZE  => 8,
+    REPL_MODE   => TCAM_REPL_NRU2,
+    TCAM_MODE   => TCAM_MODE_CONFIRM,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => true)
+    port map(
+    test_done   => test_done(3));
+
+-- Typical configuration for ARP-cacheing.
+uut4 : entity work.tcam_core_tb_helper
+    generic map(
+    TEST_LABEL  => "ARPCACHE4: ",
     INPUT_WIDTH => 32,
     TABLE_SIZE  => 8,
     REPL_MODE   => TCAM_REPL_PLRU,
-    TCAM_MODE   => TCAM_MODE_CONFIRM)
+    TCAM_MODE   => TCAM_MODE_CONFIRM,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => false)
     port map(
-    test_done   => test_done(2));
+    test_done   => test_done(4));
+uut5 : entity work.tcam_core_tb_helper
+    generic map(
+    TEST_LABEL  => "ARPCACHE5: ",
+    INPUT_WIDTH => 32,
+    TABLE_SIZE  => 8,
+    REPL_MODE   => TCAM_REPL_PLRU,
+    TCAM_MODE   => TCAM_MODE_CONFIRM,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => true)
+    port map(
+    test_done   => test_done(5));
 
 -- Typical configuration for IP-routing tables.
-uut3 : entity work.tcam_core_tb_helper
+uut6 : entity work.tcam_core_tb_helper
     generic map(
-    TEST_LABEL  => "IPROUTER: ",
+    TEST_LABEL  => "IPROUTER6: ",
     INPUT_WIDTH => 32,
     TABLE_SIZE  => 7,
     REPL_MODE   => TCAM_REPL_WRAP,
-    TCAM_MODE   => TCAM_MODE_MAXLEN)
+    TCAM_MODE   => TCAM_MODE_MAXLEN,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => false)
     port map(
-    test_done   => test_done(3));
+    test_done   => test_done(6));
+uut7 : entity work.tcam_core_tb_helper
+    generic map(
+    TEST_LABEL  => "IPROUTER7: ",
+    INPUT_WIDTH => 32,
+    TABLE_SIZE  => 7,
+    REPL_MODE   => TCAM_REPL_WRAP,
+    TCAM_MODE   => TCAM_MODE_MAXLEN,
+    LUT_WIDTH   => 6,
+    LUT_WRBIT   => true)
+    port map(
+    test_done   => test_done(7));
 
 -- Print the overall "done" message.
 p_done : process

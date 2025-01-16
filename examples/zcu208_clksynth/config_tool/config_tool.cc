@@ -30,8 +30,9 @@ using namespace satcat5;
 unsigned verbosity = 1;
 
 // Global background services.
-log::ToConsole logger;          // Print Log messages to console
-util::PosixTimekeeper timer;    // Link system time to internal timers
+log::ToConsole logger;              // Print Log messages to console
+util::PosixTimekeeper timekeep;     // Link system time to SatCat5 timers
+auto timer = timekeep.timer();
 
 // MAC and IP address for the Ethernet-over-UART interface.
 eth::MacAddr LOCAL_MAC  = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
@@ -63,10 +64,6 @@ const unsigned POLL_MSEC = 10;
 // Note: Each LSB of the slew rate is about 0.01 ps/sec
 const unsigned PHASE_LOCK_SLEW  = 512;  // Slew-rate (bang-bang mode)
 const double PHASE_LOCK_TAU     = 2.0;  // Time-constant (linear mode)
-const double PHASE_LOCK_SCALE   = cfg::ptpref_scale(10e6);
-
-inline ptp::CoeffPI trk_coeff(double tau)
-    { return ptp::CoeffPI(PHASE_LOCK_SCALE, tau); }
 
 // Configuration of ZCU208 design.
 class Zcu208 final
@@ -80,12 +77,12 @@ public:
         , m_ledmode(cfg, DEV_OTHER, REG_LEDMODE)
         , m_reset(cfg, DEV_OTHER, REG_RESET)
         , m_vlock(cfg, DEV_OTHER, REG_VLOCK)
-        , m_vref(cfg, DEV_OTHER, REG_VREF)
+        , m_vref(cfg->get_register(DEV_OTHER, REG_VREF), 10e6)
         , m_vcmp(cfg, DEV_OTHER, REG_VCMP)
         , m_clk104(&m_i2c, &m_spimux)
-        , m_coeff(trk_coeff(PHASE_LOCK_TAU))
+        , m_coeff(ptp::CoeffPI(PHASE_LOCK_TAU))
         , m_ctrl(m_coeff)
-        , m_track(timer.timer(), &m_vref, 0)
+        , m_track(&m_vref)
     {
         m_track.add_filter(&m_ctrl);
         m_vref.clock_rate(0);
@@ -128,12 +125,11 @@ public:
     // Returns true if user should reset the coarse alignment.
     bool idle_loop(unsigned duration_msec, unsigned slew_rate) {
         u32 err_count = 0;
-        u32 usec = duration_msec * 1000;
-        u32 tref = timer.timer()->now();
+        auto tref = timer->now();
         while (1) {
             if (slew_adjust(slew_rate)) ++err_count;
             util::service_msec(POLL_MSEC, POLL_MSEC);
-            if (timer.timer()->elapsed_test(tref, usec)) break;
+            if (tref.elapsed_msec() > duration_msec) break;
         }
         return err_count > 0;
     }
@@ -160,7 +156,7 @@ public:
 
     // Set time-constant for linear-mode phase-tracking.
     void phase_lock_tau(double tau) {
-        m_coeff = trk_coeff(tau);
+        m_coeff = ptp::CoeffPI(tau);
         m_ctrl.set_coeff(m_coeff);
     }
 
@@ -181,7 +177,7 @@ public:
         } else {
             // Linear control mode: Temporarily increase loop bandwidth.
             std::cout << "VREF fast-track starting..." << std::endl;
-            m_ctrl.set_coeff(trk_coeff(1.0));
+            m_ctrl.set_coeff(ptp::CoeffPI(1.0));
             m_track.reset();
             idle_loop(2000, 0);
             m_ctrl.set_coeff(m_coeff);
@@ -212,9 +208,9 @@ private:
             // Bang-bang control loop with a constant slew rate.
             // (Normal operating rate is only ~2 ps/sec, so this is fine.)
             if (diff_subns > 0) {
-                m_vref.clock_rate(+slew);
+                m_vref.clock_rate_raw(+slew);
             } else {
-                m_vref.clock_rate(-slew);
+                m_vref.clock_rate_raw(-slew);
             }
         } else {
             // Update the linear 2nd-order control loop.
@@ -233,22 +229,21 @@ private:
     }
 
     // Poll CLK104 driver until it is finished or stuck.
-    bool wait_for_clk104() {
-        u32 tref = timer.timer()->now();
+    bool wait_for_clk104(unsigned timeout_msec = 2000) {
+        auto tref = timer->now();
         unsigned percent_done = 0;
         // Poll until finished or timeout.
         while (m_clk104.busy()) {
             // Any visible progress?
-            unsigned elapsed_msec = timer.timer()->elapsed_usec(tref) / 1000;
             if (percent_done != m_clk104.progress()) {
                 // Progress resets the timeout interval.
-                tref = timer.timer()->now();
+                tref = timer->now();
                 percent_done = m_clk104.progress();
                 // Print update? (Note: Redundant with raw status if verbosity > 1.)
                 if (verbosity == 1) {
                     std::cout << "Progress " << percent_done << "%..." << std::endl;
                 }
-            } else if (elapsed_msec > 4000) {
+            } else if (tref.elapsed_msec() > timeout_msec) {
                 std::cout << "Configuration timeout." << std::endl;
                 return false;
             }
@@ -473,7 +468,7 @@ int main(int argc, const char* argv[])
         // Open remote-control interface.
         std::cout << "Starting config_tool on " << ifname << std::endl;
         eth::Dispatch dispatch(LOCAL_MAC, uart, uart);
-        eth::ConfigBus cfgbus(&dispatch, timer.timer());
+        eth::ConfigBus cfgbus(&dispatch);
         cfgbus.connect(REMOTE_MAC);
         cfgbus.set_irq_polling(30);
         // Start the configuration tool.

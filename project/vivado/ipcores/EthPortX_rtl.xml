@@ -133,6 +133,20 @@ This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
       </spirit:wire>
     </spirit:port>
     <spirit:port>
+      <spirit:logicalName>rx_tfreq</spirit:logicalName>
+      <spirit:description>Receiver frequency offset</spirit:description>
+      <spirit:wire>
+        <spirit:onMaster>
+          <spirit:width>40</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>40</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
       <spirit:logicalName>rx_reset</spirit:logicalName>
       <spirit:description>Ingress reset</spirit:description>
       <spirit:wire>
@@ -272,6 +286,24 @@ This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
         <spirit:onSlave>
           <spirit:presence>required</spirit:presence>
           <spirit:width>48</spirit:width>
+          <spirit:direction>in</spirit:direction>
+        </spirit:onSlave>
+      </spirit:wire>
+    </spirit:port>
+    <spirit:port>
+      <spirit:logicalName>tx_tfreq</spirit:logicalName>
+      <spirit:description>Transmitter frequency offset</spirit:description>
+      <spirit:wire>
+        <spirit:qualifier>
+          <spirit:isData>true</spirit:isData>
+        </spirit:qualifier>
+        <spirit:onMaster>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>40</spirit:width>
+        </spirit:onMaster>
+        <spirit:onSlave>
+          <spirit:presence>required</spirit:presence>
+          <spirit:width>40</spirit:width>
           <spirit:direction>in</spirit:direction>
         </spirit:onSlave>
       </spirit:wire>

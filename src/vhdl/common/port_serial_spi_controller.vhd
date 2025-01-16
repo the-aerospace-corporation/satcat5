@@ -96,7 +96,7 @@ signal status_word  : cfgbus_word;
 
 -- Flow control and idle token insertion.
 signal flow_data    : byte_t := SLIP_FEND;
-signal flow_last    : std_logic := '0';
+signal flow_last    : std_logic := '1';
 signal flow_valid   : std_logic := '0';
 signal flow_ready   : std_logic;
 
@@ -117,11 +117,13 @@ rx_data.clk     <= refclk;
 rx_data.rate    <= get_rate_word(clocks_per_baud(SPI_BAUD, 1_000_000));
 rx_data.status  <= status_word(7 downto 0);
 rx_data.tsof    <= TSTAMP_DISABLED;
+rx_data.tfreq   <= TFREQ_DISABLED;
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= reset_sync;
 tx_ctrl.pstart  <= '1';     -- Timestamps discarded
 tx_ctrl.tnow    <= TSTAMP_DISABLED;
+tx_ctrl.tfreq   <= TFREQ_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No Tx error states
 
 -- Upstream status reporting.
@@ -199,39 +201,41 @@ u_spi : entity work.io_spi_controller
 -- lost data on startup or after an error.)  Before starting each chunk,
 -- check the pause flag to allow some degree of flow control.
 -- If there's no data available, insert a SLIP idle token instead.
+enc_ready <= (flow_ready or not flow_valid) and not (ext_pause and flow_last);
+
 p_flow : process(refclk)
     -- Counter wraparound every 2^6 = 64 bytes.
+    -- End of each chunk briefly deasserts SPI chip-select.
     subtype flow_count_t is unsigned(5 downto 0);
     constant BYTE_LAST  : flow_count_t := (others => '1');
     variable byte_ctr   : flow_count_t := (others => '0');
 begin
     if rising_edge(refclk) then
-        enc_ready <= '0';   -- Set default
         if (reset_sync = '1') then
             -- Global reset
             flow_data   <= SLIP_FEND;
-            flow_last   <= '0';
+            flow_last   <= '1';
             flow_valid  <= '0';
-            enc_ready   <= '0';
             byte_ctr    := (others => '0');
-        elsif (flow_valid = '0' or flow_ready = '1') then
-            -- Ready to present the next byte.
-            if (enc_valid = '1') then
-                flow_data <= enc_data;      -- Normal data
+        elsif (flow_ready = '1' or flow_valid = '0') then
+            -- Ready to present the next byte...
+            if (ext_pause = '1' and flow_last = '1') then
+                -- On request, pause between chunks.
+                flow_data   <= (others => 'X');
+                flow_last   <= '1';
+                flow_valid  <= '0';
+            elsif (enc_valid = '1') then
+                -- Read next normal byte if available.
+                flow_data   <= enc_data;
+                flow_last   <= bool2bit(byte_ctr = BYTE_LAST);
+                flow_valid  <= '1';
+                byte_ctr    := byte_ctr + 1;
             else
-                flow_data <= SLIP_FEND;     -- Idle filler
-            end if;
-            -- End of each chunk briefly deasserts chip-select.
-            flow_last <= bool2bit(byte_ctr = BYTE_LAST);
-            -- Optional pause at the start of each chunk.
-            -- Note: Single-cycle delay in enc_ready is safe because
-            --       SPI will always take many clock cycles per byte.
-            if (byte_ctr = 0 and ext_pause = '1') then
-                flow_valid <= '0';          -- Paused
-            else
-                flow_valid <= '1';          -- Continue
-                enc_ready  <= enc_valid;    -- Byte consumed?
-                byte_ctr   := byte_ctr + 1; -- Increment with wraparound
+                -- Otherwise, insert idle filler.
+                flow_data   <= SLIP_FEND;
+                flow_last   <= bool2bit(byte_ctr = BYTE_LAST);
+                flow_valid  <= '1';
+                byte_ctr    := byte_ctr + 1;
             end if;
         end if;
     end if;

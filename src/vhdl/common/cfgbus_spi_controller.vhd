@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 -- ConfigBus-controlled SPI controller.
@@ -66,6 +66,7 @@ entity cfgbus_spi_controller is
     generic(
     DEVADDR     : integer;          -- Control register address
     CSB_WIDTH   : positive := 1;    -- Number of chip-select outputs
+    DCX_COUNT   : natural := 0;     -- Bytes before asserting DCX?
     FIFO_LOG2   : integer := 6);    -- Tx/Rx FIFO depth = 2^N
     port(
     -- External SPI signals (4-wire)
@@ -75,6 +76,10 @@ entity cfgbus_spi_controller is
     spi_sdo     : out std_logic;        -- Serial data out (COPI)
     spi_sdi     : in  std_logic := '0'; -- Serial data in (CIPO, if present)
     spi_sdt     : out std_logic;        -- Tristate for three-wire mode
+
+    -- Optional "DCX" flag is used by certain devices to distinguish
+    -- commands (first DCX_COUNT bytes) from data (remaining bytes).
+    dcx_out     : out std_logic;        -- Data / command-bar
 
     -- Command interface, including reference clock.
     cfg_cmd     : in  cfgbus_cmd;
@@ -109,6 +114,9 @@ signal rx_busy      : std_logic := '0';
 signal rx_last      : std_logic := '0';
 signal rx_rden      : std_logic := '0';
 signal rx_tris      : std_logic := '0';
+
+-- Command/data counter.
+signal dcx_ctr      : integer range 0 to DCX_COUNT := 0;
 
 -- ConfigBus interface
 signal cfg_word     : cfgbus_word;
@@ -159,6 +167,7 @@ begin
             tx_rden <= '0';
             tx_tris <= '0';
             sel_idx <= (others => '0');
+            dcx_ctr <= 0;
         elsif (cmd_valid = '1' and cmd_ready = '1') then
             -- Update various flags based on opcode.
             tx_wren <= bool2bit(cmd_opcode = CMD_WR)
@@ -192,6 +201,14 @@ begin
         if (rx_rcvd = '1' and rx_last = '1') then
             cfg_irq_t <= not cfg_irq_t;
         end if;
+
+        -- Count bytes from the start of each command.
+        -- (i.e., Reset on CMD_SEL, then countdown after each byte.)
+        if (cmd_valid = '1' and cmd_ready = '1' and cmd_opcode = CMD_SEL) then
+            dcx_ctr <= DCX_COUNT;
+        elsif (rx_rcvd = '1' and dcx_ctr > 0) then
+            dcx_ctr <= dcx_ctr - 1;
+        end if;
     end if;
 end process;
 
@@ -202,6 +219,7 @@ tx_last     <= tx_wren and bool2bit(cmd_opcode = CMD_SEL or cmd_opcode = CMD_EOF
 tx_valid    <= tx_wren and cmd_valid;
 cmd_ready   <= tx_ready or not tx_wren;
 cmd_busy    <= rx_busy or tx_valid or not tx_ready;
+dcx_out     <= bool2bit(dcx_ctr = 0);
 
 -- Bus controller strobes at the end of each Tx/Rx byte.
 -- Filter FIFO writes based on the relevant opcode.

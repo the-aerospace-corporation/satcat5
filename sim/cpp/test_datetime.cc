@@ -107,32 +107,31 @@ u64 gps_seconds(const GpsTime& gps)
 }
 
 TEST_CASE("DateTime-Clock") {
-    satcat5::util::PosixTimer timer;
-    satcat5::irq::VirtualTimer(&satcat5::poll::timekeeper, &timer);
-    satcat5::datetime::Clock uut(&timer);
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+    satcat5::test::TimerSimulation timer;
+
+    // Unit under test.
+    satcat5::datetime::Clock uut;
 
     // Set absolute start time = 1234 msec (arbitrary)
     uut.set(1234);
-    u32 tref = timer.now();
 
-    // Wait 50 msec...
-    while (timer.elapsed_usec(tref) < 50000) {
-        satcat5::poll::timekeeper.request_poll();
-        satcat5::poll::service();        // Wait 50 msec...
-    }
-    CHECK(uut.now() >= 1279);   // Expect 1284 +/- 5 msec
-    CHECK(uut.now() <= 1289);
+    // Wait 50 msec and check the resulting datetime.
+    timer.sim_wait(50);
+    CHECK(uut.now() >= 1283);
+    CHECK(uut.now() <= 1285);
 
-    // Wait another 50 msec...
-    while (timer.elapsed_usec(tref) < 100000) {
-        satcat5::poll::timekeeper.request_poll();
-        satcat5::poll::service();        // Wait 100 msec...
-    }
-    CHECK(uut.now() >= 1329);   // Expect 1334 +/- 5 msec
-    CHECK(uut.now() <= 1339);
+    // Wait another 50 msec and check the resulting datetime.
+    timer.sim_wait(50);
+    CHECK(uut.now() >= 1333);
+    CHECK(uut.now() <= 1335);
 }
 
 TEST_CASE("DateTime-Conversions") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     // Test each of the following pairs.
     // To make more, use the following tool with leap-seconds set to zero:
     //  https://www.labsat.co.uk/index.php/en/gps-time-calculator
@@ -315,6 +314,9 @@ TEST_CASE("DateTime-Conversions") {
 }
 
 TEST_CASE("DateTime-Internal") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     SECTION("bcd_convert") {
         // 24-hour time (MIL flag = 0x80)
         CHECK(bcd_convert_24hr(0x80) == 0);

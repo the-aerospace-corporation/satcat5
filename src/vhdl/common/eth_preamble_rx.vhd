@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2022 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -45,6 +45,7 @@ entity eth_preamble_rx is
 
     -- Received message timestamps, if enabled.
     rx_tstamp   : in  tstamp_t := TSTAMP_DISABLED;
+    rx_tfreq    : in  tfreq_t := TFREQ_DISABLED;
 
     -- Repeat detection (each input byte repeated N+1 times)
     rep_rate    : out byte_u;
@@ -93,6 +94,7 @@ rx_data.rxerr   <= bool2bit(err_dlyct > 0);
 rx_data.rate    <= rate_word;
 rx_data.status  <= status;
 rx_data.tsof    <= rx_tstamp;
+rx_data.tfreq   <= rx_tfreq;
 rep_rate        <= reg_rpt;
 rep_valid       <= got_rpt;
 

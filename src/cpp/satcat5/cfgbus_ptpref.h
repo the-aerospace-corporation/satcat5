@@ -16,54 +16,66 @@
 #pragma once
 
 #include <satcat5/cfgbus_core.h>
+#include <satcat5/ptp_filters.h>
 #include <satcat5/ptp_tracking.h>
 
 namespace satcat5 {
     namespace cfg {
-        // Reference scale for use with TrackingCoeff class.
-        // Scale parameter must match the TFINE_SCALE generic on the HDL block
-        // (usually "ptp_counter_free" or "ptp_realtime"). It indicates that
-        // the per-cycle rate-accumulator scaling is 2^N LSBs per nanosecond.
-        constexpr double ptpref_scale(double ref_clk_hz, unsigned scale=40) {
-            return ref_clk_hz / double(satcat5::ptp::NSEC_PER_SEC) / double(1ull << scale);
-        }
-
         // Rate-control only.
         class PtpReference : public satcat5::ptp::TrackingClock {
         public:
             // PtpReference is a thin-wrapper for a single control register.
-            PtpReference(satcat5::cfg::ConfigBus* cfg,
-                unsigned devaddr, unsigned regaddr = satcat5::cfg::REGADDR_ANY);
+            // Clock rate is required to renormalize frequency adjustments.
+            // Default scale parameter matches "ptp_counter_free.vhd".
+            constexpr PtpReference(
+                const satcat5::cfg::Register& reg,
+                double ref_clk_hz, unsigned scale=40)
+                : m_reg(reg), m_rate(ref_clk_hz, scale) {}
 
             // Implement rate-control only for the TrackingClock API.
             satcat5::ptp::Time clock_adjust(
                 const satcat5::ptp::Time& amount) override;
             void clock_rate(s64 offset) override;
+            satcat5::ptp::Time clock_now() override;
+
+            // Legacy API for rate-control without additional scaling.
+            void clock_rate_raw(s64 rate);
 
         protected:
             satcat5::cfg::Register m_reg;   // Control register
+            const satcat5::ptp::RateConversion m_rate;
         };
 
         // Rate-control plus coarse-adjust command.
         class PtpRealtime : public satcat5::ptp::TrackingClock {
         public:
             // PtpRealtime uses a block of six control registers.
-            PtpRealtime(satcat5::cfg::ConfigBus* cfg,
-                unsigned devaddr, unsigned regaddr_base);
+            // Clock rate is required to renormalize frequency adjustments.
+            // Default scale parameter matches "ptp_realtime.vhd".
+            constexpr PtpRealtime(
+                const satcat5::cfg::Register& reg,
+                double ref_clk_hz, unsigned scale=40)
+                : m_reg(reg), m_rate(ref_clk_hz, scale) {}
 
             // Implement the full TrackingClock API.
             satcat5::ptp::Time clock_adjust(
                 const satcat5::ptp::Time& amount) override;
             void clock_rate(s64 offset) override;
+            satcat5::ptp::Time clock_now() override;
 
-            // Get or set the current time.
-            satcat5::ptp::Time clock_ext();     // External timestamp
-            satcat5::ptp::Time clock_now();     // Read current time
+            // Legacy API for rate-control without additional scaling.
+            void clock_rate_raw(s64 rate);
+
+            // Read timestamp of external rising-edge signal.
+            satcat5::ptp::Time clock_ext();
+
+            // Coarse adjustment of the current time.
             void clock_set(const satcat5::ptp::Time& new_time);
 
         protected:
             void load(const satcat5::ptp::Time& time);
             satcat5::cfg::Register m_reg;   // Base control register
+            const satcat5::ptp::RateConversion m_rate;
         };
     }
 }

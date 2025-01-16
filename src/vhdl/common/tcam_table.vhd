@@ -59,7 +59,7 @@ entity tcam_table is
     cfg_clear   : in  std_logic := '0';
     cfg_suggest : out integer range 0 to TABLE_SIZE-1;
     cfg_index   : in  integer range 0 to TABLE_SIZE-1;
-    cfg_plen    : in  integer range 1 to IN_WIDTH := IN_WIDTH;
+    cfg_plen    : in  integer range 0 to IN_WIDTH := IN_WIDTH;
     cfg_search  : in  std_logic_vector(IN_WIDTH-1 downto 0);
     cfg_result  : in  std_logic_vector(OUT_WIDTH-1 downto 0);
     cfg_valid   : in  std_logic;
@@ -128,6 +128,7 @@ u_tcam : entity work.tcam_core
     cfg_suggest => cfg_suggest,
     cfg_index   => cfg_index,
     cfg_data    => cfg_search,
+    cfg_plen    => cfg_plen,
     cfg_valid   => cfg_valid,
     cfg_ready   => cfg_ready_i,
     scan_index  => scan_index,

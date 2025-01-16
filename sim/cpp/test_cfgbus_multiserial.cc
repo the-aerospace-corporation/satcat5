@@ -71,8 +71,8 @@ private:
 };
 
 TEST_CASE("cfgbus_multiserial") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Instantiate emulator and the unit under test.
     satcat5::test::MultiSerial mst;

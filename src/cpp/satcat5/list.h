@@ -19,8 +19,14 @@
 //  * The object MUST declare itself as a friend of satcat5::util::ListCore.
 //  * The object MUST be a class or struct with a member named "m_next"
 //    that is a pointer to the same type of object.
-//  * The pointer SHOULD generally be marked as "private" or "protected".
-//  * The object MUST NOT add itself to a list more than once.
+//  * The object MUST initialize the pointer to zero. It MUST NOT otherwise
+//    access the pointer except through SatCat5 ListCore or List functions.
+//  * The object MUST NOT add itself to more than one list using a given
+//    "m_next" pointer.  Objects MAY safely inherit more than one "m_next"
+//    pointer from different parents.
+//  * The pointer SHOULD generally be marked as "private".
+//    This reduces the chance of namespace conflicts (see previous item).
+//  * The object MUST NOT add itself to a given list more than once.
 //  * If the object's constructor adds itself to a list, then the object's
 //    destructor SHOULD remove itself from that list.
 //
@@ -37,6 +43,15 @@ namespace satcat5 {
             void add(T*& list, T* item) {
                 // Add new item to front or back, whichever is simpler.
                 satcat5::util::ListCore::push_front(list, item);
+            }
+
+            template <class T> static inline
+            void add_list(T*& list1, T*& list2) {
+                // Add each item from "list2" onto "list1", destroying "list2".
+                // Items are pushed to the front or back in any convenient order.
+                while (T* item = satcat5::util::ListCore::pop_front(list2)) {
+                    satcat5::util::ListCore::add(list1, item);
+                }
             }
 
             template <class T> static inline
@@ -71,6 +86,17 @@ namespace satcat5 {
             }
 
             template <class T> static inline
+            T* get_index(T* list, unsigned idx) {
+                // Fetch the Nth item from the linked list.
+                // Returns null pointer if index >= length.
+                T* ptr = list;
+                while (ptr && idx--) {
+                    ptr = ptr->m_next;
+                }
+                return ptr;
+            }
+
+            template <class T> static inline
             bool has_loop(const T* list) {
                 // Check if the linked list loops back on itself, using the
                 // two-pointer "tortoise and hare" algorithm.
@@ -83,6 +109,15 @@ namespace satcat5 {
                     fast = fast->m_next->m_next;
                 }
                 return false;               // Reached end with no loops.
+            }
+
+            template <class T> static inline
+            void insert_after(T* where, T* item) {
+                // Insert a new item just after the designated position.
+                if (where && item) {
+                    item->m_next = where->m_next;
+                    where->m_next = item;
+                }
             }
 
             template <class T> static inline
@@ -139,19 +174,30 @@ namespace satcat5 {
 
         template <class T> class List final {
         public:
-            List() : m_head(0) {}   // Constructor = Empty list
-            ~List() {}              // No action required
+            constexpr List()
+                : m_head(0) {}      // Construct an empty list.
+            constexpr explicit List(T* item)
+                : m_head(item) {}   // Construct list with one item.
+            ~List() {}              // Destructor requires no action.
 
             T* head() const {return m_head;}
 
             inline void add(T* item)
                 {satcat5::util::ListCore::add(m_head, item);}
+            inline void add_list(satcat5::util::List<T>& other)
+                {satcat5::util::ListCore::add_list(m_head, other.m_head);}
             inline void add_safe(T* item)
                 {satcat5::util::ListCore::add_safe(m_head, item);}
             inline bool contains(const T* item) const
                 {return satcat5::util::ListCore::contains(m_head, item);}
+            inline T* get_index(unsigned idx)
+                {return satcat5::util::ListCore::get_index(m_head, idx);}
             inline bool has_loop() const
                 {return satcat5::util::ListCore::has_loop(m_head);}
+            inline void insert_after(T* where, T* item)
+                {satcat5::util::ListCore::insert_after(where, item);}
+            inline bool is_empty() const
+                {return m_head == 0;}
             inline unsigned len() const
                 {return satcat5::util::ListCore::len(m_head);}
             inline T* next(const T* item) const
@@ -164,6 +210,8 @@ namespace satcat5 {
                 {satcat5::util::ListCore::push_back(m_head, item);}
             inline void remove(T* item)
                 {satcat5::util::ListCore::remove(m_head, item);}
+            inline void reset(T* item = 0)
+                {m_head = item;}
 
         protected:
             T* m_head;  // Pointer to first item, zero if empty.

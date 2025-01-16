@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Interface driver for the cfgbus_uart block
@@ -32,7 +32,7 @@ namespace satcat5 {
 
         private:
             // Event handlers.
-            void data_rcvd();
+            void data_rcvd(satcat5::io::Readable* src);
             void irq_event();
 
             // Control registers

@@ -595,7 +595,7 @@ p_test : process
         expect_out(ip_from_uut(IP_PKT1.all).all);
         expect_out(ip_from_uut(IP_PKT2.all).all);
         expect_out_if(NOIP_SHORT.all, not NOIP_BLOCK_ALL);
-        
+
         send_in(ip_to_uut(IP_PKT1.all).all);
         send_in(ip_to_uut(IP_PKT2.all).all);
         send_in(NOIP_SHORT.all);

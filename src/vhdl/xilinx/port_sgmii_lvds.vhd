@@ -55,7 +55,7 @@ end port_sgmii_lvds;
 architecture port_sgmii_lvds of port_sgmii_lvds is
 
 -- Component declaration for the black-box IP core.
--- Note that the core changes the refclk name depending upon the refclk frequency 
+-- Note that the core changes the refclk name depending upon the refclk frequency
 component sgmii_lvds0 is
     port(
     txn                  : out std_logic;
@@ -110,9 +110,11 @@ signal aux_err_sync     : std_logic;
 signal txrx_reset       : std_logic := '0';
 signal rx_treset        : std_logic := '0';
 signal rx_tstamp        : tstamp_t := TSTAMP_DISABLED;
+signal rx_tfreq         : tfreq_t := TFREQ_DISABLED;
 signal rx_tvalid        : std_logic := '0';
 signal tx_treset        : std_logic := '0';
 signal tx_tstamp        : tstamp_t := TSTAMP_DISABLED;
+signal tx_tfreq         : tfreq_t := TFREQ_DISABLED;
 signal tx_tvalid        : std_logic := '0';
 
 -- IP-core provides a quasi-GMII interface.
@@ -139,6 +141,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_pwren    => txrx_pwren,
     tx_pkten    => tx_pkten,
     tx_tstamp   => tx_tstamp,
+    tx_tfreq    => tx_tfreq,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl);
 
@@ -172,6 +175,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => gmii_rx_clk,
         user_ctr    => rx_tstamp,
+        user_freq   => rx_tfreq,
         user_lock   => rx_tvalid,
         user_rst_p  => rx_treset);
 
@@ -183,6 +187,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => gmii_tx_clk,
         user_ctr    => tx_tstamp,
+        user_freq   => tx_tfreq,
         user_lock   => tx_tvalid,
         user_rst_p  => tx_treset);
 end generate;
@@ -192,12 +197,12 @@ u_amble_rx : entity work.eth_preamble_rx
     port map(
     raw_clk     => gmii_rx_clk,
     raw_lock    => clk_locked,
-    raw_cken    => '1',
     raw_data    => gmii_rx_data,
     raw_dv      => gmii_rx_dv,
     raw_err     => gmii_rx_er,
     rate_word   => get_rate_word(1000),
     rx_tstamp   => rx_tstamp,
+    rx_tfreq    => rx_tfreq,
     aux_err     => aux_err_sync,
     status      => gmii_status,
     rx_data     => prx_data);

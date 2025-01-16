@@ -42,9 +42,32 @@ but even more useful for things like small satellites and cubesats,
 which typically pack many microcontroller-based subsystems into a small volume.
 
 SatCat5 is used for the modular payload interface on [the Slingshot-1 cubesat mission](https://aerospace.org/article/slingshot-platform-showcase-advantages-modular-payload-architecture).
-For more details, please refer to the [full interface specification and mission-operations report](../examples/slingshot).
+For more details, please refer to the [full interface specification and mission operations report](../examples/slingshot).
 
-### Can I customize it?
+### How does SatCat5 relate to Slingshot?
+
+Slingshot-1 was a 12U cubesat that was built and operated by The Aerospace Corporation.
+It launched in July 2022 and operated successfully for more than 12 months.
+
+Originally intended to be the first of many, the Slingshot-1 cubesat acted
+as a research and development platform for prototyping modular interface technologies.
+By design, each of 19 payloads used the same modular "Slingshot" interface.
+In principle, any Slingshot-compatible payload should be compatible with any future Slingshot mission.
+
+The Slingshot interface provides power, data, and various auxiliary support services.
+SatCat5 was used for command and data handling, with all payloads attached to an Ethernet LAN.
+Payloads needing gigabit connectivity used SGMII; others used SPI/UART for simplicity.
+Simple protocols allowed payloads to communicate with the ground or with each other.
+
+We've published the [full interface specification](../examples/slingshot/ATR-2022-01270%20-%20Slingshot%20Payload%20Manual.pdf)
+as part of this repository, including electrical interfaces and network protocol information.
+We hope this can be a step towards increased standardization of modular cubesat avionics.
+
+We've also published the [mission operations report](../examples/slingshot/OTR-2024-00115%20-%20Slingshot%20Mission%20Operations.pdf)
+completed in October 2023, which has more information on our operations infrastructure
+and the payload development kits used to mimic the in-flight interface.
+
+### Can I customize SatCat5?
 
 Yes! That's a big part of why we chose the CERN Open Hardware License,
 so you can use our VHDL building blocks to link together a custom SatCat5 switch for your application.
@@ -106,8 +129,11 @@ The MAC-to-MAC signals aren't suitable to travel long distances, but that's not 
 ### What if I want regular Ethernet ports?
 
 SatCat5 supports that too.
-Just attach a suitable PHY chip, and signal transformers if needed.
-Take a look at the [example design](../test/proto_pcb).
+Attach a suitable PHY chip, and Ethernet signal transformers if needed.
+Take a look at the [example design](../examples/ac701_proto_v1/proto_pcb).
+
+Out of the box, SatCat5 supports [many common PHY interfaces](INTERFACES.md) including GMII, RMII, RGMII, and SGMII.
+You can also connect [custom interfaces](INTERFACES.md#custom-ports) to a SatCat5 switch.
 
 We include an [MDIO interface](../src/vhdl/common/io_mdio_readwrite.vhd)
 if the PHY needs configuration.  We also include I2C, SPI, and UART interfaces.
@@ -186,13 +212,13 @@ The core of SatCat5 is a Layer-2 Ethernet switch.
 The switch can be built in managed or unmanaged configurations.
 Managed switches are configured using the [ConfigBus interface](CONFIGBUS.md).
 
-The switch directs packets based on destination MAC address.
+The switch directs Ethernet frames based on destination MAC address.
 The MAC-address(es) associated with each port are learned automatically
 by inspecting the source MAC address of each frame.
-Packets with an unrecognized destination are treated as broadcast packets.
+By default, frames with an unrecognized destination are treated as broadcast frames.
 
-The switch supports broadcast packets (destination MAC FF:FF:FF:FF:FF:FF)
-and will send such packets to every port except the original ingress port.
+The switch supports broadcast frames (destination MAC FF:FF:FF:FF:FF:FF)
+and will send such frames to every port except the original ingress port.
 
 [Internet Group Management Protocol (IGMP)](https://en.wikipedia.org/wiki/Internet_Group_Management_Protocol)
 has rudimentary support.
@@ -442,6 +468,41 @@ regardless of the source and destination clock domain(s).
 
 For more information, refer to the `vc707_ptp_client` example design.
 
+### What is Doppler-PTP?
+
+Conventional PTP measures the time-of-flight delay from client to server.
+It assumes that delay is constant and symmetric in both directions.
+These assumptions are violated if either node is moving,
+leading to erroneous time-transfer calculations.
+
+Doppler-PTP is an experimental extension to PTP, intended to solve this limitation.
+This optional feature can be enabled on SatCat5 PTP clients and transparent clocks.
+
+Doppler-PTP mitigates the problem by measuring and reporting frequency offsets,
+measured relative to each transparent clock's local frequency reference.
+Cumulative measurements allow the calculation of the end-to-end range-rate.
+That measurement can be used to compensate two-way time-transfer calculations.
+We use VERDACT to ensure very accurate frequency measurements.
+
+The frequency data is added to a new TLV (IEEE 1588-2019 Section 14) to select PTP messages.
+We use tlvType 0x20AE, which is reserved for experimental use on controlled networks.
+The TLV adds a 6-byte frequency field, which is incremented by each transparent clock.
+The update operation is directly analagous to the usual PTP correctionField,
+except that it contains estimated frequency instead of estimated timestamps.
+
+### What is Simple-PTP?
+
+Simple-PTP or SPTP is a variation on PTP developed by Meta (fka Facebook).
+This optional feature can be enabled on SatCat5 PTP clients.
+
+SPTP changes the sequence of operations to reduce required network traffic and latency.
+It is backwards-compatible with existing PTP transparent clocks and network interfaces,
+but it requires changes to the PTP client software.
+
+Meta has published a [blog post](https://engineering.fb.com/2024/02/07/production-engineering/simple-precision-time-protocol-sptp-meta/)
+and a [journal paper](https://ieeexplore.ieee.org/document/10296989)
+that describe the changes in detail.
+
 ### What is VERDACT?
 
 Vernier-referenced digital asynchronous collinear timestamps (VERDACT).
@@ -593,11 +654,10 @@ The CLA protects the rights of The Aerospace Corporation, our customers, and you
 
 ### What parts of SatCat5 are patented?
 
-We currently hold one relevant US patent, number US11055254B2,
-titled "Mixed Media Ethernet Switch".
-
-We have applied for a patent on VERDACT (fka "Vernier Phase Locked Loop"),
-which is used to generate cross-clock timestamps for PTP.
+The Aerospace Corporation currently holds the following relevant patents:
+* US20210173806A1 "Mixed Media Ethernet Switch" for interconnecting SPI/UART and MII ports on the same switch.
+* US20240204788A1 "Vernier phase locked loop" for the VERDACT circuit (see "What is VERDACT", above).
+* (Pending) "Two-way time transfer and ranging that measures and compensates for Doppler shifts".
 
 In accordance with SatCat5's open-source license agreement,
 we grant a royalty-free license for use of these technologies.

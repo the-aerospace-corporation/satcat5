@@ -30,7 +30,7 @@ HdlcEncoder::HdlcEncoder(Writeable* dst)
     : WriteableRedirect(0)
     , m_bstuff(dst)
     , m_crc32(&m_bstuff)
-    , m_crc16(&m_bstuff, 0xFFFF)
+    , m_crc16(&m_bstuff, 0xFFFF, 0xFFFF)
 {
     set_mode_crc32(SATCAT5_HDLC_DEFAULT_CRC32);
 }
@@ -94,7 +94,7 @@ void HdlcEncoder::ByteStuff::write_next(u8 data)
 
 HdlcDecoder::HdlcDecoder(satcat5::io::Writeable* dst)
     : m_crc32(dst)
-    , m_crc16(dst, 0xFFFF)
+    , m_crc16(dst, 0xFFFF, 0xFFFF)
     , m_state(State::HDLC_EOF)
     , m_actrl(SATCAT5_HDLC_DEFAULT_ACTRL)
     , m_crc(0)

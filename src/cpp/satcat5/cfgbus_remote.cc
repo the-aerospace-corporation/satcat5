@@ -6,7 +6,7 @@
 #include <satcat5/cfgbus_remote.h>
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/log.h>
-#include <satcat5/timer.h>
+#include <satcat5/timeref.h>
 #include <satcat5/udp_dispatch.h>
 #include <satcat5/utils.h>
 
@@ -40,11 +40,9 @@ static const Type TYPE_ETH_ACK =
 static const Type TYPE_UDP_ACK =
     Type(satcat5::udp::PORT_CFGBUS_ACK.value);
 
-satcat5::eth::ConfigBus::ConfigBus(
-        satcat5::eth::Dispatch* iface,          // Network interface
-        satcat5::util::GenericTimer* timer)     // Reference for timeouts
+satcat5::eth::ConfigBus::ConfigBus(satcat5::eth::Dispatch* iface)
     : satcat5::eth::AddressContainer(iface)
-    , ConfigBusRemote(&m_addr, TYPE_ETH_ACK, timer)
+    , ConfigBusRemote(&m_addr, TYPE_ETH_ACK)
 {
     // Nothing else to initialize
 }
@@ -58,7 +56,7 @@ void satcat5::eth::ConfigBus::connect(
 satcat5::udp::ConfigBus::ConfigBus(
         satcat5::udp::Dispatch* udp)            // UDP interface
     : satcat5::udp::AddressContainer(udp)
-    , ConfigBusRemote(&m_addr, TYPE_UDP_ACK, udp->iface()->m_timer)
+    , ConfigBusRemote(&m_addr, TYPE_UDP_ACK)
 {
     // Nothing else to initialize
 }
@@ -74,12 +72,10 @@ void satcat5::udp::ConfigBus::connect(
 
 ConfigBusRemote::ConfigBusRemote(
         satcat5::net::Address* dst,             // Remote iface + address
-        const satcat5::net::Type& ack,          // Ack type parameter
-        util::GenericTimer* timer)              // Reference for timeouts
+        const satcat5::net::Type& ack)          // Ack type parameter
     : satcat5::cfg::ConfigBus()
     , satcat5::net::Protocol(ack)
     , m_dst(dst)
-    , m_timer(timer)
     , m_timeout_rd(100000)  // Default = 100 msec
     , m_timeout_wr(0)       // Default = Non-blocking
     , m_status(0)
@@ -289,12 +285,12 @@ cfg::IoStatus ConfigBusRemote::wait_response(unsigned timeout)
     util::set_mask_u32(m_status, STATUS_BUSY | STATUS_PENDING);
 
     // Keep polling until we get a response or timeout.
-    u32 tref = m_timer->now();
+    auto tref = SATCAT5_CLOCK->checkpoint_usec(timeout);
     while (1) {
         satcat5::poll::service();   // Yield to other SatCat5 tasks
         if (!(m_status & STATUS_PENDING)) {
             break;                  // Response received
-        } else if (m_timer->elapsed_usec(tref) > timeout) {
+        } else if (tref.checkpoint_elapsed()) {
             log::Log(log::ERROR, "CfgRemote: Timeout");
             m_response_status = cfg::IoStatus::TIMEOUT;
             break;                  // Timeout

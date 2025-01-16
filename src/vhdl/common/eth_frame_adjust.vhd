@@ -151,6 +151,7 @@ gen_nostrip : if not STRIP_FCS generate
     frm_nlast   <= in_nlast_mod;
     frm_valid   <= in_valid;
     in_ready    <= frm_ready;
+    in_ready_i  <= frm_ready;
 end generate;
 
 gen_strip : if STRIP_FCS generate

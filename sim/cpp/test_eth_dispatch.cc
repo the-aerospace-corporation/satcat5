@@ -12,6 +12,10 @@
 using satcat5::net::Type;
 namespace eth = satcat5::eth;
 
+static constexpr eth::MacAddr
+    MAC_LOCAL   = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11},
+    MAC_REMOTE  = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
+
 class MockProtocol : public eth::Protocol {
 public:
     MockProtocol(eth::Dispatch* dispatch, u16 etype)
@@ -32,8 +36,8 @@ Type make_type(u8 x) {return Type(x);}
 
 // Send a packet with a short message.
 void send_msg(satcat5::io::Writeable* wr, u16 vtag, u16 etype, u32 msg) {
-    wr->write_obj(eth::MACADDR_BROADCAST);
-    wr->write_obj(eth::MACADDR_BROADCAST);
+    wr->write_obj(eth::MACADDR_BROADCAST);  // Dst
+    wr->write_obj(MAC_REMOTE);              // Src
     if (vtag) {
         wr->write_u16(0x8100);
         wr->write_u16(vtag);
@@ -44,9 +48,11 @@ void send_msg(satcat5::io::Writeable* wr, u16 vtag, u16 etype, u32 msg) {
 }
 
 TEST_CASE("ethernet-dispatch") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     // Unit under test, plus I/O buffers.
     satcat5::io::PacketBufferHeap tx, rx;
-    const eth::MacAddr MAC_LOCAL = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
     eth::Dispatch uut(MAC_LOCAL, &tx, &rx);
 
     // Register a few mock protocol handlers.
@@ -87,6 +93,22 @@ TEST_CASE("ethernet-dispatch") {
         satcat5::poll::service_all();
         CHECK(p1.m_rcvd == 0x1234);
         CHECK(p2.m_rcvd == 0x3456);
+        CHECK(uut.reply_is_multicast());
+    }
+
+    SECTION("reply_addr") {
+        // Send a message to the dispatch unit.
+        send_msg(&rx, 0, 12, 0x1234);
+        satcat5::poll::service_all();
+        // Test the "save_reply_address" method.
+        satcat5::eth::Address addr(&uut);
+        CHECK(addr.reply_is_multicast());
+        addr.save_reply_address();
+        CHECK(addr.dstmac() == MAC_REMOTE);
+        CHECK(addr.etype().value == 12);
+        CHECK(addr.vtag().value == 0);
+        CHECK(addr.matches_reply_address());
+        CHECK_FALSE(addr.is_multicast());
     }
 
     SECTION("socket-rx") {

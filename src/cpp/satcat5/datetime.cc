@@ -4,7 +4,6 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/datetime.h>
-#include <satcat5/timer.h>
 
 namespace date = satcat5::datetime;
 namespace ptp = satcat5::ptp;
@@ -16,23 +15,20 @@ using satcat5::datetime::RtcTime;
 constexpr s64 PTP_EPOCH = 1000LL * 315964819;
 
 // Convert a millisecond timestamp to or from PTP format.
-s64 date::from_ptp(const ptp::Time& time)
-{
+s64 date::from_ptp(const ptp::Time& time) {
     return time.delta_msec() - PTP_EPOCH;
 }
 
-ptp::Time date::to_ptp(s64 time)
-{
+ptp::Time date::to_ptp(s64 time) {
     s64 secs = s64((time + PTP_EPOCH) / 1000);
     u32 msec = u32((time + PTP_EPOCH) % 1000);
     return ptp::Time(secs, msec * ptp::NSEC_PER_MSEC);
 }
 
 // The core "Clock" functions don't require any fancy conversions.
-Clock::Clock(satcat5::util::GenericTimer* timer)
+Clock::Clock()
     : satcat5::poll::Timer()
-    , m_timer(timer)
-    , m_tref(0)
+    , m_tref(SATCAT5_CLOCK->now())
     , m_tcount(0)
     , m_gps(0)
 {
@@ -41,17 +37,15 @@ Clock::Clock(satcat5::util::GenericTimer* timer)
     timer_every(1);
 }
 
-void Clock::set(s64 gps)
-{
+void Clock::set(s64 gps) {
     // Reset the current time reference.
-    m_tref  = m_timer->now();
+    m_tref  = SATCAT5_CLOCK->now();
     m_gps   = gps;
 }
 
-void Clock::timer_event()
-{
+void Clock::timer_event() {
     // Elapsed time since the last update?
-    unsigned incr = m_timer->elapsed_msec(m_tref);
+    unsigned incr = m_tref.increment_msec();
 
     // Increment both time counters.
     m_tcount += incr;           // Always increment uptime
@@ -64,18 +58,14 @@ static constexpr s64 RTC_EPOCH =
     1042 * (s64)date::ONE_WEEK + 6 * (s64)date::ONE_DAY;
 
 // Convert BCD value to ordinary value and vice-versa.
-static inline u8 bcd2int(u8 bcd)
-{
-    return 10 * (bcd >> 4) + (bcd & 0x0F);
-}
-static inline u8 int2bcd(u8 x) {
-    return 16 * (x / 10) + (x % 10);
-}
+static inline constexpr u8 bcd2int(u8 bcd)
+    { return 10 * (bcd >> 4) + (bcd & 0x0F); }
+static inline constexpr u8 int2bcd(u8 x)
+    { return 16 * (x / 10) + (x % 10); }
 
 // Lookup table converts BCD 12-hour time to 24-hour format.
 // (Assume AM/PM flags follow the ISL12082 convention.)
-u8 bcd_convert_24hr(u8 val)
-{
+u8 bcd_convert_24hr(u8 val) {
     // If MIL flag is already set, simply convert from BCD.
     if (val & date::RTC_MIL_BIT)
         return bcd2int(val & 0x7F);
@@ -113,15 +103,13 @@ u8 bcd_convert_24hr(u8 val)
 }
 
 // Given year, return days in that year.
-static inline unsigned days_per_year(u8 yy)
-{
+static inline unsigned days_per_year(u8 yy) {
     // Assume year "00" is 2000, which is a leap year.
     return (yy % 4) ? 365 : 366;
 }
 
 // Given year and month, return days in that month.
-static unsigned days_per_month(u8 yy, u8 mm)
-{
+static unsigned days_per_month(u8 yy, u8 mm) {
     // Special-case for leap years:
     if ((mm == 2) && (yy % 4 == 0))
         return 29;
@@ -137,8 +125,7 @@ static unsigned days_per_month(u8 yy, u8 mm)
     }
 }
 
-unsigned RtcTime::days_since_epoch() const
-{
+unsigned RtcTime::days_since_epoch() const {
     if (!validate()) return UINT32_MAX;
 
     // Count days for each full year.
@@ -154,8 +141,7 @@ unsigned RtcTime::days_since_epoch() const
     return total + dt - 1;
 }
 
-unsigned RtcTime::msec_since_midnight() const
-{
+unsigned RtcTime::msec_since_midnight() const {
     // Calculate total offset in milliseconds.
     if (validate())
         return 10*ss + 1000*sc + 60000*mn + 3600000*hr;
@@ -163,21 +149,18 @@ unsigned RtcTime::msec_since_midnight() const
         return UINT32_MAX;  // Error
 }
 
-GpsTime date::to_gps(s64 time)
-{
+GpsTime date::to_gps(s64 time) {
     return GpsTime {
         (s32)(time / date::ONE_WEEK),   // Week number
         (u32)(time % date::ONE_WEEK)    // Time of week
     };
 }
 
-s64 date::from_gps(const GpsTime& time)
-{
+s64 date::from_gps(const GpsTime& time) {
     return (s64)date::ONE_WEEK * time.wkn + time.tow;
 }
 
-RtcTime date::to_rtc(s64 time)
-{
+RtcTime date::to_rtc(s64 time) {
     // Convert to the RTC epoch (2000 Jan 1 @ 00:00:00).
     time -= RTC_EPOCH;
 
@@ -216,8 +199,7 @@ RtcTime date::to_rtc(s64 time)
     return RtcTime {dw, yr, mo, dt, hr, mn, sc, ss};
 }
 
-s64 date::from_rtc(const RtcTime& time)
-{
+s64 date::from_rtc(const RtcTime& time) {
     u32 days = time.days_since_epoch();
     u32 msec = time.msec_since_midnight();
     if ((days < UINT32_MAX) && (msec < UINT32_MAX))
@@ -227,8 +209,7 @@ s64 date::from_rtc(const RtcTime& time)
 }
 
 // Comparison and I/O helper functions
-bool GpsTime::read_from(io::Readable* rd)
-{
+bool GpsTime::read_from(io::Readable* rd) {
     if (rd->get_read_ready() < 8)
         return false;
 
@@ -237,27 +218,23 @@ bool GpsTime::read_from(io::Readable* rd)
     return true;
 }
 
-bool GpsTime::operator<(const GpsTime& other) const
-{
+bool GpsTime::operator<(const GpsTime& other) const {
     if (wkn < other.wkn) return true;
     if (wkn > other.wkn) return false;
     return tow < other.tow;
 }
 
-bool GpsTime::operator==(const GpsTime& other) const
-{
+bool GpsTime::operator==(const GpsTime& other) const {
     return (wkn == other.wkn) && (tow == other.tow);
 }
 
-bool RtcTime::validate() const
-{
+bool RtcTime::validate() const {
     return (ss < 100) && (sc < 60) && (mn < 60) && (hr < 24)
         && (dt > 0) && (dt <= days_per_month(yr, mo))
         && (mo > 0) && (mo <= 12) && (yr < 100) && (dw < 7);
 }
 
-void RtcTime::write_to(satcat5::io::Writeable* wr) const
-{
+void RtcTime::write_to(satcat5::io::Writeable* wr) const {
     // Convert each field to BCD format, then write.
     u8 temp[8];
     temp[0] = int2bcd(ss);      // Sub-seconds (0-99)
@@ -271,8 +248,7 @@ void RtcTime::write_to(satcat5::io::Writeable* wr) const
     wr->write_bytes(8, temp);
 }
 
-bool RtcTime::read_from(satcat5::io::Readable* rd)
-{
+bool RtcTime::read_from(satcat5::io::Readable* rd) {
     // Read raw bytes
     u8 temp[8];
     bool rdok = rd->read_bytes(8, temp);
@@ -295,8 +271,7 @@ bool RtcTime::read_from(satcat5::io::Readable* rd)
     return ok;
 }
 
-bool RtcTime::operator<(const RtcTime& other) const
-{
+bool RtcTime::operator<(const RtcTime& other) const {
     // Note: Ignore day-of-week field.
     if (yr < other.yr) return true;
     if (yr > other.yr) return false;
@@ -313,8 +288,7 @@ bool RtcTime::operator<(const RtcTime& other) const
     return ss < other.ss;
 }
 
-bool RtcTime::operator==(const RtcTime& other) const
-{
+bool RtcTime::operator==(const RtcTime& other) const {
     // Note: Ignore day-of-week field.
     return (yr == other.yr)
         && (mo == other.mo)

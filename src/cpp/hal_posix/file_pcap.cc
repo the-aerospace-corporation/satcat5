@@ -4,15 +4,20 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <hal_posix/file_pcap.h>
-#include <satcat5/datetime.h>
+#include <hal_posix/posix_utils.h>
 #include <satcat5/log.h>
 
 using satcat5::io::ReadPcap;
 using satcat5::io::WritePcap;
 using satcat5::log::Log;
+using satcat5::util::TimeRef;
 
 // Set debugging verbosity level (0/1/2)
 constexpr unsigned DEBUG_VERBOSE = 0;
+
+// Global instance of PosixTimer.
+// (All are equivalent and have no internal state.)
+static satcat5::util::PosixTimer posix_timer;
 
 // Magic-numbers for PCAP:
 constexpr u32 BLK_PCAP_HDR1_BE  = 0xA1B2C3D4;
@@ -275,17 +280,16 @@ void ReadPcap::pcapng_skip()
     if (blen > 8) m_file.read_consume(blen - 8);
 }
 
-WritePcap::WritePcap(satcat5::datetime::Clock* clock, const char* filename, bool pcapng)
+WritePcap::WritePcap(bool pcapng)
     : satcat5::io::ArrayWrite(m_buff, sizeof(m_buff))
-    , m_clock(clock)
     , m_file(0)
+    , m_pass(0)
     , m_mode_ng(pcapng)
-    , m_mode_ovr(false)
 {
-    if (filename) open(filename);
+    m_clock.set(posix_timer.gps());
 }
 
-void WritePcap::open(const char* filename)
+void WritePcap::open(const char* filename, u16 linktype)
 {
     if (DEBUG_VERBOSE > 0)
         Log(satcat5::log::DEBUG, "WritePcap::open");
@@ -306,7 +310,8 @@ void WritePcap::open(const char* filename)
         // Write PCAPNG-IDB block (Section 4.2).
         m_file.write_u32(BLK_PCAPNG_IDB);           // Block type
         m_file.write_u32(24);                       // Block total length
-        m_file.write_u32(0x00010000);               // LinkType = Ethernet
+        m_file.write_u16(linktype);                 // LinkType
+        m_file.write_u16(0);                        // Reserved
         m_file.write_u32(SATCAT5_PCAP_BUFFSIZE);    // SnapLen
         m_file.write_u32(0);                        // Options (none)
         m_file.write_u32(24);                       // Block total length (again)
@@ -317,7 +322,8 @@ void WritePcap::open(const char* filename)
         m_file.write_u32(0);                        // Reserved
         m_file.write_u32(0);                        // Reserved
         m_file.write_u32(SATCAT5_PCAP_BUFFSIZE);    // SnapLen
-        m_file.write_u32(1);                        // LinkType = Ethernet
+        m_file.write_u16(0);                        // FCS not included
+        m_file.write_u16(linktype);                 // LinkType
     }
 }
 
@@ -325,23 +331,31 @@ bool WritePcap::write_finalize()
 {
     // Timestamp is measured in microseconds since UNIX epoch.
     constexpr u64 GPS2UNIX = 315964800000000ull;
-    u64 unix_usec = 0;
-    if (m_clock) unix_usec = 1000 * m_clock->now() + GPS2UNIX;
+    u64 unix_usec = 1000 * m_clock.now() + GPS2UNIX;
 
     // Forward event to parent class and note frame length.
     // (If overflow flag is set, original packet size is unknown.)
-    satcat5::io::ArrayWrite::write_finalize();
+    bool ok = satcat5::io::ArrayWrite::write_finalize();
     u32 clen = written_len();                       // Captured length
-    u32 olen = m_mode_ovr ? UINT32_MAX : clen;      // Original length
-    m_mode_ovr = false;                             // Reset overflow flag
+    u32 olen = ok ? clen : UINT32_MAX;              // Original length
 
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "WritePcap::write").write10(clen);
+
+    // If passthrough mode is enabled, copy data now.
+    // Note: Packet is saved to disk even if recipient drops it.
+    if (m_pass && !ok) {
+        Log(satcat5::log::WARNING, "WritePcap: Passthrough dropped (oversize).");
+    } else if (m_pass) {
+        m_pass->write_bytes(written_len(), m_buff);
+        m_pass->write_finalize();
+    }
 
     // Write the buffered packet contents...
     if (m_mode_ng) {
         // Calculate packet length including zero-pad.
         u32 plen = clen + word_pad(clen);
+        memset(m_buff + clen, 0, plen - clen);
         // Write the PCAPNG-EPB block.
         m_file.write_u32(BLK_PCAPNG_EPB);           // Block type
         m_file.write_u32(36 + plen);                // Block total length
@@ -361,11 +375,4 @@ bool WritePcap::write_finalize()
         m_file.write_bytes(clen, m_buff);           // Packet data
     }
     return m_file.write_finalize();
-}
-
-void WritePcap::write_overflow()
-{
-    if (DEBUG_VERBOSE > 0)
-        Log(satcat5::log::DEBUG, "WritePcap::write_overflow");
-    m_mode_ovr = true;
 }

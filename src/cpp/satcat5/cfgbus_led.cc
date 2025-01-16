@@ -84,10 +84,10 @@ void LedActivity::update(satcat5::cfg::NetworkStats* stats)
 
 LedActivityCtrl::LedActivityCtrl(
         satcat5::cfg::NetworkStats* stats,
-        unsigned delay)
+        unsigned delay_msec)
     : m_stats(stats)
 {
-    timer_every(33);    // Updates ~30 Hz
+    timer_every(delay_msec);
 }
 
 void LedActivityCtrl::timer_event()

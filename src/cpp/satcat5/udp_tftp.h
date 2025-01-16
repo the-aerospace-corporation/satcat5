@@ -52,6 +52,9 @@ namespace satcat5 {
                 const satcat5::ip::Addr& dstaddr,
                 u16 opcode, const char* filename);
 
+            // Before calling accept, test if this is a duplicate request.
+            bool is_duplicate_request();
+
             // Accept remote connection and note reply address.
             // (Host should next call file_send() or file_recv().)
             void accept();
@@ -139,6 +142,11 @@ namespace satcat5 {
         // See also: TftpServerPosix (hal_posix/file_tftp.h)
         class TftpServerCore : public satcat5::net::Protocol
         {
+        public:
+            // Accessors for the transfer status.
+            inline bool active() const
+                {return m_xfer.active();}
+
         protected:
             // Users cannot instantiate this class directly.
             // See "TftpServerSimple" for an example implementation.

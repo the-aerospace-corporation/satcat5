@@ -58,7 +58,7 @@ entity tcam_maxlen is
     -- Set priority for each table entry.
     cfg_clear   : in  std_logic;
     cfg_index   : in  integer range 0 to TABLE_SIZE-1;
-    cfg_plen    : in  integer range 1 to INPUT_WIDTH;
+    cfg_plen    : in  integer range 0 to INPUT_WIDTH;
     cfg_write   : in  std_logic;
 
     -- System interface.

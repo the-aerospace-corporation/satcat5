@@ -1,12 +1,13 @@
 # Copyright 2021-2024 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
-.PHONY: test build clean coverage coverage_test precov
+.PHONY: test verbose valgrind_test build clean coverage coverage_test precov
 
 ### constants
 PROJECT ?= test_main
 BUILD_DIR := build_tmp
 SIM_DIR := simulations
+COVERAGE_DIR := coverage
 IGNORE_ERROR := 2>&1 || cd .
 
 ### environment
@@ -33,7 +34,7 @@ SRCS := \
 	$(wildcard ../../src/cpp/qcbor/*.c) \
 	$(wildcard ../../src/cpp/satcat5/*.cc)
 BASENAME_SRCS := $(notdir $(SRCS))
-VPATH += $(dir $(SRCS)) 
+VPATH += $(dir $(SRCS))
 OBJS := $(BASENAME_SRCS:%=$(BUILD_DIR)/%.o)
 
 INC_DIRS := \
@@ -46,17 +47,24 @@ NOINLINE := \
 	-fno-default-inline \
 	-fno-early-inlining \
 	-fno-elide-constructors \
+	-fno-exceptions \
 	-fno-inline \
 	-fno-inline-functions \
 	-fno-inline-small-functions
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 LDFLAGS := --coverage
 COVERAGE := --coverage -g -O0 $(NOINLINE)
-COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter $(INC_FLAGS) \
+COMMON_FLAGS := -MD -MP \
+	-Wall -Wextra -Wno-unused-parameter \
+	$(INC_FLAGS) \
 	-DSATCAT5_CBOR_ENABLE=1 \
 	-DSATCAT5_CHECK_DUPIRQ=1 \
 	-DSATCAT5_CRC_TABLE_BITS=8 \
-	-DSATCAT5_LOG_CONCISE=0
+	-DSATCAT5_GCC_INTRINSICS=0 \
+	-DSATCAT5_GCM_FAST=1 \
+	-DSATCAT5_LOG_CONCISE=0 \
+	-DSATCAT5_LOG_MAXLEN=1023 \
+	-DSATCAT5_UDP_MAXDYN=256
 CFLAGS := $(COMMON_FLAGS)
 CXXFLAGS := $(COMMON_FLAGS) -std=c++11
 GCOVR := gcovr $(BUILD_DIR) -g -k -r ../.. \
@@ -68,11 +76,15 @@ GCOVR := gcovr $(BUILD_DIR) -g -k -r ../.. \
 	--object-directory $(BUILD_DIR)
 
 ### targets
-coverage: coverage.txt coverage.html coverage.xml
+coverage: $(COVERAGE_DIR)/coverage.txt $(COVERAGE_DIR)/coverage.html
 
 test: build
 	@echo Running tests...
 	@$(BUILD_DIR)/$(PROJECT).bin
+
+verbose: build
+	@echo Running tests (verbose mode)...
+	@$(BUILD_DIR)/$(PROJECT).bin -d yes
 
 valgrind_test: build
 	@echo Running tests with Valgrind...
@@ -83,6 +95,7 @@ build: $(SIM_DIR) $(OBJS) $(BUILD_DIR)/$(PROJECT).bin
 clean:
 	@$(REMOVE) $(BUILD_DIR)
 	@$(REMOVE) $(SIM_DIR)
+	@$(REMOVE) $(COVERAGE_DIR)
 
 ### rules
 # Working folders
@@ -120,21 +133,22 @@ precov: test | $(BUILD_DIR)
 	@gcov -mrx $(BUILD_DIR)/*.gcda > $(NULL)
 	@$(MOVE) *.gcov $(BUILD_DIR) > $(NULL)
 
-coverage.txt: precov
+$(COVERAGE_DIR)/coverage.txt: precov
 	@echo Preparing coverage.txt...
-	@$(GCOVR) -o coverage.txt
+	@$(MKDIR) $(COVERAGE_DIR) > $(NULL) $(IGNORE_ERROR)
+	@$(GCOVR) -o $(COVERAGE_DIR)/coverage.txt
 
-coverage.html: precov
+$(COVERAGE_DIR)/coverage.html: precov
 	@echo Preparing coverage.html...
-	@$(REMOVE) coverage > $(NULL) $(IGNORE_ERROR)
-	@$(MKDIR) coverage > $(NULL) $(IGNORE_ERROR)
-	@$(GCOVR) --html --html-details --html-high-threshold $(REQUIRED_COVERAGE) -o coverage/coverage.html
-
-coverage.xml: precov
-	@echo Preparing coverage.xml...
-	@$(GCOVR) --xml -o coverage.xml
+	@$(REMOVE) $(COVERAGE_DIR)/*.html > $(NULL) $(IGNORE_ERROR)
+	@$(MKDIR) $(COVERAGE_DIR) > $(NULL) $(IGNORE_ERROR)
+	@$(GCOVR) --html --html-details --html-high-threshold $(REQUIRED_COVERAGE) -o $(COVERAGE_DIR)/coverage.html
 
 coverage_test: precov
 	@echo Coverage pass/fail?
 	@$(GCOVR) --fail-under-line $(REQUIRED_COVERAGE) > $(NULL)
 	@echo OK
+
+# Forces rebuild of an object file if an included header is updated
+-include $(OBJS:.o=.d)
+

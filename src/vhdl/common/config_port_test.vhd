@@ -157,7 +157,7 @@ gen_ports : for p in 0 to PORT_COUNT-1 generate
         in_toggle   => tx_commit_t(p),
         out_strobe  => tx_commit_r(p),
         out_clk     => refclk);
-    
+
     u_sync_rx0 : sync_pulse2pulse
         port map(
         in_strobe   => rx_revert_i(p),

@@ -22,10 +22,6 @@ static inline u32 CMD_TXRX(u32 x)
 static const u32 CMD_RXONLY = CMD_OPCODE(3, 0);
 static const u32 CMD_STOP   = CMD_OPCODE(4, 0);
 
-// Suppress static-analysis warnings for uninitialized members.
-// (Large array "m_callback" is always written before use.)
-// cppcheck-suppress uninitMemberVar
-
 cfg::Spi::Spi(ConfigBus* cfg, unsigned devaddr)
     : cfg::MultiSerial(cfg, devaddr, SATCAT5_SPI_MAXCMD,
         m_txbuff, SATCAT5_SPI_TXBUFF,

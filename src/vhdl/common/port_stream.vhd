@@ -69,8 +69,10 @@ architecture port_stream of port_stream is
 
 -- Timestamps in each clock domain.
 signal rx_tstamp    : tstamp_t := TSTAMP_DISABLED;
+signal rx_tfreq     : tfreq_t := TFREQ_DISABLED;
 signal rx_tvalid    : std_logic := '0';
 signal tx_tstamp    : tstamp_t := TSTAMP_DISABLED;
+signal tx_tfreq     : tfreq_t := TFREQ_DISABLED;
 signal tx_tvalid    : std_logic := '0';
 
 -- Rx stream: Adjust data coming from user
@@ -109,6 +111,7 @@ gen_ptp_rx : if RX_CLK_HZ > 0 and VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => rx_clk,
         user_ctr    => rx_tstamp,
+        user_freq   => rx_tfreq,
         user_lock   => rx_tvalid,
         user_rst_p  => rx_reset);
 end generate;
@@ -122,6 +125,7 @@ gen_ptp_tx : if TX_CLK_HZ > 0 and VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => tx_clk,
         user_ctr    => tx_tstamp,
+        user_freq   => tx_tfreq,
         user_lock   => tx_tvalid,
         user_rst_p  => tx_reset);
 end generate;
@@ -188,6 +192,7 @@ prx_data.rxerr      <= '0';
 prx_data.rate       <= get_rate_word(RATE_MBPS);
 prx_data.status     <= (0 => rx_reset, 1 => tx_reset, 2 => rx_tvalid, 3 => tx_tvalid, others => '0');
 prx_data.tsof       <= rx_tstamp;
+prx_data.tfreq      <= rx_tfreq;
 prx_data.reset_p    <= rx_reset;
 
 -------------------- Tx stream (switch to user) ---------------------
@@ -196,6 +201,7 @@ prx_data.reset_p    <= rx_reset;
 ptx_ctrl.clk        <= tx_clk;
 ptx_ctrl.pstart     <= txa_empty;
 ptx_ctrl.tnow       <= tx_tstamp;
+ptx_ctrl.tfreq      <= tx_tfreq;
 ptx_ctrl.txerr      <= '0';
 ptx_ctrl.reset_p    <= tx_reset;
 txp_data            <= ptx_data.data;

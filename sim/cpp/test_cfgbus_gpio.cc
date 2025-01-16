@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus GPIO controllers
@@ -9,17 +9,16 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/cfgbus_gpio.h>
 
+using satcat5::test::rand_u32;
+
 // Constants relating to the unit under test:
 static const unsigned CFG_DEVADDR = 42;
 static const unsigned CFG_REG_GPI = 43;
 static const unsigned CFG_REG_GPO = 44;
 
 TEST_CASE("cfgbus_gpio") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
-
-    // PRNG for these tests.
-    Catch::SimplePcg32 rng;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Instantiate simulated register map.
     satcat5::test::CfgDevice regs;
@@ -49,7 +48,7 @@ TEST_CASE("cfgbus_gpio") {
         // Test each possible operation a few times.
         // (Read-back after each operation to check expected value.)
         for (unsigned a = 0 ; a < 10 ; ++a) {
-            u32 x = rng(), y = rng();
+            u32 x = rand_u32(), y = rand_u32();
             gpo.write(x);       // Set initial value
             CHECK(gpo.read() == x);
             gpo.mask_clr(y);    // Clear bit-mask
@@ -76,7 +75,7 @@ TEST_CASE("cfgbus_gpio") {
         // Test each mode and output operation a few times.
         // (Read-back after each operation to check expected value.)
         for (unsigned a = 0 ; a < 10 ; ++a) {
-            u32 x = rng(), y = rng(), z = rng();
+            u32 x = rand_u32(), y = rand_u32(), z = rand_u32();
             gpio.mode(x);       // Set initial mode
             gpio.write(y);      // Set initial output
             CHECK(regs[0].write_pop() == x);

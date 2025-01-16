@@ -51,105 +51,47 @@
 #pragma once
 
 #include <satcat5/eth_socket.h>
+#include <satcat5/io_cbor.h>
 #include <satcat5/list.h>
 #include <satcat5/polling.h>
 #include <satcat5/types.h>
 #include <satcat5/udp_socket.h>
 
-// Set the size of the working buffer.
-#ifndef SATCAT5_QCBOR_BUFFER
-#define SATCAT5_QCBOR_BUFFER 1500
-#endif
-
 // Enable this feature? (See types.h)
 #if SATCAT5_CBOR_ENABLE
-#include <qcbor/qcbor_encode.h>
 
 namespace satcat5 {
     namespace net {
-        // Ephemeral wrapper class for the CBOR encoder.
-        struct TelemetryCbor final {
-            // Pointer to the underlying QCBOR object.
-            // Use this pointer directly for writing complex data structures.
-            _QCBOREncodeContext* const cbor;
+        // Legacy ephemeral wrapper class for the CBOR encoder.
+        // Wraps io::CborMapWriter which replaces this functionality for more
+        // generic usage.
+        class TelemetryCbor final
+            : public satcat5::io::CborMapWriter<s64>
+            , public satcat5::io::CborMapWriter<const char*>
+        {
+        public:
+            // Import of all functions to resolve ambiguous name issues
+            using satcat5::io::CborMapWriter<s64>::add_bool;
+            using satcat5::io::CborMapWriter<s64>::add_item;
+            using satcat5::io::CborMapWriter<s64>::add_array;
+            using satcat5::io::CborMapWriter<s64>::add_bytes;
+            using satcat5::io::CborMapWriter<s64>::add_string;
+            using satcat5::io::CborMapWriter<s64>::add_null;
+            using satcat5::io::CborMapWriter<const char*>::add_bool;
+            using satcat5::io::CborMapWriter<const char*>::add_item;
+            using satcat5::io::CborMapWriter<const char*>::add_array;
+            using satcat5::io::CborMapWriter<const char*>::add_bytes;
+            using satcat5::io::CborMapWriter<const char*>::add_string;
+            using satcat5::io::CborMapWriter<const char*>::add_null;
 
-            // Helper methods for writing various arrays (integer keys).
-            void add_array(s64 key, u32 len, const s8* value) const;
-            void add_array(s64 key, u32 len, const u8* value) const;
-            void add_array(s64 key, u32 len, const s16* value) const;
-            void add_array(s64 key, u32 len, const u16* value) const;
-            void add_array(s64 key, u32 len, const s32* value) const;
-            void add_array(s64 key, u32 len, const u32* value) const;
-            void add_array(s64 key, u32 len, const s64* value) const;
-            void add_array(s64 key, u32 len, const u64* value) const;
-            void add_array(s64 key, u32 len, const float* value) const;
+            //! Default constructor initializes both variants without Writeable.
+            TelemetryCbor()
+                : CborWriter(nullptr, m_raw, SATCAT5_QCBOR_BUFFER, true)
+                , CborMapWriter<s64>(nullptr, m_raw, SATCAT5_QCBOR_BUFFER)
+                , CborMapWriter<const char*>(nullptr, m_raw, SATCAT5_QCBOR_BUFFER) {}
 
-            // Helper methods for writing various arrays (string keys).
-            void add_array(const char* key, u32 len, const s8* value) const;
-            void add_array(const char* key, u32 len, const u8* value) const;
-            void add_array(const char* key, u32 len, const s16* value) const;
-            void add_array(const char* key, u32 len, const u16* value) const;
-            void add_array(const char* key, u32 len, const s32* value) const;
-            void add_array(const char* key, u32 len, const u32* value) const;
-            void add_array(const char* key, u32 len, const s64* value) const;
-            void add_array(const char* key, u32 len, const u64* value) const;
-            void add_array(const char* key, u32 len, const float* value) const;
-
-            // Shortcuts for simple key/value pairs (integer keys).
-            inline void add_bool(s64 key, bool value) const
-                { QCBOREncode_AddBoolToMapN(cbor, key, value); }
-            inline void add_bytes(s64 key, u32 len, const u8* value) const
-                { QCBOREncode_AddBytesToMapN(cbor, key, {value, len}); }
-            inline void add_item(s64 key, s8 value) const
-                { QCBOREncode_AddInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, s16 value) const
-                { QCBOREncode_AddInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, s32 value) const
-                { QCBOREncode_AddInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, s64 value) const
-                { QCBOREncode_AddInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, u8 value) const
-                { QCBOREncode_AddUInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, u16 value) const
-                { QCBOREncode_AddUInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, u32 value) const
-                { QCBOREncode_AddUInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, u64 value) const
-                { QCBOREncode_AddUInt64ToMapN(cbor, key, value); }
-            inline void add_item(s64 key, float value) const
-                { QCBOREncode_AddFloatToMapN(cbor, key, value); }
-            inline void add_null(s64 key) const
-                { QCBOREncode_AddNULLToMapN(cbor, key); }
-            inline void add_string(s64 key, const char* value) const
-                { QCBOREncode_AddSZStringToMapN(cbor, key, value); }
-
-            // Shortcuts for simple key/value pairs (string keys).
-            inline void add_bool(const char* key, bool value) const
-                { QCBOREncode_AddBoolToMap(cbor, key, value); }
-            inline void add_bytes(const char* key, u32 len, const u8* value) const
-                { QCBOREncode_AddBytesToMap(cbor, key, {value, len}); }
-            inline void add_item(const char* key, s8 value) const
-                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, s16 value) const
-                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, s32 value) const
-                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, s64 value) const
-                { QCBOREncode_AddInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, u8 value) const
-                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, u16 value) const
-                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, u32 value) const
-                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, u64 value) const
-                { QCBOREncode_AddUInt64ToMap(cbor, key, value); }
-            inline void add_item(const char* key, float value) const
-                { QCBOREncode_AddFloatToMap(cbor, key, value); }
-            inline void add_null(const char* key) const
-                { QCBOREncode_AddNULLToMap(cbor, key); }
-            inline void add_string(const char* key, const char* value) const
-                { QCBOREncode_AddSZStringToMap(cbor, key, value); }
+        private:
+            u8 m_raw[SATCAT5_QCBOR_BUFFER];
         };
 
         // User data sinks must inherit from the TelemetrySink class.
@@ -237,11 +179,8 @@ namespace satcat5 {
             // Timer event handler is called every N msec.
             void timer_event() override;
 
-            // Initialize a QCBOR encoder state.
-            void telem_init(_QCBOREncodeContext* cbor);
-
             // Send data to all attached TelemetrySink objects.
-            void telem_send(_QCBOREncodeContext* cbor, u32 tier_id);
+            void telem_send(TelemetryCbor& cbor, u32 tier_id);
 
             // Set per-tier or concatenated mode for this aggregator.
             bool m_tlm_concat;

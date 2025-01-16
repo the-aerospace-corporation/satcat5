@@ -13,8 +13,11 @@ def sh_node(String cmd) {
 }
 
 // Skip time-consuming steps for software-only updates, based on branch name.
+// Note: Pull-request builds should use CHANGE_BRANCH rather than BRANCH_NAME.
+//  See also: https://stackoverflow.com/questions/42383273/
 def build_type() {
-    return (this.env.BRANCH_NAME ==~ /software(.*)/) ? "sw" : "hdl"
+    git_branch = "${this.env.CHANGE_BRANCH ? this.env.CHANGE_BRANCH : this.env.BRANCH_NAME}"
+    return (git_branch ==~ /software(.*)/) ? "sw" : "hdl"
 }
 
 // Check for errors or critical warnings in Vivado build logs.
@@ -30,36 +33,40 @@ def check_vivado_build(String project_folder) {
 
 // Pack files into a .zip file, then archive it.
 def archive_zip(zipfile, srcfiles = './*') {
-    sh_node "zip -r ${zipfile} ${srcfiles}"
+    docker_devtool "zip -r ${zipfile} ${srcfiles}"
     archiveArtifacts artifacts: "${zipfile}"
 }
 
 // Shortcuts for launching specific Docker images:
 def docker_devtool(String cmd) {
-    sh_node "./start_docker.sh csaps/dev_tools:2.3 ${cmd}"
+    sh_node "${WORKSPACE}/start_docker.sh csaps/dev_tools:3.2 ${cmd}"
+}
+// Doxygen 1.9.1 is only available in newer, incompatible dev_tools images
+def docker_doxygen(String cmd) {
+    sh_node "${WORKSPACE}/start_docker.sh csaps/dev_tools:4.1 ${cmd}"
 }
 def docker_libero(String cmd) {
     withEnv(['DOCKER_REG=dcid.aero.org:5000']) {
-        sh_node "./start_docker.sh libero:12.3 ${cmd}"
+        sh_node "${WORKSPACE}/start_docker.sh libero:12.3 ${cmd}"
     }
 }
 def docker_vivado_2016_3(String cmd) {
     withEnv(['VIVADO_VERSION=2016.3']) {
-        sh_node "./start_docker.sh csaps/vivado:2016.3_20201007 ${cmd}"
+        sh_node "${WORKSPACE}/start_docker.sh csaps/vivado:2016.3_20201007 ${cmd}"
     }
 }
 def docker_vivado_2019_1(String cmd) {
     withEnv(['VIVADO_VERSION=2019.1']) {
-        sh_node "./start_docker.sh csaps/vivado:2019.1_20220329 ${cmd}"
+        sh_node "${WORKSPACE}/start_docker.sh csaps/vivado:2019.1_20220329 ${cmd}"
     }
 }
 def docker_vivado_2020_2(String cmd) {
     withEnv(['VIVADO_VERSION=2020.2']) {
-        sh_node "./start_docker.sh csaps/vivado:2020.2_20220801 ${cmd}"
+        sh_node "${WORKSPACE}/start_docker.sh csaps/vivado:2020.2_20220801 ${cmd}"
     }
 }
 def docker_yosys(String cmd) {
-    sh_node "./start_docker.sh csaps/open-fpga-toolchain:latest_04272021 ${cmd}"
+    sh_node "${WORKSPACE}/start_docker.sh csaps/open-fpga-toolchain:latest_04272021 ${cmd}"
 }
 
 // Run one of the parallel unit-test simulations and post results.
@@ -95,6 +102,26 @@ pipeline {
     stages {
         stage('SW-Test') {
             parallel {
+                stage('Docs') {
+                    agent { label env.BUILD_AGENT }
+                    steps {
+                        docker_doxygen 'make sw_docs'
+                        dir('./doc') {
+                            // Archive the doxygen warnings
+                            archiveArtifacts artifacts: 'doxygen-warnings.log'
+                            // Render HTML output
+                            publishHTML target: [
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: true,
+                                reportDir: './docs_html/',
+                                reportFiles: 'index.html',
+                                reportName: 'Documentation',
+                                reportTitles: ''
+                            ]
+                        }
+                    }
+                }
                 stage('Linter') {
                     agent { label env.BUILD_AGENT }
                     steps {
@@ -104,7 +131,9 @@ pipeline {
                             { docker_devtool 'make sw_cppcheck' }
                         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE')
                             { docker_devtool 'make sw_cpplint' }
-                        archiveArtifacts artifacts: 'cppcheck.xml, cpplint.log'
+                        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE')
+                            { docker_devtool 'make cloc' }
+                        archiveArtifacts artifacts: 'cloc.log, cppcheck.xml, cpplint.log'
                     }
                 }
                 stage('Tools') {
@@ -120,10 +149,8 @@ pipeline {
                         docker_devtool 'make sw_coverage'
                         dir('./sim/cpp') {
                             // Archive the basic coverage reports
-                            archiveArtifacts artifacts: 'coverage.txt'
-                            archiveArtifacts artifacts: 'coverage.xml'
+                            archiveArtifacts artifacts: 'coverage/coverage.txt'
                             // Fancy HTML coverage viewer
-                            cobertura coberturaReportFile: 'coverage.xml'
                             publishHTML target: [
                                 allowMissing: true,
                                 alwaysLinkToLastBuild: false,
@@ -137,6 +164,8 @@ pipeline {
                         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                             // Run the tool again, throws error below designated coverage threshold.
                             docker_devtool 'make sw_covertest'
+                            // Run the tool one last time, checking for leaks or unitialized memory.
+                            docker_devtool 'make sw_valgrind'
                         }
                     }
                 }

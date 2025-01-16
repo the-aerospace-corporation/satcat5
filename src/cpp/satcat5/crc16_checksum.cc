@@ -176,15 +176,16 @@ u16 satcat5::crc16::xmodem(unsigned nbytes, const void* data)
     return xmodem_format(crc);
 }
 
-KermitTx::KermitTx(satcat5::io::Writeable* dst, u16 init)
+KermitTx::KermitTx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     : satcat5::io::ChecksumTx<u16,2>(dst, init)
+    , m_xorout(xorout)
 {
     // Nothing else to initialize
 }
 
 bool KermitTx::write_finalize()
 {
-    u16 fcs = kermit_format(m_chk) ^ m_init;
+    u16 fcs = kermit_format(m_chk ^ m_xorout);
     m_dst->write_u16(fcs);      // Append FCS
     return chk_finalize() && m_dst->write_finalize();
 }
@@ -195,15 +196,16 @@ void KermitTx::write_next(u8 data)
     m_dst->write_u8(data);      // Forward new data
 }
 
-KermitRx::KermitRx(satcat5::io::Writeable* dst, u16 init)
+KermitRx::KermitRx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     : satcat5::io::ChecksumRx<u16,2>(dst, init)
+    , m_xorout(xorout)
 {
     // Nothing else to initialize
 }
 
 bool KermitRx::write_finalize()
 {
-    return sreg_match(kermit_format(m_chk) ^ m_init);
+    return sreg_match(kermit_format(m_chk) ^ m_xorout);
 }
 
 void KermitRx::write_next(u8 data)
@@ -211,15 +213,16 @@ void KermitRx::write_next(u8 data)
     if (sreg_push(data)) kermit_update(m_chk, data);
 }
 
-XmodemTx::XmodemTx(satcat5::io::Writeable* dst, u16 init)
+XmodemTx::XmodemTx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     : satcat5::io::ChecksumTx<u16,2>(dst, init)
+    , m_xorout(xorout)
 {
     // Nothing else to initialize
 }
 
 bool XmodemTx::write_finalize()
 {
-    u16 fcs = xmodem_format(m_chk) ^ m_init;
+    u16 fcs = xmodem_format(m_chk ^ m_xorout);
     m_dst->write_u16(fcs);              // Append formatted FCS
     return chk_finalize() && m_dst->write_finalize();
 }
@@ -230,15 +233,16 @@ void XmodemTx::write_next(u8 data)
     m_dst->write_u8(data);              // Forward new data
 }
 
-XmodemRx::XmodemRx(satcat5::io::Writeable* dst, u16 init)
+XmodemRx::XmodemRx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     : satcat5::io::ChecksumRx<u16,2>(dst, init)
+    , m_xorout(xorout)
 {
     // Nothing else to initialize
 }
 
 bool XmodemRx::write_finalize()
 {
-    return sreg_match(xmodem_format(m_chk) ^ m_init);
+    return sreg_match(xmodem_format(m_chk) ^ m_xorout);
 }
 
 void XmodemRx::write_next(u8 data)

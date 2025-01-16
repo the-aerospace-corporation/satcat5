@@ -29,6 +29,8 @@ entity switch_port_rx is
     DEV_ADDR        : integer;      -- ConfigBus device address
     CORE_CLK_HZ     : positive;     -- Rate of core_clk (Hz)
     PORT_INDEX      : natural;      -- Index for current port
+    PTP_DOPPLER     : boolean;      -- Enable Doppler-TLV tags?
+    STRIP_FCS       : boolean;      -- Strip FCS from incoming frames?
     SUPPORT_PAUSE   : boolean;      -- Support or ignore 802.3x PAUSE frames?
     SUPPORT_PTP     : boolean;      -- Support precise frame timestamps?
     SUPPORT_VLAN    : boolean;      -- Support or ignore 802.1q VLAN tags?
@@ -48,6 +50,7 @@ entity switch_port_rx is
     rx_macerr       : in  std_logic;
     rx_rate         : in  port_rate_t;
     rx_tsof         : in  tstamp_t;
+    rx_tfreq        : in  tfreq_t;
     rx_reset_p      : in  std_logic;
 
     -- Output to shared pipeline, referenced to core_clk.
@@ -111,10 +114,19 @@ signal vlan_commit  : std_logic;
 signal vlan_revert  : std_logic;
 signal vlan_error   : std_logic;
 
+-- PTP metadata
+signal ptp_data     : data_t;
+signal ptp_nlast    : last_t;
+signal ptp_write    : std_logic;
+signal ptp_commit   : std_logic;
+signal ptp_revert   : std_logic;
+signal ptp_error    : std_logic;
+
 -- Output FIFO and metadata format conversion.
 signal rx_meta      : switch_meta_t := SWITCH_META_NULL;
 signal mvec_in      : switch_meta_v := (others => '0');
 signal mvec_out     : switch_meta_v;
+signal pkt_error    : std_logic;
 signal pkt_final    : std_logic;
 
 -- ConfigBus combining.
@@ -147,34 +159,14 @@ gen_pause0 : if not SUPPORT_PAUSE generate
     pause_tx <= '0';
 end generate;
 
--- If PTP is enabled, small FIFO for timestamps from MAC/PHY.
-gen_ptp1 : if SUPPORT_PTP generate
-    u_tsof : entity work.ptp_timestamp
-        generic map(
-        IO_BYTES    => INPUT_BYTES,
-        PTP_STRICT  => false,
-        DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_PORT_BASE(PORT_INDEX) + REGOFFSET_PORT_PTP_RX)
-        port map(
-        in_adjust   => '1',
-        in_tnow     => rx_tsof,
-        in_nlast    => rx_nlast_adj,
-        in_write    => rx_write,
-        out_tstamp  => rx_meta.tstamp,
-        out_valid   => open,
-        out_ready   => pkt_final,
-        cfg_cmd     => cfg_cmd,
-        cfg_ack     => cfg_acks(0),
-        clk         => rx_clk,
-        reset_p     => rx_reset_i);
-end generate;
-
 -- Check each frame and drive the commit / revert strobes.
+-- Do this first, because VLAN header removal invalidates the FCS.
 u_frmchk : entity work.eth_frame_check
     generic map(
     ALLOW_JUMBO => ALLOW_JUMBO,
     ALLOW_RUNT  => ALLOW_RUNT,
-    IO_BYTES    => INPUT_BYTES)
+    IO_BYTES    => INPUT_BYTES,
+    STRIP_FCS   => STRIP_FCS)
     port map(
     in_data     => rx_data,
     in_nlast    => rx_nlast_adj,
@@ -189,11 +181,12 @@ u_frmchk : entity work.eth_frame_check
     reset_p     => rx_reset_i);
 
 -- If VLAN is enabled, parse and remove VLAN tags.
+-- This step must be performed before PTP message parsing.
 gen_vlan1 : if SUPPORT_VLAN generate
     u_vlan : entity work.eth_frame_vstrip
         generic map(
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_VLAN_PORT,
+        REGADDR     => SW_ADDR_VLAN_PORT,
         IO_BYTES    => INPUT_BYTES,
         PORT_INDEX  => PORT_INDEX)
         port map(
@@ -224,8 +217,92 @@ gen_vlan0 : if not SUPPORT_VLAN generate
     vlan_error  <= chk_error;
 end generate;
 
+-- If PTP is enabled, generate additional metadata.
+gen_ptp1 : if SUPPORT_PTP generate
+    blk_ptp1 : block is
+        signal pkt_valid1 : std_logic;
+        signal pkt_valid2 : std_logic;
+    begin
+        -- Mark start-of-frame timestamps using metadata from MAC/PHY.
+        -- Use the raw "rx_data" stream to ensure consistent pipeline delays.
+        u_tsof : entity work.ptp_timestamp
+            generic map(
+            IO_BYTES    => INPUT_BYTES,
+            PTP_DOPPLER => PTP_DOPPLER,
+            PTP_STRICT  => false,
+            DEVADDR     => DEV_ADDR,
+            REGADDR     => SW_ADDR_PORT_BASE(PORT_INDEX) + REGOFFSET_PORT_PTP_RX)
+            port map(
+            in_adj_time => '1',
+            in_adj_freq => '1',
+            in_tnow     => rx_tsof,
+            in_tfreq    => rx_tfreq,
+            in_nlast    => rx_nlast_adj,
+            in_write    => rx_write,
+            out_tstamp  => rx_meta.tstamp,
+            out_tfreq   => rx_meta.tfreq,
+            out_valid   => pkt_valid1,
+            out_ready   => pkt_final,
+            cfg_cmd     => cfg_cmd,
+            cfg_ack     => cfg_acks(0),
+            clk         => rx_clk,
+            reset_p     => rx_reset_i);
+
+        -- Input parsing to identify PTP message fields.
+        -- Use the post-VLAN data stream to handle nested VLAN+PTP messages
+        -- and match byte offsets needed in "ptp_adjust" and "ptp_egress".
+        u_ingress : entity work.ptp_ingress
+            generic map(
+            IO_BYTES    => INPUT_BYTES,
+            TLV_ID0     => tlvtype_if(TLVTYPE_DOPPLER, PTP_DOPPLER))
+            port map(
+            in_data     => vlan_data,
+            in_nlast    => vlan_nlast,
+            in_write    => vlan_write,
+            out_pmsg    => rx_meta.pmsg,
+            out_tlv0    => rx_meta.pfreq,
+            out_valid   => pkt_valid2,
+            out_ready   => pkt_final,
+            clk         => rx_clk,
+            reset_p     => rx_reset_i);
+
+        -- Fixed pipeline delay for the output data stream.
+        -- (Must meet or exceed worst-case "ptp_ingress" delay.)
+        u_delay : entity work.packet_delay
+            generic map(
+            IO_BYTES    => INPUT_BYTES,
+            DELAY_COUNT => 4)
+            port map(
+            in_data     => vlan_data,
+            in_nlast    => vlan_nlast,
+            in_write    => vlan_write,
+            in_commit   => vlan_commit,
+            in_revert   => vlan_revert,
+            out_data    => ptp_data,
+            out_nlast   => ptp_nlast,
+            out_write   => ptp_write,
+            out_commit  => ptp_commit,
+            out_revert  => ptp_revert,
+            io_clk      => rx_clk,
+            reset_p     => rx_reset_i);
+
+        -- Generate an error strobe if metadata arrives too late.
+        ptp_error <= pkt_final and not (pkt_valid1 and pkt_valid2);
+    end block;
+end generate;
+
+gen_ptp0 : if not SUPPORT_PTP generate
+    ptp_data    <= vlan_data;
+    ptp_nlast   <= vlan_nlast;
+    ptp_write   <= vlan_write;
+    ptp_commit  <= vlan_commit;
+    ptp_revert  <= vlan_revert;
+    ptp_error   <= '0';
+end generate;
+
 -- End-of-frame strobe.
-pkt_final <= vlan_write and (vlan_commit or vlan_revert or vlan_error);
+pkt_final <= ptp_write and (ptp_commit or ptp_revert);
+pkt_error <= (vlan_write and vlan_error) or (ptp_error);
 
 -- Metadata format conversion.
 -- Note: Relying on synthesis tools to trim unused metadata fields.
@@ -244,11 +321,11 @@ u_fifo : entity work.fifo_packet
     port map(
     in_clk          => rx_clk,
     in_pkt_meta     => mvec_in,
-    in_data         => vlan_data,
-    in_nlast        => vlan_nlast,
-    in_last_commit  => vlan_commit,
-    in_last_revert  => vlan_revert,
-    in_write        => vlan_write,
+    in_data         => ptp_data,
+    in_nlast        => ptp_nlast,
+    in_last_commit  => ptp_commit,
+    in_last_revert  => ptp_revert,
+    in_write        => ptp_write,
     in_overflow     => open,
     in_reset        => rx_reset_i,
     out_clk         => core_clk,
@@ -270,7 +347,7 @@ u_err : sync_toggle2pulse
     out_clk     => core_clk);
 u_pkt : sync_pulse2pulse
     port map(
-    in_strobe   => vlan_error,
+    in_strobe   => pkt_error,
     in_clk      => rx_clk,
     out_strobe  => err_badfrm,
     out_clk     => core_clk);

@@ -1,0 +1,30 @@
+/* Copyright 2024 The Aerospace Corporation.                                */
+/* This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.   */
+/* Flips all SVGs from white to black for dark mode.                        */
+html.img[src*="example_network.svg"] {
+    filter: invert(100%);
+};
+html.img[src*="interface_rgmii.svg"] {
+    filter: invert(100%);
+};
+html.img[src*="interface_rmii.svg"] {
+    filter: invert(100%);
+}
+html.img[src*="interface_sgmii.svg"] {
+    filter: invert(100%);
+}
+html.img[src*="interface_spi.svg"] {
+    filter: invert(100%);
+}
+html.img[src*="interface_uart2.svg"] {
+    filter: invert(100%);
+}
+html.img[src*="interface_uart4.svg"] {
+    filter: invert(100%);
+}
+html.img[src*="satcat5.svg"] {
+    filter: invert(100%);
+}
+html.img[src*="switch_datapath.svg"] {
+    filter: invert(100%);
+}

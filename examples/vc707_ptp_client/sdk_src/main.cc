@@ -2,7 +2,7 @@
 // Copyright 2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Microblaze software top-level for the "VC707 Managed" example design
+// Microblaze software top-level for the "VC707 PTP Client" example design
 
 #include <hal_devices/i2c_tca9548.h>
 #include <hal_ublaze/interrupts.h>
@@ -25,6 +25,7 @@
 #include <satcat5/port_mailmap.h>
 #include <satcat5/port_serial.h>
 #include <satcat5/ptp_client.h>
+#include <satcat5/ptp_doppler.h>
 #include <satcat5/ptp_telemetry.h>
 #include <satcat5/ptp_tracking.h>
 #include <satcat5/switch_cfg.h>
@@ -43,16 +44,26 @@ namespace ip = satcat5::ip;
 #define DEBUG_MAC_TABLE     false
 #define DEBUG_MDIO_REG      false
 #define DEBUG_PING_HOST     true
+#define DEBUG_PORT_FREQ     false
 #define DEBUG_PORT_STATUS   false
-#define DEBUG_PTP_FREERUN   false
+#define DEBUG_PTP_DOPPLER   false
+#define DEBUG_PTP_UNICAST   true
 #define DEBUG_SFP_STATUS    false
+#define DEBUG_SPTP_ENABLE   true
+
+// Disable clock-discipline for the PTP slave?
+//  0 = Normal operation
+//  1 = Free-running vernier reference
+//  2 = Free-running output clock
+#define DEBUG_PTP_FREERUN   1
 
 // Set PTP filter configuration:
-//	0 = Linear regression (LR) control
+//  0 = Linear regression (LR) control
 //  1 = Proportional-integral (PI) control
 //  2 = Proportional-double-integral (PII) control
-#define PTP_CONTROL_MODE    2
-#define PTP_TAU_SECONDS     3.0
+#define PTP_CONTROL_MODE    2       // Mode (see above)
+#define PTP_TAU_SECONDS     3.0     // Clock-discipline filtering
+#define PTP_DTAU_SECONDS    10.0    // Doppler-estimation filtering
 
 // Global interrupt controller.
 static XIntc irq_xilinx;
@@ -71,7 +82,6 @@ satcat5::cfg::Timer         timer           (&cfgbus, DEVADDR_TIMER);
 satcat5::cfg::Uart          uart_status     (&cfgbus, DEVADDR_SWSTATUS);
 satcat5::cfg::TextLcd       text_lcd        (&cfgbus, DEVADDR_TEXTLCD);
 satcat5::cfg::GpiRegister   dip_sw          (&cfgbus, DEVADDR_DIP_SW, 0);
-satcat5::cfg::PtpRealtime   ptp_clock       (&cfgbus, DEVADDR_MAILMAP, 1012);
 satcat5::cfg::GpoRegister   synth_offset    (&cfgbus, DEVADDR_SYNTH, 0);
 
 // Driver for the PCA9548A multiplexer, required for SFP setup.
@@ -113,28 +123,32 @@ satcat5::eth::SwitchTelemetry tlm_sw(&tlm, &eth_switch, &traffic_stats);
 ip::DhcpClient ip_dhcp(&ip_stack.m_udp);
 
 // Link PTP client to the network stack.
+satcat5::cfg::PtpRealtime ptp_clock(eth_port.ptp_clock_reg(), MAIN_CLK_HZ);
+satcat5::cfg::PtpReference ptp_vref(cfgbus.get_register(DEVADDR_VREF), VREF_CLK_HZ);
 satcat5::ptp::Client ptp_client(&eth_port, &ip_stack.m_ip);
 satcat5::ptp::SyncUnicastL3 ptp_unicast(&ptp_client);
-satcat5::ptp::TrackingController trk_ctrl(
-    &timer, DEBUG_PTP_FREERUN ? 0 : &ptp_clock, &ptp_client);
+satcat5::ptp::TrackingController trk_ctrl(0, &ptp_client);
 satcat5::ptp::Logger ptp_log(&ptp_client, &ptp_clock);
 satcat5::ptp::Telemetry ptp_telem(&ptp_client, &ip_stack.m_udp, &ptp_clock);
 
 // Create filters used for feedback control in various modes, including
 // both linear-regression (LR) and proportional-integral (PI) controllers.
 satcat5::ptp::AmplitudeReject trk_ampl;
-satcat5::ptp::CoeffLR trk_coeff_lr(
-    satcat5::cfg::ptpref_scale(125000000.0), PTP_TAU_SECONDS);
-satcat5::ptp::CoeffPI trk_coeff_pi(
-    satcat5::cfg::ptpref_scale(125000000.0), PTP_TAU_SECONDS);
-satcat5::ptp::CoeffPII trk_coeff_pii(
-    satcat5::cfg::ptpref_scale(125000000.0), PTP_TAU_SECONDS);
+satcat5::ptp::CoeffLR trk_coeff_lr(PTP_TAU_SECONDS);
+satcat5::ptp::CoeffPI trk_coeff_pi(PTP_TAU_SECONDS);
+satcat5::ptp::CoeffPII trk_coeff_pii(PTP_TAU_SECONDS);
 satcat5::ptp::ControllerLR<16> trk_ctrl_lr(trk_coeff_lr);
 satcat5::ptp::ControllerPI trk_ctrl_pi(trk_coeff_pi);
 satcat5::ptp::ControllerPII trk_ctrl_pii(trk_coeff_pii);
 satcat5::ptp::MedianFilter<7> trk_median;
 satcat5::ptp::BoxcarFilter<4> trk_prebox;
 satcat5::ptp::BoxcarFilter<4> trk_postbox;
+
+// Additional handlers for the Doppler-TLV.
+satcat5::ptp::DopplerTlv dopp_tlv(&ptp_client);
+satcat5::ptp::AmplitudeReject dopp_ampl;
+satcat5::ptp::CoeffPI dopp_coeff(PTP_DTAU_SECONDS);
+satcat5::ptp::ControllerPI dopp_ctrl(trk_coeff_pi);
 
 // Connect logging system to the MDM's virtual UART
 satcat5::ublaze::UartLite   uart_mdm("UART",
@@ -222,6 +236,14 @@ public:
         // Optionally poll the SFP status registers, 16 bytes at a time.
         if (DEBUG_SFP_STATUS) {
             i2c_mux.read(I2C_ADDR_SFP, 1, 16 * (m_cycle % 4), 16, this);
+        }
+        // Optionally report Tx-Rx clock-frequency offsets?
+        if (DEBUG_PORT_FREQ) {
+            traffic_stats.refresh_now();
+            auto sfp = traffic_stats.get_port(PORT_IDX_ETH_SFP);
+            auto sma = traffic_stats.get_port(PORT_IDX_ETH_SMA);
+            satcat5::log::Log(satcat5::log::DEBUG, "Port frequency")
+                .write10(sfp.delta_freq).write10(sma.delta_freq);
         }
         // Repeat this callback once per second.
         ++m_cycle; timer_every(1000);
@@ -345,13 +367,16 @@ int main()
             ip_stack.set_addr(ip::Addr(192, 168, 3, 42));
             ip_stack.m_ip.route_default(ip_stack.ipaddr());
         }
-        if (DEBUG_PING_HOST)
+        if (DEBUG_PING_HOST) {
             ip_stack.m_ping.ping(ip::Addr(192, 168, 3, 1));
+        }
         ptp_client.set_mode(satcat5::ptp::ClientMode::MASTER_L2);
         ptp_client.set_sync_rate(4); // 2^N broadcast/sec
         ptp_client.set_clock(satcat5::ptp::VERY_GOOD_CLOCK);
-        ptp_unicast.connect(ip::Addr(192, 168, 4, 42));
-        ptp_unicast.timer_every(2); // Unicast every N msec
+        if (DEBUG_PTP_UNICAST && !DEBUG_SPTP_ENABLE) {
+            ptp_unicast.connect(ip::Addr(192, 168, 4, 42));
+            ptp_unicast.timer_every(2); // Unicast every N msec
+        }
     } else {
         // PTP Slave = 192.168.4.* subnet
         ip_stack.set_macaddr({0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00});
@@ -359,9 +384,27 @@ int main()
             ip_stack.set_addr(ip::Addr(192, 168, 4, 42));
             ip_stack.m_ip.route_default(ip_stack.ipaddr());
         }
-        if (DEBUG_PING_HOST)
+        if (DEBUG_PING_HOST) {
             ip_stack.m_ping.ping(ip::Addr(192, 168, 4, 1));
-        ptp_client.set_mode(satcat5::ptp::ClientMode::SLAVE_ONLY);
+        }
+        if (DEBUG_SPTP_ENABLE) {
+            ptp_client.set_sync_rate(4); // 2^N requests/sec
+            ptp_client.set_mode(satcat5::ptp::ClientMode::SLAVE_SPTP);
+        } else {
+            ptp_client.set_mode(satcat5::ptp::ClientMode::SLAVE_ONLY);
+        }
+        // Compensate for known sync bias, empirically about -36 nsec.
+        // TODO: Confirm or eliminate the source(s) of this bias term.
+        synth_offset.write(-36 * 65536);
+        // Activate closed-loop clock discipline?
+        if (DEBUG_PTP_FREERUN < 2) trk_ctrl.add_clock(&ptp_clock);
+        // Also discipline vernier reference? (Improves Doppler-PTP accuracy.)
+        if (DEBUG_PTP_FREERUN < 1) trk_ctrl.add_clock(&ptp_vref);
+        // Activate timestamp compensation based on measured Doppler?
+        dopp_tlv.add_filter(&dopp_ampl);
+        dopp_tlv.add_filter(&dopp_ctrl);
+        dopp_tlv.set_tcomp_en(DEBUG_PTP_DOPPLER);
+        // Configure the control law.
         if (PTP_CONTROL_MODE == 0) {
             // PTP control in linear regression mode.
             trk_ctrl.add_filter(&trk_ampl);

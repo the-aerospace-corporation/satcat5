@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation.
+// Copyright 2023-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Sorting of incoming packets by EtherType.
@@ -26,13 +26,8 @@ namespace satcat5 {
             // (Only child can safely call constructor and destructor.)
             Protocol(
                 satcat5::eth::Dispatch* dispatch,
-                const satcat5::eth::MacType& ethertype);
-            #if SATCAT5_VLAN_ENABLE
-            Protocol(
-                satcat5::eth::Dispatch* dispatch,
                 const satcat5::eth::MacType& ethertype,
-                const satcat5::eth::VlanTag& vtag);
-            #endif
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
             ~Protocol() SATCAT5_OPTIONAL_DTOR;
 
             // Note: Child MUST override frame_rcvd(...)

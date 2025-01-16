@@ -15,12 +15,17 @@ using satcat5::ptp::SUBNS_PER_SEC;
 using satcat5::ptp::SUBNS_PER_NSEC;
 using satcat5::ptp::Time;
 using satcat5::ptp::from_datetime;
+using satcat5::test::rand_u32;
 
 TEST_CASE("ptp_time") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     SECTION("Constructors") {
+        Time t0;                // No arguments
+        CHECK(t0.field_secs() == 0);
+        CHECK(t0.field_subns() == 0);
+
         Time t1(12345);         // Subnanoseconds
         CHECK(t1.field_secs() == 0);
         CHECK(t1.field_subns() == 12345);
@@ -297,13 +302,12 @@ TEST_CASE("ptp_time") {
     }
 
     SECTION("RandomArithmetic") {
-        Catch::SimplePcg32 rng;
         for (unsigned iter = 0 ; iter < 100 ; ++iter) {
             // Generate a handful of random inputs.
-            Time t1(rng() & 0xFFFF, rng());
-            Time t2(rng() & 0xFFFF, rng());
-            Time t3(rng() & 0xFFFF, rng());
-            Time t4(rng() & 0xFFFF, rng());
+            Time t1(rand_u32() & 0xFFFF, rand_u32());
+            Time t2(rand_u32() & 0xFFFF, rand_u32());
+            Time t3(rand_u32() & 0xFFFF, rand_u32());
+            Time t4(rand_u32() & 0xFFFF, rand_u32());
 
             // Calculate sum/difference using methods under test.
             Time sum = t1 - t2 + t3 - t4;

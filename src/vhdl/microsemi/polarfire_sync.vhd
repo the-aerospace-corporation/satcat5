@@ -1,11 +1,11 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Asynchronous input conditioning for Microsemi PolarFire FPGAs
 --
--- This file implements the components defined in "common_sync", using
+-- This file implements the components defined in "common_primitives", using
 -- explicit components and inference templates for Microsemi PolarFire FPGAs.
 --
 -- NOTE: Designs should only include ONE such implementation!  If your
@@ -16,6 +16,8 @@
 library IEEE;
 use     IEEE.STD_LOGIC_1164.ALL;
 
+-- LIMITATION: The Vivado ASYNC_REG flag forces nearby placement to ensure routing delays don't
+-- eat into time needed for resolving metastability. This flag is not available on Polarfire.
 entity sync_toggle2pulse is
     generic(
     RISING_ONLY  : boolean := false;
@@ -35,12 +37,6 @@ signal in_toggle_d2  : std_logic;
 signal in_toggle_d3  : std_logic;
 signal out_combo     : std_logic;
 
--- Vivado ASYNC_REG flag forces nearby placement to ensure routing
--- delays don't eat into time needed for resolving metastability.
--- Unable to find documentation for Polarfire
-attribute ASYNC_REG : string;
-attribute ASYNC_REG of in_toggle_d1, in_toggle_d2 : signal is "TRUE";
-
 signal reset_n : std_logic;
 component DFN1C0
     port(
@@ -49,6 +45,10 @@ component DFN1C0
     CLK : in  std_logic;
     CLR : in  std_logic);
 end component;
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of in_toggle, in_toggle_d1 : signal is true;
 
 begin
 
@@ -113,6 +113,8 @@ end;
 library IEEE;
 use     IEEE.STD_LOGIC_1164.ALL;
 
+-- LIMITATION: The Vivado ASYNC_REG flag forces nearby placement to ensure routing delays don't
+-- eat into time needed for resolving metastability. This flag is not available on Polarfire.
 entity sync_buffer is
     port(
     in_flag     : in  std_logic;
@@ -126,12 +128,6 @@ architecture sync_buffer of sync_buffer is
 signal in_flag_d1   : std_logic;
 signal in_flag_d2   : std_logic;
 
--- Vivado ASYNC_REG flag forces nearby placement to ensure routing
--- delays don't eat into time needed for resolving metastability.
--- Unable to find documentation for Polarfire
-attribute ASYNC_REG : string;
-attribute ASYNC_REG of in_flag_d1, in_flag_d2 : signal is "TRUE";
-
 signal reset_n : std_logic;
 component DFN1C0
     port(
@@ -140,6 +136,10 @@ component DFN1C0
     CLK : in  std_logic;
     CLR : in  std_logic);
 end component;
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of in_flag, in_flag_d1 : signal is true;
 
 begin
 
@@ -228,6 +228,7 @@ end;
 
 library IEEE;
 use     IEEE.STD_LOGIC_1164.ALL;
+use     work.common_functions.str_equal;
 use     work.common_primitives.sync_buffer;
 
 entity sync_reset is
@@ -244,9 +245,17 @@ architecture sync_reset of sync_reset is
 
 signal sync_reset_p : std_logic := '0';
 signal out_reset_i  : std_logic := '1';
+signal countdown    : integer range 0 to HOLD_MIN := HOLD_MIN;
 
-attribute KEEP : string;
-attribute KEEP of out_reset_i : signal is KEEP_ATTR;
+-- Force retention of the reset signal?
+attribute alspreserve : boolean;
+attribute alspreserve of out_reset_i : signal is str_equal(KEEP_ATTR, "true");
+attribute syn_keep : boolean;
+attribute syn_keep of out_reset_i : signal is str_equal(KEEP_ATTR, "true");
+
+-- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
+attribute satcat5_cross_clock_dst : boolean;
+attribute satcat5_cross_clock_dst of countdown, in_reset_p, out_reset_i : signal is true;
 
 begin
 
@@ -260,18 +269,17 @@ u_sync : sync_buffer
 
 -- Asynchronous set, synchronous clear after N cycles.
 p_count : process(out_clk, in_reset_p)
-    variable countdown : integer range 0 to HOLD_MIN := HOLD_MIN;
 begin
     if (in_reset_p = '1') then
         out_reset_i <= '1';
-        countdown   := HOLD_MIN;
+        countdown   <= HOLD_MIN;
     elsif rising_edge(out_clk) then
         if (sync_reset_p = '1') then
             out_reset_i <= '1';
-            countdown   := HOLD_MIN;
+            countdown   <= HOLD_MIN;
         elsif (countdown /= 0) then
             out_reset_i <= '1';
-            countdown   := countdown - 1;
+            countdown   <= countdown - 1;
         else
             out_reset_i <= '0';
         end if;

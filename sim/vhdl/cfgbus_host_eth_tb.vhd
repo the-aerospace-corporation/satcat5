@@ -240,7 +240,7 @@ p_test : process
         test_index  <= test_index + 1;
         test_start  <= '1';
         test_pkt_rx := make_eth_fcs(CFG_MACADDR, HOST_MACADDR, CFG_ETYPE, cmd);
-        test_pkt_tx := make_eth_fcs(HOST_MACADDR, CFG_MACADDR, REPLY_ETYPE, ack); 
+        test_pkt_tx := make_eth_fcs(HOST_MACADDR, CFG_MACADDR, REPLY_ETYPE, ack);
         wait until rising_edge(clk_100);
         test_start  <= '0';
         -- Wait until Tx/Rx process is done.

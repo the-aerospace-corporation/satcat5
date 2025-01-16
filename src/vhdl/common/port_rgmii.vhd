@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2022 The Aerospace Corporation.
+-- Copyright 2019-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -110,6 +110,7 @@ signal rx_out_err   : std_logic := '0';             -- De-duplicated data
 signal rx_out_cken  : std_logic := '1';             -- Preamble clock-enable
 signal rx_meta      : nybble_t := META_1000M;       -- Received link config
 signal rx_tstamp    : tstamp_t := TSTAMP_DISABLED;  -- Receive clock timestamps
+signal rx_tfreq     : tfreq_t := TFREQ_DISABLED;    -- Receive clock frequency
 signal rx_tvalid    : std_logic := '0';             -- Timestamp valid?
 
 -- All TX signals are in the "tx_clk" domain.
@@ -129,7 +130,8 @@ signal tx_out_clkr  : std_logic := '0';             -- DDR output clock
 signal tx_out_clkf  : std_logic := '0';             -- DDR output clock
 signal tx_rate10    : std_logic := '0';             -- Output rate flag
 signal tx_rate100   : std_logic := '0';             -- Output rate flag
-signal tx_tstamp    : tstamp_t := TSTAMP_DISABLED;  -- Receive clock timestamps
+signal tx_tstamp    : tstamp_t := TSTAMP_DISABLED;  -- Transmit clock timestamps
+signal tx_tfreq     : tfreq_t := TFREQ_DISABLED;    -- Transmit clock frequency
 signal tx_tvalid    : std_logic := '0';             -- Timestamp valid?
 
 -- Upstream status reporting is asynchronous.
@@ -234,6 +236,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => rx_clk,
         user_ctr    => rx_tstamp,
+        user_freq   => rx_tfreq,
         user_lock   => rx_tvalid,
         user_rst_p  => rx_reset);
 
@@ -245,6 +248,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => tx_clk,
         user_ctr    => tx_tstamp,
+        user_freq   => tx_tfreq,
         user_lock   => tx_tvalid,
         user_rst_p  => tx_reset);
 end generate;
@@ -311,6 +315,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_cken    => rx_out_cken,
     rate_word   => rate_word,
     rx_tstamp   => rx_tstamp,
+    rx_tfreq    => rx_tfreq,
     status      => status_word,
     rx_data     => rx_data);    -- Rx data to switch
 
@@ -337,6 +342,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_cken     => tx_pre_cken, -- Clock enable
     tx_pkten    => tx_lock,     -- Link up, ready to send?
     tx_tstamp   => tx_tstamp,
+    tx_tfreq    => tx_tfreq,
     tx_idle     => tx_meta,     -- Echo Rx metadata
     tx_data     => tx_data,     -- Tx data from switch
     tx_ctrl     => tx_ctrl);    -- (Associated control)

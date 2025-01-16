@@ -25,8 +25,11 @@ CPPCHECK_RUN := cppcheck \
     -DSATCAT5_VLAN_ENABLE=1 \
     -i src/cpp/hal_ublaze/overrides.cc \
     -i src/cpp/qcbor \
+    --inline-suppr \
     --suppress=knownConditionTrueFalse \
     --suppress=missingInclude \
+    --suppress=oppositeExpression \
+    --suppress=stlFindInsert \
     --suppress=unusedFunction
 CPPLINT_FILTERS := \
     -build/include_order, -build/include_what_you_use, -build/include_subdir, \
@@ -42,6 +45,7 @@ CPPLINT_RUN := cpplint \
 # Set working folders
 SIMS_DIR := ./sim/vhdl/
 SW_TEST_DIR := ./sim/cpp
+SW_DOCS_DIR := ./doc
 
 # Simulations
 .PHONY: sims
@@ -155,6 +159,11 @@ sw_coverage:
 sw_covertest:
 	@cd ${SW_TEST_DIR} && make coverage_test
 
+# Run software tests inside valgrind, to check for leaks or uninitialized memory
+.PHONY: sw_valgrind
+sw_valgrind:
+	@cd ${SW_TEST_DIR} && make valgrind_test
+
 # Run "cppcheck" static analyzer on C++ software
 .PHONY: sw_cppcheck
 sw_cppcheck:
@@ -164,6 +173,16 @@ sw_cppcheck:
 .PHONY: sw_cpplint
 sw_cpplint:
 	@${CPPLINT_RUN} src/cpp 2> cpplint.log
+
+# Run "cloc" tool to count lines of code.
+.PHONY: cloc
+cloc:
+	@cloc * --report-file cloc.log
+
+# Run "doxygen" documentation generation tool on C++ software
+.PHONY: sw_docs
+sw_docs:
+	@cd ${SW_DOCS_DIR} && doxygen
 
 # Build and run python software tests
 # Note: Run with "sudo" or grant CAP_NET_RAW to the Python executable.

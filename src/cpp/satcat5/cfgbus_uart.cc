@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -37,7 +37,7 @@ void cfg::Uart::configure(
     m_ctrl[REGADDR_CFG] = util::div_round_u32(clkref_hz, baud_hz);
 }
 
-void cfg::Uart::data_rcvd()
+void cfg::Uart::data_rcvd(satcat5::io::Readable* src)
 {
     // Forward data from Tx-FIFO to hardware.
     while (m_tx.get_read_ready()) {

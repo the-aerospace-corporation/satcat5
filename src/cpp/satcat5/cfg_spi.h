@@ -24,8 +24,7 @@ namespace satcat5 {
         };
 
         // Generic pure-virtual API definition.
-        class SpiGeneric
-        {
+        class SpiGeneric {
         public:
             // Is the SPI controller currently busy?
             virtual bool busy() = 0;

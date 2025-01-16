@@ -1,15 +1,17 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/codec_slip.h>
 #include <satcat5/log.h>
 
-namespace io = satcat5::io;
+using satcat5::io::Readable;
 using satcat5::io::SlipEncoder;
 using satcat5::io::SlipDecoder;
 using satcat5::io::SlipCodec;
+using satcat5::io::SlipCodecInverse;
+using satcat5::io::Writeable;
 
 // By default, log all SLIP errors.
 #ifndef SATCAT5_SLIP_LOG_ERROR
@@ -24,7 +26,7 @@ static const u8 SLIP_ESC_ESC    = 0xDD;
 static const u16 SLIP_ESC_W_END = 0xDBDC;
 static const u16 SLIP_ESC_W_ESC = 0xDBDD;
 
-SlipEncoder::SlipEncoder(io::Writeable* dst)
+SlipEncoder::SlipEncoder(Writeable* dst)
     : m_dst(dst)
     , m_overflow(false)
 {
@@ -77,7 +79,7 @@ void SlipEncoder::write_next(u8 data)
 }
 
 // Inline SLIP Decoder
-SlipDecoder::SlipDecoder(io::Writeable* dst)
+SlipDecoder::SlipDecoder(Writeable* dst)
     : m_dst(dst)
     , m_state(State::SLIP_EOF)
 {
@@ -129,14 +131,22 @@ void SlipDecoder::write_overflow()
     m_dst->write_abort();
 }
 
-SlipCodec::SlipCodec(
-        io::Writeable* dst,
-        io::Readable* src)
+SlipCodec::SlipCodec(Writeable* dst, Readable* src)
     : SlipEncoder(dst)              // Upstream writes are encoded enroute
-    , io::ReadableRedirect(&m_rx)   // Upstream reads pull from buffer
-    , m_rx(m_rxbuff, SATCAT5_SLIP_BUFFSIZE, SATCAT5_SLIP_PACKETS)
-    , m_decode(&m_rx)               // Decoder writes to buffer
+    , ReadableRedirect(&m_buff)     // Upstream reads pull from buffer
+    , m_buff(m_rawbuff, SATCAT5_SLIP_BUFFSIZE, SATCAT5_SLIP_PACKETS)
+    , m_decode(&m_buff)               // Decoder writes to buffer
     , m_copy(src, &m_decode)        // Auto-copy from source to decoder
+{
+    // Nothing else to initialize.
+}
+
+SlipCodecInverse::SlipCodecInverse(Writeable* dst, Readable* src)
+    : SlipDecoder(dst)              // Upstream writes are decoded enroute
+    , ReadableRedirect(&m_buff)     // Upstream reads pull from buffer
+    , m_buff(m_rawbuff, SATCAT5_SLIP_BUFFSIZE, 0)
+    , m_encode(&m_buff)             // Decoder writes to buffer
+    , m_copy(src, &m_encode)        // Auto-copy from source to encoder
 {
     // Nothing else to initialize.
 }

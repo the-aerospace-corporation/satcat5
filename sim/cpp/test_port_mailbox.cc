@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus "MailBox" driver
@@ -39,7 +39,7 @@ public:
     }
 
 protected:
-    void data_rcvd() override {
+    void data_rcvd(satcat5::io::Readable* src) override {
         irq_poll();     // New data triggers a ConfigBus interrupt.
     }
 
@@ -82,8 +82,8 @@ protected:
 };
 
 TEST_CASE("port_mailbox") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Create the hardware-emulator and the driver under test.
     MockMailbox mock;

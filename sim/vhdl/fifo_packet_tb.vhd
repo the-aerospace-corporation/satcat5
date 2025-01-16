@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2023 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -69,6 +69,7 @@ signal in_ready     : std_logic := '0';
 signal in_write     : std_logic;
 signal in_overflow  : std_logic;
 signal in_hfull     : std_logic;
+signal in_pct_full  : unsigned(7 downto 0);
 
 -- Transfer from first FIFO to second FIFO.
 signal mid_xfer     : natural := 0; -- Cumulative byte-index
@@ -295,6 +296,7 @@ uut1 : entity work.fifo_packet
     in_write        => in_write,
     in_overflow     => in_overflow,
     in_hfull        => in_hfull,
+    in_pct_full     => in_pct_full,
     out_clk         => inner_clk,
     out_data        => mid_data,
     out_nlast       => mid_nlast,
@@ -493,10 +495,10 @@ p_test : process
 
         -- Sanity check: "Half-full" indicators for each FIFO.
         if (bps_in > 1.25 * bps_mid) then
-            assert (in_hfull = '1')
+            assert (in_hfull = '1' and in_pct_full > 192)
                 report "Missing input half-full." severity error;
         elsif (bps_in < 0.75 * bps_mid) then
-            assert (in_hfull = '0')
+            assert (in_hfull = '0' and in_pct_full < 64)
                 report "Unexpected input half-full." severity error;
         end if;
 

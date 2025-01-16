@@ -4,14 +4,14 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <ctime>
-#include <hal_test/catch.hpp>
 #include <hal_test/eth_interface.h>
+#include <hal_test/sim_utils.h>
 #include <satcat5/log.h>
 
+using satcat5::io::ArrayWrite;
 using satcat5::io::Readable;
 using satcat5::io::ReadableRedirect;
 using satcat5::io::Writeable;
-using satcat5::io::WriteableRedirect;
 using satcat5::log::Log;
 using satcat5::log::DEBUG;
 using satcat5::ptp::Time;
@@ -21,24 +21,12 @@ using satcat5::test::EthernetInterface;
 // Set debugging verbosity level (0/1/2)
 static constexpr unsigned DEBUG_VERBOSE = 0;
 
-Time ptp_now()
-{
-    struct timespec tv;
-    int errcode = clock_gettime(CLOCK_MONOTONIC, &tv);
-    if (errcode) {
-        // Fallback to clock() function, usually millisecond resolution.
-        const u64 SCALE = 1000000000ull / CLOCKS_PER_SEC;
-        return Time(SCALE * clock());
-    } else {
-        // Higher resolution using clock_gettime(), if available.
-        return Time(tv.tv_sec, tv.tv_nsec);
-    }
-}
-
-EthernetInterface::EthernetInterface()
+EthernetInterface::EthernetInterface(Writeable* pcap)
     : satcat5::ptp::Interface()
+    , ArrayWrite(m_txbuff, sizeof(m_txbuff))
     , ReadableRedirect(&m_rxbuff_data)
-    , WriteableRedirect(0)
+    , m_txpcap(pcap)
+    , m_txbuff_data(0)
     , m_txbuff_time(0)
     , m_rxbuff_data()
     , m_rxbuff_time()
@@ -56,9 +44,9 @@ EthernetInterface::EthernetInterface()
 
 void EthernetInterface::connect(EthernetInterface *dst)
 {
-    // WriteableRedirect forwards data to the destination's receive buffer.
+    // Forward data to the destination's primary receive buffer.
     // Keep a pointer to the side-channel buffer for timestamps.
-    WriteableRedirect::write_dst(&dst->m_rxbuff_data);
+    m_txbuff_data = &dst->m_rxbuff_data;
     m_txbuff_time = &dst->m_rxbuff_time;
 }
 
@@ -66,7 +54,7 @@ Time EthernetInterface::ptp_tx_start()
 {
     // In one step mode, this sets the effective timestamp.
     if (DEBUG_VERBOSE > 1) Log(DEBUG, "EthInterface::ptp_tx_start");
-    m_time_tx0 = m_support_one_step ? ptp_now() : TIME_ZERO;
+    m_time_tx0 = m_support_one_step ? ptp_time_now() : TIME_ZERO;
     return m_time_tx0;
 }
 
@@ -104,30 +92,42 @@ bool EthernetInterface::write_finalize()
         drop = true;
     } else if (m_loss_threshold > 0) {
         // Randomly drop packet if die-roll is under threshold.
-        auto rng = Catch::rng();
-        drop = (rng() < m_loss_threshold);
+        drop = (satcat5::test::rand_u32() < m_loss_threshold);
     }
 
     if (drop) {
+        // Drop this packet.  Since we're simulating an event where it's
+        // sent, but dropped in transit, the result is still "success".
         if (DEBUG_VERBOSE > 0) Log(DEBUG, "EthInterface: Dropped packet.");
-        WriteableRedirect::write_abort();
-        return false;
+        ArrayWrite::write_abort();
+        return true;
     }
 
     // Intercepted end-of-packet event.
     // Attempt to finalize the data queue first...
-    if (WriteableRedirect::write_finalize()) {
+    if (ArrayWrite::write_finalize()) {
         // Update packet statistics.
         ++m_tx_count;
         // Use one-step pre-timestamp if it exists, otherwise current time.
         // In either case, clear the pre-timestamp for next time around.
-        m_time_tx1 = (m_time_tx0 == TIME_ZERO) ? ptp_now() : m_time_tx0;
+        m_time_tx1 = (m_time_tx0 == TIME_ZERO) ? ptp_time_now() : m_time_tx0;
         m_time_tx0 = TIME_ZERO;
-        // Write selected timestamp to the side-channel, if enabled.
+        // Copy data and/or timestamps to each enabled destination.
+        // TODO: Is it possible to gracefully handle desync errors?
+        bool desync = false;
+        if (m_txpcap) {
+            m_txpcap->write_bytes(written_len(), m_txbuff);
+            if (!m_txpcap->write_finalize()) desync = true;
+        }
+        if (m_txbuff_data) {
+            m_txbuff_data->write_bytes(written_len(), m_txbuff);
+            if (!m_txbuff_data->write_finalize()) desync = true;
+        }
         if (m_txbuff_time) {
             m_txbuff_time->write_obj(m_time_tx1);
             m_txbuff_time->write_finalize();
         }
+        if (desync) Log(satcat5::log::CRITICAL, "EthInterface: Desync");
         return true;
     } else {
         if (DEBUG_VERBOSE > 0) Log(DEBUG, "EthInterface: Write overflow.");
@@ -148,7 +148,7 @@ void EthernetInterface::set_loss_rate(float rate)
     }
 }
 
-void EthernetInterface::data_rcvd()
+void EthernetInterface::data_rcvd(satcat5::io::Readable* src)
 {
     if (DEBUG_VERBOSE > 1) Log(DEBUG, "EthInterface::data_rcvd");
 
@@ -184,7 +184,22 @@ void EthernetInterface::read_begin_packet()
     if (m_rxbuff_time.get_read_ready() > 0) {
         m_rxbuff_time.read_obj(m_time_rx);
     } else {
-        m_time_rx = ptp_now();
+        m_time_rx = ptp_time_now();
+    }
+}
+
+// Read the current system time.
+Time EthernetInterface::ptp_time_now()
+{
+    struct timespec tv;
+    int errcode = clock_gettime(CLOCK_MONOTONIC, &tv);
+    if (errcode) {
+        // Fallback to clock() function, usually millisecond resolution.
+        const u64 SCALE = 1000000000ull / CLOCKS_PER_SEC;
+        return Time(SCALE * clock());
+    } else {
+        // Higher resolution using clock_gettime(), if available.
+        return Time(tv.tv_sec, tv.tv_nsec);
     }
 }
 
