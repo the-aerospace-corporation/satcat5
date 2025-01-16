@@ -5,6 +5,9 @@
 --
 -- Package definition: Useful constants and functions for router_xx blocks
 --
+-- WARNING: This package has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This package define a variety constants and functions for manipulating
 -- Ethernet and IPv4 frames, to maximize code reuse among various blocks.
 --

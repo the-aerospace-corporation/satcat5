@@ -4,8 +4,41 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/ip_core.h>
+#include <satcat5/log.h>
+#include <satcat5/utils.h>
 
-// Is a given IP-address in the multicast range?
+void satcat5::ip::Addr::log_to(satcat5::log::LogBuffer& wr) const
+{
+    // Extract individual bytes from the 32-bit IP-address.
+    u32 ip_bytes[] = {
+        (value >> 24) & 0xFF,   // MSB-first
+        (value >> 16) & 0xFF,
+        (value >>  8) & 0xFF,
+        (value >>  0) & 0xFF,
+    };
+
+    // Convention is 4 decimal numbers with "." delimiter.
+    // e.g., "192.168.1.42"
+    for (unsigned a = 0 ; a < 4 ; ++a) {
+        if (a) wr.wr_str(".");
+        wr.wr_dec(ip_bytes[a]);
+    }
+}
+
+void satcat5::ip::Subnet::log_to(satcat5::log::LogBuffer& wr) const
+{
+    // Example: "192.168.1.42 / 255.255.255.0"
+    satcat5::ip::Addr base(addr.value & mask.value);
+    base.log_to(wr);
+    wr.wr_str(" / ");
+    mask.log_to(wr);
+}
+
+bool satcat5::ip::Addr::is_broadcast() const
+{
+    return (value == 0xFFFFFFFFu);  // Limited broadcast 255.255.255.255
+}
+
 bool satcat5::ip::Addr::is_multicast() const
 {
     if (value == 0xFFFFFFFFu)
@@ -16,17 +49,36 @@ bool satcat5::ip::Addr::is_multicast() const
         return false;   // All other addresses
 }
 
-// Is this a valid unicast IP?  (Not zero, not multicast.)
+bool satcat5::ip::Addr::is_reserved() const
+{
+    if (value <= 0x00FFFFFFu)
+        return true;    // Reserved source (0.0.0.0 /8)
+    else if (0x7F000000u <= value && value <= 0x7FFFFFFFu)
+        return true;    // Local loopback (127.0.0.0 /8)
+    else
+        return false;   // All other addresses
+}
+
 bool satcat5::ip::Addr::is_unicast() const
 {
     return value && !is_multicast();
 }
 
+bool satcat5::ip::Addr::is_valid() const
+{
+    return value != 0;
+}
+
+unsigned satcat5::ip::Mask::prefix() const
+{
+    return satcat5::util::popcount(value);
+}
+
 // Calculate or verify checksum using algorithm from RFC 1071:
 // https://datatracker.ietf.org/doc/html/rfc1071
-u16 satcat5::ip::checksum(unsigned wcount, const u16* data)
+u16 satcat5::ip::checksum(unsigned wcount, const u16* data, u16 prev)
 {
-    u32 sum = 0;
+    u32 sum = u32(~prev & 0xFFFF);
     for (unsigned a = 0 ; a < wcount ; ++a)
         sum += data[a];
     while (sum >> 16)
@@ -41,27 +93,31 @@ void satcat5::ip::Header::write_to(satcat5::io::Writeable* wr) const
         wr->write_u16(data[a]);         // Write each word in network order
 }
 
-bool satcat5::ip::Header::read_from(satcat5::io::Readable* rd)
+bool satcat5::ip::Header::read_core(satcat5::io::Readable* rd)
 {
     // Sanity check before we start.
     if (rd->get_read_ready() < ip::HDR_MIN_BYTES) return false;
 
-    // Read the initial header contents.
+    // Read each word in the "core" header (i.e., first 20 bytes).
     for (unsigned a = 0 ; a < ip::HDR_MIN_SHORTS ; ++a)
-        data[a] = rd->read_u16();       // Read each word in baseline
-    unsigned hdr = 2 * ihl();           // Header length (16-bit words)
-    unsigned len = len_inner();         // Length of contained data (bytes)
-
-    // Bytes remaining in header?
-    unsigned rem = 2 * (hdr - ip::HDR_MIN_SHORTS);
+        data[a] = rd->read_u16();
 
     // Sanity-check various header fields:
-    //  * Unsupported version or invalid length?
-    //  * Remaining length matches expectations?
-    //  * Ignore packets with fragmentation (not supported)
-    if ((ver() != 4) || (hdr < ip::HDR_MIN_SHORTS)) return false;
+    return (ver() == 4) && (ihl() >= 5) && (len_total() >= 4*ihl());
+}
+
+bool satcat5::ip::Header::read_from(satcat5::io::Readable* rd)
+{
+    // Attempt to read the initial header (first 20 bytes).
+    if (!read_core(rd)) return false;
+
+    // Bytes remaining in header and in packet?
+    unsigned hdr = 2 * ihl();           // Header length (16-bit words)
+    unsigned rem = 2 * (hdr - ip::HDR_MIN_SHORTS);
+    unsigned len = len_inner();         // Length of contained data (bytes)
+
+    // Sanity-check that we can read the rest of the packet.
     if (rd->get_read_ready() < rem + len) return false;
-    if (frg()) return false;
 
     // Read extended header options, if any.
     // (Required for checksum, ICMP echo requests, etc.)

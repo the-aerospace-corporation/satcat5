@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation.
+// Copyright 2022-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus Text-LCD driver
@@ -39,9 +39,14 @@ protected:
 };
 
 TEST_CASE("cfgbus_text_lcd") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+    log.disable();
+
+    // Unit under test.
     MockLcd lcd;
     cfg::TextLcd uut(&lcd, CFG_DEVADDR);
-    cfg::LogToLcd log(&uut);
+    cfg::LogToLcd log2lcd(&uut);
 
     SECTION("basic") {
         CHECK(lcd.get_str() == "");

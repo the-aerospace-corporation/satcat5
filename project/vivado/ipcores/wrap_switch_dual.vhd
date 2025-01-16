@@ -30,6 +30,7 @@ entity wrap_switch_dual is
     pa_rx_rate      : in  std_logic_vector(15 downto 0);
     pa_rx_status    : in  std_logic_vector(7 downto 0);
     pa_rx_tsof      : in  std_logic_vector(47 downto 0);
+    pa_rx_tfreq     : in  std_logic_vector(39 downto 0);
     pa_rx_reset     : in  std_logic;
     pa_tx_clk       : in  std_logic;
     pa_tx_data      : out std_logic_vector(7 downto 0);
@@ -39,6 +40,7 @@ entity wrap_switch_dual is
     pa_tx_error     : in  std_logic;
     pa_tx_pstart    : in  std_logic;
     pa_tx_tnow      : in  std_logic_vector(47 downto 0);
+    pa_tx_tfreq     : in  std_logic_vector(39 downto 0);
     pa_tx_reset     : in  std_logic;
 
     -- Network port B
@@ -50,6 +52,7 @@ entity wrap_switch_dual is
     pb_rx_write     : in  std_logic;
     pb_rx_error     : in  std_logic;
     pb_rx_tsof      : in  std_logic_vector(47 downto 0);
+    pb_rx_tfreq     : in  std_logic_vector(39 downto 0);
     pb_rx_reset     : in  std_logic;
     pb_tx_clk       : in  std_logic;
     pb_tx_data      : out std_logic_vector(7 downto 0);
@@ -59,6 +62,7 @@ entity wrap_switch_dual is
     pb_tx_error     : in  std_logic;
     pb_tx_pstart    : in  std_logic;
     pb_tx_tnow      : in  std_logic_vector(47 downto 0);
+    pb_tx_tfreq     : in  std_logic_vector(39 downto 0);
     pb_tx_reset     : in  std_logic;
 
     -- Error reporting (see switch_aux).
@@ -82,12 +86,14 @@ rx_data(0).rxerr    <= pa_rx_error;
 rx_data(0).rate     <= pa_rx_rate;
 rx_data(0).status   <= pa_rx_status;
 rx_data(0).tsof     <= unsigned(pa_rx_tsof);
+rx_data(0).tfreq    <= signed(pa_rx_tfreq);
 rx_data(0).reset_p  <= pa_rx_reset;
 tx_ctrl(0).clk      <= pa_tx_clk;
 tx_ctrl(0).ready    <= pa_tx_ready;
 tx_ctrl(0).txerr    <= pa_tx_error;
 tx_ctrl(0).pstart   <= pa_tx_pstart;
 tx_ctrl(0).tnow     <= unsigned(pa_tx_tnow);
+tx_ctrl(0).tfreq    <= signed(pa_tx_tfreq);
 tx_ctrl(0).reset_p  <= pa_tx_reset;
 pa_tx_data          <= tx_data(0).data;
 pa_tx_last          <= tx_data(0).last;
@@ -101,12 +107,14 @@ rx_data(1).rxerr    <= pb_rx_error;
 rx_data(1).rate     <= pb_rx_rate;
 rx_data(1).status   <= pb_rx_status;
 rx_data(1).tsof     <= unsigned(pb_rx_tsof);
+rx_data(1).tfreq    <= signed(pb_rx_tfreq);
 rx_data(1).reset_p  <= pb_rx_reset;
 tx_ctrl(1).clk      <= pb_tx_clk;
 tx_ctrl(1).ready    <= pb_tx_ready;
 tx_ctrl(1).txerr    <= pb_tx_error;
 tx_ctrl(1).pstart   <= pb_tx_pstart;
 tx_ctrl(1).tnow     <= unsigned(pb_tx_tnow);
+tx_ctrl(1).tfreq    <= signed(pb_tx_tfreq);
 tx_ctrl(1).reset_p  <= pb_tx_reset;
 pb_tx_data          <= tx_data(1).data;
 pb_tx_last          <= tx_data(1).last;

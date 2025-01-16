@@ -29,3 +29,4 @@ if {[lsearch -exact $families_7series $part_family] >= 0} {
 } else {
     error "Unsupported part family: $part_family"
 }
+puts "Detected part family: $part_family"

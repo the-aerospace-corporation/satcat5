@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2022 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Wrapper for PCAP / NPCAP socket library and supporting functions
@@ -55,7 +55,7 @@ namespace satcat5 {
             const char* desc() const;
 
         protected:
-            void data_rcvd() override;
+            void data_rcvd(satcat5::io::Readable* src) override;
             void poll_always() override;
 
             satcat5::pcap::Device* const m_device;

@@ -47,6 +47,7 @@ sw_rx_data.reset_p  <= mac_rx_data.reset_p;
 sw_tx_ctrl.clk      <= mac_tx_ctrl.clk;
 sw_tx_ctrl.pstart   <= mac_tx_ctrl.pstart and flow_fifo_empty;
 sw_tx_ctrl.tnow     <= mac_tx_ctrl.tnow;
+sw_tx_ctrl.tfreq    <= mac_tx_ctrl.tfreq;
 sw_tx_ctrl.txerr    <= mac_tx_ctrl.txerr;
 sw_tx_ctrl.reset_p  <= mac_tx_ctrl.reset_p;
 
@@ -55,6 +56,7 @@ sw_rx_data.data     <= mac_rx_data.data;
 sw_rx_data.last     <= mac_rx_data.last;
 sw_rx_data.write    <= mac_rx_data.write;
 sw_rx_data.tsof     <= mac_rx_data.tsof;
+sw_rx_data.tfreq    <= mac_rx_data.tfreq;
 
 -- Outgoing data may need padding.
 u_adj : entity work.eth_frame_adjust

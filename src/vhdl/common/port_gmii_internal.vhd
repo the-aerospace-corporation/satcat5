@@ -1,18 +1,18 @@
 --------------------------------------------------------------------------
--- Copyright 2020-2022 The Aerospace Corporation.
+-- Copyright 2020-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
--- FPGA-internal GMII port for MAC-to-MAC operation. 
+-- FPGA-internal GMII port for MAC-to-MAC operation.
 -- Useful for integrating with other IPs that expose a GMII
--- interface and must connect to a switch core or 
+-- interface and must connect to a switch core or
 -- require conversion to a different SatCat5 port type,
 -- such as the Zynq and Zynq Ultrascale+ PS ethernet peripherals.
 --
 -- This module adapts a GMII interface to the generic internal
 -- format used throughout this design.
 --
--- As this is an internal port, clock shifting logic and device-specific 
+-- As this is an internal port, clock shifting logic and device-specific
 -- I/O structures are not implemented. Clocks are assumed to already be
 -- on the FPGA clock network
 --
@@ -63,7 +63,8 @@ architecture port_gmii_internal of port_gmii_internal is
 
 signal tx_meta          : std_logic_vector(3 downto 0);
 signal rx_lock          : std_logic := '0';
-signal lcl_tstamp       : tstamp_t := (others => '0');
+signal lcl_tstamp       : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tfreq        : tfreq_t := TFREQ_DISABLED;
 signal lcl_tvalid       : std_logic := '0';
 signal reset_sync       : std_logic;        -- Reset sync'd to clk_125
 signal status_word      : port_status_t;
@@ -96,6 +97,7 @@ gen_ptp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => gmii_rxc,
         user_ctr    => lcl_tstamp,
+        user_freq   => lcl_tfreq,
         user_lock   => lcl_tvalid,
         user_rst_p  => reset_sync);
 end generate;
@@ -112,6 +114,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_err     => gmii_rxerr,
     rate_word   => get_rate_word(1000),
     rx_tstamp   => lcl_tstamp,
+    rx_tfreq    => lcl_tfreq,
     status      => status_word,
     rx_data     => rx_data);
 
@@ -128,6 +131,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_pwren    => '1',
     tx_pkten    => rx_lock,
     tx_tstamp   => lcl_tstamp,
+    tx_tfreq    => lcl_tfreq,
     tx_idle     => tx_meta,
     tx_data     => tx_data,
     tx_ctrl     => tx_ctrl);

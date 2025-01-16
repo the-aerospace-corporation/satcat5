@@ -37,7 +37,11 @@ package prng_lfsr_common is
         inv:    std_logic;          -- Invert output?
     end record;
 
+    -- Factory functions may return this placeholder to indicate an error.
     constant LFSR_INVALID : lfsr_spec_t := (1, (others => 'X'), 'X');
+
+    -- Test if a specification is valid (i.e., not the placeholder).
+    function lfsr_is_valid(lfsr: lfsr_spec_t) return boolean;
 
     -- Generate an LFSR specification from a polynomial.
     function create_lfsr(
@@ -125,6 +129,18 @@ package prng_lfsr_common is
 end package;
 
 package body prng_lfsr_common is
+    function lfsr_is_valid(lfsr: lfsr_spec_t) return boolean is
+        variable poly : lfsr_poly_t := to_01_vec(lfsr.poly);
+        variable inv  : std_logic   := to_01_std(lfsr.inv);
+    begin
+        for n in lfsr.order downto 0 loop
+            if poly(n) /= lfsr.poly(n) then
+                return false;   -- Z or X or similar in a bit that matters.
+            end if;
+        end loop;
+        return (lfsr.order > 1) and (inv = lfsr.inv);
+    end function;
+
     function create_lfsr(poly: std_logic_vector; inv: boolean := false)
         return lfsr_spec_t is
         variable tmp : lfsr_poly_t := (others => 'X');
@@ -141,7 +157,7 @@ package body prng_lfsr_common is
             tmp(b) := poly(b);
         end loop;
         -- Return the complete LFSR specification.
-        return (poly'length-1, tmp, bool2bit(inv));
+        return (poly'left, tmp, bool2bit(inv));
     end function;
 
     function create_prbs(order: positive) return lfsr_spec_t is
@@ -224,6 +240,8 @@ package body prng_lfsr_common is
         variable mat_next : mat := (others => (others => '0'));
         variable mat_flat : lfsr_matrix_t := (others => '0');
     begin
+        -- Sanity check: Fail loudly if the input is invalid.
+        assert lfsr_is_valid(lfsr) report "Invalid LFSR." severity failure;
         -- Define the increment-by-one matrix, A.
         -- First row is the feedback term, all others simply right-shift.
         mat_incr(0) := lfsr.poly(lfsr.order downto 1);

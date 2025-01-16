@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -33,7 +33,7 @@ Mailbox::Mailbox(satcat5::cfg::ConfigBus* cfg, unsigned devaddr, unsigned regadd
     *m_hw_reg = ETHCMD_RESET;
 }
 
-void Mailbox::data_rcvd()
+void Mailbox::data_rcvd(satcat5::io::Readable* src)
 {
     // Copy segments of data to the hardware buffer.
     while (copy_tx_segment()) {}
@@ -62,7 +62,6 @@ u32 Mailbox::copy_tx_segment()
         // Complete packet, set FINAL flag.
         for (unsigned a = 0 ; a < seg-1 ; ++a)
             *m_hw_reg = ETHCMD_WRNEXT | src[a];
-        // cppcheck-suppress redundantAssignment
         *m_hw_reg = ETHCMD_WRFINAL | src[seg-1];
         m_tx.read_finalize();
     } else {

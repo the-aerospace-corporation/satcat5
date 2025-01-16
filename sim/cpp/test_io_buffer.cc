@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for BufferedIO, BufferedCopy, and BufferedWriter classes.
@@ -25,7 +25,7 @@ public:
         delete[] m_rx.get_buff_dtor();
     }
 protected:
-    void data_rcvd() override {
+    void data_rcvd(satcat5::io::Readable* src) override {
         // Loopback = Copy data from m_tx to m_rx.
         // Note: m_tx = external writes, internal reads
         //       m_rx = external reads, internal writes
@@ -60,6 +60,7 @@ void readpkt(io::Readable* rd) {
 }
 
 TEST_CASE("BufferedIO") {
+    SATCAT5_TEST_START;                 // Simulation infrastructure
     BufferedPassthrough uut(1024);      // Unit under test
 
     // Basic test with a single short packet.
@@ -99,6 +100,7 @@ TEST_CASE("BufferedIO") {
 }
 
 TEST_CASE("BufferedCopy") {
+    SATCAT5_TEST_START;                 // Simulation infrastructure
     io::PacketBufferHeap tx, rx;        // Test buffers
     io::BufferedCopy uut(&tx, &rx);     // UUT copies from tx to rx
 
@@ -115,7 +117,34 @@ TEST_CASE("BufferedCopy") {
     }
 }
 
+TEST_CASE("BufferedTee") {
+    SATCAT5_TEST_START;                 // Simulation infrastructure
+    io::BufferedTee uut;
+    io::PacketBufferHeap rx1, rx2, rx3;
+
+    // Written data should be copied to all outputs.
+    SECTION("Basic") {
+        const std::string TEST1("Test message 1.");
+        const std::string TEST2("Test message 2 is longer.");
+        // Copy to all three outputs.
+        uut.add(&rx1);
+        uut.add(&rx2);
+        uut.add(&rx3);
+        REQUIRE(satcat5::test::write(&uut, TEST1));
+        CHECK(satcat5::test::read(&rx1, TEST1));
+        CHECK(satcat5::test::read(&rx2, TEST1));
+        CHECK(satcat5::test::read(&rx3, TEST1));
+        // Remove the middle output and try again.
+        uut.remove(&rx2);
+        REQUIRE(satcat5::test::write(&uut, TEST2));
+        CHECK(satcat5::test::read(&rx1, TEST2));
+        CHECK(rx2.get_read_ready() == 0);
+        CHECK(satcat5::test::read(&rx3, TEST2));
+    }
+}
+
 TEST_CASE("BufferedWriter") {
+    SATCAT5_TEST_START;                 // Simulation infrastructure
     io::PacketBufferHeap rx;            // Final destination
     io::BufferedWriterHeap uut(&rx);    // UUT copies data to rx
 

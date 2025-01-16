@@ -4,13 +4,15 @@
 # ------------------------------------------------------------------------
 #
 # This script packages a Vivado IP core: satcat5.router_inline
+# WARNING: This block has been deprecated in favor of "router2".
+#  It may be removed in a future release of SatCat5.
 #
 
 # Create a basic IP-core project.
 set ip_name "router_inline"
 set ip_vers "1.0"
-set ip_disp "SatCat5 Inline IPv4 Router"
-set ip_desc "An IPv4 router placed between a switch and a designated uplink port."
+set ip_disp "SatCat5 Inline IPv4 Router (deprecated)"
+set ip_desc "An IPv4 router placed between a switch and a designated uplink port. This block has been deprecated and may be removed in a future release of SatCat5."
 
 variable ip_root [file normalize [file dirname [info script]]]
 source $ip_root/ipcore_shared.tcl

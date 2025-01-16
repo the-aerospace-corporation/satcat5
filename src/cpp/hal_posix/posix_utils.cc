@@ -23,21 +23,23 @@
     #include <unistd.h>     // For usleep()
 #endif
 
-using satcat5::io::BufferedWriter;
+using satcat5::eth::SwitchCoreHeap;
+using satcat5::io::BufferedTee;
 using satcat5::io::BufferedWriterHeap;
 using satcat5::io::KeyboardStream;
-using satcat5::io::PacketBuffer;
+using satcat5::io::MultiBufferHeap;
 using satcat5::io::PacketBufferHeap;
 using satcat5::io::Readable;
+using satcat5::io::StreamBufferHeap;
 using satcat5::io::Writeable;
 using satcat5::log::ToConsole;
 using satcat5::poll::timekeeper;
 using satcat5::util::PosixTimer;
 using satcat5::util::PosixTimekeeper;
+using satcat5::util::TimeVal;
 using satcat5::util::write_be_u32;
 
-std::string satcat5::io::read_str(Readable* src)
-{
+std::string satcat5::io::read_str(Readable* src) {
     std::string tmp;
     while (src->get_read_ready())
         tmp.push_back(src->read_u8());
@@ -45,15 +47,31 @@ std::string satcat5::io::read_str(Readable* src)
     return tmp;
 }
 
-BufferedWriterHeap::BufferedWriterHeap(Writeable* dst, unsigned nbytes)
-    : BufferedWriter(dst, new u8[nbytes], nbytes, nbytes/64)
+BufferedTee::BufferedTee(unsigned nbytes)
+    : HeapAllocator(nbytes)
+    , ArrayWrite(m_buffptr, nbytes)
 {
     // Nothing else to initialize.
 }
 
-BufferedWriterHeap::~BufferedWriterHeap()
+bool BufferedTee::write_finalize() {
+    // Finalize write to parent, then copy to each destination.
+    unsigned count = 0;
+    if (satcat5::io::ArrayWrite::write_finalize()) {
+        for (auto ptr = m_list.begin() ; ptr != m_list.end() ; ++ptr) {
+            (*ptr)->write_bytes(written_len(), m_buffptr);
+            if ((*ptr)->write_finalize()) ++count;
+        }
+    }
+    // Indicate success if at least one accepts the data.
+    return count > 0;
+}
+
+BufferedWriterHeap::BufferedWriterHeap(Writeable* dst, unsigned nbytes)
+    : HeapAllocator(nbytes)
+    , BufferedWriter(dst, m_buffptr, nbytes, nbytes/64)
 {
-    delete[] m_buff.get_buff_dtor();
+    // Nothing else to initialize.
 }
 
 KeyboardStream::KeyboardStream(Writeable* dst, bool line_buffer)
@@ -72,8 +90,7 @@ KeyboardStream::KeyboardStream(Writeable* dst, bool line_buffer)
 #endif
 }
 
-KeyboardStream::~KeyboardStream()
-{
+KeyboardStream::~KeyboardStream() {
 #ifdef _WIN32
     // No cleanup for Windows (yet).
 #else
@@ -86,8 +103,7 @@ KeyboardStream::~KeyboardStream()
 #endif
 }
 
-void KeyboardStream::poll_always()
-{
+void KeyboardStream::poll_always() {
     // If there's any characters in the queue, copy them.
 #ifdef _WIN32
     while (_kbhit()) {
@@ -103,8 +119,7 @@ void KeyboardStream::poll_always()
 #endif
 }
 
-void KeyboardStream::write_key(int ch)
-{
+void KeyboardStream::write_key(int ch) {
     if (m_line_buffer && (ch == '\r' || ch == '\n')) {
         m_dst->write_finalize();    // EOL flushes input
     } else if (0 < ch && ch < 128) {
@@ -121,13 +136,11 @@ ToConsole::ToConsole(s8 threshold)
     // Nothing else to initialize.
 }
 
-bool ToConsole::contains(const char* msg)
-{
+bool ToConsole::contains(const char* msg) {
     return (m_last_msg.find(msg) != std::string::npos);
 }
 
-void ToConsole::suppress(const char* msg)
-{
+void ToConsole::suppress(const char* msg) {
     if (msg) {
         m_suppress.push_back(std::string(msg));
     } else {
@@ -135,8 +148,7 @@ void ToConsole::suppress(const char* msg)
     }
 }
 
-void ToConsole::log_event(s8 priority, unsigned nbytes, const char* msg)
-{
+void ToConsole::log_event(s8 priority, unsigned nbytes, const char* msg) {
     // Always store the most recent log-message.
     m_last_msg = std::string(msg, msg+nbytes);
 
@@ -149,7 +161,7 @@ void ToConsole::log_event(s8 priority, unsigned nbytes, const char* msg)
     }
 
     // Timestamp = Milliseconds since creation of this object.
-    u32 now = (m_timer.elapsed_usec(m_tref) / 1000) % 10000;
+    unsigned now = m_tref.elapsed_msec() % 10000;
 
     // Print human-readable message to either STDERR or STDOUT.
     if (priority >= satcat5::log::ERROR) {
@@ -163,31 +175,40 @@ void ToConsole::log_event(s8 priority, unsigned nbytes, const char* msg)
     }
 }
 
-PacketBufferHeap::PacketBufferHeap(unsigned nbytes)
-    : PacketBuffer(new u8[nbytes], nbytes, nbytes/64)
+MultiBufferHeap::MultiBufferHeap(unsigned nbytes)
+    : HeapAllocator(nbytes)
+    , MultiBuffer(m_buffptr, nbytes)
 {
     // Nothing else to initialize
 }
 
-PacketBufferHeap::~PacketBufferHeap()
+PacketBufferHeap::PacketBufferHeap(unsigned nbytes)
+    : HeapAllocator(nbytes)
+    , PacketBuffer(m_buffptr, nbytes, nbytes/64)
 {
-    delete[] get_buff_dtor();
+    // Nothing else to initialize
+}
+
+StreamBufferHeap::StreamBufferHeap(unsigned nbytes)
+    : HeapAllocator(nbytes)
+    , PacketBuffer(m_buffptr, nbytes, 0)
+{
+    // Nothing else to initialize
 }
 
 PosixTimer::PosixTimer()
-    : satcat5::util::GenericTimer(1)    // 1 tick = 1 usec
+    : TimeRef(1000000)  // 1 tick = 1 usec
 {
     // Nothing else to initialize.
 }
 
-u32 PosixTimer::now()
-{
+u32 PosixTimer::raw() {
     struct timespec tv;
     int errcode = clock_gettime(CLOCK_MONOTONIC, &tv);
     if (errcode) {
         // Fallback to clock() function, usually millisecond resolution.
         const unsigned SCALE = 1000000 / CLOCKS_PER_SEC;
-        return (u32)(clock() * SCALE);
+        return u32(clock() * SCALE);
     } else {
         // Higher resolution using clock_gettime(), if available.
         u32 usec1 = (u32)(tv.tv_sec * 1000000);
@@ -196,8 +217,7 @@ u32 PosixTimer::now()
     }
 }
 
-s64 PosixTimer::gps() const
-{
+s64 PosixTimer::gps() const {
     // Get the POSIX timestamp (sorta-kinda-UTC).
     // See also: http://www.madore.org/~david/computers/unix-leap-seconds.html
     struct timespec tv;
@@ -216,7 +236,7 @@ s64 PosixTimer::gps() const
 
 PosixTimekeeper::PosixTimekeeper()
     : m_timer()
-    , m_adapter(&timekeeper, &m_timer)
+    , m_adapter(&timekeeper)
 {
     timekeeper.set_clock(&m_timer);
 }
@@ -226,8 +246,14 @@ PosixTimekeeper::~PosixTimekeeper()
     timekeeper.set_clock(0);
 }
 
-void satcat5::util::sleep_msec(unsigned msec)
+SwitchCoreHeap::SwitchCoreHeap(unsigned nbytes)
+    : HeapAllocator(nbytes)
+    , SwitchCore(m_buffptr, nbytes)
 {
+    // Nothing else to initialize.
+}
+
+void satcat5::util::sleep_msec(unsigned msec) {
 #ifdef _WIN32
     Sleep(msec);
 #else
@@ -235,20 +261,17 @@ void satcat5::util::sleep_msec(unsigned msec)
 #endif
 }
 
-void satcat5::util::service_msec(unsigned total_msec, unsigned msec_per_iter)
-{
+void satcat5::util::service_msec(unsigned total_msec, unsigned msec_per_iter) {
     PosixTimer timer;
-    u32 usec = 1000 * total_msec;
-    u32 tref = timer.now();
+    auto tref = timer.checkpoint_msec(total_msec);
     while (1) {
         poll::service_all();
-        if (timer.elapsed_test(tref, usec)) break;
+        if (tref.checkpoint_elapsed()) break;
         satcat5::util::sleep_msec(msec_per_iter);
     }
 }
 
-std::string satcat5::log::format(const satcat5::eth::MacAddr& addr)
-{
+std::string satcat5::log::format(const satcat5::eth::MacAddr& addr) {
     char tmp[32];
     snprintf(tmp, sizeof(tmp),
         "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -257,8 +280,7 @@ std::string satcat5::log::format(const satcat5::eth::MacAddr& addr)
     return std::string(tmp);
 }
 
-std::string satcat5::log::format(const satcat5::ip::Addr& addr)
-{
+std::string satcat5::log::format(const satcat5::ip::Addr& addr) {
     // Extract individual byte fields from IPv4 address.
     u8 addr_bytes[4];
     write_be_u32(addr_bytes, addr.value);

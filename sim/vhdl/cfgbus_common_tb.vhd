@@ -32,6 +32,7 @@ constant A_REG_RD   : natural := 47;
 constant A_REG_IRQ  : natural := 52;
 constant A_REG_WDWR : natural := 55;
 constant A_REG_WDRD : natural := 57;
+constant A_REG_ADRD : natural := 59;
 constant RD_TIMEOUT : positive := 10;
 constant WIDE_BITS  : positive := 112;
 constant WIDE_BITX  : positive := CFGBUS_WORD_SIZE * div_ceil(WIDE_BITS, CFGBUS_WORD_SIZE);
@@ -52,11 +53,13 @@ signal time_count_err   : natural := 0;
 -- Unit under test: Register blocks
 signal reg_val_rw       : cfgbus_word;
 signal reg_cfg_cmd      : cfgbus_cmd;
-signal reg_cfg_acks     : cfgbus_ack_array(0 to 4);
+signal reg_cfg_acks     : cfgbus_ack_array(0 to 5);
 signal reg_cfg_ack      : cfgbus_ack;
 signal reg_readval      : cfgbus_word := (others => '0');
 signal reg_wideval      : cfgbus_wide := (others => '0');
 signal reg_wideref      : cfgbus_xwide := (others => '0');
+signal reg_addrsel      : unsigned(15 downto 0);
+signal reg_addrval      : cfgbus_word;
 signal reg_irq_toggle   : std_logic := '0';
 signal reg_irq_enable   : std_logic := '0';
 
@@ -246,6 +249,20 @@ uut6 : cfgbus_readonly_wide
     sync_clk    => reg_cfg_cmd.clk,
     sync_val    => reg_wideval);
 
+-- Unit under test: Register (Addressable read-only)
+uut7 : cfgbus_readonly_addr
+    generic map(
+    DEVADDR     => A_DEV,
+    REGADDR     => A_REG_ADRD,
+    AWIDTH      => 16)
+    port map(
+    cfg_cmd     => reg_cfg_cmd,
+    cfg_ack     => reg_cfg_acks(5),
+    reg_addr    => reg_addrsel,
+    reg_val     => reg_addrval);
+
+reg_addrval <= std_logic_vector(reg_addrsel & reg_addrsel);
+
 -- Latch the recombined read value.
 reg_cfg_ack <= cfgbus_merge(reg_cfg_acks);
 
@@ -333,6 +350,15 @@ begin
             cfgbus_wait(reg_cfg_cmd, reg_cfg_ack);
             assert (u2i(reg_readval) = n+w)
                 report "WideRead mismatch" severity error;
+        end loop;
+
+        -- Read a few values from the addressable-read register.
+        for n in 1 to 3 loop
+            cfgbus_write(reg_cfg_cmd, A_DEV, A_REG_ADRD, i2s(n, 32));
+            cfgbus_read(reg_cfg_cmd, A_DEV, A_REG_ADRD);
+            cfgbus_wait(reg_cfg_cmd, reg_cfg_ack);
+            assert (u2i(reg_readval) = n * 16#1_0001#)
+                report "AddrRead mismatch" severity error;
         end loop;
     end loop;
 

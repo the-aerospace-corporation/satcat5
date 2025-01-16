@@ -62,12 +62,12 @@ void port::SerialAuto::config_mode(u8 mode) {
 }
 
 void port::SerialAuto::config_spi(u8 mode, u8 gfilt) {
-    m_ctrl[REGADDR_CTRL0] = cmd_spi_peripheral(mode, gfilt);
+    m_ctrl[REGADDR_CTRL1] = cmd_spi_peripheral(mode, gfilt);
 }
 
 void port::SerialAuto::config_uart(unsigned baud, bool ignore_cts) {
     u32 clk_hz = m_ctrl[REGADDR_CLKREF];
-    m_ctrl[REGADDR_CTRL1] = cmd_uart(clk_hz, baud, ignore_cts);
+    m_ctrl[REGADDR_CTRL0] = cmd_uart(clk_hz, baud, ignore_cts);
 }
 
 u8 port::SerialAuto::read_mode() {

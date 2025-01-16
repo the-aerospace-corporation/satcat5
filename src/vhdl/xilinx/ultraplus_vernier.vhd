@@ -61,7 +61,7 @@ attribute satcat5_cross_clock_dst of rstin_p, rstctr, rstout : signal is true;
 begin
 
 -- Instantiate the MMCM.
-u_mmcm : MMCME3_ADV
+u_mmcm : MMCME4_ADV
     generic map (
     BANDWIDTH               => "HIGH",      -- string
     CLKIN1_PERIOD           => 1.0e9 / real(VCONFIG.input_hz),

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -52,7 +52,7 @@ u32 satcat5::get_sw_build_code()
 }
 
 // Construct ISO8601 date and time and return pointer to result.
-// e.g., "2020-12-31T17:56:09" (Build date is local time, no time-zone identifier.)
+// e.g., "2020-12-31T17:56:09"
 static constexpr char iso8601[] = {
     __DATE__[7],    // Year (YYYY)
     __DATE__[8],

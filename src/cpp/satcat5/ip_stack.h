@@ -35,10 +35,11 @@ namespace satcat5 {
                 const satcat5::ip::Addr& local_ip,      // Local IP address
                 satcat5::io::Writeable* dst,            // Ethernet port (Tx)
                 satcat5::io::Readable* src,             // Ethernet port (Rx)
-                satcat5::util::GenericTimer* timer);    // Time reference
+                satcat5::util::TimeRef* timer = 0);     // Time reference
 
             // Core protocol stack.
             satcat5::eth::Dispatch      m_eth;          // Ethernet layer
+            satcat5::ip::Table          m_route;        // IPv4 routing table
             satcat5::ip::Dispatch       m_ip;           // IPv4 and ICMP layer
             satcat5::udp::Dispatch      m_udp;          // UDP layer
 

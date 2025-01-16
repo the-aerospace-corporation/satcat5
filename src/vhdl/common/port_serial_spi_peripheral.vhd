@@ -58,7 +58,7 @@ entity port_serial_spi_peripheral is
     CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
     SPI_GDLY    : natural := 1;     -- SPI glitch-detection threshold
     SPI_MODE    : natural := 3;     -- SPI clock phase & polarity
-    SYNC_MODE   : boolean := false; -- Disable both sync and async process on sclk? 
+    SYNC_MODE   : boolean := false; -- Disable both sync and async process on sclk?
     TIMEOUT_SEC : positive := 15;   -- Activity timeout, in seconds
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
@@ -117,11 +117,13 @@ rx_data.clk     <= refclk;
 rx_data.rate    <= get_rate_word(10);
 rx_data.status  <= status_word(7 downto 0);
 rx_data.tsof    <= TSTAMP_DISABLED;
+rx_data.tfreq   <= TFREQ_DISABLED;
 rx_data.reset_p <= reset_sync;
 tx_ctrl.clk     <= refclk;
 tx_ctrl.reset_p <= wdog_rst_p;
 tx_ctrl.pstart  <= '1';     -- Timestamps discarded
 tx_ctrl.tnow    <= TSTAMP_DISABLED;
+tx_ctrl.tfreq   <= TFREQ_DISABLED;
 tx_ctrl.txerr   <= '0';     -- No Tx error states
 
 -- Upstream status reporting.

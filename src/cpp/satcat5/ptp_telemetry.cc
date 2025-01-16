@@ -27,13 +27,11 @@ Logger::Logger(
 
 void Logger::ptp_ready(const satcat5::ptp::Measurement& data)
 {
-    const char* state = m_client ?
-        satcat5::ptp::to_string(m_client->get_state()) : "Unknown";
     s64 mpd = data.mean_path_delay().delta_nsec();
     s64 ofm = data.offset_from_master().delta_nsec();
     s64 sub = data.offset_from_master().delta_subns();
 
-    satcat5::log::Log msg(satcat5::log::INFO, "PtpClient state", state);
+    satcat5::log::Log msg(satcat5::log::INFO, "PtpClient status:");
     msg.write("\n  meanPathDelay(ns)").write10(mpd);
     msg.write("\n  offsetFromMaster(ns)").write10(ofm);
     msg.write("\n  offsetFromMaster(subns)").write10(sub);
@@ -72,11 +70,6 @@ void Telemetry::ptp_ready(const satcat5::ptp::Measurement& data)
         data.mean_path_delay().delta_subns());
     QCBOREncode_AddInt64ToMap(&cbor, "offset_from_master",
         data.offset_from_master().delta_subns());
-
-    if (m_client) {
-        QCBOREncode_AddSZStringToMap(&cbor, "client_state",
-            satcat5::ptp::to_string(m_client->get_state()));
-    }
 
     if (m_track) {
         QCBOREncode_AddInt64ToMap(&cbor, "tuning_offset", m_track->get_rate());

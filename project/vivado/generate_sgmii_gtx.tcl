@@ -23,7 +23,7 @@
 # is required; see the respective VHDL wrapper for additional information.
 #
 
-proc generate_sgmii_gtx {gt_loc {core_name sgmii_gtx0} {include_shared_logic 1} {refclk_freq_mhz 125}} {
+proc generate_sgmii_gtx {gt_loc {core_name sgmii_gtx0} {include_shared_logic 1} {refclk_freq_mhz 125} {drp_clk_rate_mhz 50}} {
     # Clear out any previous instances with the same name.
     set old_core [get_filesets -quiet $core_name]
     if {[llength $old_core] > 0} {
@@ -40,6 +40,7 @@ proc generate_sgmii_gtx {gt_loc {core_name sgmii_gtx0} {include_shared_logic 1} 
         CONFIG.MaxDataRate          1G\
         CONFIG.SGMII_PHY_Mode       false\
         CONFIG.Standard             SGMII\
+        CONFIG.DrpClkRate           $drp_clk_rate_mhz\
     ] $ip_obj
     if {$include_shared_logic} {
         set_property CONFIG.SupportLevel {Include_Shared_Logic_in_Core} $ip_obj
@@ -70,7 +71,6 @@ proc generate_sgmii_raw {core_name {mgt_type gtx} {refclk_freq_mhz {125.000}} {r
         # 7-series GTX transceiver wizard.
         # Note: "refclk_freq_mhz" argument MUST have trailing zeros.
         create_ip -name gtwizard -vendor xilinx.com -library ip -module_name $core_name
-        puts "$refclk_freq_mhz"
         set_property -dict [list\
             CONFIG.identical_val_tx_reference_clock $refclk_freq_mhz\
             CONFIG.identical_val_rx_reference_clock $refclk_freq_mhz\
@@ -106,11 +106,19 @@ proc generate_sgmii_raw {core_name {mgt_type gtx} {refclk_freq_mhz {125.000}} {r
             CONFIG.gt0_val_rx_termination_voltage {Programmable}\
             CONFIG.gt0_val_rx_cm_trim {800}\
             CONFIG.gt0_val_rxslide_mode {OFF}\
+            CONFIG.gt0_val_txdiffctrl {true}\
+            CONFIG.gt0_val_txpostcursor {true}\
+            CONFIG.gt0_val_txprecursor {true}\
+            CONFIG.gt0_val_port_txpolarity {true}\
+            CONFIG.gt0_val_prbs_detector {true}\
+            CONFIG.gt0_val_port_txprbssel {true}\
+            CONFIG.gt0_val_port_txprbsforceerr {true}\
         ] [get_ips $core_name]
-    } elseif {$mgt_type == "gty"} {
+    } elseif {$mgt_type == "gty" || $mgt_type == "gty_plus"} {
         # Ultrascale / Ultrascale+ GTY transceiver wizard.
         create_ip -name gtwizard_ultrascale -vendor xilinx.com -library ip -module_name $core_name
         set_property -dict [list\
+            CONFIG.GT_TYPE {GTY}\
             CONFIG.TX_LINE_RATE {2.5}\
             CONFIG.TX_PLL_TYPE {CPLL}\
             CONFIG.TX_REFCLK_FREQUENCY $refclk_freq_mhz\
@@ -133,6 +141,7 @@ proc generate_sgmii_raw {core_name {mgt_type gtx} {refclk_freq_mhz {125.000}} {r
             CONFIG.TXPROGDIV_FREQ_SOURCE {CPLL}\
             CONFIG.TXPROGDIV_FREQ_VAL {125}\
             CONFIG.FREERUN_FREQUENCY {100}\
+            CONFIG.ENABLE_OPTIONAL_PORTS {drpclk_in txdiffctrl_in txpolarity_in txpostcursor_in txprbsforceerr_in txprbssel_in txprecursor_in}\
         ] [get_ips $core_name]
     } else {
         error "Unsupported transceiver type: $mgt_type"

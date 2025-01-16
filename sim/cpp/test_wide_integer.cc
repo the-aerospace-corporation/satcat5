@@ -6,13 +6,20 @@
 
 #include <hal_posix/posix_utils.h>
 #include <hal_test/catch.hpp>
+#include <hal_test/sim_utils.h>
 #include <satcat5/io_core.h>
 #include <satcat5/utils.h>
 #include <satcat5/wide_integer.h>
 
+using satcat5::test::rand_u32;
+using satcat5::test::rand_u64;
 using namespace satcat5::util;
 
 // Shortcut function for initializing longer constants.
+int128_t make128s(s32 a) {
+    return int128_t(a);
+}
+
 int128_t make128s(u32 a, u32 b, u32 c, u32 d) {
     int128_t tmp;
     tmp.m_data[3] = a; tmp.m_data[2] = b; tmp.m_data[1] = c; tmp.m_data[0] = d;
@@ -39,12 +46,21 @@ uint256_t make256u(u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, u32 g, u32 h) {
     return tmp;
 }
 
+int128_t rand128s() {
+    return make128s(rand_u32(), rand_u32(), rand_u32(), rand_u32());
+}
+
+int128_t rand128u() {
+    return make128u(rand_u32(), rand_u32(), rand_u32(), rand_u32());
+}
+
 void debug(const uint128_t& x) {
     printf("X = 0x%08X-%08X-%08X-%08X\n", x.m_data[3], x.m_data[2], x.m_data[1], x.m_data[0]);
 }
 
 TEST_CASE("wide_integer_signed") {
-    Catch::SimplePcg32 rng;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     SECTION("assignment") {
         const int128_t a = int128_t((u32)1234);
@@ -290,9 +306,7 @@ TEST_CASE("wide_integer_signed") {
     SECTION("division") {
         // Random cross-checks of multiplication and division.
         for (unsigned a = 0 ; a < 1000 ; ++a) {
-            int128_t x, y, d, m;
-            x = make128s(rng(), rng(), rng(), rng());
-            y = make128s(rng(), rng(), rng(), rng());
+            int128_t x = rand128s(), y = rand128s(), d, m;
             if (y == INT128_ZERO) continue;
             x.divmod(y, d, m);
             if (x != y * d + m) {debug(x); debug(y); debug(d); debug(m);}
@@ -301,30 +315,41 @@ TEST_CASE("wide_integer_signed") {
             CHECK(x == y * d + m);
         }
         // Additional checks for individual operators, in all four quadrants.
-        CHECK(int128_t(s32(17)) / int128_t(s32(3)) == int128_t(s32(5)));
-        CHECK(int128_t(s32(17)) % int128_t(s32(3)) == int128_t(s32(2)));
-        CHECK(int128_t(s32(-17)) / int128_t(s32(3)) == int128_t(s32(-5)));
-        CHECK(int128_t(s32(-17)) % int128_t(s32(3)) == int128_t(s32(-2)));
-        CHECK(int128_t(s32(17)) / int128_t(s32(-3)) == int128_t(s32(-5)));
-        CHECK(int128_t(s32(17)) % int128_t(s32(-3)) == int128_t(s32(2)));
-        CHECK(int128_t(s32(-17)) / int128_t(s32(-3)) == int128_t(s32(5)));
-        CHECK(int128_t(s32(-17)) % int128_t(s32(-3)) == int128_t(s32(-2)));
-        {int128_t a(s32(17));  a /= int128_t(s32(3));  CHECK(a == int128_t(s32(5)));}
-        {int128_t a(s32(17));  a %= int128_t(s32(3));  CHECK(a == int128_t(s32(2)));}
-        {int128_t a(s32(-17)); a /= int128_t(s32(3));  CHECK(a == int128_t(s32(-5)));}
-        {int128_t a(s32(-17)); a %= int128_t(s32(3));  CHECK(a == int128_t(s32(-2)));}
-        {int128_t a(s32(17));  a /= int128_t(s32(-3)); CHECK(a == int128_t(s32(-5)));}
-        {int128_t a(s32(17));  a %= int128_t(s32(-3)); CHECK(a == int128_t(s32(2)));}
-        {int128_t a(s32(-17)); a /= int128_t(s32(-3)); CHECK(a == int128_t(s32(5)));}
-        {int128_t a(s32(-17)); a %= int128_t(s32(-3)); CHECK(a == int128_t(s32(-2)));}
+        CHECK(make128s( 17) / make128s( 3) == make128s( 5));
+        CHECK(make128s( 17) % make128s( 3) == make128s( 2));
+        CHECK(make128s(-17) / make128s( 3) == make128s(-5));
+        CHECK(make128s(-17) % make128s( 3) == make128s(-2));
+        CHECK(make128s( 17) / make128s(-3) == make128s(-5));
+        CHECK(make128s( 17) % make128s(-3) == make128s( 2));
+        CHECK(make128s(-17) / make128s(-3) == make128s( 5));
+        CHECK(make128s(-17) % make128s(-3) == make128s(-2));
+        {int128_t a(s32(17));  a /= make128s( 3); CHECK(a == make128s( 5));}
+        {int128_t a(s32(17));  a %= make128s( 3); CHECK(a == make128s( 2));}
+        {int128_t a(s32(-17)); a /= make128s( 3); CHECK(a == make128s(-5));}
+        {int128_t a(s32(-17)); a %= make128s( 3); CHECK(a == make128s(-2));}
+        {int128_t a(s32(17));  a /= make128s(-3); CHECK(a == make128s(-5));}
+        {int128_t a(s32(17));  a %= make128s(-3); CHECK(a == make128s( 2));}
+        {int128_t a(s32(-17)); a /= make128s(-3); CHECK(a == make128s( 5));}
+        {int128_t a(s32(-17)); a %= make128s(-3); CHECK(a == make128s(-2));}
+    }
+
+    SECTION("div_round") {
+        // Spot checks for round-to-nearest division, in all four quadrants.
+        CHECK(make128s( 15).div_round(make128s( 3)) == make128s( 5));
+        CHECK(make128s(-15).div_round(make128s( 3)) == make128s(-5));
+        CHECK(make128s( 15).div_round(make128s(-3)) == make128s(-5));
+        CHECK(make128s(-15).div_round(make128s(-3)) == make128s( 5));
+        CHECK(make128s( 17).div_round(make128s( 3)) == make128s( 6));
+        CHECK(make128s(-17).div_round(make128s( 3)) == make128s(-6));
+        CHECK(make128s( 17).div_round(make128s(-3)) == make128s(-6));
+        CHECK(make128s(-17).div_round(make128s(-3)) == make128s( 6));
     }
 
     SECTION("fuzzer_add") {
         // Random cross-checks for self-consistency.
         for (unsigned a = 0 ; a < 1000 ; ++a) {
             // Randomize inputs.
-            const int128_t x = make128s(rng(), rng(), rng(), rng());
-            const int128_t y = make128s(rng(), rng(), rng(), rng());
+            const int128_t x = rand128s(), y = rand128s();
             // Check that addition and subtraction are self-consistent.
             CHECK((x + y) == (y + x));
             CHECK((x - y) == -(y - x));
@@ -337,8 +362,8 @@ TEST_CASE("wide_integer_signed") {
         // Random cross-checks against built-in signed 64-bit arithmetic.
         for (unsigned a = 0 ; a < 1000 ; ++a) {
             // Randomize inputs.
-            const s64 x1 = s64(rng()) - s64(rng());
-            const s64 y1 = s64(rng()) - s64(rng());
+            const s64 x1 = s64(rand_u32()) - s64(rand_u32());
+            const s64 y1 = s64(rand_u32()) - s64(rand_u32());
             const int128_t x2(x1);
             const int128_t y2(y1);
             // Check the basic arithmetic operators.
@@ -393,16 +418,14 @@ TEST_CASE("wide_integer_signed") {
     }
 
     SECTION("logging") {
-        satcat5::log::ToConsole logger;
-        logger.disable();   // Don't echo to screen.
+        log.suppress("0x0000");  // Don't echo to screen.
         const int128_t a = make128s(1, 2, 3, 4);
         satcat5::log::Log(satcat5::log::INFO, "Test").write_obj(a);
-        CHECK(logger.contains("0x00000001000000020000000300000004"));
+        CHECK(log.contains("0x00000001000000020000000300000004"));
     }
 
     SECTION("read-write") {
-        u8 buff[64];
-        satcat5::io::ArrayWrite uut(buff, sizeof(buff));
+        satcat5::io::ArrayWriteStatic<64> uut;
         const int128_t a = make128s(1, 2, 3, 4);
         const int256_t b = make256s(1, 2, 3, 4, 5, 6, 7, 8);
 
@@ -413,7 +436,7 @@ TEST_CASE("wide_integer_signed") {
 
         int128_t c;
         int256_t d, e;
-        satcat5::io::ArrayRead rd(buff, uut.written_len());
+        satcat5::io::ArrayRead rd(uut.buffer(), uut.written_len());
         CHECK(rd.read_obj(c));          // Should succeed
         CHECK(rd.read_obj(d));          // Should succeed
         CHECK_FALSE(rd.read_obj(e));    // Intentional underflow
@@ -423,7 +446,8 @@ TEST_CASE("wide_integer_signed") {
 }
 
 TEST_CASE("wide_integer_unsigned") {
-    Catch::SimplePcg32 rng;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     SECTION("assignment") {
         const uint128_t a = uint128_t((u32)1234);
@@ -624,9 +648,7 @@ TEST_CASE("wide_integer_unsigned") {
     SECTION("division") {
         // Random cross-checks of multiplication and division.
         for (unsigned a = 0 ; a < 1000 ; ++a) {
-            uint128_t x, y, d, m;
-            x = make128u(rng(), rng(), rng(), rng());
-            y = make128u(rng(), rng(), rng(), rng());
+            uint128_t x = rand128u(), y = rand128u(), d, m;
             if (y == UINT128_ZERO) continue;
             x.divmod(y, d, m);
             if (x != y * d + m) {debug(x); debug(y); debug(d); debug(m);}
@@ -645,8 +667,7 @@ TEST_CASE("wide_integer_unsigned") {
         // Random cross-checks for self-consistency.
         for (unsigned a = 0 ; a < 1000 ; ++a) {
             // Randomize inputs.
-            const uint128_t x = make128u(rng(), rng(), rng(), rng());
-            const uint128_t y = make128u(rng(), rng(), rng(), rng());
+            const uint128_t x = rand128u(), y = rand128u();
             // Check that addition and subtraction are self-consistent.
             CHECK((x + y) == (y + x));
             CHECK((x - y) == -(y - x));
@@ -659,8 +680,7 @@ TEST_CASE("wide_integer_unsigned") {
         // Random cross-checks against built-in signed 64-bit arithmetic.
         for (unsigned a = 0 ; a < 1000 ; ++a) {
             // Randomize inputs.
-            const u64 x1 = u64(rng()) << 32 | rng();
-            const u64 y1 = u64(rng()) << 32 | rng();
+            const u64 x1 = rand_u64(), y1 = rand_u64();
             const uint128_t x2(x1);
             const uint128_t y2(y1);
             // Check the basic arithmetic operators.
@@ -710,16 +730,14 @@ TEST_CASE("wide_integer_unsigned") {
     }
 
     SECTION("logging") {
-        satcat5::log::ToConsole logger;
-        logger.disable();   // Don't echo to screen.
+        log.suppress("0x0000");  // Don't echo to screen.
         const uint128_t a = make128u(1, 2, 3, 4);
         satcat5::log::Log(satcat5::log::INFO, "Test").write_obj(a);
-        CHECK(logger.contains("0x00000001000000020000000300000004"));
+        CHECK(log.contains("0x00000001000000020000000300000004"));
     }
 
     SECTION("read-write") {
-        u8 buff[64];
-        satcat5::io::ArrayWrite uut(buff, sizeof(buff));
+        satcat5::io::ArrayWriteStatic<64> uut;
         const uint128_t a = make128u(1, 2, 3, 4);
         const uint256_t b = make256u(1, 2, 3, 4, 5, 6, 7, 8);
 
@@ -730,7 +748,7 @@ TEST_CASE("wide_integer_unsigned") {
 
         uint128_t c;
         uint256_t d, e;
-        satcat5::io::ArrayRead rd(buff, uut.written_len());
+        satcat5::io::ArrayRead rd(uut.buffer(), uut.written_len());
         CHECK(rd.read_obj(c));          // Should succeed
         CHECK(rd.read_obj(d));          // Should succeed
         CHECK_FALSE(rd.read_obj(e));    // Intentional underflow

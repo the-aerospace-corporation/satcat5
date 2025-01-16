@@ -39,6 +39,7 @@ use     work.common_functions.all;
 use     work.common_primitives.sync_buffer_slv;
 use     work.common_primitives.sync_toggle2pulse;
 use     work.eth_frame_common.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity eth_statistics is
@@ -47,7 +48,7 @@ entity eth_statistics is
     COUNT_WIDTH : positive;     -- Width of each statistics counter
     SAFE_COUNT  : boolean);     -- Safe counters (no overflow)
     port (
-    -- Statistics interface (bytes received/sent, frames received/sent
+    -- Statistics interface (bytes received/sent, frames received/sent)
     stats_req_t : in  std_logic;        -- Toggle to request next block
     bcst_bytes  : out unsigned(COUNT_WIDTH-1 downto 0);
     bcst_frames : out unsigned(COUNT_WIDTH-1 downto 0);
@@ -55,6 +56,7 @@ entity eth_statistics is
     rcvd_frames : out unsigned(COUNT_WIDTH-1 downto 0);
     sent_bytes  : out unsigned(COUNT_WIDTH-1 downto 0);
     sent_frames : out unsigned(COUNT_WIDTH-1 downto 0);
+    delta_freq  : out tfreq_t;
 
     -- Port status-reporting.
     port_rate   : in  port_rate_t;
@@ -74,12 +76,14 @@ entity eth_statistics is
     -- Traffic stream to be monitored.
     rx_reset_p  : in  std_logic;
     rx_clk      : in  std_logic;
+    rx_freq     : in  tfreq_t := TFREQ_DISABLED;
     rx_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
     rx_nlast    : in  integer range 0 to IO_BYTES;
     rx_write    : in  std_logic;
 
     tx_reset_p  : in  std_logic;
     tx_clk      : in  std_logic;
+    tx_freq     : in  tfreq_t := TFREQ_DISABLED;
     tx_nlast    : in  integer range 0 to IO_BYTES;
     tx_write    : in  std_logic);
 end eth_statistics;
@@ -166,6 +170,10 @@ signal lat_err_mii      : byte_u := (others => '0');
 signal lat_err_ovr_tx   : byte_u := (others => '0');
 signal lat_err_ovr_rx   : byte_u := (others => '0');
 signal lat_err_pkt      : byte_u := (others => '0');
+signal lat_err_ptp_tx   : byte_u := (others => '0');
+signal lat_err_ptp_rx   : byte_u := (others => '0');
+signal lat_rx_freq      : tfreq_t := TFREQ_DISABLED;
+signal lat_tx_freq      : tfreq_t := TFREQ_DISABLED;
 
 -- Clock crossing.
 signal stats_req_rx     : std_logic;
@@ -192,6 +200,8 @@ err_mii     <= lat_err_mii;
 err_ovr_tx  <= lat_err_ovr_tx;
 err_ovr_rx  <= lat_err_ovr_rx;
 err_pkt     <= lat_err_pkt;
+err_ptp_tx  <= lat_err_ptp_tx;
+err_ptp_rx  <= lat_err_ptp_rx;
 
 -- Receive clock domain.
 p_stats_rx : process(rx_clk)
@@ -213,6 +223,7 @@ begin
             lat_bcst_frames <= wrk_bcst_frames;
             lat_rcvd_bytes  <= wrk_rcvd_bytes;
             lat_rcvd_frames <= wrk_rcvd_frames;
+            lat_rx_freq     <= rx_freq;
         end if;
 
         -- Pipeline stage 3:
@@ -236,7 +247,7 @@ begin
                 is_bcast := is_bcast and rx_isff(b);
             end if;
         end loop;
-        
+
         -- Count bytes within each frame, so the increment is atomic.
         if (rx_reset_p = '1' or rx_eof = '1') then
             frm_bytes := rx_incr;
@@ -277,6 +288,7 @@ begin
         if (stats_req_tx = '1') then
             lat_sent_bytes  <= wrk_sent_bytes;
             lat_sent_frames <= wrk_sent_frames;
+            lat_tx_freq     <= tx_freq;
         end if;
 
         -- Pipeline stage 3:
@@ -326,6 +338,9 @@ u_req_st : sync_toggle2pulse
     in_toggle   => stats_req_t,
     out_strobe  => stats_req_st,
     out_clk     => status_clk);
+
+-- Calculate the difference between the latched frequencies.
+delta_freq <= lat_tx_freq - lat_rx_freq;
 
 -- Synchronize the status word.
 status_async <= port_rate & x"00" & port_status;
@@ -381,6 +396,8 @@ begin
             lat_err_ovr_tx  <= wrk_err_ovr_tx;
             lat_err_ovr_rx  <= wrk_err_ovr_rx;
             lat_err_pkt     <= wrk_err_pkt;
+            lat_err_ptp_tx  <= wrk_err_ptp_tx;
+            lat_err_ptp_rx  <= wrk_err_ptp_rx;
         end if;
 
         -- Working counters are updated after each event.

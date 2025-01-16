@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -42,6 +42,6 @@ void SocketCore::connect(
     const satcat5::eth::MacType& lcltype,
     const satcat5::eth::VlanTag& vtag)
 {
-    m_addr.connect(dstmac, dsttype);                // Rebind Tx
+    m_addr.connect(dstmac, dsttype, vtag);          // Rebind Tx
     m_filter = Type(vtag.vid(), lcltype.value);     // Rebind Rx
 }

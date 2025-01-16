@@ -23,12 +23,15 @@ namespace satcat5 {
         enum class PacketType {NON_PTP, PTP_L2, PTP_L3};
 
         // Network interfaces with PTP support must derive from this class.
-        class Interface
-        {
+        class Interface {
         public:
             // Set callback object for PTP-related packet handling.
             inline void ptp_callback(satcat5::poll::OnDemand* obj)
                 { m_ptp_callback = obj; }
+
+            // Return the best available estimate of the current time.
+            // (This method may be less accurate than Tx and Rx timestamps.)
+            virtual satcat5::ptp::Time ptp_time_now() = 0;
 
             // Begin sending a timestamped message.
             // Return effective one-step timestamp if known, otherwise zero.

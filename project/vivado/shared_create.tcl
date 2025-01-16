@@ -5,7 +5,53 @@
 #
 # This script is a target-agnostic helper that is used by the various
 # "create_xx" project creation scripts, to increase code reuse.  It is
-# not typically run directly.
+# not typically run directly, but as the final step in a separate project
+# creation script. Refer to Xilinx example designs under "../../examples".
+#
+# Define the following variables before sourcing this script:
+# * files_main (required)
+#   A list of VHDL files to be used for synthesis. Wildcards are allowed.
+#   Example:
+#     set files_main [list \
+#      "[file normalize "../../src/vhdl/common/*.vhd"]"\
+#      "[file normalize "../../src/vhdl/xilinx/clkgen_rmii.vhd"]"\
+#      "[file normalize "../../src/vhdl/xilinx/7series_*.vhd"]"\
+#      "[file normalize "../../src/vhdl/xilinx/scrub_xilinx.vhd"]"\
+#      "[file normalize "./switch_top_arty_a7_rmii.vhd"]"\
+#     ]
+# * target_part (required)
+#   Full FPGA part number, including package information.
+#   Example: set target_part "XC7VX485TFFG1761-2"
+# * target_proj (required)
+#   Name for the new Vivado project that will be created.
+#   The location will be relative to the current working directory (pwd):
+#     ./$target_proj/$target_proj.xpr
+#   Example: set target_proj "vc707_ptp"
+#
+# Additional parameter variables are optional:
+# * files_sim (optional)
+#   Additional files for simulation only. Same format as "files_main".
+# * override_script_dir (optional)
+#   By default, various event hooks run additional scripts from the folder
+#   containing this file. To run different scripts, specify an alternate path.
+# * override_postbit (optional)
+#   By default, the "post-bitfile" event hook runs "./shared_postbit.tcl".
+#   To override this, set override_postbit to the empty string (skip) or
+#   to the full path of the desired TCL script.
+# * target_board (optional)
+#   For projects on pre-installed development boards, optionally pull
+#   constraints and other parameters from the named board support package.
+# * target_lib (optional)
+#   Override the target VHDL library. Default is "xil_defaultlib".
+# * target_top (recommended)
+#   Set the top-level entity. (Note: Use entity name, not filename.)
+#   Example: set target_top "switch_top_arty_a7_rmii"
+# * constr_synth (recommended)
+#   Set constraints to be used during synthesis and all later build steps.
+#   Example: set constr_synth "vc707_synth.xdc"
+# * constr_impl (recommended)
+#   Set constraints to be used during implementation / place-and-route.
+#   Example: set constr_impl "vc707_impl.xdc"
 #
 
 puts {Running shared_create.tcl}

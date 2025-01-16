@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022 The Aerospace Corporation.
+// Copyright 2022-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // POSIX and Windows interface objects for connecting to a UART
@@ -34,7 +34,7 @@ namespace satcat5 {
             inline bool ok() const {return m_ok;}
 
         protected:
-            void data_rcvd() override;
+            void data_rcvd(satcat5::io::Readable* src) override;
             void poll_always() override;
             unsigned chunk_rx();
             unsigned chunk_tx();

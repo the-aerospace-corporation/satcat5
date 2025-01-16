@@ -768,7 +768,7 @@ proc create_root_design { parentCell } {
   set cfgbus_split_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:cfgbus_split:1.0 cfgbus_split_0 ]
   set_property -dict [ list \
    CONFIG.DLY_BUFFER {true} \
-   CONFIG.PORT_COUNT {11} \
+   CONFIG.PORT_COUNT {12} \
  ] $cfgbus_split_0
 
   # Create instance: cfgbus_text_lcd_0, and set properties
@@ -853,6 +853,8 @@ proc create_root_design { parentCell } {
   # Create instance: ptp_reference_0, and set properties
   set ptp_reference_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:ptp_reference:1.0 ptp_reference_0 ]
   set_property -dict [ list \
+   CONFIG.CFG_DEV_ADDR {12} \
+   CONFIG.CFG_ENABLE {true} \
    CONFIG.PTP_REF_HZ {125000000} \
  ] $ptp_reference_0
 
@@ -873,6 +875,7 @@ proc create_root_design { parentCell } {
    CONFIG.DATAPATH_BYTES {3} \
    CONFIG.HBUF_KBYTES {2} \
    CONFIG.PORT_COUNT {5} \
+   CONFIG.PTP_DOPPLER {true} \
    CONFIG.STATS_DEVADDR {1} \
    CONFIG.STATS_ENABLE {true} \
    CONFIG.SUPPORT_PTP {true} \
@@ -910,6 +913,7 @@ proc create_root_design { parentCell } {
   connect_bd_intf_net -intf_net cfgbus_split_0_Port08 [get_bd_intf_pins cfgbus_split_0/Port08] [get_bd_intf_pins cfgbus_text_lcd_0/Cfg]
   connect_bd_intf_net -intf_net cfgbus_split_0_Port09 [get_bd_intf_pins cfgbus_gpi_0/Cfg] [get_bd_intf_pins cfgbus_split_0/Port09]
   connect_bd_intf_net -intf_net cfgbus_split_0_Port10 [get_bd_intf_pins cfgbus_split_0/Port10] [get_bd_intf_pins synth_mgt_from_rtc_0/Cfg]
+  connect_bd_intf_net -intf_net cfgbus_split_0_Port11 [get_bd_intf_pins cfgbus_split_0/Port11] [get_bd_intf_pins ptp_reference_0/Cfg]
   connect_bd_intf_net -intf_net mgt_ref_1 [get_bd_intf_ports mgt_ref] [get_bd_intf_pins port_sgmii_raw_gtx_0/GTREFCLK]
   connect_bd_intf_net -intf_net port_mailmap_0_Eth [get_bd_intf_pins port_mailmap/Eth] [get_bd_intf_pins switch_core/Port00]
 connect_bd_intf_net -intf_net port_mailmap_PtpTime [get_bd_intf_pins port_mailmap/PtpTime] [get_bd_intf_pins synth_mgt_from_rtc_0/PtpTime]

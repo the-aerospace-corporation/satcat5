@@ -22,6 +22,7 @@ use     ieee.numeric_std.all;
 use     ieee.math_real.all; -- for UNIFORM
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
+use     work.ptp_types.all;
 use     work.switch_types.all;
 
 entity switch_core_tb is
@@ -76,7 +77,8 @@ gen_ports : for n in PORT_COUNT-1 downto 0 generate
     ports_tx_ctrl(n).clk     <= clk_100;
     ports_tx_ctrl(n).ready   <= '1';
     ports_tx_ctrl(n).pstart  <= '1';
-    ports_tx_ctrl(n).tnow    <= (others => '0');
+    ports_tx_ctrl(n).tnow    <= TSTAMP_DISABLED;
+    ports_tx_ctrl(n).tfreq   <= TFREQ_DISABLED;
     ports_tx_ctrl(n).txerr   <= '0';
     ports_tx_ctrl(n).reset_p <= reset_p;
 

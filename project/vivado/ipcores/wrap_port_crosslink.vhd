@@ -36,6 +36,7 @@ entity wrap_port_crosslink is
     pa_rx_rate      : out std_logic_vector(15 downto 0);
     pa_rx_status    : out std_logic_vector(7 downto 0);
     pa_rx_tsof      : out std_logic_vector(47 downto 0);
+    pa_rx_tfreq     : out std_logic_vector(39 downto 0);
     pa_rx_reset     : out std_logic;
     pa_tx_clk       : out std_logic;
     pa_tx_data      : in  std_logic_vector(7 downto 0);
@@ -45,6 +46,7 @@ entity wrap_port_crosslink is
     pa_tx_error     : out std_logic;
     pa_tx_pstart    : out std_logic;
     pa_tx_tnow      : out std_logic_vector(47 downto 0);
+    pa_tx_tfreq     : out std_logic_vector(39 downto 0);
     pa_tx_reset     : out std_logic;
 
     -- Network port B
@@ -56,6 +58,7 @@ entity wrap_port_crosslink is
     pb_rx_rate      : out std_logic_vector(15 downto 0);
     pb_rx_status    : out std_logic_vector(7 downto 0);
     pb_rx_tsof      : out std_logic_vector(47 downto 0);
+    pb_rx_tfreq     : out std_logic_vector(39 downto 0);
     pb_rx_reset     : out std_logic;
     pb_tx_clk       : out std_logic;
     pb_tx_data      : in  std_logic_vector(7 downto 0);
@@ -65,6 +68,7 @@ entity wrap_port_crosslink is
     pb_tx_error     : out std_logic;
     pb_tx_pstart    : out std_logic;
     pb_tx_tnow      : out std_logic_vector(47 downto 0);
+    pb_tx_tfreq     : out std_logic_vector(39 downto 0);
     pb_tx_reset     : out std_logic;
 
     -- Vernier reference time (optional)
@@ -98,11 +102,13 @@ pa_rx_write <= arxd.write;
 pa_rx_error <= arxd.rxerr;
 pa_rx_rate  <= arxd.rate;
 pa_rx_tsof  <= std_logic_vector(arxd.tsof);
+pa_rx_tfreq <= std_logic_vector(arxd.tfreq);
 pa_rx_status<= arxd.status;
 pa_rx_reset <= arxd.reset_p;
 pa_tx_clk   <= atxc.clk;
 pa_tx_ready <= atxc.ready;
 pa_tx_tnow  <= std_logic_vector(atxc.tnow);
+pa_tx_tfreq <= std_logic_vector(atxc.tfreq);
 pa_tx_pstart<= atxc.pstart;
 pa_tx_error <= atxc.txerr;
 pa_tx_reset <= atxc.reset_p;
@@ -117,12 +123,14 @@ pb_rx_write <= brxd.write;
 pb_rx_error <= brxd.rxerr;
 pb_rx_rate  <= brxd.rate;
 pb_rx_tsof  <= std_logic_vector(brxd.tsof);
+pb_rx_tfreq <= std_logic_vector(brxd.tfreq);
 pb_rx_status<= brxd.status;
 pb_rx_reset <= brxd.reset_p;
 pb_tx_clk   <= btxc.clk;
 pb_tx_ready <= btxc.ready;
 pb_tx_pstart<= btxc.pstart;
 pb_tx_tnow  <= std_logic_vector(btxc.tnow);
+pb_tx_tfreq <= std_logic_vector(btxc.tfreq);
 pb_tx_error <= btxc.txerr;
 pb_tx_reset <= btxc.reset_p;
 btxd.data   <= pb_tx_data;

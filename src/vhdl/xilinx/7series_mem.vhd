@@ -26,13 +26,16 @@ use     work.common_primitives.all;
 package body common_primitives is
     -- RAM64X1D is a single slice (LUT6) and supports 6-bit addresses.
     constant PREFER_DPRAM_AWIDTH : positive := 6;
+    constant PREFER_DPRAM_ONEBIT : boolean := true;
+    constant PREFER_FIFO_SREG    : boolean := true;
 
     -- Given reference frequency, determine the "best" Vernier configuration.
     -- (See also: "7series_vernier.vhd")
     function create_vernier_config(
         input_hz    : natural;
         sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
-        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN;
+        sync_frq_en : boolean := VERNIER_DEFAULT_FRQ_EN)
     return vernier_config is
         variable mul, d0, d1 : real;    -- MMCM multiply/divide parameters
         variable f0, f1 : real;         -- Output frequency (Hz)
@@ -40,6 +43,7 @@ package body common_primitives is
         -- Predefined list of supported configurations.
         -- TODO: Do something smarter? This is adequate for now.
         case input_hz is
+            when  10_000_000 => mul := 63.875; d0 := 31.875; d1 := 32.000;
             when  20_000_000 => mul := 59.875; d0 := 60.125; d1 := 60.000;
             when  25_000_000 => mul := 47.875; d0 := 60.125; d1 := 60.000;
             when  50_000_000 => mul := 23.500; d0 := 58.875; d1 := 59.000;
@@ -54,10 +58,10 @@ package body common_primitives is
         f1 := real(input_hz) * mul / d1;
         -- Create data structure, swapping A/B outputs as needed.
         if (f0 < f1) then
-            return (input_hz, f0, f1, sync_tau_ms, sync_aux_en,
+            return (input_hz, f0, f1, sync_tau_ms, sync_aux_en, sync_frq_en,
                     (0 => mul, 1 => d0, 2 => d1, others => 0.0));
         else
-            return (input_hz, f1, f0, sync_tau_ms, sync_aux_en,
+            return (input_hz, f1, f0, sync_tau_ms, sync_aux_en, sync_frq_en,
                     (0 => mul, 1 => d0, 2 => d1, others => 0.0));
         end if;
     end function;

@@ -140,6 +140,7 @@ constant PTP_ENABLE : boolean := (CFG_CLK_HZ > 0 and VCONFIG.input_hz > 0);
 constant CRC_ENABLE : boolean := CHECK_FCS or PTP_ENABLE;
 signal lcl_tsof     : tstamp_t := TSTAMP_DISABLED;
 signal lcl_tnow     : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tfreq    : tfreq_t := TFREQ_DISABLED;
 signal lcl_tvalid   : std_logic := '0';
 signal rtc_tnow     : ptp_time_t := PTP_TIME_ZERO;
 signal rtc_freeze   : std_logic := '0';     -- Strobe
@@ -192,7 +193,7 @@ signal tx_adj_write : std_logic;
 
 -- ConfigBus interface.
 signal cfg_addr     : ram_addr;
-signal cfg_wren     : std_logic;
+signal cfg_txwrite  : std_logic;
 signal cfg_wstrb    : cfgbus_wstrb;
 signal cfg_txdata   : cfgbus_word := (others => '0');
 signal cfg_rxdata   : cfgbus_word := (others => '0');
@@ -217,6 +218,7 @@ tx_ctrl.ready   <= rx_raw_ready;
 tx_ctrl.clk     <= cfg_cmd.clk;
 tx_ctrl.pstart  <= rx_adj_ready and not rx_adj_valid;
 tx_ctrl.tnow    <= lcl_tnow;
+tx_ctrl.tfreq   <= lcl_tfreq;
 tx_ctrl.txerr   <= '0';
 tx_ctrl.reset_p <= port_reset_p;
 
@@ -238,6 +240,7 @@ gen_ptp : if PTP_ENABLE generate
         ref_time    => ref_time,
         user_clk    => cfg_cmd.clk,
         user_ctr    => lcl_tnow,
+        user_freq   => lcl_tfreq,
         user_lock   => lcl_tvalid,
         user_rst_p  => port_reset_p);
 
@@ -420,11 +423,11 @@ end process;
 
 -- Convert Tx/Rx/ConfigBus state to RAM addresses and write-enables.
 cfg_addr    <= to_unsigned(cfg_cmd.regaddr mod RAM_WORDS, RAM_ADDRW);
-cfg_wren    <= bool2bit(cfgbus_wrcmd(cfg_cmd, DEV_ADDR)) and not tx_ctrl_busy;
+cfg_txwrite <= bool2bit(cfgbus_wrcmd(cfg_cmd, DEV_ADDR) and cfg_cmd.regaddr >= 512);
 rx_wr_addr  <= get_addr(rx_ctrl_len);
 tx_rd_addr  <= get_addr(tx_ctrl_len);
 gen_lane : for n in 0 to RAM_BYTES-1 generate
-    cfg_wstrb(n)    <= cfg_wren and cfg_cmd.wstrb(n);
+    cfg_wstrb(n)    <= cfg_txwrite and cfg_cmd.wstrb(n) and not tx_ctrl_busy;
     rx_ctrl_wren(n) <= rx_adj_write and bool2bit(n = get_lane(rx_ctrl_len));
 end generate;
 
@@ -481,7 +484,8 @@ begin
         end if;
 
         -- One-cycle delay for reading the BRAM.
-        tx_rd_next <= tx_ctrl_busy and tx_fifo_ok;
+        -- (Guard for cfg_send_tx prevents duplicate-start errors.)
+        tx_rd_next <= tx_ctrl_busy and tx_fifo_ok and not cfg_send_tx;
         tx_rd_bidx <= get_lane(tx_ctrl_len);
         tx_rd_last <= bool2bit(tx_ctrl_len + 1 = cfg_send_len);
 
@@ -537,6 +541,7 @@ rx_data.rxerr   <= '0';
 rx_data.rate    <= get_rate_word(1);
 rx_data.status  <= (0 => port_reset_p, 1 => lcl_tvalid, others => '0');
 rx_data.tsof    <= lcl_tsof;
+rx_data.tfreq   <= lcl_tfreq;
 rx_data.reset_p <= port_reset_p;
 
 -- Interrupt control uses the standard ConfigBus primitive.

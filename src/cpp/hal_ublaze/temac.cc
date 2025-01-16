@@ -141,6 +141,12 @@ void TemacAvb::clock_rate(s64 offset)
     avb_set_rate((u32)rate);
 }
 
+Time TemacAvb::clock_now()
+{
+    TemacTime now = avb_get_time();
+    return Time(now.sec, now.nsec);
+}
+
 void TemacAvb::irq_event()
 {
     // Read the current buffer pointer to see if there are new packets.

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -177,13 +177,14 @@ p_test : process
             wait until rising_edge(clk_100);
         end loop;
         reset_p <= '0';
+        -- Wait for internal initialization to complete.
+        wait until rising_edge(cfg_done);
     end procedure;
 
     -- Designate a specific EtherType as high-priority.
     procedure test_load(idx: natural; etype: mac_type_t) is
         constant cmd : cfgbus_word := i2s(idx, 8) & i2s(0, 8) & etype;
     begin
-
         cfgbus_write(cfg_cmd, 0, 0, cmd);
         wait until rising_edge(cfg_done);
     end procedure;

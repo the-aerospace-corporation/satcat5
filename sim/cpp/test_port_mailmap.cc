@@ -31,7 +31,7 @@ static const unsigned REG_TXPTPTIME = 1018;   // 1018 - 1021
 static const unsigned REG_PTPSTATUS = 1022;
 static const unsigned REG_TXCTRL    = 1023;
 
-// Simulate the single-register Mailbox interface.
+// Simulate the multi-register Mailmap interface.
 class MockMailmap : public satcat5::test::MockConfigBusMmap {
 public:
     explicit MockMailmap(unsigned devaddr)
@@ -88,17 +88,20 @@ private:
 };
 
 TEST_CASE("port_mailmap") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Create the hardware-emulator and the driver under test.
     MockMailmap mock(CFG_DEVADDR);
     satcat5::port::Mailmap uut(&mock, CFG_DEVADDR);
 
     // PtpRealtime objects for setting timestamps for testing PTP functions
-    satcat5::cfg::PtpRealtime rt_clk_ctrl_ptprealtime(&mock, CFG_DEVADDR, REG_RTCLKCTRL);
-    satcat5::cfg::PtpRealtime tx_ptp_time_ptprealtime(&mock, CFG_DEVADDR, REG_TXPTPTIME);
-    satcat5::cfg::PtpRealtime rx_ptp_time_ptprealtime(&mock, CFG_DEVADDR, REG_RXPTPTIME);
+    satcat5::cfg::PtpRealtime rt_clk_ctrl(
+        mock.get_register(CFG_DEVADDR, REG_RTCLKCTRL), 125e6);
+    satcat5::cfg::PtpRealtime tx_ptp_time(
+        mock.get_register(CFG_DEVADDR, REG_TXPTPTIME), 125e6);
+    satcat5::cfg::PtpRealtime rx_ptp_time(
+        mock.get_register(CFG_DEVADDR, REG_RXPTPTIME), 125e6);
 
     // Sanity check on initial state.
     CHECK(uut.get_write_space() > 1500);
@@ -167,7 +170,7 @@ TEST_CASE("port_mailmap") {
         CHECK(uut.get_write_space() > 1500);    // Reset to known-good state
     }
 
-    SECTION("Rx") {
+    SECTION("Rx-str") {
         CHECK(mock.buf_wr("Short test 1."));
         satcat5::poll::service();
         CHECK(read_str(&uut) == "Short test 1.");
@@ -202,14 +205,19 @@ TEST_CASE("port_mailmap") {
         CHECK(uut.ptp_tx_write() == &uut);
         CHECK(uut.ptp_rx_read() == &uut);
 
+        // ptp_time_now()
+        ptp::Time test_time0 = ptp::Time(1234, 86, 120);
+        rt_clk_ctrl.clock_set(test_time0);
+        CHECK(uut.ptp_time_now() == test_time0);
+
         // ptp_tx_start()
         ptp::Time test_time1 = ptp::Time(4660, 86, 120);
-        rt_clk_ctrl_ptprealtime.clock_set(test_time1);
+        rt_clk_ctrl.clock_set(test_time1);
         CHECK(uut.ptp_tx_start() == test_time1);
 
         // ptp_tx_timestamp()
         ptp::Time test_time2 = ptp::Time(1242000, 628, 2009);
-        tx_ptp_time_ptprealtime.clock_set(test_time2);
+        tx_ptp_time.clock_set(test_time2);
         CHECK(uut.ptp_tx_timestamp() == test_time2);
 
         // ptp_rx_peak()
@@ -275,12 +283,59 @@ TEST_CASE("port_mailmap") {
 
         // ptp_rx_timestamp()
         ptp::Time test_time3 = ptp::Time(1234567890, 321, 456);
-        rx_ptp_time_ptprealtime.clock_set(test_time3);
+        rx_ptp_time.clock_set(test_time3);
         CHECK(uut.ptp_rx_timestamp() == test_time3);
     }
 
     SECTION("Rx-underflow") {
         CHECK(uut.read_u8() == 0);  // Underflow (empty)
+        CHECK(uut.get_read_ready() == 0);
+    }
+}
+
+TEST_CASE("port_mailmap_aligned") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Create the hardware-emulator and the driver under test.
+    MockMailmap mock(CFG_DEVADDR);
+    satcat5::port::MailmapAligned uut(&mock, CFG_DEVADDR);
+
+    // Sanity check on initial state.
+    CHECK(uut.get_write_space() > 1500);
+    CHECK(uut.get_read_ready() == 0);
+
+    SECTION("Tx-str") {
+        uut.write_str("Short test 1.");
+        CHECK(uut.write_finalize());
+        satcat5::poll::service();
+        CHECK(mock.buf_rd() == "Short test 1.");
+
+        const char* offset_src = "  Short test 2.";
+        uut.write_str(offset_src + 2);
+        CHECK(uut.write_finalize());
+        satcat5::poll::service();
+        CHECK(mock.buf_rd() == "Short test 2.");
+    }
+
+    SECTION("Tx-block") {
+        uut.write_str("1st packet OK");
+        CHECK(uut.write_finalize());
+        uut.write_str("2nd should overflow.");
+        CHECK(!uut.write_finalize());
+    }
+
+    SECTION("Rx-bytes") {
+        u8 temp[13];
+        CHECK(mock.buf_wr("Test message!?"));
+        satcat5::poll::service();
+
+        CHECK(uut.read_bytes(sizeof(temp), temp));  // Normal read
+        satcat5::io::ArrayRead rd(temp, sizeof(temp));
+        CHECK(read_str(&rd) == "Test message!");
+
+        CHECK(uut.get_read_ready() > 0);            // Expect one more byte
+        CHECK(!uut.read_bytes(sizeof(temp), temp)); // Underflow
         CHECK(uut.get_read_ready() == 0);
     }
 }

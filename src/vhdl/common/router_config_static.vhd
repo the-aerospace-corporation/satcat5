@@ -5,6 +5,9 @@
 --
 -- Configuration helper for use with router_inline_top
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block is a simple static configuration, where all addresses are set
 -- at build-time and timestamps use the arbitrary-reference mode.
 --

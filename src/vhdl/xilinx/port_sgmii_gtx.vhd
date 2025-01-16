@@ -70,7 +70,7 @@ entity port_sgmii_gtx is
     ref_time    : in  port_timeref := PORT_TIMEREF_NULL;
 
     -- Shared-logic enabled?
-    -- Note: 7-Series RefClk = 125 MHz, Ultrascale = Required RefClk frequency 
+    -- Note: 7-Series RefClk = 125 MHz, Ultrascale = Required RefClk frequency
     gtrefclk_p  : in  std_logic := '0'; -- GTX RefClk, 125MHz on 7 series
     gtrefclk_n  : in  std_logic := '0'; -- (Differential)
     shared_out  : out std_logic_vector(15 downto 0);
@@ -93,7 +93,6 @@ component sgmii_gtx0 is     -- Shared logic, no QPLL
     gtrefclk_p              : in  std_logic;
     gtrefclk_n              : in  std_logic;
     gtrefclk_out            : out std_logic;
-    gtrefclk_bufg_out       : out std_logic;
     txp                     : out std_logic;
     txn                     : out std_logic;
     rxp                     : in std_logic;
@@ -121,6 +120,7 @@ component sgmii_gtx0 is     -- Shared logic, no QPLL
     speed_is_100            : in std_logic;
     status_vector           : out std_logic_vector(15 downto 0);
     reset                   : in std_logic;
+    gtpowergood             : out std_logic;
     signal_detect           : in std_logic);
 end component;
 
@@ -244,9 +244,11 @@ signal aux_err_sync     : std_logic;
 signal txrx_reset       : std_logic := '0';
 signal rx_treset        : std_logic := '0';
 signal rx_tstamp        : tstamp_t := TSTAMP_DISABLED;
+signal rx_tfreq         : tfreq_t := TFREQ_DISABLED;
 signal rx_tvalid        : std_logic := '0';
 signal tx_treset        : std_logic := '0';
 signal tx_tstamp        : tstamp_t := TSTAMP_DISABLED;
+signal tx_tfreq         : tfreq_t := TFREQ_DISABLED;
 signal tx_tvalid        : std_logic := '0';
 
 -- IP-core provides a quasi-GMII interface.
@@ -284,6 +286,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_pwren    => txrx_pwren,
     tx_pkten    => tx_pkten,
     tx_tstamp   => tx_tstamp,
+    tx_tfreq    => tx_tfreq,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl);
 
@@ -317,6 +320,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => gmii_rx_clk,
         user_ctr    => rx_tstamp,
+        user_freq   => rx_tfreq,
         user_lock   => rx_tvalid,
         user_rst_p  => rx_treset);
 
@@ -328,6 +332,7 @@ gen_tstamp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => gmii_tx_clk,
         user_ctr    => tx_tstamp,
+        user_freq   => tx_tfreq,
         user_lock   => tx_tvalid,
         user_rst_p  => tx_treset);
 end generate;
@@ -337,12 +342,12 @@ u_amble_rx : entity work.eth_preamble_rx
     port map(
     raw_clk     => gmii_rx_clk,
     raw_lock    => xil_mmcm_locked,
-    raw_cken    => '1',
     raw_data    => gmii_rx_data,
     raw_dv      => gmii_rx_dv,
     raw_err     => gmii_rx_er,
     rate_word   => get_rate_word(1000),
     rx_tstamp   => rx_tstamp,
+    rx_tfreq    => rx_tfreq,
     aux_err     => aux_err_sync,
     status      => gmii_status,
     rx_data     => prx_data);
@@ -403,7 +408,10 @@ shared_out <= (
     9 => xil_qpll_ref,
     others => '0');
 
-gen_shared : if SHARED_EN generate
+-- When SHARED_EN = True, gtrefclk, gtrefbuf, userclk, etc.
+-- are output signals of sgmii_gtx IP core
+-- when SHARED_EN = False, these signals are inputs
+gen_shared : if not SHARED_EN generate
     xil_gtrefclk    <= shared_in(0);
     xil_gtrefbuf    <= shared_in(1);
     xil_userclk     <= shared_in(2);
@@ -454,6 +462,7 @@ gen_variant0 : if (SHARED_EN) and (not SHARED_QPLL) generate
         speed_is_100            => '0',             -- Always 1000 Mbps
         status_vector           => status_vec,      -- See PG047, Table 2-41
         reset                   => port_shdn,       -- Reset the entire core
+        gtpowergood             => open,
         signal_detect           => '1');
 end generate;
 

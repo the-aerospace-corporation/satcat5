@@ -22,6 +22,6 @@ package tcam_constants is
     type search_type is (
         TCAM_SEARCH_NONE,   -- Idle / don't-care
         TCAM_SEARCH_USER,   -- Input from user (IN port)
-        TCAM_SEARCH_DUPL,   -- Duplicate check (CFG port)
+        TCAM_SEARCH_CTRL,   -- Internal control (CFG port)
         TCAM_SEARCH_SCAN);  -- Table readback (SCAN port)
 end package;

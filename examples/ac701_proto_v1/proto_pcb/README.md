@@ -1,4 +1,4 @@
-# Files in this folder
+# AC701 Prototype PCB Design
 
 ![SatCat5 Logo](../../doc/images/satcat5.svg)
 

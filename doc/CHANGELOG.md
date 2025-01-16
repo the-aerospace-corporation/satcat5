@@ -4,6 +4,23 @@
 
 This log will be updated for each new release, but may not reflect the latest development branch(es).
 
+## v2.6.0 (2025 January)
+
+* Added client/server for the Constrained Applications Protocol (CoAP)
+* Added client/server for the Network Time Protocol (NTP)
+* Added support for Doppler-PTP (an experimental extension to PTP)
+* Added support for Simple-PTP (Meta's client-initiated PTP variant)
+* Create a gateware-defined CIDR-capable IPv4 router supporting multiple gigabit-rate ports.
+* Create a software-defined Ethernet switch, to augment or replace the FPGA-defined switch.
+* Create a software-defined IPv4 router, for support/offload or low-rate standalone applications.
+* Improved support for the Microchip Polarfire-FPGA and Polarfire-SoC platforms.
+* Initial integration of Doxygen documentation. Limited coverage for now.
+* More options for PTP filtering and control logic.
+* More options for Readable and Writeable formats (s24, s48, u24, u48).
+* New hardware abstraction layers for FreeRTOS and the Microchip SAM V71.
+* Replace "GenericTimer" with the new and improved "TimeRef" API.
+* Virtual PCAP mode for improved unit test diagnostics.
+
 ## v2.5.0 (2024 February)
 
 * License changed to CERN-OHL-W v2 or later.

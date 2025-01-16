@@ -32,10 +32,9 @@ bool check_leases(DhcpServer& server, unsigned expected) {
 static constexpr u32 ONE_DAY = 24 * 60 * 60;
 
 TEST_CASE("DHCP") {
-    // Test infrastructure.
-    satcat5::test::FastPosixTimer clock;
-    satcat5::test::TimerAlways timer;
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
+    satcat5::test::TimerSimulation timer;
 
     // Ignore INFO messages from DHCP client and server.
     log.m_threshold = satcat5::log::INFO + 1;
@@ -50,8 +49,8 @@ TEST_CASE("DHCP") {
     const Addr IP_GOOGLE(0x08080808);       // Google DNS server
 
     PacketBufferHeap c2p, p2c;
-    Stack net_client(MAC_CLIENT, ADDR_NONE, &c2p, &p2c, &clock);
-    Stack net_server(MAC_SERVER, IP_SERVER, &p2c, &c2p, &clock);
+    Stack net_client(MAC_CLIENT, ADDR_NONE, &c2p, &p2c, &timer);
+    Stack net_server(MAC_SERVER, IP_SERVER, &p2c, &c2p, &timer);
 
     // Units under test.
     DhcpPoolStatic<POOL_SIZE> address_pool(IP_BASE);
@@ -142,8 +141,8 @@ TEST_CASE("DHCP") {
         CHECK(net_client.ipaddr() == IP_STATIC);
 
         // Confirm the local subnet is configured.
-        CHECK(net_client.m_ip.route_lookup(IP_BASE) == IP_BASE);
-        CHECK(net_client.m_ip.route_lookup(IP_GOOGLE) == IP_ROUTER);
+        CHECK(net_client.m_ip.route_lookup(IP_BASE).gateway == IP_BASE);
+        CHECK(net_client.m_ip.route_lookup(IP_GOOGLE).gateway == IP_ROUTER);
     }
 
     // Manual release / renew cycle.

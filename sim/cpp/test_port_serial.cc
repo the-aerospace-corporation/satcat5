@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for configuring Ethernet-over-Serial ports
@@ -60,6 +60,8 @@ private:
 };
 
 TEST_CASE("port_serial") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
     MockSerial mock(CFG_DEVADDR);
 
     SECTION("StatusRegister") {
@@ -74,13 +76,13 @@ TEST_CASE("port_serial") {
         uut.config_mode(SerialAuto::MODE_UART1);
         CHECK(uut.read_mode() == SerialAuto::MODE_UART1);
         uut.config_spi(3, 1);       // SPI Mode = 3, Filt = 1
-        CHECK(mock.ctrl0() == 0x0301);
+        CHECK(mock.ctrl1() == 0x0301);
         uut.config_spi(2, 3);       // SPI Mode = 2, Filt = 3
-        CHECK(mock.ctrl0() == 0x0203);
+        CHECK(mock.ctrl1() == 0x0203);
         uut.config_uart(921600);    // Set UART baud rate
-        CHECK(mock.ctrl1() == clkdiv_uart(921600));
+        CHECK(mock.ctrl0() == clkdiv_uart(921600));
         uut.config_uart(115200, true);  // UART baud rate + CTS override
-        CHECK(mock.ctrl1() == clkdiv_uart(115200, true));
+        CHECK(mock.ctrl0() == clkdiv_uart(115200, true));
     }
 
     SECTION("SerialI2cController") {

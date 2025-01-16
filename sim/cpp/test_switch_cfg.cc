@@ -38,9 +38,12 @@ static const unsigned TBL_PRIORITY  = 4;    // Max number of high-priority Ether
 static const unsigned MAC_COUNT     = 32;   // Size of MAC-address table
 
 TEST_CASE("switch_cfg") {
-    // Print any severe SatCat5 messages to console.
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Only print severe SatCat5 messages to console.
     // (We do expect a few warnings during these tests; ignore them.)
-    satcat5::log::ToConsole log(satcat5::log::ERROR);
+    log.m_threshold = satcat5::log::ERROR;
 
     // Configure simulated register-map.
     satcat5::test::CfgDevice regs;
@@ -235,8 +238,8 @@ TEST_CASE("switch_cfg") {
     }
 
     SECTION("vlan_ports") {
-        for (u32 a = 0 ; a < 5 ; ++a) {
-            uut.vlan_set_port(a);
+        for (u16 a = 0 ; a < 5 ; ++a) {
+            uut.vlan_set_port(satcat5::eth::VtagPolicy(0, 0, {a}));
             CHECK(regs[REG_VLAN_PORT].write_pop() == a);
         }
     }
@@ -250,6 +253,11 @@ TEST_CASE("switch_cfg") {
         CHECK(regs[REG_VLAN_RATE].write_pop() == 500);
         CHECK(regs[REG_VLAN_RATE].write_pop() == 500);
         CHECK(regs[REG_VLAN_RATE].write_pop() == 0xA8000234u);
+        uut.vlan_set_rate(0x345, satcat5::eth::VlanRate(
+            satcat5::eth::VPOL_AUTO, 2000000000, 10));
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 1000);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 10000);
+        CHECK(regs[REG_VLAN_RATE].write_pop() == 0xB8000345u);
     }
 
     SECTION("mactbl_read") {

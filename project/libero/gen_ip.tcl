@@ -1,26 +1,31 @@
 # ------------------------------------------------------------------------
-# Copyright 2021-2022 The Aerospace Corporation.
+# Copyright 2021-2024 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 
 # IP generation tcl script
 
-# Download and create IOD wrapper IP for DDR output named ODDR_IOD. One day we may want to use IOD directly.
-#download_core -vlnv {Actel:SgCore:PF_IO:1.0.104} -location {www.actel-ip.com/repositories/SgCore} 
-create_and_configure_core -core_vlnv {Actel:SgCore:PF_IO:1.0.104} -component_name {ODDR_IOD} -params {\
-"DIFFERENTIAL:false"  \
-"DIRECTION:2"  \
-"DYN_DELAY_LINE_EN:false"  \
-"LVDS_FAILSAFE_EN:false"  \
-"MODE:2"   }
-
 # Create IOD wrapper IP for DDR input named IDDR_IOD.
-create_and_configure_core -core_vlnv {Actel:SgCore:PF_IO:1.0.104} -component_name {IDDR_IOD} -params {\
-"DIFFERENTIAL:false"  \
-"DIRECTION:1"  \
-"DYN_DELAY_LINE_EN:false"  \
-"LVDS_FAILSAFE_EN:false"  \
-"MODE:2"   }
+create_and_configure_core -core_vlnv {Actel:SgCore:PF_IO:2.0.104} \
+-component_name {IDDR_IOD} \
+-params {"DIFFERENTIAL:false" \
+"DIRECTION:1" \
+"DYN_DELAY_LINE_EN:false" \
+"INPUT_MODE:2" \
+"LVDS_FAILSAFE_EN:false" \
+"OUTPUT_ENABLE_MODE:2" \
+"OUTPUT_MODE:2"}
+
+# Create IOD wrapper IP for DDR output named ODDR_IOD.
+create_and_configure_core -core_vlnv {Actel:SgCore:PF_IO:2.0.104} \
+-component_name {ODDR_IOD} \
+-params {"DIFFERENTIAL:false" \
+"DIRECTION:1" \
+"DYN_DELAY_LINE_EN:false" \
+"INPUT_MODE:2" \
+"LVDS_FAILSAFE_EN:false" \
+"OUTPUT_ENABLE_MODE:2" \
+"OUTPUT_MODE:2"}
 
 # Download and create CCC wrapper IP for clkgen_rgmii named PF_CCC_C1.
 #download_core -vlnv {Actel:SgCore:PF_CCC:2.2.100} -location {www.actel-ip.com/repositories/SgCore}

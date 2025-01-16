@@ -34,7 +34,10 @@
 --      Bits 31..16: Link speed (Mbps)
 --      Bits 15..08: Reserved
 --      Bits 07..00: Port status word
---   [9-15] Reserved registers
+--   [9] Frequency offset reporting, if enabled for each port:
+--      Scaling: 1 LSB = 2^-16 nanoseconds per second.
+--      Bits 31..00: Net frequency offset (Tx-Rx)
+--   [10-15] Reserved registers
 
 library ieee;
 use     ieee.std_logic_1164.all;
@@ -42,6 +45,7 @@ use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.byte_u;
+use     work.ptp_types.tfreq_t;
 use     work.switch_types.all;
 
 entity cfgbus_port_stats is
@@ -100,6 +104,7 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
         signal rcvd_frames  : stat_word;
         signal sent_bytes   : stat_word;
         signal sent_frames  : stat_word;
+        signal delta_freq   : tfreq_t;
         signal errct_mii    : byte_u;
         signal errct_ovr_tx : byte_u;
         signal errct_ovr_rx : byte_u;
@@ -121,6 +126,7 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
             rcvd_frames => rcvd_frames,
             sent_bytes  => sent_bytes,
             sent_frames => sent_frames,
+            delta_freq  => delta_freq,
             status_clk  => cfg_cmd.clk,
             status_word => status,
             err_port    => err_ports(n),
@@ -146,6 +152,8 @@ gen_stats : for n in 0 to PORT_COUNT-1 generate
         stats_array(BASEADDR+7) <= std_logic_vector(
             x"0000" & errct_ptp_rx & errct_ptp_tx);
         stats_array(BASEADDR+8) <= status;
+        stats_array(BASEADDR+9) <= std_logic_vector(
+            resize(delta_freq, CFGBUS_WORD_SIZE));
     end block;
 end generate;
 

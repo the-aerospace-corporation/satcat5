@@ -40,7 +40,7 @@ namespace satcat5 {
             // Initialize Xilinx controller and start SatCat5 interrupts.
             void irq_start(
                 u16 dev_id,                             // Xilinx device-ID
-                satcat5::util::GenericTimer* timer = 0, // Diagnostic timer
+                satcat5::util::TimeRef* timer = 0,      // Diagnostic timer
                 u32 opts = XIN_SVC_ALL_ISRS_OPTION);    // Xilinx option flags
 
         protected:

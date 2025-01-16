@@ -6,7 +6,7 @@
 #include <satcat5/ip_ping.h>
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/log.h>
-#include <satcat5/timer.h>
+#include <satcat5/timeref.h>
 
 using satcat5::ip::Ping;
 namespace log = satcat5::log;
@@ -14,7 +14,7 @@ namespace log = satcat5::log;
 Ping::Ping(satcat5::ip::Dispatch* iface)
     : m_iface(iface)
     , m_addr(iface, satcat5::ip::PROTO_ICMP)
-    , m_arp_tref(0)
+    , m_arp_tref(SATCAT5_CLOCK->now())
     , m_arp_remct(0)
     , m_icmp_remct(0)
     , m_reply_rcvd(false)
@@ -79,7 +79,7 @@ void Ping::arp_event(
 {
     if (ip == m_addr.dstaddr()) {
         m_reply_rcvd = true;
-        u32 elapsed_usec = m_iface->m_timer->elapsed_usec(m_arp_tref);
+        u32 elapsed_usec = m_arp_tref.elapsed_usec();
         log::Log(log::INFO, "Ping: Reply from").write(ip)
             .write(", elapsed usec").write10(elapsed_usec);
     }
@@ -98,7 +98,7 @@ void Ping::send_arping()
 {
     // Send an ARP query to the stored address.
     m_reply_rcvd = false;
-    m_arp_tref = m_iface->m_timer->now();
+    m_arp_tref = SATCAT5_CLOCK->now();
     m_iface->m_arp.send_query(m_addr.dstaddr());
 
     // Decrement counter (unless unlimited).

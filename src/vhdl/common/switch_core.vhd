@@ -6,7 +6,7 @@
 -- Core packet-switching pipeline
 --
 -- This module ties together the frame-check, packet-FIFO, round-robin
--- scheduler, and MAC core form the packet-switching pipeline:
+-- scheduler, and MAC core to form the packet-switching pipeline:
 --
 --      In0--FrmChk--FIFO--+--Scheduler--+--MAC Core --+--FIFO--Out0
 --      In1--FrmChk--FIFO--+                           +--FIFO--Out1
@@ -61,6 +61,9 @@
 --      Allow output FIFO cut-through?
 --      This reduces latency by 1-5 microseconds in some cases, but requires
 --      additional slices.  Currently experimental, use at your own risk.
+--  * PTP_DOPPLER (default: false)
+--      Enable support for an experimental extension to PTP, which allows
+--      end-to-end measurement of Doppler frequency offsets.
 --  * PTP_STRICT (default: true)
 --      Sets policy for dropping PTP messages when timestamps are not
 --      available for the affected ports.  It is typically better to drop
@@ -83,7 +86,7 @@
 --  * HBUF_KBYTES (default: 0)
 --      High-priority output buffer size for each port (kilobytes)
 --      Any value greater than zero enables packet prioritization, which
---      is is set by VLAN (SUPPORT_VLAN) and/or EtherType (PRI_TABLE_SIZE).
+--      is set by VLAN (SUPPORT_VLAN) and/or EtherType (PRI_TABLE_SIZE).
 --  * OBUF_KBYTES
 --      Normal-priority output buffer size for each port (kilobytes)
 --      Recommended setting is at least 8-16, depending on traffic statistics.
@@ -131,6 +134,7 @@ entity switch_core is
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean := false; -- Allow runt frames? (Size < 64 bytes)
     ALLOW_PRECOMMIT : boolean := false; -- Allow output FIFO cut-through?
+    PTP_DOPPLER     : boolean := false; -- Support for experimental Doppler-PTP?
     PTP_STRICT      : boolean := true;  -- Drop frames with missing timestamps?
     PORT_COUNT      : natural := 0;     -- Total standard Ethernet ports
     PORTX_COUNT     : natural := 0;     -- Total 10 Gbps Ethernet ports
@@ -181,6 +185,10 @@ type meta_array is array(PORT_TOTAL-1 downto 0) of switch_meta_t;
 type word_array is array(PORT_TOTAL-1 downto 0) of word_t;
 type nlast_array is array(PORT_TOTAL-1 downto 0) of nlast_t;
 
+-- Should we retain or remove the FCS field during ingress?
+-- (No point retaining FCS if packet contents may change.)
+constant STRIP_FCS : boolean := SUPPORT_PTP or SUPPORT_VLAN;
+
 -- Minimum frame size for checking incoming frames.
 function get_min_frame return positive is
 begin
@@ -221,6 +229,7 @@ signal pktin_valid      : bit_array;
 signal pktin_ready      : bit_array;
 signal pktin_badfrm     : bit_array;
 signal pktin_overflow   : bit_array;
+signal pktin_ptperror   : bit_array;
 signal pktin_rxerror    : bit_array;
 
 -- Round-robin scheduler.
@@ -245,8 +254,6 @@ signal pktout_write     : std_logic;
 signal pktout_precommit : std_logic;
 signal pktout_hipri     : std_logic;
 signal pktout_pdst      : bit_array;
-signal pktin_ptperror   : std_logic;
-signal pktin_ptperr_src : integer range 0 to PORT_TOTAL-1;
 
 -- Output packet FIFO
 signal pktout_overflow  : bit_array;
@@ -328,14 +335,13 @@ begin
             if (pktin_badfrm(n) = '1') then
                 err_prt(n).pkt_err <= not err_prt(n).pkt_err;
             end if;
+            if (pktin_ptperror(n) = '1') then
+                err_prt(n).rx_ptp_err <= not err_prt(n).rx_ptp_err;
+            end if;
             if (pktout_ptperror(n) = '1') then
                 err_prt(n).tx_ptp_err <= not err_prt(n).tx_ptp_err;
             end if;
         end loop;
-
-        if (pktin_ptperror = '1') then
-            err_prt(pktin_ptperr_src).rx_ptp_err <= not err_prt(pktin_ptperr_src).rx_ptp_err;
-        end if;
     end if;
 end process;
 
@@ -361,6 +367,8 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         DEV_ADDR        => DEV_ADDR,
         CORE_CLK_HZ     => CORE_CLK_HZ,
         PORT_INDEX      => n,
+        PTP_DOPPLER     => PTP_DOPPLER,
+        STRIP_FCS       => STRIP_FCS,
         SUPPORT_PAUSE   => SUPPORT_PAUSE,
         SUPPORT_PTP     => SUPPORT_PTP,
         SUPPORT_VLAN    => SUPPORT_VLAN,
@@ -378,6 +386,7 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         rx_macerr       => ports_rx_data(n).rxerr,
         rx_rate         => ports_rx_data(n).rate,
         rx_tsof         => ports_rx_data(n).tsof,
+        rx_tfreq        => ports_rx_data(n).tfreq,
         rx_reset_p      => ports_rx_data(n).reset_p,
         out_data        => pktin_data(n),
         out_meta        => pktin_meta(n),
@@ -409,6 +418,8 @@ gen_xinput : for n in PORTX_COUNT-1 downto 0 generate
         DEV_ADDR        => DEV_ADDR,
         CORE_CLK_HZ     => CORE_CLK_HZ,
         PORT_INDEX      => PORT_COUNT+n,
+        PTP_DOPPLER     => PTP_DOPPLER,
+        STRIP_FCS       => STRIP_FCS,
         SUPPORT_PAUSE   => SUPPORT_PAUSE,
         SUPPORT_PTP     => SUPPORT_PTP,
         SUPPORT_VLAN    => SUPPORT_VLAN,
@@ -426,6 +437,7 @@ gen_xinput : for n in PORTX_COUNT-1 downto 0 generate
         rx_macerr       => portx_rx_data(n).rxerr,
         rx_rate         => portx_rx_data(n).rate,
         rx_tsof         => portx_rx_data(n).tsof,
+        rx_tfreq        => portx_rx_data(n).tfreq,
         rx_reset_p      => portx_rx_data(n).reset_p,
         out_data        => pktin_data(PORT_COUNT+n),
         out_meta        => pktin_meta(PORT_COUNT+n),
@@ -471,6 +483,8 @@ u_mac : entity work.mac_core
     CORE_CLK_HZ     => CORE_CLK_HZ,
     ALLOW_RUNT      => ALLOW_RUNT,
     ALLOW_PRECOMMIT => ALLOW_PRECOMMIT,
+    INPUT_HAS_FCS   => not STRIP_FCS,
+    PTP_DOPPLER     => PTP_DOPPLER,
     PTP_STRICT      => PTP_STRICT,
     SUPPORT_PTP     => SUPPORT_PTP,
     SUPPORT_VPORT   => SUPPORT_VLAN,
@@ -504,7 +518,6 @@ u_mac : entity work.mac_core
     error_other     => macerr_int,
     error_table     => macerr_tbl,
     error_ptp       => pktin_ptperror,
-    ptp_err_psrc    => pktin_ptperr_src,
     clk             => core_clk,
     reset_p         => core_reset_sync);
 
@@ -529,6 +542,8 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
         ALLOW_RUNT      => ALLOW_RUNT,
+        INPUT_HAS_FCS   => not STRIP_FCS,
+        PTP_DOPPLER     => PTP_DOPPLER,
         PTP_STRICT      => PTP_STRICT,
         INPUT_BYTES     => DATAPATH_BYTES,
         OUTPUT_BYTES    => 1,
@@ -550,6 +565,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         tx_ready        => ports_tx_ctrl(n).ready,
         tx_pstart       => ports_tx_ctrl(n).pstart,
         tx_tnow         => ports_tx_ctrl(n).tnow,
+        tx_tfreq        => ports_tx_ctrl(n).tfreq,
         tx_macerr       => ports_tx_ctrl(n).txerr,
         tx_reset_p      => ports_tx_ctrl(n).reset_p,
         pause_tx        => pktout_pause(n),
@@ -577,6 +593,8 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
         ALLOW_RUNT      => ALLOW_RUNT,
+        INPUT_HAS_FCS   => not STRIP_FCS,
+        PTP_DOPPLER     => PTP_DOPPLER,
         PTP_STRICT      => PTP_STRICT,
         INPUT_BYTES     => DATAPATH_BYTES,
         OUTPUT_BYTES    => 8,
@@ -598,6 +616,7 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         tx_ready        => portx_tx_ctrl(n).ready,
         tx_pstart       => portx_tx_ctrl(n).pstart,
         tx_tnow         => portx_tx_ctrl(n).tnow,
+        tx_tfreq        => portx_tx_ctrl(n).tfreq,
         tx_macerr       => portx_tx_ctrl(n).txerr,
         tx_reset_p      => portx_tx_ctrl(n).reset_p,
         pause_tx        => pktout_pause(PORT_COUNT+n),

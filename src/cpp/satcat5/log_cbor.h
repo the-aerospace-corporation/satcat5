@@ -1,22 +1,24 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation.
+// Copyright 2023-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// CBOR-encoded network logging
-//
-// This file defines a log-to-network system, where each log message is
-// encoded using CBOR (IETF-RFC-8949).  Variations using raw-Ethernet and
-// UDP are provided.  Both default to broadcast mode, but can be changed
-// to unicast by calling the connect(...) method.
-//
-// The encoding used here is compatible with the "Diagnostic Logging"
-// message defined in the "Slingshot Payload Manual" (ATR-2022-01270).
-//
-// For the simpler encoding used in example designs, see "eth_chat.h".
-// (Especially eth::LogToChat, which implements the same logging API.)
-//
-// The minimum priority level can be adjusted with set_min_priority to
-// ignore messages with a lower priority.
+//!\file
+//! CBOR-encoded network logging
+//!
+//!\details
+//! This file defines a log-to-network system, where each `Log` message is
+//! encoded using CBOR (IETF-RFC-8949).  Variations using raw-Ethernet and
+//! UDP are provided.  Both default to broadcast mode, but can be changed
+//! to unicast by calling the connect(...) method.
+//!
+//! For more information on the logging system: \see log.h
+//!
+//! The encoding used here is compatible with the "Diagnostic Logging"
+//! message defined in the "Slingshot Payload Manual" (ATR-2022-01270).
+//! This manual is included in this repo under "/examples/slingshot".
+//!
+//! For the simpler encoding used in example designs, see "eth_chat.h".
+//! (Especially eth::LogToChat, which implements the same logging API.)
 
 #pragma once
 
@@ -30,30 +32,43 @@
 
 namespace satcat5 {
     namespace log {
-        // Read CBOR-formatted network messages and copy to the local log.
-        // (See wrappers below for raw-Ethernet or UDP transport layer.)
+        //! Read CBOR-formatted network messages and copy to the local log.
+        //!
+        //! \link log_cbor.h SatCat5 CBOR log messages. \endlink
+        //!
+        //! This class is not intended to be used directly.  For a specific
+        //! protocol, `satcat5::eth::FromCbor` or `satcat5::udp::FromCbor`.
         class FromCbor : public satcat5::net::Protocol {
         protected:
-            // Only children can safely access constructor/destructor.
+            //! Only children can safely access constructor/destructor.
             FromCbor(
                 satcat5::net::Dispatch* src,        // Incoming message interface
                 satcat5::net::Type filter);         // Incoming message type
             ~FromCbor() SATCAT5_OPTIONAL_DTOR;
 
-            // Event handler for incoming messages.
+            //! Event handler for incoming messages.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
 
-            // Pointer to the interface object.
+            //! Pointer to the interface object.
             satcat5::net::Dispatch* const m_src;
+
         public:
-            // Set the minimum level (priority). Messages below this level will be ignored.
+            //! Set the minimum priority for message forwarding.
+            //! By default, all messages are forwarded for processing.
+            //! After calling this method, messages below the specified
+            //! cutoff are ignored.
             void set_min_priority(s8 priority) {m_min_priority = priority;}
+
         private:
             s8 m_min_priority = satcat5::log::DEBUG;  // default to handle everything
         };
 
-        // Write local logs to a CBOR-formatted network message.
-        // (See wrappers below for raw-Ethernet or UDP transport layer.)
+        //! Write local logs to a CBOR-formatted network message.
+        //!
+        //! \link log_cbor.h SatCat5 CBOR log messages. \endlink
+        //!
+        //! This class is not intended to be used directly.  For a specific
+        //! protocol, `satcat5::eth::ToCbor` or `satcat5::udp::ToCbor`.
         class ToCbor : public satcat5::log::EventHandler {
         protected:
             // Only children can safely access constructor/destructor.
@@ -78,74 +93,81 @@ namespace satcat5 {
         };
     }
 
-    // Thin wrappers for commonly used protocols:
     namespace eth {
-        // Receive CBOR-formatted raw-Ethernet frames.
+        //! Specialization of `satcat5::log::FromCbor` for raw-Ethernet frames.
         class LogFromCbor final
             : public satcat5::log::FromCbor
         {
         public:
-            // Constructor binds to a specific incoming EtherType.
+            //! Constructor binds to a specific interface and EtherType.
             LogFromCbor(
                 satcat5::eth::Dispatch* iface,      // Ethernet interface
                 const satcat5::eth::MacType& typ);  // Incoming EtherType
             ~LogFromCbor() {}
         };
 
-        // Send CBOR-formatted raw-Ethernet frames.
+        //! Specialization of `satcat5::log::ToCbor` for raw-Ethernet frames.
         class LogToCbor final
             : public satcat5::eth::AddressContainer
             , public satcat5::log::ToCbor
         {
         public:
-            // Constructor defaults to broadcast address.
+            //! Constructor binds to a specific interface and EtherType.
+            //! The default destination is the broadcast address.  To change
+            //! this behavior, call `connect`.
             LogToCbor(
                 satcat5::datetime::Clock* clk,      // System clock (or NULL)
                 satcat5::eth::Dispatch* eth,        // Ethernet interface
                 const satcat5::eth::MacType& typ);  // Destination EtherType
             ~LogToCbor() {}
 
-            // Set the destination address.
+            //! Set the destination address.
             inline void connect(
                 const satcat5::eth::MacAddr& addr,
                 const satcat5::eth::MacType& type)
                 { m_addr.connect(addr, type); }
+
+            //! Stop message forwarding.
             inline void close()
                 { m_addr.close(); }
         };
     }
 
     namespace udp {
-        // Receive CBOR-formatted UDP packets.
+        //! Specialization of `satcat5::log::FromCbor` for UDP datagrams.
         class LogFromCbor final
             : public satcat5::log::FromCbor
         {
         public:
-            // Constructor binds to a specific incoming UDP port.
+            //! Constructor binds to a specific incoming UDP port.
             LogFromCbor(
                 satcat5::udp::Dispatch* iface,      // UDP interface
                 const satcat5::udp::Port& port);    // Incoming UDP port
             ~LogFromCbor() {}
         };
 
-        // Send CBOR-formatted UDP packets.
+        //! Specialization of `satcat5::log::ToCbor` for UDP datagrams.
         class LogToCbor final
             : public satcat5::udp::AddressContainer
             , public satcat5::log::ToCbor
         {
         public:
-            // Constructor defaults to broadcast address.
+            //! Constructor binds to a specific interface and port number.
+            //! The default destination is the IPv4 broadcast address.
+            //! To change this behavior, call `connect`.
             LogToCbor(
                 satcat5::datetime::Clock* clk,      // System clock (or NULL)
                 satcat5::udp::Dispatch* udp,        // UDP interface
                 const satcat5::udp::Port& dstport); // Destination port
             ~LogToCbor() {}
 
-            // Set the destination address.
+            //! Set the destination address.
             inline void connect(
                 const satcat5::udp::Addr& dstaddr,
                 const satcat5::udp::Port& dstport)
                 { m_addr.connect(dstaddr, dstport, 0);}
+
+            //! Stop message forwarding.
             inline void close()
                 { m_addr.close(); }
         };

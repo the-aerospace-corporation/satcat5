@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Unit test for the Echo protocol (Raw-Ethernet and UDP variants)
@@ -15,7 +15,8 @@
 #include <satcat5/udp_socket.h>
 
 TEST_CASE("net-echo") {
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
     satcat5::util::PosixTimer timer;
 
     // Network communication infrastructure.
@@ -26,8 +27,9 @@ TEST_CASE("net-echo") {
     satcat5::io::PacketBufferHeap c2s, s2c;
     satcat5::eth::Dispatch eth_server(MAC_SERVER, &s2c, &c2s);
     satcat5::eth::Dispatch eth_client(MAC_CLIENT, &c2s, &s2c);
-    satcat5::ip::Dispatch ip_server(IP_SERVER, &eth_server, &timer);
-    satcat5::ip::Dispatch ip_client(IP_CLIENT, &eth_client, &timer);
+    satcat5::ip::Table ip_table;
+    satcat5::ip::Dispatch ip_server(IP_SERVER, &eth_server, &ip_table);
+    satcat5::ip::Dispatch ip_client(IP_CLIENT, &eth_client, &ip_table);
     satcat5::udp::Dispatch udp_server(&ip_server);
     satcat5::udp::Dispatch udp_client(&ip_client);
 

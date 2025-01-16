@@ -32,10 +32,10 @@
 -- Transmit data uses an AXI-style valid/ready handshake.  HOWEVER, if a byte
 -- is not ready in time then it will instead send the value set in IDLE_BYTE.
 --
--- NOTE: Microsemi Libero/Polarfire does not allow both async and sync process  
--- on io input signal (sclk). so need to disable using SYNC_MODE parameter  
+-- NOTE: Microsemi Libero/Polarfire does not allow both async and sync process
+-- on io input signal (sclk). so need to disable using SYNC_MODE parameter
 -- (set to true). Note that this will increase turnaround latency and reduce
--- max SPI rate of data transmission. Actual throughput numbers have not 
+-- max SPI rate of data transmission. Actual throughput numbers have not
 -- been analyzed in simulation yet.
 --
 -- See also: https://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
@@ -55,7 +55,7 @@ entity io_spi_peripheral is
     generic (
     IDLE_BYTE   : byte_t := x"00";  -- Fixed pattern when idle
     OUT_REG     : boolean := true;  -- Enable register on SDO, SDT signals?
-    SYNC_MODE   : boolean := false);-- Disable both sync and async process on sclk? 
+    SYNC_MODE   : boolean := false);-- Disable both sync and async process on sclk?
     port (
     -- External SPI interface.
     spi_csb     : in  std_logic;    -- Chip-select bar
@@ -144,7 +144,7 @@ ptr_change <= bool2bit((xclk0 = '1' and xclk1 = '0' and glitch_ctr = 0)
 -- This allows substantially faster turnaround time at high baud rates.
 -- This mixed sync/async logic should be safe since tx0/tx1/tx2 transitions
 -- are structured (see below) and there is no feedback to internal state.
-tmp_sdo <= tx0 when (ptr_change = '1') else 
+tmp_sdo <= tx0 when (ptr_change = '1') else
            tx1 when (SYNC_MODE or spi_sclk = xor_mode) else tx2;
 tmp_sdt <= xcsb; -- '1' = Tristate / inactive, '0' = Drive / active
 

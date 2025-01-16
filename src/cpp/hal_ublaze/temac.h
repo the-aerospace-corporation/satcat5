@@ -77,6 +77,8 @@ namespace satcat5 {
             satcat5::ptp::Time clock_adjust(
                 const satcat5::ptp::Time& amount) override;
             void clock_rate(s64 offset) override;
+            satcat5::ptp::Time clock_now() override;
+
             static constexpr double CLOCK_SCALE = 0.125 / (1u << 20);
 
         private:

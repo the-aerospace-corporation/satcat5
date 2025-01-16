@@ -15,9 +15,14 @@
 -- message header (See IEEE 1588-2019 Table 35):
 --  * correctionField: In each marked frame, overwrite with:
 --      (correctionField - ingressTimestamp) + egressTimestamp
---      The first component is provided as frame metadata.
+--    The difference component is provided as frame metadata.
 --  * flagField/twoStepFlag: In each marked frame, overwrite this flag
---      with a '1' if the port is in mandatory "two-step" mode.
+--    with a '1' if the port is in mandatory "two-step" mode.
+--    (Since required output varies, it cannot be performed upstream.)
+--  * If PTP_DOPPLER is enabled, and the experimental Doppler TLV was
+--    detected (see ptp_ingress), then overwrite the frequency field:
+--      (dopplerField - ingressFrequency) + egressFrequency
+--    The difference component is provided as frame metadata.
 --
 -- Whenever PTP is enabled, the "switch_port_tx" chain will recalculate the
 -- Ethernet FCS.  Therefore, there is no need for this block to update it.
@@ -45,23 +50,24 @@ use     work.common_functions.all;
 use     work.common_primitives.sync_buffer;
 use     work.eth_frame_common.all;
 use     work.ptp_types.all;
+use     work.switch_types.switch_meta_t;
 
 entity ptp_egress is
     generic (
     IO_BYTES    : positive;         -- Width of datapath
+    PTP_DOPPLER : boolean := false; -- Enable Doppler-TLV tags?
     PTP_STRICT  : boolean := true;  -- Drop frames with missing timestamps?
     DEVADDR     : integer := CFGBUS_ADDR_NONE;
     REGADDR     : integer := CFGBUS_ADDR_NONE);
     port (
     -- Timestamp and other signals from the port interface
     port_tnow   : in  tstamp_t;     -- Time reference
+    port_tfreq  : in  tfreq_t;      -- Frequency reference
     port_pstart : in  std_logic;    -- Precision packet-start
     port_dvalid : in  std_logic;    -- Transmit data-valid
     -- Input data
-    in_tref     : in  tstamp_t;     -- Frame metadata (modified timestamp)
-    in_pmode    : in  ptp_mode_t;   -- Frame metadata (PTP change mode)
-    in_vtag     : in  vlan_hdr_t;   -- Frame metadata (VLAN tags)
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
+    in_meta     : in  switch_meta_t;
     in_nlast    : in  integer range 0 to IO_BYTES;
     in_valid    : in  std_logic;    -- AXI flow-control
     in_ready    : out std_logic;    -- AXI flow-control
@@ -86,23 +92,25 @@ architecture ptp_egress of ptp_egress is
 subtype data_t is std_logic_vector(8*IO_BYTES-1 downto 0);
 subtype last_t is integer range 0 to IO_BYTES;
 
--- Parser counts to the word just after the last possible header byte.
-constant PTP_BYTE_MAX   : positive := UDP_HDR_MAX + PTP_HDR_MSGDAT;
-constant PTP_WORD_MAX   : positive := 1 + (PTP_BYTE_MAX / IO_BYTES);
+-- Parser counts to the word just after the last byte of interest.
+constant PTP_BYTE_MAX : positive := ptp_parse_bytes(PTP_DOPPLER, true);
+constant PTP_WORD_MAX : positive := 1 + (PTP_BYTE_MAX / IO_BYTES);
 
 -- Input stream and metadata.
 signal in_ready_i   : std_logic;
 signal in_write     : std_logic;
 signal in_wcount    : integer range 0 to PTP_WORD_MAX := 0;
 signal in_pstart    : std_logic := '0';
-signal in_adjust    : std_logic;
-signal tcorr_val    : tstamp_t := (others => '0');
-signal tcorr_word   : std_logic_vector(63 downto 0);
+signal in_adj_time  : std_logic := '0';
+signal in_adj_freq  : std_logic := '0';
+signal tcorr_time   : tstamp_t := (others => '0');
+signal tcorr_freq   : tfreq_t := (others => '0');
+signal tcorr_time2  : std_logic_vector(63 downto 0);
+signal tcorr_freq2  : std_logic_vector(47 downto 0);
 signal tcorr_rd     : std_logic;
 signal tcorr_error  : std_logic;
 
 -- Packet-modification state machine.
-signal mod_ihl      : nybb_u := (others => '0');
 signal mod_data     : data_t := (others => '0');
 signal mod_nlast    : last_t := 0;
 signal mod_valid    : std_logic := '0';
@@ -116,10 +124,11 @@ begin
 -- Upstream flow-control logic.
 -- At start-of-frame for PTP messages only, the IN_READY flag is
 -- additionally qualified by the IN_PSTART strobe (see below).
-in_adjust   <= bool2bit(in_pmode /= PTP_MODE_NONE);
+in_adj_time <= bool2bit(in_meta.pmsg /= TLVPOS_NONE);
+in_adj_freq <= bool2bit(in_meta.pfreq /= TLVPOS_NONE);
 in_ready    <= in_ready_i;
 in_ready_i  <= mod_ready and bool2bit(
-    in_pstart = '1' or in_adjust = '0' or in_wcount > 0);
+    in_pstart = '1' or in_adj_time = '0' or in_wcount > 0);
 in_write    <= in_valid and in_ready_i;
 
 -- Deterministic-delay state machine ensures:
@@ -142,29 +151,34 @@ begin
         elsif (count > 0) then  -- Wait for egress pipeline to flush.
             count := count - 1;
             in_pstart <= '0';
-        else                    -- Ready for timed packet?
+        else                    -- Ready for precision-timed packet?
             in_pstart <= port_pstart;
         end if;
     end if;
 end process;
 
 -- Calculate the new correctionField for each input frame.
--- Note: This block has a latency of two clock cycles.  However, the earliest
---  correctionField occurs at byte 22, so we can tolerate IO_BYTES <= 11
---  without needing a matched delay for the input data.
+-- Note: This block has a latency of two clock cycles from start-of-frame.
+--  However, the earliest correctionField occurs at byte 22, so we can tolerate
+--  IO_BYTES <= 11 without needing a matched delay for the input data.
 u_tstamp : entity work.ptp_timestamp
     generic map(
     IO_BYTES    => IO_BYTES,
+    PTP_DOPPLER => PTP_DOPPLER,
     PTP_STRICT  => PTP_STRICT,
     DEVADDR     => DEVADDR,
     REGADDR     => REGADDR)
     port map(
     in_tnow     => port_tnow,
-    in_tref     => in_tref,
-    in_adjust   => in_adjust,
+    in_tfreq    => port_tfreq,
+    in_adj_time => in_adj_time,
+    in_adj_freq => in_adj_freq,
     in_nlast    => in_nlast,
     in_write    => in_write,
-    out_tstamp  => tcorr_val,
+    ref_time    => in_meta.tstamp,
+    ref_freq    => in_meta.tfreq,
+    out_tstamp  => tcorr_time,
+    out_tfreq   => tcorr_freq,
     out_error   => tcorr_error,
     out_valid   => open,
     out_ready   => tcorr_rd,
@@ -173,10 +187,11 @@ u_tstamp : entity work.ptp_timestamp
     clk         => clk,
     reset_p     => reset_p);
 
--- Pad the new correctionField value to 64 bits.
+-- Pad the new correctionField value to 64 bits, and pad correctionFreq to 48.
 -- (Default of 48-bit timestamps saves a LOT of resources by assuming that
 --  incoming correctionField plus residence time never exceeds +/-2 seconds.)
-tcorr_word <= std_logic_vector(resize(signed(tcorr_val), 64));
+tcorr_time2 <= std_logic_vector(resize(signed(tcorr_time), tcorr_time2'length));
+tcorr_freq2 <= std_logic_vector(resize(tcorr_freq, tcorr_freq2'length));
 
 -- Read from timestamp FIFO at the end of each modified frame.
 tcorr_rd <= mod_valid and mod_ready and bool2bit(mod_nlast > 0);
@@ -190,16 +205,12 @@ u_buffer : sync_buffer
 
 -- Packet-modification state machine.
 p_modify : process(clk)
-    -- Thin wrapper for the stream-to-byte extractor functions.
-    variable btmp : byte_t := (others => '0');  -- Stores output
-    impure function get_eth_byte(bidx : natural) return boolean is
-    begin
-        btmp := strm_byte_value(IO_BYTES, bidx, in_data);
-        return strm_byte_present(IO_BYTES, bidx, in_wcount);
-    end function;
+    -- Bit-offset for the PTP two-step flag.
+    constant PTP_2STEP_BIT : integer := 8*PTP_HDR_FLAG + 6;
 
-    -- Replace the bit or byte at the specified offset from start of frame.
-    procedure replace_eth_bit(bidx: natural; bval: std_logic) is
+    -- Replace the bit or byte at the specified reference + offset.
+    procedure replace_bit(tref: tlvpos_t; pidx: natural; bval: std_logic) is
+        variable bidx : natural := 8*tlvpos_to_bidx(tref) + pidx;
         variable bmod : natural := bidx mod (8*IO_BYTES);
     begin
         if (strm_byte_present(IO_BYTES, bidx/8, in_wcount)) then
@@ -207,33 +218,14 @@ p_modify : process(clk)
         end if;
     end procedure;
 
-    procedure replace_eth_byte(bidx: natural; bval: byte_t) is
+    procedure replace_byte(tref: tlvpos_t; pidx: natural; bval: byte_t) is
+        variable bidx : natural := tlvpos_to_bidx(tref) + pidx;
         variable bmod : natural := bidx mod IO_BYTES;
     begin
         if (strm_byte_present(IO_BYTES, bidx, in_wcount)) then
             mod_data(8*(IO_BYTES-bmod)-1 downto 8*(IO_BYTES-bmod-1)) <= bval;
         end if;
     end procedure;
-
-    -- Replace the bit or byte at the specified offset from start of PTP message.
-    procedure replace_ptp_bit(pidx: natural; bval: std_logic) is
-    begin
-        if (in_pmode = PTP_MODE_UDP) then
-            replace_eth_bit(8*UDP_HDR_DAT(mod_ihl) + pidx, bval);
-        elsif (in_pmode = PTP_MODE_ETH) then
-            replace_eth_bit(8*ETH_HDR_DATA + pidx, bval);
-        end if;
-    end procedure;
-
-    procedure replace_ptp_byte(pidx: natural; bval: byte_t) is
-    begin
-        if (in_pmode = PTP_MODE_UDP) then
-            replace_eth_byte(UDP_HDR_DAT(mod_ihl) + pidx, bval);
-        elsif (in_pmode = PTP_MODE_ETH) then
-            replace_eth_byte(ETH_HDR_DATA + pidx, bval);
-        end if;
-    end procedure;
-
 begin
     if rising_edge(clk) then
         -- VALID signal needs a true reset.
@@ -245,7 +237,7 @@ begin
 
         -- WCOUNT signal needs a true reset.
         if (reset_p = '1') then
-            in_wcount  <= 0;                    -- Global reset
+            in_wcount <= 0;                     -- Global reset
         elsif (in_write = '1') then
             if (in_nlast > 0) then              -- Word-count for parser:
                 in_wcount <= 0;                 -- Start of new frame
@@ -258,23 +250,27 @@ begin
         if (mod_ready = '1') then
             -- Passthrough buffer for unmodified fields.
             mod_nlast   <= in_nlast;
-            mod_vtag    <= in_vtag;
-
-            -- Read the IHL field from the IPv4 header, if present.
-            -- Note: IHL is at offset 14 and won't be needed until offset 34
-            --  at the earliest, so this is safe up to IO_BYTES <= 16.
-            if (get_eth_byte(IP_HDR_VERSION)) then
-                mod_ihl <= unsigned(btmp(3 downto 0));
-            end if;
+            mod_vtag    <= in_meta.vtag;
 
             -- Retain data by default and replace selected fields on request.
             mod_data <= in_data;
-            if (mod_2step = '1') then
-                replace_ptp_bit(8*PTP_HDR_FLAG+6, '1');
+            if (in_adj_time = '1' and mod_2step = '1') then
+                replace_bit(in_meta.pmsg, PTP_2STEP_BIT, '1');
             end if;
-            for n in 0 to 7 loop
-                replace_ptp_byte(PTP_HDR_CORR+n, strm_byte_value(n, tcorr_word));
-            end loop;
+            if (in_adj_time = '1') then
+                for n in 0 to 7 loop
+                    replace_byte(
+                        in_meta.pmsg, PTP_HDR_CORR + n,
+                        strm_byte_value(n, tcorr_time2));
+                end loop;
+            end if;
+            if (in_adj_freq = '1') then
+                for n in 0 to 5 loop
+                    replace_byte(
+                        in_meta.pfreq, n,
+                        strm_byte_value(n, tcorr_freq2));
+                end loop;
+            end if;
         end if;
     end if;
 end process;

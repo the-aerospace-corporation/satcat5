@@ -179,7 +179,7 @@ begin
         -- Pipeline stage 6: Sum of interpolation terms.
         sum_cos <= adj_cos - mul_sin;
         sum_sin <= adj_sin + mul_cos;
-    
+
         -- Pipeline stage 5: Intermediate products.
         adj_cos <= upscale(tbl_cos, 2*TBL_WIDTH-OUT_WIDTH);
         adj_sin <= upscale(tbl_sin, 2*TBL_WIDTH-OUT_WIDTH);

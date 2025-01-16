@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -45,7 +45,7 @@ bool SocketCore::ready_rx() const
     return m_filter.bound();
 }
 
-void SocketCore::data_rcvd()
+void SocketCore::data_rcvd(satcat5::io::Readable* src)
 {
     // Data is ready in the transmit buffer.
     unsigned rem = m_tx.get_read_ready();

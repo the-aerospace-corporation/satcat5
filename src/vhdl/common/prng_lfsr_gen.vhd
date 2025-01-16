@@ -49,6 +49,10 @@ signal lfsr_valid   : std_logic := '0';
 
 begin
 
+-- Sanity check: Fail loudly if user specifies an invalid LFSR.
+-- (When practical, this should throw a synthesis or simulation error.)
+assert lfsr_is_valid(LFSR_SPEC) report "Invalid LFSR." severity failure;
+
 -- Drive top-level outputs.
 out_data    <= leap_out(LEAP_LFSR, lfsr_state);
 out_valid   <= lfsr_valid;

@@ -14,6 +14,7 @@ use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
+use     work.ptp_types.tfreq_t;
 use     work.switch_types.all;
 
 entity port_statistics is
@@ -21,7 +22,7 @@ entity port_statistics is
     COUNT_WIDTH : positive := 32;       -- Width of each statistics counter
     SAFE_COUNT  : boolean := true);     -- Safe counters (no overflow)
     port (
-    -- Statistics interface (bytes received/sent, frames received/sent
+    -- Statistics interface (bytes received/sent, frames received/sent)
     stats_req_t : in  std_logic;        -- Toggle to request next block
     bcst_bytes  : out unsigned(COUNT_WIDTH-1 downto 0);
     bcst_frames : out unsigned(COUNT_WIDTH-1 downto 0);
@@ -29,6 +30,7 @@ entity port_statistics is
     rcvd_frames : out unsigned(COUNT_WIDTH-1 downto 0);
     sent_bytes  : out unsigned(COUNT_WIDTH-1 downto 0);
     sent_frames : out unsigned(COUNT_WIDTH-1 downto 0);
+    delta_freq  : out tfreq_t;
 
     -- Port status-reporting.
     status_clk  : in  std_logic;
@@ -52,6 +54,7 @@ end port_statistics;
 architecture port_statistics of port_statistics is
 
 signal rx_word                  : byte_t;
+signal rx_freq,     tx_freq     : tfreq_t;
 signal rx_nlast,    tx_nlast    : integer range 0 to 1;
 signal rx_clk,      tx_clk      : std_logic;
 signal rx_reset,    tx_reset    : std_logic;
@@ -65,11 +68,13 @@ tx_clk      <= to_01_std(tx_ctrl.clk);
 
 -- Some simulators require a pseudo-delay to keep clock-edges aligned.
 rx_reset    <= rx_data.reset_p;
+rx_freq     <= rx_data.tfreq;
 rx_word     <= rx_data.data;
 rx_nlast    <= u2i(rx_data.last);   -- Convert LAST to NLAST
 rx_write    <= rx_data.write;
 
 tx_reset    <= tx_ctrl.reset_p;
+tx_freq     <= tx_ctrl.tfreq;
 tx_nlast    <= u2i(tx_data.last);   -- Convert LAST to NLAST
 tx_write    <= tx_data.valid and tx_ctrl.ready;
 
@@ -87,6 +92,7 @@ u_stats : entity work.eth_statistics
     rcvd_frames => rcvd_frames,
     sent_bytes  => sent_bytes,
     sent_frames => sent_frames,
+    delta_freq  => delta_freq,
     port_rate   => rx_data.rate,
     port_status => rx_data.status,
     status_clk  => status_clk,
@@ -100,11 +106,13 @@ u_stats : entity work.eth_statistics
     err_ptp_rx  => err_ptp_rx,
     rx_reset_p  => rx_reset,
     rx_clk      => rx_clk,
+    rx_freq     => rx_freq,
     rx_data     => rx_word,
     rx_nlast    => rx_nlast,
     rx_write    => rx_write,
     tx_reset_p  => tx_reset,
     tx_clk      => tx_clk,
+    tx_freq     => tx_freq,
     tx_nlast    => tx_nlast,
     tx_write    => tx_write);
 

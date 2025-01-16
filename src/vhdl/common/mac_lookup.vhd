@@ -41,6 +41,7 @@ use     work.tcam_constants.all;
 entity mac_lookup is
     generic (
     ALLOW_RUNT      : boolean;          -- Allow undersize frames?
+    INPUT_HAS_FCS   : boolean;          -- Does input stream include FCS field?
     IO_BYTES        : positive;         -- Width of main data port
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Max stored MAC addresses
@@ -93,13 +94,25 @@ end mac_lookup;
 
 architecture mac_lookup of mac_lookup is
 
+-- What's the expected minimum packet length in bytes?
+function min_frame_bytes return integer is
+    constant FCS_BYTES : natural := 4 * u2i(INPUT_HAS_FCS);
+begin
+    if ALLOW_RUNT then
+        return 14 + FCS_BYTES;
+    else
+        return 60 + FCS_BYTES;
+    end if;
+end function;
+
 -- Do we need a second TCAM unit?  This allows us to search for destination
 -- and source addresses in the same clock cycle, for higher throughput.
-constant DUAL_TCAM : boolean :=
-    (ALLOW_RUNT and IO_BYTES >= 18) or (IO_BYTES >= 64);
+-- This is required if a minimum-size frame fits in a single clock cycle.
+constant DUAL_TCAM : boolean := (IO_BYTES >= min_frame_bytes);
 
 -- Do we need to offset the source address search?  Adding a one-cycle delay
--- is required for destination/source time-sharing if IO_BYTES >= 12.
+-- is required for destination/source time-sharing if both MAC addresses
+-- are received on the same clock cycle (i.e., IO_BYTES >= 12).
 constant DELAY_SOURCE : boolean := IO_BYTES >= 12 and not DUAL_TCAM;
 
 -- Convert integer indices to std_logic_vector.
@@ -119,6 +132,7 @@ begin
         mac_is_swcontrol(mac) or
         mac_is_l2multicast(mac) or
         mac_is_l3multicast(mac) or
+        mac_is_invalid(mac) or
         mac_is_broadcast(mac));
 end function;
 
@@ -126,7 +140,7 @@ end function;
 -- (e.g., The local-link addresses for controlling managed switches.)
 function mac_is_filtered(mac : mac_addr_t) return std_logic is
 begin
-    return bool2bit(mac_is_swcontrol(mac));
+    return bool2bit(mac_is_invalid(mac));
 end function;
 
 -- Extract destination and source MAC address.

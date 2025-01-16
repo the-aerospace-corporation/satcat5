@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2022 The Aerospace Corporation.
+-- Copyright 2019-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -89,8 +89,9 @@ signal io_reset     : std_logic;
 signal io_lock      : std_logic;
 
 -- Precision timestamps.
-signal lcl_tstamp       : tstamp_t := TSTAMP_DISABLED;
-signal lcl_tvalid       : std_logic := '0';
+signal lcl_tstamp   : tstamp_t := TSTAMP_DISABLED;
+signal lcl_tfreq    : tfreq_t := TFREQ_DISABLED;
+signal lcl_tvalid   : std_logic := '0';
 
 -- Receive datapath
 signal rx_byte      : byte_t := (others => '0');
@@ -165,6 +166,7 @@ gen_ptp : if VCONFIG.input_hz > 0 generate
         ref_time    => ref_time,
         user_clk    => IO_CLK,
         user_ctr    => lcl_tstamp,
+        user_freq   => lcl_tfreq,
         user_lock   => lcl_tvalid,
         user_rst_p  => io_reset);
 end generate;
@@ -358,6 +360,7 @@ u_amble_rx : entity work.eth_preamble_rx
     raw_err     => io_rxer,
     rate_word   => port_rate,
     rx_tstamp   => lcl_tstamp,
+    rx_tfreq    => lcl_tfreq,
     status      => port_status,
     rx_data     => rx_data);    -- Rx data to switch
 
@@ -371,6 +374,7 @@ u_amble_tx : entity work.eth_preamble_tx
     tx_pwren    => io_lock,
     tx_cken     => tx_cken,
     tx_tstamp   => lcl_tstamp,
+    tx_tfreq    => lcl_tfreq,
     tx_data     => tx_data,     -- Tx data from switch
     tx_ctrl     => tx_ctrl);    -- (Associated control)
 

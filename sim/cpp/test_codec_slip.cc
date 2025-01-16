@@ -9,8 +9,8 @@
 #include <satcat5/codec_slip.h>
 
 TEST_CASE("SlipEncoder") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Unit under test writes to a fixed-size working buffer.
     satcat5::io::PacketBufferHeap test_buff(64);
@@ -49,8 +49,8 @@ TEST_CASE("SlipEncoder") {
 }
 
 TEST_CASE("SlipDecoder") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Unit under test writes to a fixed-size working buffer.
     satcat5::io::PacketBufferHeap rx(64);
@@ -91,6 +91,7 @@ TEST_CASE("SlipDecoder") {
     }
 
     SECTION("overflow") {
+        log.suppress("SLIP decode error");          // Suppress error messages
         unsigned write_len = rx.get_write_space() + 10;
         for (unsigned a = 0 ; a < write_len ; ++a)
             uut.write_u8(0x42);                     // Packet too long...
@@ -102,14 +103,15 @@ TEST_CASE("SlipDecoder") {
 }
 
 TEST_CASE("SlipCodec") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Unit under test with mock-UART transmit/receive buffers.
     satcat5::io::PacketBufferHeap tx(64), rx(64);
     satcat5::io::SlipCodec uut(&tx, &rx);
 
-    SECTION("Tx") {
+    // Write a simple message and verify its exact output.
+    SECTION("TxExact") {
         uut.write_u32(0x12345678u);
         REQUIRE(uut.write_finalize());
         satcat5::poll::service();
@@ -122,7 +124,8 @@ TEST_CASE("SlipCodec") {
         tx.read_finalize();
     }
 
-    SECTION("Rx") {
+    // Write a simple encoded message and verify its exact output.
+    SECTION("RxExact") {
         rx.write_bytes(7, "\xDB\xDD\x12\xDB\xDC\x34\xC0");
         rx.write_finalize();
         satcat5::poll::service();
@@ -132,5 +135,26 @@ TEST_CASE("SlipCodec") {
         CHECK(uut.read_u8() == 0xC0);
         CHECK(uut.read_u8() == 0x34);
         uut.read_finalize();
+    }
+
+    // Connect SlipCodec in loopback with SlipCodecInverse.
+    SECTION("Inverse") {
+        satcat5::io::SlipCodecInverse inv(&rx, &tx);
+        for (unsigned a = 0 ; a < 100 ; ++a) {
+            // Write a randomized test packet.
+            u32 ref1 = satcat5::test::rand_u32();
+            u32 ref2 = satcat5::test::rand_u32();
+            uut.write_u32(ref1);
+            uut.write_u32(ref2);
+            REQUIRE(uut.write_finalize());
+            // Encode and decode the message in loopback.
+            satcat5::poll::service();
+            inv.copy_to(&inv);
+            satcat5::poll::service();
+            // Confirm the received contents.
+            CHECK(uut.read_u32() == ref1);
+            CHECK(uut.read_u32() == ref2);
+            uut.read_finalize();
+        }
     }
 }

@@ -49,10 +49,9 @@ static bool file_test(u32 file_id, satcat5::io::Readable* ref)
 }
 
 TEST_CASE("Net-AeroFTP") {
-    // Simulation infrastructure.
-    satcat5::log::ToConsole log;
-    satcat5::test::TimerAlways timer;
-    satcat5::test::CrosslinkIp xlink;
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
 
     // Quiet mode suppresses various routine messages.
     if (QUIET_MODE) {
@@ -63,6 +62,8 @@ TEST_CASE("Net-AeroFTP") {
         log.suppress("AeroFTP: New file");
         log.suppress("AeroFTP: Restart file");
         log.suppress("AeroFTP: Transmission complete");
+    } else {
+        WARN("Section start");
     }
 
     // Units under test.
@@ -75,6 +76,7 @@ TEST_CASE("Net-AeroFTP") {
     client_eth.connect(xlink.net1.macaddr());
     client_udp.connect(xlink.net1.ipaddr());
     client_udp.throttle(2);
+    satcat5::poll::service_all();
 
     // Servers should always start from scratch.
     // (Otherwise, stale files in the working folder affect test results.)
@@ -90,13 +92,13 @@ TEST_CASE("Net-AeroFTP") {
         u32 file_id = next_file_id();
         // Transmit the entire file.
         REQUIRE(client_eth.send(file_id, ref.read()));
-        timer.sim_wait(5000);
+        xlink.timer.sim_wait(5000);
         // Confirm file received.
         CHECK(server_eth.done(file_id));
         CHECK(file_test(file_id, ref.read()));
         // Restart transmission but close abruptly.
         CHECK(client_eth.send(file_id, ref.read()));
-        timer.sim_wait(5);
+        xlink.timer.sim_wait(5);
         client_eth.close();
         CHECK(server_eth.done(file_id));
     }
@@ -105,7 +107,7 @@ TEST_CASE("Net-AeroFTP") {
         u32 file_id = next_file_id();
         // Transmit the entire file.
         REQUIRE(client_udp.send(file_id, ref.read()));
-        timer.sim_wait(5000);
+        xlink.timer.sim_wait(5000);
         // Confirm file received.
         CHECK(server_udp.done(file_id));
         CHECK(file_test(file_id, ref.read()));
@@ -117,11 +119,12 @@ TEST_CASE("Net-AeroFTP") {
         // First pass sends the entire file with random loss.
         xlink.set_loss_rate(0.2f);
         REQUIRE(client_eth.send(file_id, ref.read()));
-        timer.sim_wait(5000);
+        xlink.timer.sim_wait(5000);
         // Second pass sends the missing blocks.
         xlink.set_loss_rate(0.0f);
         auto retry = server_eth.missing_blocks(file_id);
         CHECK(client_eth.send(file_id, ref.read(), retry));
+        xlink.timer.sim_wait(5000);
         // Confirm file received.
         CHECK(server_eth.done(file_id));
         CHECK(file_test(file_id, ref.read()));
@@ -132,11 +135,12 @@ TEST_CASE("Net-AeroFTP") {
         // First pass sends the entire file with random loss.
         xlink.set_loss_rate(0.2f);
         REQUIRE(client_udp.send(file_id, ref.read()));
-        timer.sim_wait(5000);
+        xlink.timer.sim_wait(5000);
         // Second pass sends the missing blocks.
         xlink.set_loss_rate(0.0f);
         auto retry = server_udp.missing_blocks(file_id);
         CHECK(client_udp.send(file_id, ref.read(), retry));
+        xlink.timer.sim_wait(5000);
         // Confirm file received.
         CHECK(server_udp.done(file_id));
         CHECK(file_test(file_id, ref.read()));

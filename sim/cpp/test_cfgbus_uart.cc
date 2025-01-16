@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus UART driver
@@ -107,6 +107,10 @@ protected:
 };
 
 TEST_CASE("cfgbus_uart") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Unit under test.
     MockUart mock;
     cfg::Uart uut(&mock, CFG_DEVADDR);
 

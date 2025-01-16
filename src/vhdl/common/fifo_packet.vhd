@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2023 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -67,6 +67,7 @@ entity fifo_packet is
     FLUSH_TIMEOUT   : natural := 0;         -- Stale data timeout (optional)
     MAX_PACKETS     : positive := 32;       -- Maximum queued packets
     MAX_PKT_BYTES   : positive := 1536;     -- Maximum packet size (bytes)
+    ZERO_PAD        : boolean := true;      -- Zero-pad unaligned inputs?
     TEST_MODE       : boolean := false);    -- Enable verification features
     port (
     -- Input port does not use flow control.
@@ -81,6 +82,7 @@ entity fifo_packet is
     in_reset        : out std_logic;        -- Syncronized copy of reset_p
     in_overflow     : out std_logic;        -- Overflow strobe (in_clk)
     in_hfull        : out std_logic;        -- Approximate half-full indicator
+    in_pct_full     : out unsigned(7 downto 0);
 
     -- Output port uses AXI-style flow control.
     out_clk         : in  std_logic;
@@ -139,6 +141,7 @@ signal wdog_reset   : std_logic := '0'; -- Flag in output clock
 
 -- State synchronized to main input.
 signal half_full    : std_logic := '0';
+signal pct_full     : unsigned(7 downto 0) := (others => '0');
 signal free_words   : words_i := FIFO_DEPTH;
 signal new_words    : words_i := 1;
 signal in_wcount    : integer range 0 to INPUT_WMAX := 0;
@@ -209,6 +212,7 @@ u_reset_out : sync_reset
 in_reset    <= reset_i;
 in_overflow <= wr_ovrflow;
 in_hfull    <= half_full;
+in_pct_full <= pct_full;
 
 u_overflow : sync_pulse2pulse
     port map(
@@ -258,11 +262,13 @@ begin
         wr_data(wr_data'left downto FIFO_DWIDTH) <= i2s(wr_nlast, FIFO_CWIDTH);
 
         -- Update each part of the data register, MSW-first.
-        -- (Note: End of input may not be word-aligned.)
+        -- This ensures the output is left-aligned even for partial inputs.
+        -- If zero padding is enabled, first write clears the entire register.
         for n in 0 to INPUT_WMAX loop
             if (in_write = '1' and in_wcount = INPUT_WMAX - n) then
-                wr_data((n+1)*INPUT_WIDTH-1 downto
-                        (n+0)*INPUT_WIDTH) <= in_data;
+                wr_data((n+1)*INPUT_WIDTH-1 downto n*INPUT_WIDTH) <= in_data;
+            elsif (ZERO_PAD and in_write = '1' and in_wcount = 0) then
+                wr_data((n+1)*INPUT_WIDTH-1 downto n*INPUT_WIDTH) <= (others => '0');
             end if;
         end loop;
 
@@ -323,6 +329,10 @@ begin
 
         -- Optional half-full indicator is not used internally.
         half_full <= bool2bit(free_words < FIFO_DEPTH/2) and not reset_i;
+
+        -- Optional "percent-full" indicator is not used internally.
+        -- (Output is an 8-bit fractional scale: 0 = Empty, 255 = Full.)
+        pct_full <= scale_fraction(FIFO_DEPTH - free_words, FIFO_DEPTH, pct_full'length);
     end if;
 end process;
 
@@ -526,7 +536,8 @@ end process;
 u_out_fifo : entity work.fifo_smol_resize
     generic map(
     IN_BYTES    => FIFO_BYTES,
-    OUT_BYTES   => OUTPUT_BYTES)
+    OUT_BYTES   => OUTPUT_BYTES,
+    ZERO_PAD    => ZERO_PAD)
     port map(
     in_data     => rd_data(FIFO_DWIDTH-1 downto 0),
     in_nlast    => rd_nlast_i,

@@ -5,6 +5,9 @@
 --
 -- Proxy-ARP wrapper
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block encapsulates all functions required for Proxy-ARP:
 --   * Cache for local MAC addresses (router_arp_cache)
 --   * MAC-replacement to route incoming frames (router_mac_replace)

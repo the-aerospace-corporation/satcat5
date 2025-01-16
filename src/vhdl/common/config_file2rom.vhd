@@ -136,7 +136,6 @@ package body CONFIG_FILE2ROM is
         return y;
     end function;
 
-    -- 
     impure function len_bin_file(
         filename    : string;
         ovr_width   : integer := -1)

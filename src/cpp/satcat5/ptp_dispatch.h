@@ -64,6 +64,8 @@ namespace satcat5 {
 
             // Accessors for one-step and two-step timestamps.
             // See "ptp_interface.h" for more information.
+            inline satcat5::ptp::Time ptp_time_now()
+                { return m_iface->ptp_time_now(); }
             inline satcat5::ptp::Time ptp_tx_start()
                 { return m_iface->ptp_tx_start(); }
             inline satcat5::ptp::Time ptp_tx_timestamp()
@@ -80,19 +82,15 @@ namespace satcat5 {
             void store_reply_addr();    // Reply to most recent sender.
             void store_addr(            // Send to a specific L2/L3 address.
                 const satcat5::eth::MacAddr& mac,
-                const satcat5::ip::Addr& ip = satcat5::ip::ADDR_NONE);
-
-            // Accessor for a timer object from the IP stack.
-            inline satcat5::util::GenericTimer* timer()
-                { return m_ip->m_timer; }
+                const satcat5::ip::Addr& ip = satcat5::ip::ADDR_NONE,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
         protected:
             // Incoming message notification.
             void poll_demand() override;
 
             // Helper functions for assigning header parameters
-            satcat5::eth::MacAddr get_dst_mac(satcat5::ptp::DispatchTo addr) const;
-            satcat5::eth::MacType get_eth_type(satcat5::ptp::DispatchTo addr) const;
+            satcat5::eth::Header get_dst_eth(satcat5::ptp::DispatchTo addr) const;
             satcat5::udp::Port get_dst_port(u8 ptp_msg_type) const;
             satcat5::ip::Addr get_dst_ip(satcat5::ptp::DispatchTo addr) const;
 
@@ -104,6 +102,8 @@ namespace satcat5 {
             // Internal configuration.
             satcat5::eth::MacAddr m_reply_mac;
             satcat5::eth::MacAddr m_stored_mac;
+            satcat5::eth::VlanTag m_reply_vtag;
+            satcat5::eth::VlanTag m_stored_vtag;
             satcat5::ip::Addr m_reply_ip;
             satcat5::ip::Addr m_stored_ip;
         };

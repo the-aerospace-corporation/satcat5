@@ -22,6 +22,7 @@
 #pragma once
 
 #include <hal_posix/file_io.h>
+#include <satcat5/datetime.h>
 
 // Buffer size must be large enough for one full-size Ethernet frame.
 #ifndef SATCAT5_PCAP_BUFFSIZE
@@ -30,6 +31,14 @@
 
 namespace satcat5 {
     namespace io {
+        // Define selected LinkType codes from the official registry:
+        //  https://www.tcpdump.org/linktypes.html
+        constexpr u16 LINKTYPE_ETHERNET     = 1;    // Ethernet (Default)
+        constexpr u16 LINKTYPE_USER0        = 147;  // User-defined type #0
+        constexpr u16 LINKTYPE_AOS          = 222;  // CCSDS-AOS Space Data Link
+        constexpr u16 LINKTYPE_USER(u16 x)          // User-defined type #0-15
+            { return LINKTYPE_USER0 + x; }          // Reserved for private use
+
         // Read packet stream from a file.
         class ReadPcap : public satcat5::io::ArrayRead {
         public:
@@ -38,6 +47,8 @@ namespace satcat5 {
 
             // Open the specified file.
             void open(const char* filename);
+            inline void open(const std::string& filename)
+                { open(filename.c_str()); }
             inline void close() {m_file.close();}
 
             // Override end-of-packet handling.
@@ -72,26 +83,32 @@ namespace satcat5 {
         // Store packet stream to a file.
         class WritePcap : public satcat5::io::ArrayWrite {
         public:
-            // Open the output file and set PCAP or PCAPNG mode.
-            explicit WritePcap(
-                satcat5::datetime::Clock* clock,
-                const char* filename = 0,
-                bool pcapng = true);
+            // Create the capture object and set PCAP or PCAPNG mode.
+            // Timestamps are drawn from the system time by default,
+            // or from a user-provided timer for simulations.
+            explicit WritePcap(bool pcapng = true);
 
-            // Open the specified file.
-            void open(const char* filename);
-            inline void close() {m_file.close();}
+            // Open the specified file, and optionally specify LinkType.
+            void open(const char* filename, u16 type = LINKTYPE_ETHERNET);
+            inline void open(const std::string& filename, u16 type = LINKTYPE_ETHERNET)
+                { open(filename.c_str(), type); }
+            inline void close()
+                { m_file.close(); }
+
+            // Passthrough mode carbon-copies each packet to another
+            // Writeable object, using the internal working buffer.
+            inline void set_passthrough(satcat5::io::Writeable* wr)
+                { m_pass = wr; }
 
             // Override end-of-packet handling.
             bool write_finalize() override;
-            void write_overflow() override;
 
         protected:
             // Internal state and working buffer.
-            satcat5::datetime::Clock* const m_clock;
+            satcat5::datetime::Clock m_clock;
             satcat5::io::FileWriter m_file;
+            satcat5::io::Writeable* m_pass;
             const bool m_mode_ng;   // PCAPNG format?
-            bool m_mode_ovr;        // Oversize packet?
             u8 m_buff[SATCAT5_PCAP_BUFFSIZE];
         };
     }

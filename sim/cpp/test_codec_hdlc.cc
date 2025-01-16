@@ -26,8 +26,8 @@ static const u8 EXAMPLE_ENC[] = {
     0x17, 0x3D, 0xB9, 0x93, 0xAC, 0x7E};
 
 TEST_CASE("HdlcEncoder") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Unit under test writes encoded stream to a buffer.
     satcat5::io::PacketBufferHeap tx(200);
@@ -90,8 +90,8 @@ TEST_CASE("HdlcEncoder") {
 }
 
 TEST_CASE("HdlcDecoder") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Unit under test writes decoded frames to a buffer.
     satcat5::io::PacketBufferHeap rx(200);

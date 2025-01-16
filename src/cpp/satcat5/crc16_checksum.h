@@ -10,6 +10,7 @@
 // "XMODEM" is the MSB-first variant.
 //
 // For more information, see discussion from Greg Cook:
+//  https://reveng.sourceforge.io/crc-catalogue/16.htm#crc.cat.crc-16-ibm-3740
 //  https://reveng.sourceforge.io/crc-catalogue/16.htm#crc.cat.crc-16-kermit
 //  https://reveng.sourceforge.io/crc-catalogue/16.htm#crc.cat.crc-16-xmodem
 //
@@ -18,6 +19,10 @@
 // accept the frame contents and append the designated CRC16 variant. The
 // "KermitRx" and "XmodemRx" classes verify the checksum of incoming frames,
 // calling write_finalize() or write_abort() appropriately.
+//
+// Note that the CRC16 used in the CCSDS "AOS Space Data Link Protocol"
+// (Blue Book 732.0-B-4) is equivalent to "IBM-3740" (link above), which is
+// the "XMODEM" variant with an initial value of 0xFFFF instead of zero.
 //
 
 #pragma once
@@ -35,40 +40,44 @@ namespace satcat5 {
         class KermitTx : public satcat5::io::ChecksumTx<u16,2>
         {
         public:
-            explicit KermitTx(satcat5::io::Writeable* dst, u16 init = 0);
+            explicit KermitTx(satcat5::io::Writeable* dst, u16 init = 0, u16 xorout = 0);
             bool write_finalize() override;
         private:
             void write_next(u8 data) override;
+            const u16 m_xorout;
         };
 
         // Check and remove FCS from each incoming frame ("KERMIT" variant).
         class KermitRx : public satcat5::io::ChecksumRx<u16,2>
         {
         public:
-            explicit KermitRx(satcat5::io::Writeable* dst, u16 init = 0);
+            explicit KermitRx(satcat5::io::Writeable* dst, u16 init = 0, u16 xorout = 0);
             bool write_finalize() override;
         private:
             void write_next(u8 data) override;
+            const u16 m_xorout;
         };
 
         // Append FCS to each outgoing frame ("XMODEM" variant).
         class XmodemTx : public satcat5::io::ChecksumTx<u16,2>
         {
         public:
-            explicit XmodemTx(satcat5::io::Writeable* dst, u16 init = 0);
+            explicit XmodemTx(satcat5::io::Writeable* dst, u16 init = 0, u16 xorout = 0);
             bool write_finalize() override;
         private:
             void write_next(u8 data) override;
+            const u16 m_xorout;
         };
 
         // Check and remove FCS from each incoming frame ("XMODEM" variant).
         class XmodemRx : public satcat5::io::ChecksumRx<u16,2>
         {
         public:
-            explicit XmodemRx(satcat5::io::Writeable* dst, u16 init = 0);
+            explicit XmodemRx(satcat5::io::Writeable* dst, u16 init = 0, u16 xorout = 0);
             bool write_finalize() override;
         private:
             void write_next(u8 data) override;
-        };
+            const u16 m_xorout;
+       };
     }
 }

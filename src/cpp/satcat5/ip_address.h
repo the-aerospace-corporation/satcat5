@@ -8,6 +8,7 @@
 
 #include <satcat5/eth_arp.h>
 #include <satcat5/net_core.h>
+#include <satcat5/timeref.h>
 
 namespace satcat5 {
     namespace ip {
@@ -33,26 +34,31 @@ namespace satcat5 {
 
             // Automatic address resolution using routing table + ARP.
             void connect(
-                const satcat5::ip::Addr& dstaddr);
+                const satcat5::ip::Addr& dstaddr,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
             // Manual address resolution (user supplies IP + MAC)
             void connect(
                 const satcat5::ip::Addr& dstaddr,
-                const satcat5::eth::MacAddr& dstmac);
+                const satcat5::eth::MacAddr& dstmac,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
-            // Retry ARP query (automatic address resolution only).
-            void retry();
-
-            // Unbind from current address, if any.
+            // Required overrides from net::Address:
             void close() override;
-
-            // Various accessors.
             bool ready() const override {return m_ready;}
-            satcat5::eth::MacAddr dstmac() const {return m_dstmac;}
-            satcat5::ip::Addr dstaddr() const {return m_dstaddr;}
-            satcat5::ip::Addr gateway() const {return m_gateway;}
+            void retry() override;
             satcat5::net::Dispatch* iface() const override;
             satcat5::io::Writeable* open_write(unsigned len) override;
+            bool is_multicast() const override;
+            bool matches_reply_address() const override;
+            bool reply_is_multicast() const override;
+            void save_reply_address() override;
+
+            // Various accessors.
+            satcat5::eth::MacAddr dstmac() const {return m_dstmac;}
+            satcat5::eth::VlanTag vtag() const {return m_vtag;}
+            satcat5::ip::Addr dstaddr() const {return m_dstaddr;}
+            satcat5::ip::Addr gateway() const {return m_gateway;}
 
         protected:
             void arp_event(
@@ -65,9 +71,11 @@ namespace satcat5 {
             satcat5::ip::Dispatch* const m_iface;
             const u8 m_proto;
             u8 m_ready;
+            satcat5::util::TimeVal m_arp_tref;
             satcat5::eth::MacAddr m_dstmac;
             satcat5::ip::Addr m_dstaddr;
             satcat5::ip::Addr m_gateway;
+            satcat5::eth::VlanTag m_vtag;
         };
     }
 }

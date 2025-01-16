@@ -12,6 +12,9 @@
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/ip_icmp.h>
 
+using satcat5::eth::MACADDR_BROADCAST;
+using satcat5::eth::VTAG_NONE;
+
 // Mock IP sub-protocol that always triggers an ICMP error.
 static const u8 PROTO_FAKE = 0xFF;
 
@@ -33,7 +36,7 @@ public:
     bool request(satcat5::ip::Addr dst, u16 errtype, u32 arg = 0) {
         static const unsigned REQ_LEN = 6;      // Fixed request length
         satcat5::io::Writeable* wr = m_iface->open_write(
-            satcat5::eth::MACADDR_BROADCAST, dst, PROTO_FAKE, REQ_LEN);
+            MACADDR_BROADCAST, VTAG_NONE, dst, PROTO_FAKE, REQ_LEN);
         wr->write_u16(errtype);                 // Requested ICMP type
         wr->write_u32(arg);                     // Optional argument
         return wr->write_finalize();            // Send the request
@@ -52,10 +55,11 @@ protected:
 };
 
 TEST_CASE("ICMP") {
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
 
     // Network communication infrastructure.
-    satcat5::test::CrosslinkIp xlink;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
 
     // Shortcuts and aliases:
     auto& c2p(xlink.eth0);                      // Bad packet injection point

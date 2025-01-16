@@ -25,10 +25,14 @@ ipcore_add_gpio spi_csb
 ipcore_add_gpio spi_sck
 ipcore_add_gpio spi_sdo
 ipcore_add_gpio spi_sdi
+set dcx [ipcore_add_gpio dcx_out]
 
 # Set parameters
 ipcore_add_param DEV_ADDR devaddr 0 \
     {ConfigBus device address (0-255)}
+ipcore_add_param DCX_COUNT long 0 \
+    {Enable DCX output? Held low for first N bytes of each transfer.}
+set_property enablement_dependency "\$DCX_COUNT > 0" $dcx
 
 # Package the IP-core.
 ipcore_finished

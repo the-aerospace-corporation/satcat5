@@ -188,7 +188,7 @@ begin
         rd_valid <= '0';
     elsif rising_edge(out_clk) then
         rd_addr  <= rd_next;
-        if (rd_incr = '1') then 
+        if (rd_incr = '1') then
             rd_valid <= bool2bit(rd_next /= rd_limit);
         elsif (rd_addr /= rd_limit) then
             rd_valid <= '1';

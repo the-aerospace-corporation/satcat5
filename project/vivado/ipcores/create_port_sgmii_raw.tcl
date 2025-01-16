@@ -15,17 +15,23 @@ if [info exists sgmii_raw_mgt_type] {
     puts "Using MGT-Type: ${sgmii_raw_mgt_type}"
 } elseif {$part_family == "7series"} {
     set sgmii_raw_mgt_type {gtx}
-} elseif {$part_family == "ultrascale" || $part_family == "ultraplus"} {
+} elseif {$part_family == "ultrascale"} {
     set sgmii_raw_mgt_type {gty}
+} elseif {$part_family == "ultraplus"} {
+    set sgmii_raw_mgt_type {gty_plus}
 } else {
     error "Unsupported part family: ${part_family}"
 }
 set core_name "sgmii_raw_${sgmii_raw_mgt_type}"
 
 # Default MGT reference clock frequency 125MHz, can be overridden.
-# Note: Extra zeros ".000" are required by the Xilinx MGT IP-core.
+# Note: Extra zeros ".000" are required by the GTX MGT IP-core, but not the GTY MGT core
 if ![info exists sgmii_raw_refclk_mhz] {
-    variable sgmii_raw_refclk_mhz {125.000}
+    if {$sgmii_raw_mgt_type == {gtx}} {
+        variable sgmii_raw_refclk_mhz {125.000}
+    } elseif {$sgmii_raw_mgt_type == {gty} || $sgmii_raw_mgt_type == {gty_plus}} {
+        variable sgmii_raw_refclk_mhz {125}
+    }
 }
 variable sgmii_raw_refclk_hz [expr {round($sgmii_raw_refclk_mhz * 1000000)}]
 

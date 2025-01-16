@@ -13,15 +13,14 @@
 #include <satcat5/switch_telemetry.h>
 
 TEST_CASE("switch_telemetry") {
-    // Test infrastructure.
-    satcat5::log::ToConsole logger;
-    satcat5::test::TimerAlways timekeeper;
-    satcat5::test::CrosslinkIp xlink;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
 
     // Mock interface for the SwitchConfig object.
     satcat5::test::CfgDevice reg_cfg;
     reg_cfg.read_default(7);
-    
+
     // Mock interface for the NetworkStats object.
     satcat5::test::CfgDevice reg_stats;
     reg_stats.read_default(0);
@@ -36,14 +35,14 @@ TEST_CASE("switch_telemetry") {
     // Basic test with SwitchConfig only.
     SECTION("basic1") {
         satcat5::eth::SwitchTelemetry uut(&tlm, &cfg, 0);
-        timekeeper.sim_wait(60000); // 60 seconds = two full rounds.
+        xlink.timer.sim_wait(60000); // 60 seconds = two full rounds.
         CHECK(rx_udp.get_read_ready() > 0);
     }
 
     // Basic test with SwitchConfig and NetworkStats.
     SECTION("basic2") {
         satcat5::eth::SwitchTelemetry uut(&tlm, &cfg, &stats);
-        timekeeper.sim_wait(60000); // 60 seconds = two full rounds.
+        xlink.timer.sim_wait(60000); // 60 seconds = two full rounds.
         CHECK(rx_udp.get_read_ready() > 0);
     }
 }

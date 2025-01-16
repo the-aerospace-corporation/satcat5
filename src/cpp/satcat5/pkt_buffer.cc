@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2022 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -15,12 +15,6 @@ using satcat5::util::min_unsigned;
 
 // Safety-check ZCQ calls? Safe but slow.
 static const unsigned DEBUG_SAFE_ZCW    = 0;
-
-// For compatibility with previous versions, optionally allow user
-// to advance to next packet without calling read_finalize().
-#ifndef SATCAT5_PKTBUF_AUTORDF
-#define SATCAT5_PKTBUF_AUTORDF  0   // Disabled by default
-#endif
 
 // Label for AtomicLock statistics tracking.
 static const char* LBL_PKT = "PKT";
@@ -259,13 +253,12 @@ void PacketBuffer::consume_internal(unsigned nbytes)
         m_pkt_lbuff[m_pkt_rdidx] -= nbytes;
     }
 
-    // Is auto-finalize enabled?  Last byte calls read_finalize.
-    if (SATCAT5_PKTBUF_AUTORDF && m_pkt_maxct) {
-        // Packet mode -> Last byte in frame?
-        if (!m_pkt_lbuff[m_pkt_rdidx]) read_finalize();
-    } else if (SATCAT5_PKTBUF_AUTORDF) {
-        // Non-packet mode -> Last byte in buffer?
-        if (m_shared_rdavail == m_buff_rdcount) read_finalize();
+    // Non-packet mode: Immediately free consumed data.
+    // In packet mode, this occurs during read_finalize().
+    if (!m_pkt_maxct) {
+        AtomicLock lock(LBL_PKT);
+        m_shared_rdavail -= m_buff_rdcount;
+        m_buff_rdcount = 0;
     }
 }
 

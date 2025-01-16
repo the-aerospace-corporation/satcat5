@@ -12,7 +12,9 @@
 using satcat5::test::MockInterrupt;
 
 TEST_CASE("cfgbus_interrupt") {
-    satcat5::log::ToConsole log;    // Logging handler
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     satcat5::test::CfgDevice cfg;   // ConfigBus interface
     cfg[1].read_default_echo();
     cfg[2].read_default_echo();

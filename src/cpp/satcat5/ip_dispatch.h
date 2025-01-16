@@ -9,12 +9,8 @@
 // packets are checked for validity and then sorted by IP protocol number
 // (i.e., ICMP, UDP, TCP, etc.).
 //
-// The system includes static routing tables for next-hop routing.
-// By default, all routes are assumed to be local (i.e., the next hop
-// is the final destination with no intermediate routers).  To change
-// this behavior, call the route_** methods to fill the routing table.
-// A shortcut "route_simple(...)" is provided for configuring simple
-// networks that have a single access point.
+// The system includes static routing tables for next-hop routing,
+// inheriting all functionality from the ip::Table class.
 //
 // For an all-in-one container with ip::Dispatch and other components
 // required for UDP communications, use ip::Stack (ip_stack.h).
@@ -26,19 +22,16 @@
 #include <satcat5/eth_dispatch.h>
 #include <satcat5/ip_core.h>
 #include <satcat5/ip_icmp.h>
+#include <satcat5/ip_table.h>
 #include <satcat5/net_core.h>
-
-// Set size of the static routing table, not including the default route.
-// (To override, add gcc argument "-DSATCAT5_UDP_BUFFSIZE=32" etc.)
-#ifndef SATCAT5_ROUTING_TABLE
-#define SATCAT5_ROUTING_TABLE 4
-#endif
+#include <satcat5/utils.h>
 
 namespace satcat5 {
     namespace ip {
         // Implemention of "net::Dispatch" for IPv4 frames.
         class Dispatch final
-            : public satcat5::net::Protocol
+            : public satcat5::eth::ArpListener
+            , public satcat5::net::Protocol
             , public satcat5::net::Dispatch
         {
         public:
@@ -48,7 +41,7 @@ namespace satcat5 {
             Dispatch(
                 const satcat5::ip::Addr& addr,
                 satcat5::eth::Dispatch* iface,
-                satcat5::util::GenericTimer* timer);
+                satcat5::ip::Table* route);
             ~Dispatch() SATCAT5_OPTIONAL_DTOR;
 
             // Get Writeable object for deferred write of IPv4 frame header.
@@ -57,6 +50,7 @@ namespace satcat5 {
                 const satcat5::net::Type& type, unsigned len) override;
             satcat5::io::Writeable* open_write(
                 const satcat5::eth::MacAddr& mac,   // Destination MAC
+                const satcat5::eth::VlanTag& vtag,  // VLAN information
                 const satcat5::ip::Addr& ip,        // Destination IP
                 u8 protocol,                        // Protocol (UDP/TCP/etc)
                 unsigned len);                      // Length after IP header
@@ -64,91 +58,100 @@ namespace satcat5 {
             // Set the local IP-address.
             void set_addr(const satcat5::ip::Addr& addr);
 
-            // Clear ALL routes, including the default.
-            // (This configuration assumes all connections are local ones.)
-            void route_clear();
-
-            // Set the default route.  Setting the default to ADDR_NONE
-            // causes any connection to fail unless defined explicitly.
-            void route_default(
-                const satcat5::ip::Addr& gateway);
-
-            // Simplified one-step setup for a typical home network.
-            // (i.e., A small LAN with a single gateway router.)
-            void route_simple(
-                const satcat5::ip::Addr& gateway,
-                const satcat5::ip::Mask& subnet = satcat5::ip::MASK_24);
-
-            // Create or update a single route.
-            // Returns true if successful, false if table is full.
-            bool route_set(
-                const satcat5::ip::Subnet& subnet,
-                const satcat5::ip::Addr& gateway);
-
-            // Next-hop routing lookup for the given destination address.
-            satcat5::ip::Addr route_lookup(
-                const satcat5::ip::Addr& dstaddr) const;
-
             // Create a basic IPv4 header with the specified information.
             satcat5::ip::Header next_header(
                 u8 protocol,                    // Packet type (ICMP/UDP/etc)
                 const satcat5::ip::Addr& dst,   // Destination IP address
                 unsigned inner_bytes);          // Length of contained packet
 
+            // Routing table configuration (see ip_table.h)
+            inline void route_clear(bool lockdown = true)
+                { m_route->route_clear(lockdown); }
+            inline bool route_cache(
+                const satcat5::ip::Addr& gateway,
+                const satcat5::eth::MacAddr& dstmac)
+                { return m_route->route_cache(gateway, dstmac); }
+            inline bool route_default(
+                const satcat5::ip::Addr& gateway,
+                const satcat5::eth::MacAddr& dstmac = satcat5::eth::MACADDR_NONE)
+                { return m_route->route_default(gateway, dstmac); }
+            inline bool route_local(const satcat5::ip::Subnet& subnet)
+                { return m_route->route_local(subnet); }
+            inline bool route_simple(
+                const satcat5::ip::Addr& gateway,
+                const satcat5::ip::Mask& subnet = satcat5::ip::MASK_24)
+                { return m_route->route_simple(gateway, subnet); }
+            inline bool route_static(
+                const satcat5::ip::Subnet& subnet,
+                const satcat5::ip::Addr& gateway,
+                const satcat5::eth::MacAddr& dstmac = satcat5::eth::MACADDR_NONE)
+                { return m_route->route_static(subnet, gateway, dstmac); }
+            inline bool route_remove(const satcat5::ip::Subnet& subnet)
+                { return m_route->route_remove(subnet); }
+            inline bool route_remove(const satcat5::ip::Addr& addr)
+                { return m_route->route_remove(addr); }
+            inline satcat5::ip::Route route_lookup(
+                const satcat5::ip::Addr& dstaddr) const
+                { return m_route->route_lookup(dstaddr); }
+
             // Other accessors:
             inline satcat5::eth::ProtoArp* arp()
-                {return &m_arp;}
+                { return &m_arp; }
             inline satcat5::eth::Dispatch* iface() const
-                {return m_iface;}
+                { return m_iface; }
             inline satcat5::ip::Addr ipaddr() const
-                {return m_addr;}
+                { return m_addr; }
             inline satcat5::eth::MacAddr macaddr() const
-                {return m_iface->macaddr();}
+                { return m_iface->macaddr(); }
+            inline satcat5::eth::VlanTag reply_vtag() const
+                { return m_iface->reply_vtag(); }
             inline satcat5::eth::MacAddr reply_mac() const
-                {return m_iface->reply_mac();}
+                { return m_iface->reply_mac(); }
+            inline bool reply_is_multicast() const
+                { return m_reply_dst.is_multicast(); }
             inline satcat5::ip::Addr reply_ip() const
-                {return m_reply_ip;}
+                { return m_reply_src; }
             inline const satcat5::ip::Header& reply_hdr() const
-                {return m_reply_hdr;}
+                { return m_reply_hdr; }
             inline void set_ipaddr(const satcat5::ip::Addr& addr)
-                {set_addr(addr);}
+                { set_addr(addr); }
             inline void set_macaddr(const satcat5::eth::MacAddr& macaddr)
-                {m_iface->set_macaddr(macaddr);}
+                { m_iface->set_macaddr(macaddr); }
+            inline satcat5::ip::Table* table()
+                { return m_route; }
 
-            // Reference timer (for ICMP timestamps, etc.)
-            satcat5::util::GenericTimer* const m_timer;
+            // For testing purposes only, reset the "ident" field.
+            // (This is unsafe, but simplifies certain unit tests.)
+            inline void set_ident(u16 ident)
+                { m_ident = ident; }
 
             // ARP and ICMP handlers for this interface.
             satcat5::eth::ProtoArp m_arp;
             satcat5::ip::ProtoIcmp m_icmp;
 
         protected:
-            // A single entry in the static routing table.
-            struct Route {
-                satcat5::ip::Subnet subnet;
-                satcat5::ip::Addr   gateway;
-            };
+            // Event handler for the ARP cache.
+            void arp_event(
+                const satcat5::eth::MacAddr& mac,
+                const satcat5::ip::Addr& ip) override;
 
             // Event handler for incoming IPv4 frames.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
 
             // Pointer to the parent interface.
             satcat5::eth::Dispatch* const m_iface;
+            satcat5::ip::Table* const m_route;
 
             // IP address for this interface.
             satcat5::ip::Addr m_addr;
 
             // The current reply state (address + complete header).
-            satcat5::ip::Addr m_reply_ip;
+            satcat5::ip::Addr m_reply_dst;
+            satcat5::ip::Addr m_reply_src;
             satcat5::ip::Header m_reply_hdr;
 
             // Identification field for outgoing packets.
             u16 m_ident;
-
-            // Static routing table.
-            u16 m_route_count;
-            satcat5::ip::Addr m_route_default;
-            satcat5::ip::Dispatch::Route m_route_table[SATCAT5_ROUTING_TABLE];
         };
     }
 }

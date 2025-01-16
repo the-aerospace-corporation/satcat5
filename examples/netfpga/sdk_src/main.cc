@@ -20,6 +20,9 @@
 #include <satcat5/log.h>
 #include <satcat5/port_mailmap.h>
 #include <satcat5/port_serial.h>
+#include <satcat5/ptp_client.h>
+#include <satcat5/ptp_telemetry.h>
+#include <satcat5/ptp_tracking.h>
 #include <satcat5/switch_cfg.h>
 #include <satcat5/switch_telemetry.h>
 #include <satcat5/udp_tftp.h>
@@ -48,7 +51,6 @@ satcat5::cfg::Uart          uart_status     (&cfgbus, DEVADDR_SWSTATUS);
 satcat5::port::SerialAuto   eth_pmod_ja     (&cfgbus, DEVADDR_PMOD_JA);
 satcat5::port::SerialAuto   eth_pmod_jb     (&cfgbus, DEVADDR_PMOD_JB);
 satcat5::cfg::Timer         timer           (&cfgbus, DEVADDR_TIMER);
-satcat5::cfg::PtpReference  ptpref          (&cfgbus, DEVADDR_PTPREF);
 satcat5::cfg::Mdio          eth_mdio        (&cfgbus, DEVADDR_MDIO);
 satcat5::eth::SwitchConfig  eth_switch      (&cfgbus, DEVADDR_SWCORE);
 satcat5::cfg::NetworkStats  traffic_stats   (&cfgbus, DEVADDR_TRAFFIC);
@@ -95,6 +97,15 @@ ip::DhcpClient ip_dhcp(&ip_stack.m_udp);
     ip::DhcpPoolStatic<32> ip_dhcp_pool(ip::Addr(192, 168, 1, 64));
     ip::DhcpServer ip_dhcp_server(&ip_stack.m_udp, &ip_dhcp_pool);
 #endif
+
+// Link PTP client to the network stack.
+satcat5::cfg::PtpRealtime ptp_clock(eth_port.ptp_clock_reg(), MAIN_CLK_HZ);
+satcat5::cfg::PtpReference ptp_vref(cfgbus.get_register(DEVADDR_PTPREF), VREF_CLK_HZ);
+satcat5::ptp::Client ptp_client(&eth_port, &ip_stack.m_ip);
+satcat5::ptp::SyncUnicastL3 ptp_unicast(&ptp_client);
+satcat5::ptp::TrackingController trk_ctrl(&ptp_clock, &ptp_client);
+satcat5::ptp::Logger ptp_log(&ptp_client, &ptp_clock);
+satcat5::ptp::Telemetry ptp_telem(&ptp_client, &ip_stack.m_udp, &ptp_clock);
 
 // Connect logging system to the MDM's virtual UART
 satcat5::ublaze::UartLite   uart_mdm("UART",

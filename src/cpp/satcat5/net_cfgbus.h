@@ -1,23 +1,10 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Handler for ConfigBus network commands
-//
-// This protocol allows a local ConfigBus to be commanded remotely
-// over Ethernet or UDP, depending on how it is instantiated.
-//
-// It is equivalent to the one in cfgbus_host_eth.vhd, but implemented in
-// software.  This can be used to implement mixed local/remote control,
-// provide diagnostics, etc.
-//
-// The driver only supports memory-mapped local ConfigBus (i.e., an instance
-// of the cfg::ConfigBusMmap class). Support for masked writes is optional,
-// and disabled by default. Set SATCAT5_PROTOCFG_SUPPORT_WRMASK = 1 to enable
-// this feature.
-//
-// Refer to cfgbus_host_eth.vhd for details of the packet format.
-//
+//! \file
+//! Handler for ConfigBus network commands
+//!
 
 #pragma once
 
@@ -25,10 +12,23 @@
 
 namespace satcat5 {
     namespace net {
-        // Generic version requires a wrapper to be used.
+        //! This protocol allows a local ConfigBus to be commanded remotely
+        //! over Ethernet or UDP, depending on how it is instantiated.
+        //!
+        //! It is equivalent to the one in cfgbus_host_eth.vhd, but implemented in
+        //! software.  This can be used to implement mixed local/remote control,
+        //! provide diagnostics, etc.
+        //!
+        //! The driver only supports memory-mapped local ConfigBus (i.e., an
+        //! instance of the cfg::ConfigBusMmap class). Support for masked writes
+        //! is optional, and disabled by default. Set
+        //! `SATCAT5_PROTOCFG_SUPPORT_WRMASK = 1` to enable this feature.
+        //!
+        //! Refer to cfgbus_host_eth.vhd for details of the packet format.
         class ProtoConfig : public satcat5::net::Protocol {
         protected:
-            // Only children can safely access constructor/destructor.
+            //! Only children can access constructor/destructor.
+            //! @{
             ProtoConfig(
                 satcat5::cfg::ConfigBusMmap* cfg,
                 satcat5::net::Dispatch* iface,
@@ -36,19 +36,22 @@ namespace satcat5 {
                 const satcat5::net::Type& ack,
                 unsigned max_devices);
             ~ProtoConfig() SATCAT5_OPTIONAL_DTOR;
+            //! @}
 
-            // Event handler for incoming frames.
+            //! Event handler to process incoming frames and respond.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
 
-            satcat5::cfg::ConfigBusMmap* const m_cfg;
-            satcat5::net::Dispatch* const m_iface;
-            satcat5::net::Type const m_acktype;
-            const unsigned m_max_devices;
+            // Member variables
+            satcat5::cfg::ConfigBusMmap* const m_cfg;   //!< ConfigBus instance.
+            satcat5::net::Dispatch* const m_iface;      //!< Registered iface.
+            satcat5::net::Type const m_acktype;         //!< Type for replies.
+            const unsigned m_max_devices;               //!< Max # of devices.
         };
     }
 
-    // Thin wrappers for commonly used protocols:
     namespace eth {
+        //! Thin wrapper for access via ethernet frames through eth::Dispatch.
+        //! \copydoc satcat5::net::ProtoConfig
         class ProtoConfig final : public satcat5::net::ProtoConfig {
         public:
             ProtoConfig(
@@ -59,6 +62,8 @@ namespace satcat5 {
     }
 
     namespace udp {
+        //! Thin wrapper for access via UDP/IP through udp::Dispatch.
+        //! \copydoc satcat5::net::ProtoConfig
         class ProtoConfig final : public satcat5::net::ProtoConfig {
         public:
             ProtoConfig(

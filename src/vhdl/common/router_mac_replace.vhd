@@ -5,6 +5,9 @@
 --
 -- MAC-address replacement for Proxy-ARP
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block modifies the destination MAC-address for Ethernet frames as
 -- they pass through the router.  The rules are as follows:
 --  * Inspect EtherType field to determine packet type

@@ -60,7 +60,13 @@ package router_sim_tools is
     -- Pull up to N bytes from start of input vector.
     function get_first_bytes(
         data    : std_logic_vector;
-        nbytes  : integer) return std_logic_vector;
+        nbytes  : natural) return std_logic_vector;
+
+    -- Pull exactly N bytes from the designated position.
+    function get_packet_bytes(
+        data    : std_logic_vector;
+        bidx    : natural;
+        nbytes  : natural) return std_logic_vector;
 
     -- Better concatenate function that forces "downto" slice direction.
     -- (Otherwise, some tools get unexpected runtime exceptions.)
@@ -72,7 +78,12 @@ package router_sim_tools is
 
     -- Define various commonly used protocol magic numbers:
     subtype ethertype is std_logic_vector(15 downto 0);
+    subtype slv8 is std_logic_vector(7 downto 0);
     subtype slv16 is std_logic_vector(15 downto 0);
+    subtype slv32 is std_logic_vector(31 downto 0);
+    subtype uint8 is unsigned(7 downto 0);
+    subtype uint16 is unsigned(15 downto 0);
+    subtype uint32 is unsigned(31 downto 0);
     constant ETYPE_NOIP     : ethertype := x"1234";
 
     constant ICMP_TC_ECHORP : slv16 := x"0000";
@@ -95,7 +106,9 @@ package router_sim_tools is
     constant ARP_REQUEST    : slv16 := x"0001";
     constant ARP_REPLY      : slv16 := x"0002";
 
-    constant ZPAD32         : ip_addr_t := (others => '0');
+    constant ZPAD8          : slv8 := (others => '0');
+    constant ZPAD16         : slv16 := (others => '0');
+    constant ZPAD32         : slv32 := (others => '0');
 
     -- Use quasi-pointers for variable-length packets.
     -- (Some simulators can't handle unconstrained std_logic_vector.)
@@ -107,7 +120,7 @@ package router_sim_tools is
         version : std_logic_vector(3 downto 0);
         dscp    : std_logic_vector(5 downto 0);
         ecn     : std_logic_vector(1 downto 0);
-        ident   : bcount_t;
+        ident   : uint16;
         flags   : std_logic_vector(2 downto 0);
         fr_off  : unsigned(12 downto 0);
         ttl     : unsigned(7 downto 0);
@@ -120,14 +133,21 @@ package router_sim_tools is
 
     function make_ipv4_header(
         dst, src    : ip_addr_t;
-        ident       : bcount_t;
+        ident       : uint16;
         proto       : byte_t;
         flags       : slv16 := IPFLAG_NORMAL;
-        ttl         : integer := 64)
+        ttl         : integer := 64;
+        ecn         : integer := 0)
         return ipv4_header;
 
     -- Calculate CRC of an input vector, using Ethernet CRC32 method.
     function eth_checksum(x : std_logic_vector) return crc_word_t;
+
+    -- Insert a VLAN tag into an existing untagged Ethernet packet.
+    function insert_vtag_pkt(pkt: std_logic_vector; vtag: vlan_hdr_t)
+        return eth_packet;  -- Header + Tag + Data only
+    function insert_vtag_fcs(pkt: std_logic_vector; vtag: vlan_hdr_t)
+        return eth_packet;  -- Header + Tag + Data + FCS
 
     -- Make an Ethernet frame with the given parameters and payload.
     -- Note: Most router internal logic omits the FCS/CRC at end of frame.
@@ -163,7 +183,7 @@ package router_sim_tools is
         vtag    : vlan_hdr_t;
         etype   : ethertype;
         data    : std_logic_vector)
-        return eth_packet;  -- Header + Tag Data + FCS
+        return eth_packet;  -- Header + Tag + Data + FCS
 
     -- Make an IPv4 frame with the given parameters and payload.
     -- Note: Typically the result is passed to make_eth_pkt() or make_eth_fcs().
@@ -171,7 +191,7 @@ package router_sim_tools is
         hdr     : ipv4_header;
         data    : std_logic_vector;
         opts    : std_logic_vector := "")
-        return ip_packet;
+        return ip_packet;   -- IPv4 frame without Ethernet header/footer
 
     -- Decrement the TTL counter of an IPv4-in-Ethernet frame.
     function decr_ipv4_ttl(x : std_logic_vector) return eth_packet;
@@ -183,36 +203,60 @@ package router_sim_tools is
         spa : ip_addr_t;
         tha : mac_addr_t;
         tpa : ip_addr_t;
-        fcs : boolean := true)
-        return eth_packet;
+        fcs : boolean := true;
+        vtg : vlan_hdr_t := VHDR_NONE)
+        return eth_packet;  -- Header + Tag if nonzero + Data + FCS on request
 
     -- Make an ICMP request message (e.g., timestamp or echo)
     function make_icmp_request(
         dst, src    : ip_addr_t;
-        opcode      : ethertype;
-        ident       : bcount_t;
+        opcode      : slv16;
+        ident       : uint16;
         refdat      : std_logic_vector;
         ttl         : integer := 64)
-        return ip_packet;
+        return ip_packet;   -- IPv4 frame without Ethernet header/footer
 
     -- Make an ICMP frame that replies to the given IPv4 frame.
     -- Note: Time request / time-reply not supported.
     function make_icmp_reply(
         srcip   : ip_addr_t;
-        opcode  : ethertype;
-        ident   : bcount_t;
+        opcode  : slv16;
+        ident   : uint16;
         refpkt  : std_logic_vector;
         maxecho : integer := 64)
-        return ip_packet;
+        return ip_packet;   -- IPv4 frame without Ethernet header/footer
+
+    -- Make a TCP packet. Requires parent header for checksum.
+    -- Note: Typically the result is passed to make_ipv4_pkt().
+    function make_tcp_pkt(
+        hdr         : ipv4_header;
+        src, dst    : uint16;
+        seq, ack    : uint32;
+        flags       : slv16;
+        wsize       : uint16;
+        data        : std_logic_vector;
+        opts        : std_logic_vector := "")
+        return ip_packet;   -- IPv4 frame without Ethernet header/footer
+
+    -- Make a UDP packet.
+    -- Note: Checksum field is always disabled (all zeros).
+    -- Note: Typically the result is passed to make_ipv4_pkt().
+    function make_udp_pkt(
+        src, dst    : uint16;
+        data        : std_logic_vector)
+        return ip_packet;   -- IPv4 frame without Ethernet header/footer
+
+    -- Format an IP address, e.g., x"C0A80801" -> "192.168.8.1"
+    function format(addr: ip_addr_t) return string;
 
     -- Type codes for the ARP packet generator.
     type pkt_type_t is (PKT_JUNK, PKT_ARP_REQUEST, PKT_ARP_RESPONSE);
 
     -- Fixed fields for ARP frames: EtherType, HTYPE, PTYPE, HLEN, PLEN, OPER
-    constant ARP_QUERY_HDR : std_logic_vector(79 downto 0) :=
-        x"0806_0001_0800_06_04_0001";
-    constant ARP_REPLY_HDR : std_logic_vector(79 downto 0) :=
-        x"0806_0001_0800_06_04_0002";
+    constant ARP_QUERY_HDR : std_logic_vector(79 downto 0)
+        := x"0806_0001_0800_06_04_0001";
+    constant ARP_REPLY_HDR : std_logic_vector(79 downto 0)
+        := x"0806_0001_0800_06_04_0002";
 
     -- ARP packet generator.
     component router_sim_pkt_gen is
@@ -345,13 +389,22 @@ package body router_sim_tools is
     -- Pull up to N bytes from an input vector.
     function get_first_bytes(
         data    : std_logic_vector;
-        nbytes  : integer) return std_logic_vector is
+        nbytes  : natural) return std_logic_vector is
     begin
         if (data'length > 8*nbytes) then
             return data(data'left downto data'left+1-8*nbytes);
         else
             return data;
         end if;
+    end function;
+
+    -- Pull exactly N bytes from the designated position.
+    function get_packet_bytes(
+        data    : std_logic_vector;
+        bidx    : natural;
+        nbytes  : natural) return std_logic_vector is
+    begin
+        return data(data'left-8*bidx downto data'left+1-8*bidx-8*nbytes);
     end function;
 
     -- Better concatenate function that forces "downto" slice direction.
@@ -365,16 +418,17 @@ package body router_sim_tools is
     -- Construct a default IPv4 header object.
     function make_ipv4_header(
         dst, src    : ip_addr_t;
-        ident       : bcount_t;
+        ident       : uint16;
         proto       : byte_t;
         flags       : slv16 := IPFLAG_NORMAL;
-        ttl         : integer := 64)
+        ttl         : integer := 64;
+        ecn         : integer := 0)
         return ipv4_header
     is
         constant tmp : ipv4_header := (
             version => i2s(4, 4),
             dscp    => (others => '0'),
-            ecn     => (others => '0'),
+            ecn     => i2s(ecn, 2),
             ident   => ident,
             flags   => flags(15 downto 13),
             fr_off  => unsigned(flags(12 downto 0)),
@@ -413,6 +467,29 @@ package body router_sim_tools is
             fcs(n) := not crc(8*(n/8) + 7 - (n mod 8));
         end loop;
         return fcs;
+    end function;
+
+    -- Insert a VLAN tag into an existing untagged Ethernet packet.
+    function insert_vtag_pkt(pkt: std_logic_vector; vtag: vlan_hdr_t)
+        return eth_packet
+    is
+        constant tmp : std_logic_vector(pkt'left+32 downto 0)
+            := pkt(pkt'left downto pkt'left-95) -- Dst + Src
+             & ETYPE_VLAN & vtag                -- VLAN header
+             & pkt(pkt'left-96 downto 0);       -- Etype + data
+    begin
+        return new std_logic_vector'(tmp);      -- Packet without FCS
+    end function;
+
+    function insert_vtag_fcs(pkt: std_logic_vector; vtag: vlan_hdr_t)
+        return eth_packet
+    is
+        constant tmp : std_logic_vector(pkt'left downto 0)
+            := pkt(pkt'left downto pkt'left-95) -- Dst + Src
+             & ETYPE_VLAN & vtag                -- VLAN header
+             & pkt(pkt'left-96 downto 32);      -- Etype + data - FCS
+    begin
+        return make_eth_fcs(tmp);               -- Calculate new FCS
     end function;
 
     -- Make an Ethertype frame with the given parameters and payload.
@@ -532,31 +609,40 @@ package body router_sim_tools is
         spa : ip_addr_t;
         tha : mac_addr_t;
         tpa : ip_addr_t;
-        fcs : boolean := true)
+        fcs : boolean := true;
+        vtg : vlan_hdr_t := VHDR_NONE)
         return eth_packet
     is
-        constant pkt : std_logic_vector(223 downto 0) :=
-            x"000108000604" & op & sha & spa & tha & tpa;
+        constant arp : std_logic_vector(223 downto 0)
+            := x"000108000604" & op & sha & spa & tha & tpa;
+        variable pkt : eth_packet;
     begin
-        if (op = ARP_REQUEST and fcs) then
-            return make_eth_fcs(MAC_ADDR_BROADCAST, sha, ETYPE_ARP, pkt);
-        elsif (op = ARP_REQUEST and not fcs) then
-            return make_eth_pkt(MAC_ADDR_BROADCAST, sha, ETYPE_ARP, pkt);
-        elsif (op = ARP_REPLY and fcs) then
-            return make_eth_fcs(tha, sha, ETYPE_ARP, pkt);
-        elsif (op = ARP_REPLY and not fcs) then
-            return make_eth_pkt(tha, sha, ETYPE_ARP, pkt);
+        -- Formulate the request or reply message.
+        if (op = ARP_REQUEST and vtg = VHDR_NONE) then
+            pkt := make_eth_pkt(MAC_ADDR_BROADCAST, sha, ETYPE_ARP, arp);
+        elsif (op = ARP_REQUEST) then
+            pkt := make_vlan_pkt(MAC_ADDR_BROADCAST, sha, vtg, ETYPE_ARP, arp);
+        elsif (op = ARP_REPLY and vtg = VHDR_NONE) then
+            pkt := make_eth_pkt(tha, sha, ETYPE_ARP, arp);
+        elsif (op = ARP_REPLY) then
+            pkt := make_vlan_pkt(tha, sha, vtg, ETYPE_ARP, arp);
         else
             report "Invalid ARP request" severity failure;
             return new std_logic_vector'("");
+        end if;
+        -- Append FCS?
+        if (fcs) then
+            return make_eth_fcs(pkt.all);
+        else
+            return pkt;
         end if;
     end function;
 
     -- Make an ICMP request message (e.g., timestamp or echo)
     function make_icmp_request(
         dst, src    : ip_addr_t;
-        opcode      : ethertype;
-        ident       : bcount_t;
+        opcode      : slv16;
+        ident       : uint16;
         refdat      : std_logic_vector;
         ttl         : integer := 64)
         return ip_packet
@@ -591,8 +677,8 @@ package body router_sim_tools is
     -- Make an ICMP frame that replies to the given IP frame.
     function make_icmp_reply(
         srcip   : ip_addr_t;
-        opcode  : ethertype;
-        ident   : bcount_t;
+        opcode  : slv16;
+        ident   : uint16;
         refpkt  : std_logic_vector;
         maxecho : integer := 64)
         return ip_packet
@@ -633,6 +719,60 @@ package body router_sim_tools is
             return new std_logic_vector'("");
         end if;
     end function;
+
+    function make_tcp_pkt(
+        hdr         : ipv4_header;
+        src, dst    : uint16;
+        seq, ack    : uint32;
+        flags       : slv16;
+        wsize       : uint16;
+        data        : std_logic_vector;
+        opts        : std_logic_vector := "")
+        return ip_packet
+    is
+        -- Calculate expected total packet length (header + data).
+        constant PKT_BYTES : integer := 20 + opts'length/8 + data'length/8;
+        -- Header fields are split before and after checksum.
+        constant pkt1 : std_logic_vector(127 downto 0)
+            := std_logic_vector(src) & std_logic_vector(dst)
+             & std_logic_vector(seq) & std_logic_vector(ack)
+             & flags & std_logic_vector(wsize);
+        constant pkt2 : std_logic_vector(15+opts'length+data'length downto 0)
+            := ZPAD16 & opts & data;
+        -- Calculate the checksum over packet plus psuedoheader.
+        constant phdr : std_logic_vector(239+opts'length+data'length downto 0)
+            := pkt1 & pkt2 & hdr.srcip & hdr.dstip & ZPAD8 & hdr.proto & i2s(PKT_BYTES, 16);
+        constant chk : slv16 := ipv4_checksum(phdr);
+        -- Concatenated packet.
+        constant pkt : std_logic_vector(159+opts'length+data'length downto 0)
+            := pkt1 & chk & pkt2;
+    begin
+        return new std_logic_vector'(pkt);
+    end function;
+
+    function make_udp_pkt(
+        src, dst    : uint16;
+        data        : std_logic_vector)
+        return ip_packet
+    is
+        constant PKT_BYTES : integer := 8 + data'length/8;
+        constant pkt : std_logic_vector(63+data'length downto 0)
+            := std_logic_vector(src) & std_logic_vector(dst)
+             & i2s(PKT_BYTES, 16) & ZPAD16 & data;
+    begin
+        return new std_logic_vector'(pkt);
+    end function;
+
+    function format(addr: ip_addr_t) return string is
+        variable a0 : natural := u2i(addr(31 downto 24));
+        variable a1 : natural := u2i(addr(23 downto 16));
+        variable a2 : natural := u2i(addr(15 downto  8));
+        variable a3 : natural := u2i(addr( 7 downto  0));
+    begin
+        return integer'image(a0) & "." & integer'image(a1) & "."
+             & integer'image(a2) & "." & integer'image(a3);
+    end function;
+
 end package body;
 
 ---------------------------------------------------------------------

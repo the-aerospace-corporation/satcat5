@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test the "Chat" dispatch and protocol handlers
@@ -11,6 +11,10 @@
 #include <satcat5/log.h>
 
 TEST_CASE("ethernet-chat") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Define addresses used during the test.
     const satcat5::eth::MacAddr MAC_UUT =
         {{0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11}};
     const satcat5::eth::MacAddr MAC_DST =
@@ -101,6 +105,7 @@ TEST_CASE("ethernet-chat") {
     }
 
     SECTION("log2chat") {
+        log.suppress("Log event");
         // Link logger object to the ChatProto.
         satcat5::eth::LogToChat logger(&uut);
         CHECK(rx.get_read_ready() == 0);

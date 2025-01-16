@@ -68,6 +68,7 @@ entity fifo_priority is
     in_last_hipri   : in  std_logic;        -- High-priority packet?
     in_write        : in  std_logic;
     in_overflow     : out std_logic;        -- Warning strobe (invalid commit)
+    in_pct_full     : out unsigned(7 downto 0);
     in_reset        : out std_logic;        -- Reset sync'd to in_clk
 
     -- Output port uses AXI-style flow control.
@@ -205,6 +206,7 @@ u_fifo_lo : entity work.fifo_packet
     in_last_commit  => lo_commit,
     in_last_revert  => lo_revert,
     in_overflow     => lo_overflow,
+    in_pct_full     => in_pct_full,
     in_reset        => sync_reset_i,
     out_clk         => out_clk,
     out_data        => lo_data,

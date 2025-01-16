@@ -143,9 +143,9 @@ p_test : process
 
     procedure mactbl_wait_idle is
     begin
-        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, REGADDR_QUERY_CTRL);
+        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, SW_ADDR_QUERY_CTRL);
         while (cfg_rdval(31 downto 24) /= OPCODE_IDLE) loop
-            cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, REGADDR_QUERY_CTRL);
+            cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, SW_ADDR_QUERY_CTRL);
         end loop;
     end procedure;
 
@@ -154,18 +154,18 @@ p_test : process
     begin
         -- Issue the command and wait for it to complete.
         mactbl_wait_idle;
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL, opcode);
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL, opcode);
         mactbl_wait_idle;
         -- Confirm results match expectations.
         assert (last_rd_idx = tbl_idx)
             report "Read index mismatch" severity error;
-        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, REGADDR_QUERY_CTRL);
+        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, SW_ADDR_QUERY_CTRL);
         assert (u2i(cfg_rdval(15 downto 0)) = read_psrc)
             report "Read PSRC mismatch" severity error;
-        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, REGADDR_QUERY_MAC_LSB);
+        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, SW_ADDR_QUERY_MAC_LSB);
         assert (cfg_rdval(31 downto 0) = read_addr(31 downto 0))
             report "Read MAC-LSB mismatch" severity error;
-        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, REGADDR_QUERY_MAC_MSB);
+        cfgbus_readwait(cfg_cmd, cfg_ack, DEV_ADDR, SW_ADDR_QUERY_MAC_MSB);
         assert (cfg_rdval(15 downto 0) = read_addr(47 downto 32))
             report "Read MAC-MSB mismatch" severity error;
     end procedure;
@@ -175,9 +175,9 @@ p_test : process
     begin
         -- Issue the command and wait for it to complete.
         mactbl_wait_idle;
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_MAC_LSB, mac_addr(31 downto 0));
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_MAC_MSB, x"0000" & mac_addr(47 downto 32));
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL, opcode);
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_MAC_LSB, mac_addr(31 downto 0));
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_MAC_MSB, x"0000" & mac_addr(47 downto 32));
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL, opcode);
         mactbl_wait_idle;
         -- Confirm results match expectations.
         assert (last_wr_addr = mac_addr)
@@ -192,12 +192,12 @@ p_test : process
     begin
         -- Issue a no-op to clear the test flag.
         mactbl_wait_idle;
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL, opcode);
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL, opcode);
         mactbl_wait_idle;
         assert (last_clear = '1')
             report "Missing CLEAR strobe" severity error;
         -- Issue a clear command and confirm test flag.
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL, opcode);
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL, opcode);
         mactbl_wait_idle;
         assert (last_clear = '1')
             report "Missing CLEAR strobe" severity error;
@@ -208,7 +208,7 @@ p_test : process
     begin
         -- Issue the command and wait for it to complete.
         mactbl_wait_idle;
-        cfgbus_write(cfg_cmd, DEV_ADDR, REGADDR_QUERY_CTRL, opcode);
+        cfgbus_write(cfg_cmd, DEV_ADDR, SW_ADDR_QUERY_CTRL, opcode);
         mactbl_wait_idle;
         -- Confirm results match expectations.
         assert (mac_learn = enable)

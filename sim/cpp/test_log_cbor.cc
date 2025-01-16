@@ -27,6 +27,9 @@ static bool echo_buffer(satcat5::io::BufferedIO* buff) {
 }
 
 TEST_CASE("log_cbor") {
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
+
     // Configuration constants.
     constexpr satcat5::eth::MacAddr MAC_CLIENT = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11};
     constexpr satcat5::eth::MacAddr MAC_SERVER = {0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22};
@@ -36,18 +39,16 @@ TEST_CASE("log_cbor") {
     constexpr satcat5::udp::Port    PORT_UDP = {0x4321};
 
     // Logging and timing infrastructure.
-    satcat5::test::TimerAlways timekeeper;
-    satcat5::test::FastPosixTimer timer;
-    satcat5::log::ToConsole log;
-    satcat5::datetime::Clock clock(&timer);
+    satcat5::test::TimerSimulation timer;
+    satcat5::datetime::Clock clock;
 
     // Suppress repeated LogFromCbor output of the test message.
     log.suppress("Test message");
 
     // Network infrastructure for client and server.
     satcat5::io::PacketBufferHeap c2s, s2c;
-    satcat5::ip::Stack client(MAC_CLIENT, IP_CLIENT, &c2s, &s2c, &timer);
-    satcat5::ip::Stack server(MAC_SERVER, IP_SERVER, &s2c, &c2s, &timer);
+    satcat5::ip::Stack client(MAC_CLIENT, IP_CLIENT, &c2s, &s2c);
+    satcat5::ip::Stack server(MAC_SERVER, IP_SERVER, &s2c, &c2s);
 
     // Server-side infrastructure is an echo service.
     satcat5::eth::Socket echo_eth(&server.m_eth);
@@ -61,13 +62,13 @@ TEST_CASE("log_cbor") {
         {   // Write CBOR message to buffer
             satcat5::eth::LogToCbor uut(&clock, &client.m_eth, TYPE_ETH);
             log_something();
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
         }
         REQUIRE(echo_buffer(&echo_eth));
         log.clear();
         {   // Read CBOR message from buffer.
             satcat5::eth::LogFromCbor uut(&client.m_eth, TYPE_ETH);
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
             CHECK(log.contains("Test"));
         }
     }
@@ -76,13 +77,13 @@ TEST_CASE("log_cbor") {
         {   // Write CBOR message to buffer
             satcat5::udp::LogToCbor uut(&clock, &client.m_udp, PORT_UDP);
             log_something();
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
         }
         REQUIRE(echo_buffer(&echo_udp));
         log.clear();
         {   // Read CBOR message from buffer.
             satcat5::udp::LogFromCbor uut(&client.m_udp, PORT_UDP);
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
             CHECK(log.contains("Test"));
         }
     }
@@ -91,13 +92,13 @@ TEST_CASE("log_cbor") {
         {   // Write CBOR message to buffer
             satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
             log_something();
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
         }
         REQUIRE(echo_buffer(&echo_eth));
         log.clear();
         {   // Read CBOR message from buffer.
             satcat5::eth::LogFromCbor uut(&client.m_eth, TYPE_ETH);
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
             CHECK(log.contains("Test"));
         }
     }
@@ -107,7 +108,7 @@ TEST_CASE("log_cbor") {
             satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
             uut.set_min_priority(satcat5::log::WARNING);
             log_something();  // Uses INFO level
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
         }
         CHECK(!echo_buffer(&echo_eth));  // Nothing should be echoed
     }
@@ -116,14 +117,14 @@ TEST_CASE("log_cbor") {
         {   // Write CBOR message to buffer below minimum
             satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
             log_something();  // Uses INFO level
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
         }
         REQUIRE(echo_buffer(&echo_eth));
         log.clear();
         {   // Read CBOR message from buffer.
             satcat5::eth::LogFromCbor uut(&client.m_eth, TYPE_ETH);
             uut.set_min_priority(satcat5::log::WARNING);
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
             CHECK(! log.contains("Test"));  // Should not be there
         }
     }
@@ -133,14 +134,14 @@ TEST_CASE("log_cbor") {
             satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
             uut.set_min_priority(satcat5::log::INFO);
             log_something();  // Uses INFO level
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
         }
         REQUIRE(echo_buffer(&echo_eth));
         log.clear();
         {   // Read CBOR message from buffer.
             satcat5::eth::LogFromCbor uut(&client.m_eth, TYPE_ETH);
             uut.set_min_priority(satcat5::log::INFO);
-            timekeeper.sim_wait(10);
+            timer.sim_wait(10);
             CHECK(log.contains("Test"));
         }
     }

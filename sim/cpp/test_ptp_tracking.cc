@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <fstream>
 #include <hal_test/catch.hpp>
-#include <hal_test/ptp_clock.h>
+#include <hal_test/ptp_simclock.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/ptp_tracking.h>
 #include <satcat5/utils.h>
@@ -21,12 +21,13 @@ using satcat5::ptp::ControllerLR;
 using satcat5::ptp::ControllerPI;
 using satcat5::ptp::ControllerPII;
 using satcat5::ptp::SimulatedClock;
+using satcat5::ptp::SimulatedTimer;
 using satcat5::ptp::SUBNS_PER_NSEC;
 using satcat5::ptp::SUBNS_PER_SEC;
 using satcat5::ptp::Time;
 using satcat5::ptp::TrackingClock;
 using satcat5::ptp::TrackingController;
-using satcat5::ptp::TrackingDither;
+using satcat5::test::sim_filename;
 using satcat5::test::Statistics;
 using satcat5::util::round_s64;
 using satcat5::util::round_u64;
@@ -64,21 +65,15 @@ struct SimResult {
 // Run oscillator + controller simulation for a fixed duration.
 // Saves intermediate data to a .CSV file for manual inspection.
 // Returns the estimated steady-state RMS error, in nanoseconds.
-SimResult simulate(const char* filename, const SimScenario& sim)
+SimResult simulate(const SimScenario& sim)
 {
     // Open file for plaintext output.
-    std::ofstream outfile(filename);
+    std::ofstream outfile(satcat5::test::sim_filename(__FILE__, "csv"));
     outfile << "Time (msec), Offset (nsec), Rate (PPM)" << std::endl;
 
     // Flip sign of certain statistics? (e.g., zero-crossings)
     double stat_flip = (sim.t0_sec > 0) ? 1.0 : -1.0;
     double thresh_90p = 0.1e9 * fabs(sim.t0_sec);
-
-    // Simulated timer object reads from "tsim_usec".
-    // (Separate "always" object polls it during poll::service_all.)
-    u32 tsim_usec = 0;
-    satcat5::util::TimerRegister timer(&tsim_usec, 1000000);
-    satcat5::test::TimerAlways always_poll_timers;
 
     // Set simulation initial conditions.
     double actual_hz = sim.nominal_hz * (1.0 + 0.000001*sim.offset_ppm);
@@ -89,11 +84,13 @@ SimResult simulate(const char* filename, const SimScenario& sim)
     const Time tadj(round_s64(SUBNS_PER_SEC * sim.time_shift));
     const Time step(round_s64(SUBNS_PER_SEC / sim.sim_rate_hz));
     SimulatedClock clk(sim.nominal_hz, actual_hz);
+    SimulatedTimer timer;   // Monotonic timer
+    satcat5::poll::timekeeper.set_clock(timer.get_timer());
 
     // Set time-constants for all operating modes.
-    const CoeffLR coeff_lr(clk.ref_scale(), sim.tau_sec);
-    const CoeffPI coeff_pi(clk.ref_scale(), sim.tau_sec);
-    const CoeffPII coeff_pii(clk.ref_scale(), sim.tau_sec);
+    const CoeffLR coeff_lr(sim.tau_sec);
+    const CoeffPI coeff_pi(sim.tau_sec);
+    const CoeffPII coeff_pii(sim.tau_sec);
 
     // Set up each of the tracking filters.
     satcat5::ptp::MedianFilter<9> premedian(sim.median_order);
@@ -106,12 +103,13 @@ SimResult simulate(const char* filename, const SimScenario& sim)
 
     // Additional sanity checks before we start.
     // (Do this after configuring controllers, for better error logging.)
+    REQUIRE(clk.ok());
     REQUIRE(coeff_lr.ok());
     REQUIRE(coeff_pi.ok());
     REQUIRE(coeff_pii.ok());
 
     // And add those filters to the tracking system under test.
-    TrackingController uut(&timer, &clk, 0);
+    TrackingController uut(&clk);
     uut.add_filter(&premedian);
     uut.add_filter(&preboxcar);
     if (sim.ctrl_type == "LR")          uut.add_filter(&ctrl_lr);
@@ -125,7 +123,7 @@ SimResult simulate(const char* filename, const SimScenario& sim)
     Statistics stats_all, stats_fin, stats_ppm;
     while (tsim < tmax) {
         // Feed next measurement to the unit under test.
-        Time tdiff = tsim + toff - clk.now();
+        Time tdiff = tsim + toff - clk.clock_now();
         uut.update(tdiff);
         // Log the phase error vs. time.
         double delta_nsec = tdiff.delta_subns() / double(SUBNS_PER_NSEC);
@@ -153,8 +151,8 @@ SimResult simulate(const char* filename, const SimScenario& sim)
         if (first_half && tsim*2 >= tmax) {
             first_half = false;
             if (sim.tau_change) {
-                CoeffLR new_coeff_lr(clk.ref_scale(), sim.tau_sec / 2);
-                CoeffPI new_coeff_pi(clk.ref_scale(), sim.tau_sec / 2);
+                CoeffLR new_coeff_lr(sim.tau_sec / 2);
+                CoeffPI new_coeff_pi(sim.tau_sec / 2);
                 REQUIRE(new_coeff_lr.ok());
                 REQUIRE(new_coeff_pi.ok());
                 ctrl_lr.set_coeff(new_coeff_lr);
@@ -164,8 +162,8 @@ SimResult simulate(const char* filename, const SimScenario& sim)
         }
         // Advance simulation one time-step.
         clk.run(step);
+        timer.run(step);
         tsim += step;
-        tsim_usec = tsim.delta_usec();
         satcat5::poll::service_all();
     }
 
@@ -183,6 +181,7 @@ SimResult simulate(const char* filename, const SimScenario& sim)
 
 TEST_CASE("TrackingClockDebug") {
     // Simulation infrastructure.
+    SATCAT5_TEST_START;
     SimulatedClock uut(125e6, 125e6);
 
     SECTION("clock_adjust") {
@@ -202,7 +201,7 @@ TEST_CASE("TrackingClockDebug") {
 
 TEST_CASE("TrackingController") {
     // Simulation infrastructure.
-    satcat5::log::ToConsole log;
+    SATCAT5_TEST_START;
     SimScenario sim = DEFAULT_SCENARIO;
 
     // Suppress routine messages.
@@ -212,7 +211,7 @@ TEST_CASE("TrackingController") {
     // Note: Expected phase-step response with damping 0.707, tau = 5.0 sec
     //  has overshoot ~4.3% and first zero-crossing at ~2.6 seconds.
     SECTION("phase_step_smol_pip") {
-        SimResult result = simulate("simulations/tctrl_smol_pip.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 3.0);
         CHECK(result.phase_over_nsec < 6.0);
@@ -223,7 +222,7 @@ TEST_CASE("TrackingController") {
 
     SECTION("phase_step_smol_pin") {
         sim.t0_sec *= -1;
-        SimResult result = simulate("simulations/tctrl_smol_pin.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 3.0);
         CHECK(result.phase_over_nsec < 6.0);
@@ -235,7 +234,7 @@ TEST_CASE("TrackingController") {
     // Same as "phase_step_smol_pip", but using the double-integral controller.
     SECTION("phase_step_smol_piip") {
         sim.ctrl_type = "PII";
-        SimResult result = simulate("simulations/tctrl_smol_piip.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 3.0);
         CHECK(result.phase_over_nsec < 6.0);
@@ -247,7 +246,7 @@ TEST_CASE("TrackingController") {
     SECTION("phase_step_smol_piin") {
         sim.ctrl_type = "PII";
         sim.t0_sec *= -1;
-        SimResult result = simulate("simulations/tctrl_smol_piin.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 3.0);
         CHECK(result.phase_over_nsec < 6.0);
@@ -259,7 +258,7 @@ TEST_CASE("TrackingController") {
     // Same as "phase_step_smol_pip", but using the linear regression controller.
     SECTION("phase_step_smol_lrp") {
         sim.ctrl_type = "LR";
-        SimResult result = simulate("simulations/tctrl_smol_lrp.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec < 1.0);
         CHECK(result.phase_90p_msec > 6000);
@@ -270,7 +269,7 @@ TEST_CASE("TrackingController") {
     SECTION("phase_step_smol_lrn") {
         sim.ctrl_type = "LR";
         sim.t0_sec *= -1;
-        SimResult result = simulate("simulations/tctrl_smol_lrn.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec < 1.0);
         CHECK(result.phase_90p_msec > 6000);
@@ -281,7 +280,7 @@ TEST_CASE("TrackingController") {
     // Enable the boxcar filter (latency increases overshoot).
     SECTION("phase_step_boxcar") {
         sim.boxcar_order = 2;
-        SimResult result = simulate("simulations/tctrl_boxcar.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 8.0);
         CHECK(result.phase_over_nsec < 12.0);
@@ -293,7 +292,7 @@ TEST_CASE("TrackingController") {
     // Enable the median filter (latency increases overshoot).
     SECTION("phase_step_median") {
         sim.median_order = 5;
-        SimResult result = simulate("simulations/tctrl_median.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 5.0);
         CHECK(result.phase_over_nsec < 8.0);
@@ -305,7 +304,7 @@ TEST_CASE("TrackingController") {
     // Increase the simulation rate from 8 to 64 Hz.
     SECTION("phase_step_fast_pi") {
         sim.sim_rate_hz *= 8;
-        SimResult result = simulate("simulations/tctrl_fast_pi.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 3.0);
         CHECK(result.phase_over_nsec < 6.0);
@@ -319,7 +318,7 @@ TEST_CASE("TrackingController") {
         sim.ctrl_type = "LR";
         sim.sim_rate_hz *= 8;
         sim.linear_order = 16;
-        SimResult result = simulate("simulations/tctrl_fast_lr.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec < 1.0);
         CHECK(result.phase_90p_msec > 5700);
@@ -330,7 +329,7 @@ TEST_CASE("TrackingController") {
     // A larger phase-step.
     SECTION("phase_step_large") {
         sim.t0_sec *= 100;
-        SimResult result = simulate("simulations/tctrl_large.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.phase_over_nsec > 300.0);
         CHECK(result.phase_over_nsec < 600.0);
@@ -342,7 +341,7 @@ TEST_CASE("TrackingController") {
     // A moderate frequency offset.
     SECTION("freq_step") {
         sim.offset_ppm = 100.0;
-        SimResult result = simulate("simulations/tctrl_freq.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 5.0);
         CHECK(result.coarse_adj == 0);
     }
@@ -353,7 +352,7 @@ TEST_CASE("TrackingController") {
         log.suppress("Adjust");
         sim.offset_ppm = 100.0;
         sim.t0_sec = 5.0;
-        SimResult result = simulate("simulations/tctrl_coarse_pi.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 5.0);
         CHECK(result.coarse_adj >= 1);
         CHECK(log.contains("Adjust"));
@@ -365,7 +364,7 @@ TEST_CASE("TrackingController") {
         sim.ctrl_type = "PII";
         sim.offset_ppm = 100.0;
         sim.t0_sec = 5.0;
-        SimResult result = simulate("simulations/tctrl_coarse_pii.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 5.0);
         CHECK(result.coarse_adj >= 1);
         CHECK(log.contains("Adjust"));
@@ -377,7 +376,7 @@ TEST_CASE("TrackingController") {
         sim.ctrl_type = "LR";
         sim.offset_ppm = 100.0;
         sim.t0_sec = 5.0;
-        SimResult result = simulate("simulations/tctrl_coarse_lr.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 5.0);
         CHECK(result.coarse_adj >= 1);
         CHECK(log.contains("Adjust"));
@@ -388,7 +387,7 @@ TEST_CASE("TrackingController") {
         log.suppress("Coarse");  // Suppress expected info messages
         log.suppress("Adjust");
         sim.time_shift = 5.0;
-        SimResult result = simulate("simulations/tctrl_shift.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 5.0);
         CHECK(result.coarse_adj >= 1);
         CHECK(log.contains("Adjust"));
@@ -398,41 +397,48 @@ TEST_CASE("TrackingController") {
     SECTION("tau_change") {
         sim.offset_ppm = 100.0;
         sim.tau_change = true;
-        SimResult result = simulate("simulations/tctrl_tau.csv", sim);
+        SimResult result = simulate(sim);
         CHECK(result.rms_nsec < 1.0);
         CHECK(result.coarse_adj == 0);
         CHECK(log.empty());
     }
 }
 
-TEST_CASE("TrackingDither") {
+TEST_CASE("TrackingSimple") {
     // Simulation infrastructure.
-    satcat5::log::ToConsole log;
-    satcat5::test::TimerAlways timer;
+    SATCAT5_TEST_START;
+    SimulatedClock clk(10e6, 10e6);
+    SimulatedTimer timer;
+    satcat5::ptp::TrackingSimple uut(&clk, &timer);
 
-    // Confirm dither allows sub-LSB resolution.
-    SECTION("average") {
-        for (s64 offset = -1000000 ; offset <= 1000000 ; offset += 10000) {
-            // Configure unit under test.
-            SimulatedClock clk(125e6, 125e6);
-            TrackingDither uut(&clk);
-            uut.clock_rate(offset);
-            // Run for many timesteps.
-            for (unsigned t = 0 ; t < 10000 ; ++t) {
-                satcat5::poll::service_all();
-            }
-            // Confirm dithered average matches expectation.
-            double expected = offset / 65536.0;
-            CHECK(fabs(clk.mean() - expected) < 0.001);
+    SECTION("Basic") {
+        Time step(SUBNS_PER_SEC / 8);
+        for (unsigned a = 0 ; a < 10 ; ++a) {
+            uut.update(satcat5::ptp::ONE_NANOSECOND);
+            clk.run(step);
+            timer.run(step);
         }
     }
+}
 
-    // Confirm coarse adjustments are relayed to the target.
-    SECTION("coarse") {
-        SimulatedClock clk(125e6, 125e6);
-        TrackingDither uut(&clk);
-        CHECK(clk.num_coarse() == 0);
-        uut.clock_adjust(satcat5::ptp::ONE_SECOND);
-        CHECK(clk.num_coarse() == 1);
+TEST_CASE("TrackingCoarse") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+    SimulatedClock clk(10e6, 10e6);
+    satcat5::ptp::TrackingCoarse uut(&clk, 0);
+
+    const Time STEP(SUBNS_PER_SEC / 8);
+
+    satcat5::ptp::Measurement meas;
+    meas.t1 = satcat5::ptp::Time(1234);
+    meas.t2 = satcat5::ptp::Time(2345);
+    meas.t3 = satcat5::ptp::Time(3456);
+    meas.t4 = satcat5::ptp::Time(4567);
+
+    SECTION("Basic") {
+        for (unsigned a = 0 ; a < 10 ; ++a) {
+            uut.ptp_ready(meas);
+            clk.run(STEP);
+        }
     }
 }

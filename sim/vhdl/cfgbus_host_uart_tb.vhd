@@ -168,7 +168,7 @@ u_slip_rx : entity work.slip_encoder
     out_ready   => rx_slp_ready,
     refclk      => clk_100,
     reset_p     => reset_p);
-    
+
 u_uart_rx : entity work.io_uart_tx
     port map(
     uart_txd    => uart_rxd,
@@ -190,7 +190,7 @@ u_slip_tx : entity work.slip_decoder
     decode_err  => open,
     refclk      => clk_100,
     reset_p     => reset_p);
-    
+
 u_uart_tx : entity work.io_uart_rx
     port map(
     uart_rxd    => uart_txd,
@@ -281,7 +281,7 @@ p_test : process
         test_index  <= test_index + 1;
         test_start  <= '1';
         test_pkt_rx := make_eth_fcs(CFG_MACADDR, HOST_MACADDR, CFG_ETYPE_CMD, cmd);
-        test_pkt_tx := make_eth_fcs(HOST_MACADDR, CFG_MACADDR, CFG_ETYPE_ACK, ack); 
+        test_pkt_tx := make_eth_fcs(HOST_MACADDR, CFG_MACADDR, CFG_ETYPE_ACK, ack);
         wait until rising_edge(clk_100);
         test_start  <= '0';
         -- Wait until Tx/Rx process is done.

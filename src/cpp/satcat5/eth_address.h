@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation.
+// Copyright 2023-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Sending packets to a specific Ethernet address
@@ -20,29 +20,35 @@ namespace satcat5 {
         public:
             explicit Address(satcat5::eth::Dispatch* iface);
 
-            #if SATCAT5_VLAN_ENABLE
+            // Connect to the designated address.
             void connect(
                 const satcat5::eth::MacAddr& addr,
                 const satcat5::eth::MacType& type,
                 const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
-            #else
-            void connect(
-                const satcat5::eth::MacAddr& addr,
-                const satcat5::eth::MacType& type);
-            #endif
 
+            // Required overrides from net::Address:
             satcat5::net::Dispatch* iface() const override;
             satcat5::io::Writeable* open_write(unsigned len) override;
             void close() override;
             bool ready() const override;
+            bool is_multicast() const override;
+            bool matches_reply_address() const override;
+            bool reply_is_multicast() const override;
+            void save_reply_address() override;
+
+            // Other accessors.
+            inline satcat5::eth::MacAddr dstmac() const
+                { return m_addr; }
+            inline satcat5::eth::MacType etype() const
+                { return m_type; }
+            inline satcat5::eth::VlanTag vtag() const
+                { return m_vtag; }
 
         protected:
             satcat5::eth::Dispatch* const m_iface;
             satcat5::eth::MacAddr m_addr;
             satcat5::eth::MacType m_type;
-            #if SATCAT5_VLAN_ENABLE
             satcat5::eth::VlanTag m_vtag;
-            #endif
         };
 
         // Simple wrapper for Address class, provided to allow control of

@@ -53,7 +53,7 @@ a low-cost FPGA development board. We've included a reference design and
 PMOD connector pinouts are chosen to be directly compatible with off-the-shelf USB-UART adapters.
 
 Other reference designs include the [prototype](doc/images/prototype.jpg) that we built to develop, test, and demonstrate the SatCat5 switch.
-It is intended to run on many off-the-shelf FPGA development boards, using an FMC port to attached to a [custom PCB](test/proto_pcb).
+It is intended to run on many off-the-shelf FPGA development boards, using an FMC port to attached to a [custom PCB](examples/ac701_proto_v1/proto_pcb).
 The custom PCB includes Ethernet transceivers, PMOD connectors, and other I/O.
 
 SatCat5 also includes [software libraries](src/cpp/README.md) targeting both baremetal and

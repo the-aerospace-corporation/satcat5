@@ -31,6 +31,9 @@ static constexpr u16 CMD_ADDR_WR = (CMD_TXBYTE | I2C_DEVADDR.m_addr | 0);
 static constexpr u16 CMD_ADDR_RD = (CMD_TXBYTE | I2C_DEVADDR.m_addr | 1);
 
 TEST_CASE("i2c_addr") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     // Use each of the constructor modes.
     I2cAddr a7 = I2cAddr::addr7(21);        // 0x15  = 0b0101001
     I2cAddr a8 = I2cAddr::addr8(42);        // 0x2A  = 0b0101001x
@@ -89,8 +92,8 @@ public:
 };
 
 TEST_CASE("cfgbus_i2c") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Instantiate emulator and the unit under test.
     satcat5::test::MultiSerial mst;

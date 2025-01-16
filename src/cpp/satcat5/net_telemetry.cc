@@ -9,6 +9,8 @@
 // Start of conditional compilation...
 #if SATCAT5_CBOR_ENABLE
 
+#include <qcbor/qcbor.h>
+
 using satcat5::net::TelemetryCbor;
 using satcat5::net::TelemetrySink;
 using satcat5::net::TelemetrySource;
@@ -48,47 +50,32 @@ TelemetryAggregator::TelemetryAggregator(bool concat_tiers)
 
 void TelemetryAggregator::timer_event()
 {
-    // Initialize the QCBOR encoder.
-    QCBOREncodeContext qcbor;
-    telem_init(&qcbor);
-
-    // Poll each of the contained tier objects.
-    TelemetryCbor cbor = {&qcbor};
-    TelemetryTier* tier = m_tiers.head();
-    while (tier) {
-        // Write out telemetry for this tier.
-        tier->telem_poll(cbor);
-        // In per-tier mode, always send and reset.
-        if (!m_tlm_concat) {
-            telem_send(&qcbor, tier->m_tier_id);
-            telem_init(&qcbor);
+    if (!m_tlm_concat) {
+        // Per-tier mode: create and send a TelemetryCbor for each tier.
+        TelemetryTier* tier = m_tiers.head();
+        while (tier) {
+            TelemetryCbor cbor;
+            tier->telem_poll(cbor);
+            telem_send(cbor, tier->m_tier_id);
+            tier = m_tiers.next(tier);
         }
-        // Move to next list item...
-        tier = m_tiers.next(tier);
-    }
-
-    // In concatenated mode, send all accumulated data at the end.
-    if (m_tlm_concat) {
-        telem_send(&qcbor, 0);
+    } else {
+        // In concatenated mode, send all accumulated data at the end.
+        TelemetryCbor cbor;
+        TelemetryTier* tier = m_tiers.head();
+        while (tier) {
+            tier->telem_poll(cbor);
+            tier = m_tiers.next(tier);
+        }
+        telem_send(cbor, 0);
     }
 }
 
-void TelemetryAggregator::telem_init(_QCBOREncodeContext* cbor)
+void TelemetryAggregator::telem_send(TelemetryCbor& cbor, u32 tier_id)
 {
-    // Initialize or re-initialize the encoder state.
-    QCBOREncode_Init(cbor, UsefulBuf_FROM_BYTE_ARRAY(m_buff));
-
-    // Open the key/value dictionary for subsequent telemetry.
-    QCBOREncode_OpenMap(cbor);
-}
-
-void TelemetryAggregator::telem_send(_QCBOREncodeContext* cbor, u32 tier_id)
-{
-    // Close out the QCBOR object.
-    UsefulBufC encoded;
-    QCBOREncode_CloseMap(cbor);
-    QCBORError error = QCBOREncode_Finish(cbor, &encoded);
-    if (error) return;
+    // Close out the TelemetryCbor object and reuse backing buffer without copy.
+    if (!cbor.close()) { return; }
+    UsefulBufC encoded = cbor.get_encoded(); // Zero copy
 
     // Don't bother sending an empty message.
     // Note: Empty CBOR map {...} is exactly one byte.
@@ -173,168 +160,6 @@ void TelemetryTier::telem_poll(const TelemetryCbor& cbor)
         m_time_count -= m_time_interval;
         m_src->telem_event(m_tier_id, cbor);
     }
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const s8* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const u8* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const s16* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const u16* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const s32* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const u32* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const s64* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const u64* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(s64 key, u32 len, const float* value) const
-{
-    QCBOREncode_AddInt64(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddFloat(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const s8* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const u8* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const s16* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const u16* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const s32* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const u32* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const s64* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const u64* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddUInt64(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
-}
-
-void TelemetryCbor::add_array(const char* key, u32 len, const float* value) const
-{
-    QCBOREncode_AddSZString(cbor, key);
-    QCBOREncode_OpenArray(cbor);
-    for (u32 a = 0 ; a < len ; ++a)
-        QCBOREncode_AddFloat(cbor, value[a]);
-    QCBOREncode_CloseArray(cbor);
 }
 
 #endif // SATCAT5_CBOR_ENABLE

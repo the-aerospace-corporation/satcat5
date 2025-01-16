@@ -6,14 +6,14 @@
 #include <satcat5/ip_dhcp.h>
 #include <satcat5/eth_checksum.h>
 #include <satcat5/log.h>
-#include <satcat5/timer.h>
+#include <satcat5/timeref.h>
 #include <satcat5/udp_dispatch.h>
 #include <satcat5/utils.h>
 
 using satcat5::eth::crc32;
 using satcat5::eth::MacAddr;
 using satcat5::eth::MACADDR_BROADCAST;
-using satcat5::io::ArrayWrite;
+using satcat5::io::ArrayWriteStatic;
 using satcat5::io::LimitedRead;
 using satcat5::io::Writeable;
 using satcat5::ip::Addr;
@@ -78,6 +78,17 @@ static constexpr u8 OPTION_SERVER_IP    = 54;
 static constexpr u8 OPTION_CLIENT_ID    = 61;
 static constexpr u8 OPTION_END          = 255;  // No length
 
+// Most option headers consist of an option code plus a length.
+// When the length is fixed, we can treat both as a single unit.
+static constexpr u16 make_optlen(u8 opcode, u8 len)
+    { return u16(256*opcode + len); }
+static constexpr u16 OPTLEN_SUBNET_MASK = make_optlen(OPTION_SUBNET_MASK, 4);
+static constexpr u16 OPTLEN_ROUTER      = make_optlen(OPTION_ROUTER, 4);
+static constexpr u16 OPTLEN_REQUEST_IP  = make_optlen(OPTION_REQUEST_IP, 4);
+static constexpr u16 OPTLEN_LEASE_TIME  = make_optlen(OPTION_LEASE_TIME, 4);
+static constexpr u16 OPTLEN_MSG_TYPE    = make_optlen(OPTION_MSG_TYPE, 1);
+static constexpr u16 OPTLEN_SERVER_IP   = make_optlen(OPTION_SERVER_IP, 4);
+
 // Various time-related constants, always in seconds.
 static constexpr u32 TIME_INIT_FIRST    = 3;
 static constexpr u32 TIME_INIT_RETRY    = 5;
@@ -110,6 +121,10 @@ inline bool lease_expired(DhcpAddress* meta, u32 tref)
     }
 }
 
+// Consolidate common log functions for reduced code-size.
+static void log_dhcp_info(const char* msg, u32 yiaddr)
+    { log::Log(log::INFO, "DHCP client", msg).write(Addr(yiaddr)); }
+
 DhcpClient::DhcpClient(satcat5::udp::Dispatch* iface)
     : satcat5::net::Protocol(TYPE_CLIENT)
     , m_iface(iface)
@@ -126,7 +141,7 @@ DhcpClient::DhcpClient(satcat5::udp::Dispatch* iface)
     , m_xid(crc32(MACADDR_LEN, iface->macaddr().addr))
 {
     // Additional entropy for XID.
-    m_xid += m_iface->iface()->m_timer->now();
+    m_xid += SATCAT5_CLOCK->raw();
 
     // Call frame_rcvd() for incoming packets.
     m_iface->add(this);
@@ -136,8 +151,7 @@ DhcpClient::DhcpClient(satcat5::udp::Dispatch* iface)
 }
 
 #if SATCAT5_ALLOW_DELETION
-DhcpClient::~DhcpClient()
-{
+DhcpClient::~DhcpClient() {
     // Unlink incoming message handler.
     m_iface->remove(this);
 
@@ -146,8 +160,7 @@ DhcpClient::~DhcpClient()
 }
 #endif
 
-void DhcpClient::inform(const Addr& new_addr)
-{
+void DhcpClient::inform(const Addr& new_addr) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "User inform");
 
@@ -162,8 +175,7 @@ void DhcpClient::inform(const Addr& new_addr)
     }
 }
 
-void DhcpClient::release(const Addr& new_addr)
-{
+void DhcpClient::release(const Addr& new_addr) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "User release");
 
@@ -171,8 +183,7 @@ void DhcpClient::release(const Addr& new_addr)
     m_iface->iface()->set_addr(new_addr);
 }
 
-void DhcpClient::renew()
-{
+void DhcpClient::renew() {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "User renew");
 
@@ -186,8 +197,7 @@ void DhcpClient::renew()
     }
 }
 
-u32 DhcpClient::status() const
-{
+u32 DhcpClient::status() const {
     // Do we currently hold a lease?
     if (m_state == DhcpState::BOUND) {
         return m_timeout + TIME_WAIT_REBIND + TIME_WAIT_RENEW;
@@ -200,8 +210,7 @@ u32 DhcpClient::status() const
     }
 }
 
-void DhcpClient::arp_event(const MacAddr& mac, const Addr& ip)
-{
+void DhcpClient::arp_event(const MacAddr& mac, const Addr& ip) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "arp_event");
 
@@ -215,8 +224,7 @@ void DhcpClient::arp_event(const MacAddr& mac, const Addr& ip)
     }
 }
 
-void DhcpClient::frame_rcvd(LimitedRead& src)
-{
+void DhcpClient::frame_rcvd(LimitedRead& src) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "frame_rcvd");
 
@@ -231,16 +239,11 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
     u8 op       = src.read_u8();
     u8 htype    = src.read_u8();
     u8 hlen     = src.read_u8();
-    src.read_u8();  // hops
+    src.read_u8();                  // hops
     u32 xid     = src.read_u32();
-    src.read_u16(); // secs
-    src.read_u16(); // flags
-    src.read_u32(); // ciaddr
+    src.read_consume(8);            // secs + flags + ciaddr
     u32 yiaddr  = src.read_u32();
-    src.read_u32(); // siaddr
-    src.read_u32(); // giaddr
-    src.read_consume(CHADDR_LEN);
-    src.read_consume(LEGACY_BYTES);
+    src.read_consume(8 + CHADDR_LEN + LEGACY_BYTES);
     u32 magic   = src.read_u32();
 
     // Sanity check before proceeding.
@@ -265,15 +268,16 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
         if (typ == OPTION_END) break;
         // Read option length and contents.
         u8 len = src.read_u8();
-        if (typ == OPTION_SUBNET_MASK && len == 4) {
+        u16 optlen = make_optlen(typ, len);
+        if (optlen == OPTLEN_SUBNET_MASK) {
             subnet = src.read_u32();
-        } else if (typ == OPTION_ROUTER && len == 4) {
+        } else if (optlen == OPTLEN_ROUTER) {
             router = src.read_u32();
-        } else if (typ == OPTION_LEASE_TIME && len == 4) {
+        } else if (optlen == OPTLEN_LEASE_TIME) {
             lease_time = src.read_u32();
-        } else if (typ == OPTION_MSG_TYPE && len == 1) {
+        } else if (optlen == OPTLEN_MSG_TYPE) {
             opcode = src.read_u8();
-        } else if (typ == OPTION_SERVER_IP && len == 4) {
+        } else if (optlen == OPTLEN_SERVER_IP) {
             server = src.read_u32();
         } else {
             src.read_consume(len);  // Discard unsupported options
@@ -288,7 +292,8 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
     if (opcode == DHCP_OFFER && m_state == DhcpState::SELECTING) {
         // In the SELECTING state, tentatively accept the first OFFER.
         // Test if assigned IP is occupied before setting up the IP stack.
-        log::Log(log::INFO, "DHCP client", "Offer received").write(yiaddr);
+        log::Log(log::INFO, "DHCP client", "Offer received").write(Addr(yiaddr));
+        // TODO: For some reason, calling "log_dhcp_info" here crashes the XSDK linker.
         m_iface->iface()->set_addr(ADDR_NONE);
         m_ipaddr = Addr(yiaddr);
         m_state = DhcpState::TESTING;
@@ -298,7 +303,7 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
         m_iface->arp()->send_probe(yiaddr);
     } else if (opcode == DHCP_ACK && m_state == DhcpState::INFORMING) {
         // Information only, set up the local IP stack.
-        log::Log(log::INFO, "DHCP client", "Information").write(yiaddr);
+        log_dhcp_info("Information", yiaddr);
         m_state = DhcpState::STOPPED;
         m_timeout = 0;
         if (router && subnet)
@@ -307,7 +312,7 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
         // Lease granted.  Can we accept it?
         if (lease_time > TIME_WAIT_RENEW + TIME_WAIT_REBIND
             && yiaddr == m_ipaddr.value && m_ipaddr.is_unicast()) {
-            log::Log(log::INFO, "DHCP client", "Lease granted").write(yiaddr);
+            log_dhcp_info("Lease granted", yiaddr);
             // Move to the BOUND state.
             m_state = DhcpState::BOUND;
             m_timeout = lease_time - TIME_WAIT_RENEW - TIME_WAIT_REBIND;
@@ -317,7 +322,7 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
                 m_iface->iface()->route_simple(Addr(router), Addr(subnet));
         } else {
             // Reject the assigned lease.
-            log::Log(log::INFO, "DHCP client", "Lease invalid").write(yiaddr);
+            log_dhcp_info("Lease invalid", yiaddr);
             send_message(DHCP_RELEASE);
         }
     } else if (opcode == DHCP_NAK && server == m_server_id) {
@@ -338,8 +343,7 @@ void DhcpClient::frame_rcvd(LimitedRead& src)
     }
 }
 
-void DhcpClient::timer_event()
-{
+void DhcpClient::timer_event() {
     ++m_seconds;
     if (m_timeout == 1) {
         // Execute next scheduled action.
@@ -351,8 +355,7 @@ void DhcpClient::timer_event()
     }
 }
 
-void DhcpClient::next_timer()
-{
+void DhcpClient::next_timer() {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "next_timer");
 
@@ -381,8 +384,7 @@ void DhcpClient::next_timer()
     }
 }
 
-void DhcpClient::send_message(u8 opcode)
-{
+void DhcpClient::send_message(u8 opcode) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP client", "Sending opcode").write(opcode);
 
@@ -466,28 +468,24 @@ void DhcpClient::send_message(u8 opcode)
 
     // Write out options to determine total length.
     // See RFC2131 Table 5 for MUST/MAY/MUST-NOT rules.
-    u8 buffer[64 + SATCAT5_DHCP_MAX_ID_LEN];
-    ArrayWrite opt(buffer, sizeof(buffer));
+    static constexpr unsigned BUFF_SIZE = 64 + SATCAT5_DHCP_MAX_ID_LEN;
+    ArrayWriteStatic<BUFF_SIZE> opt;
     // Message type is always required.
-    opt.write_u8(OPTION_MSG_TYPE);
-    opt.write_u8(1);
+    opt.write_u16(OPTLEN_MSG_TYPE);
     opt.write_u8(opcode);
     // Requested IP address.
     if (reqaddr) {
-        opt.write_u8(OPTION_REQUEST_IP);
-        opt.write_u8(4);
+        opt.write_u16(OPTLEN_REQUEST_IP);
         opt.write_u32(reqaddr);
     }
     // Requested lease time.
     if (opcode == DHCP_DISCOVER || opcode == DHCP_REQUEST) {
-        opt.write_u8(OPTION_LEASE_TIME);
-        opt.write_u8(4);
+        opt.write_u16(OPTLEN_LEASE_TIME);
         opt.write_u32(TIME_LEASE_DEFAULT);
     }
     // Server identifier.
     if (server) {
-        opt.write_u8(OPTION_SERVER_IP);
-        opt.write_u8(4);
+        opt.write_u16(OPTLEN_SERVER_IP);
         opt.write_u32(server);
     }
     // Client identifier.
@@ -495,8 +493,7 @@ void DhcpClient::send_message(u8 opcode)
         SATCAT5_DHCP_MAX_ID_LEN <= 254 &&
         m_client_id && m_client_id->id_len &&
         m_client_id->id_len <= SATCAT5_DHCP_MAX_ID_LEN) {
-        opt.write_u8(OPTION_CLIENT_ID);
-        opt.write_u8(m_client_id->id_len + 1);
+        opt.write_u16(make_optlen(OPTION_CLIENT_ID, m_client_id->id_len + 1));
         opt.write_u8(m_client_id->type);
         opt.write_bytes(m_client_id->id_len, m_client_id->id);
     }
@@ -523,7 +520,7 @@ void DhcpClient::send_message(u8 opcode)
             dst->write_u32(0);      // 192 bytes of zeros
         dst->write_u32(DHCP_MAGIC); // Magic cookie
         // Write options and send the message.
-        dst->write_bytes(opt.written_len(), buffer);
+        dst->write_bytes(opt.written_len(), opt.buffer());
         dst->write_finalize();
     }
 }
@@ -556,15 +553,13 @@ DhcpServer::DhcpServer(satcat5::udp::Dispatch* iface, DhcpPool* pool)
 }
 
 #if SATCAT5_ALLOW_DELETION
-DhcpServer::~DhcpServer()
-{
+DhcpServer::~DhcpServer() {
     // Unlink incoming message handler.
     m_iface->remove(this);
 }
 #endif
 
-void DhcpServer::count_leases(unsigned& free, unsigned& taken) const
-{
+void DhcpServer::count_leases(unsigned& free, unsigned& taken) const {
     // Reset output counters.
     free = 0; taken = 0;
 
@@ -581,17 +576,15 @@ void DhcpServer::count_leases(unsigned& free, unsigned& taken) const
     }
 }
 
-Addr DhcpServer::request(u32 lease_seconds, const Addr& addr)
-{
-    log::Log(log::INFO, "DHCP server", "Local request").write(addr.value);
+Addr DhcpServer::request(u32 lease_seconds, const Addr& addr) {
+    log_dhcp_info("Local request", addr.value);
     if (addr == ADDR_NONE)  // First available
         return offer(CLIENT_RSVD, addr.value, lease_seconds);
     else                    // Specific address
         return reserve(CLIENT_RSVD, addr.value, lease_seconds);
 }
 
-void DhcpServer::frame_rcvd(LimitedRead& src)
-{
+void DhcpServer::frame_rcvd(LimitedRead& src) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "DHCP server", "frame_rcvd");
 
@@ -604,13 +597,12 @@ void DhcpServer::frame_rcvd(LimitedRead& src)
     u8 op       = src.read_u8();
     u8 htype    = src.read_u8();
     u8 hlen     = src.read_u8();
-    src.read_u8();  // hops
+    src.read_u8();                  // hops
     u32 xid     = src.read_u32();
-    src.read_u16(); // secs
+    src.read_u16();                 // secs
     u16 flags   = src.read_u16();
     u32 ciaddr  = src.read_u32();
-    src.read_u32(); // yiaddr
-    src.read_u32(); // siaddr
+    src.read_consume(8);            // yiaddr + siaddr
     u32 giaddr  = src.read_u32();
     src.read_bytes(CHADDR_LEN, chaddr);
     src.read_consume(LEGACY_BYTES);
@@ -642,13 +634,14 @@ void DhcpServer::frame_rcvd(LimitedRead& src)
         u8 len = src.read_u8();
         if (src.get_read_ready() < len) break;
         // Read option contents.
-        if (typ == OPTION_REQUEST_IP && len == 4) {
+        u16 optlen = make_optlen(typ, len);
+        if (optlen == OPTLEN_REQUEST_IP) {
             // Client has a specific IP they'd like to reuse.
             ciaddr = src.read_u32();
-        } else if (typ == OPTION_LEASE_TIME && len == 4) {
+        } else if (optlen == OPTLEN_LEASE_TIME) {
             // Update the requested lease duration.
             lease_time = min_u32(src.read_u32(), m_max_lease);
-        } else if (typ == OPTION_MSG_TYPE && len == 1) {
+        } else if (optlen == OPTLEN_MSG_TYPE) {
             // Message type (required, but not necessarily first option).
             opcode = src.read_u8();
         } else if (typ == OPTION_CLIENT_ID) {
@@ -727,7 +720,7 @@ void DhcpServer::frame_rcvd(LimitedRead& src)
 
     // Write outgoing options into the working buffer.
     // (Do this up front to ensure an accurate length estimate.)
-    ArrayWrite opt(buffer, MAX_OPTION);
+    ArrayWriteStatic<MAX_OPTION> opt;
     // Message type is always required.
     opt.write_u8(OPTION_MSG_TYPE);
     opt.write_u8(1);
@@ -795,13 +788,12 @@ void DhcpServer::frame_rcvd(LimitedRead& src)
             dst->write_u32(0);          // 192 bytes of zeros
         dst->write_u32(DHCP_MAGIC);     // Magic cookie
         // Write options and send the message.
-        dst->write_bytes(opt.written_len(), buffer);
+        dst->write_bytes(opt.written_len(), opt.buffer());
         dst->write_finalize();
     }
 }
 
-void DhcpServer::timer_event()
-{
+void DhcpServer::timer_event() {
     // Increment the reference time.
     ++m_time;
 
@@ -820,8 +812,7 @@ void DhcpServer::timer_event()
 }
 
 // Reuse an existing address, or find the next free address.
-Addr DhcpServer::offer(u32 client_id, u32 req_ipaddr, u32 req_lease)
-{
+Addr DhcpServer::offer(u32 client_id, u32 req_ipaddr, u32 req_lease) {
     // Did the client request a preferred IP address?
     if (req_ipaddr) {
         // Claim the address if it's available (reuse or expired).
@@ -856,8 +847,7 @@ Addr DhcpServer::offer(u32 client_id, u32 req_ipaddr, u32 req_lease)
 }
 
 // Attempt to reserve the designated address for the designated client.
-Addr DhcpServer::reserve(u32 client_id, u32 req_ipaddr, u32 req_lease)
-{
+Addr DhcpServer::reserve(u32 client_id, u32 req_ipaddr, u32 req_lease) {
     // Lookup the requested address.
     DhcpAddress* meta = m_pool->addr2meta(req_ipaddr);
 

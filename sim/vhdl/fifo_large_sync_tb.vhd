@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -47,9 +47,12 @@ signal out_ready    : std_logic := '0';
 signal ref_data     : unsigned(IO_WIDTH-1 downto 0) := (others => '0');
 signal ref_last     : std_logic := '0';
 signal ref_full     : std_logic := '0';
+signal ref_ready1   : std_logic := '1';
+signal ref_ready2   : std_logic := '1';
 
 -- Outputs from unit under test.
 signal in_error     : std_logic;
+signal in_ready     : std_logic;
 signal out_data     : std_logic_vector(IO_WIDTH-1 downto 0);
 signal out_last     : std_logic;
 signal out_valid    : std_logic;
@@ -82,6 +85,11 @@ begin
             word_ct := word_ct - 1;
         end if;
         ref_full <= bool2bit(word_ct = FIFO_DEPTH);
+
+        -- The word count is also used to predict the "in_ready" signal.
+        -- (Some hysteresis is required; check only if both references agree.)
+        ref_ready1 <= bool2bit(word_ct < FIFO_DEPTH - 4);
+        ref_ready2 <= bool2bit(word_ct < FIFO_DEPTH);
 
         -- Input flow randomization.
         uniform(seed1, seed2, rand);
@@ -120,6 +128,7 @@ uut : entity work.fifo_large_sync
     in_data     => std_logic_vector(in_data),
     in_last     => in_last,
     in_write    => in_write,
+    in_ready    => in_ready,
     in_error    => in_error,
     out_data    => out_data,
     out_last    => out_last,
@@ -145,6 +154,11 @@ begin
             test_ok <= '0';
         elsif (in_error = '1') then
             test_ok <= '0';
+        end if;
+
+        if (ref_ready1 = ref_ready2) then
+            assert (in_ready = ref_ready1)
+                report "READY mismatch." severity error;
         end if;
     end if;
 end process;

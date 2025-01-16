@@ -18,6 +18,8 @@
 namespace satcat5 {
     namespace cfg {
         // Data structure for reading per-port traffic statistics.
+        // Frequency offset (Tx-Rx) is a reported in subns per second.
+        // (i.e., 2^16 LSB = one nanosecond per second = 1 part per billion.)
         struct TrafficStats {
             u32 bcast_bytes;        // Broadcast bytes received from device
             u32 bcast_frames;       // Broadcast frames received from device
@@ -25,13 +27,15 @@ namespace satcat5 {
             u32 rcvd_frames;        // Total frames received from device
             u32 sent_bytes;         // Total bytes sent from switch to device
             u32 sent_frames;        // Total frames sent from switch to device
+            s32 delta_freq;         // Net frequency offset (see above)
+            u16 rate_mbps;          // Link rate in Mbps
             u8  errct_mac;          // MAC/PHY errors
             u8  errct_ovr_tx;       // Tx-FIFO overflow (common)
             u8  errct_ovr_rx;       // Rx-FIFO overflow (rare)
             u8  errct_pkt;          // Packet errors (bad checksum, length, etc.)
             u8  errct_ptp_rx;       // RX PTP packets with bad tstamps
             u8  errct_ptp_tx;       // TX PTP packets with bad tstamps
-            u32 status;             // Port status (Varies by port)
+            u8  status;             // Port status (Varies by port)
         };
 
         // Traffic statistics polling.

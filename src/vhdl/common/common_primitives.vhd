@@ -141,6 +141,8 @@ package common_primitives is
     -- used in TCAM, small FIFOs, etc., where block-size is flexible.
     -- Each platform defines this deferred constant in a separate package body.
     constant PREFER_DPRAM_AWIDTH : positive;
+    constant PREFER_DPRAM_ONEBIT : boolean;
+    constant PREFER_FIFO_SREG    : boolean;
 
     ---------------------------------------------------------------------
     -- Synchronization primitives
@@ -244,22 +246,25 @@ package common_primitives is
         vclkb_hz    : real;             -- Frequency of the fast output (0 = invalid)
         sync_tau_ms : real;             -- Synchronization-filter time constant
         sync_aux_en : boolean;          -- Synchronization enable auxiliary filter?
+        sync_frq_en : boolean;          -- Synchronization outputs frequency offset?
         params      : vernier_params;   -- Reserved parameters (varies by platform)
     end record;
 
     constant VERNIER_DEFAULT_TAU_MS : real := 50.0;
     constant VERNIER_DEFAULT_AUX_EN : boolean := true;
+    constant VERNIER_DEFAULT_FRQ_EN : boolean := true;
 
     -- Use this configuration to indicate PTP is disabled.
     constant VERNIER_DISABLED : vernier_config :=
-        (0, 0.0, 0.0, 0.0, false, (others => 0.0));
+        (0, 0.0, 0.0, 0.0, false, false, (others => 0.0));
 
     -- Given reference frequency, determine the "best" Vernier configuration.
     -- (An unsupported or zero input frequency returns "VERNIER_DISABLED".)
     function create_vernier_config(
         input_hz    : natural;
         sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
-        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN)
+        sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN;
+        sync_frq_en : boolean := VERNIER_DEFAULT_FRQ_EN)
         return vernier_config;
 
     -- Standardized clock generator for a Vernier clock-pair.

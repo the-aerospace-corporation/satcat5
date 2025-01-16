@@ -15,7 +15,13 @@ using satcat5::ptp::CoeffPII;
 using satcat5::ptp::ControllerLR_Inner;
 using satcat5::ptp::ControllerPI;
 using satcat5::ptp::ControllerPII;
+using satcat5::ptp::LinearPrediction;
+using satcat5::ptp::LinearRegression;
+using satcat5::ptp::RateConversion;
 using satcat5::ptp::SUBNS_PER_NSEC;
+using satcat5::ptp::SUBNS_PER_MSEC;
+using satcat5::ptp::SUBNS_PER_SEC;
+using satcat5::ptp::USEC_PER_SEC;
 using satcat5::util::INT128_ZERO;
 using satcat5::util::int128_t;
 using satcat5::util::INT256_ZERO;
@@ -35,6 +41,11 @@ static constexpr unsigned DEBUG_VERBOSE = 0;
 #ifndef SATCAT5_PTRK_DITHER
 #define SATCAT5_PTRK_DITHER 1
 #endif
+
+// Set the default slew rate limit for PI and PII controllers.
+// (i.e., "10 * SUBNS_PER_MSEC" means max slew of 10 msec/sec.)
+constexpr s64 SLEW_MAX_IN  = s64(10 * SUBNS_PER_MSEC);
+constexpr u64 SLEW_MAX_OUT = u64(10 * SUBNS_PER_MSEC);
 
 // Dither allows averaging over time for sub-LSB resolution.
 static inline u32 next_dither() {
@@ -176,6 +187,7 @@ s64 AmplitudeReject::update(s64 next, u32 elapsed_usec) {
 ControllerPI::ControllerPI(const CoeffPI& coeff)
     : m_coeff(coeff)
     , m_accum(INT128_ZERO)
+    , m_slew(SLEW_MAX_OUT)
 {
     set_coeff(coeff);   // For error-reporting.
 }
@@ -186,9 +198,7 @@ void ControllerPI::set_coeff(const CoeffPI& coeff) {
         auto level = coeff.ok() ? log::DEBUG : log::ERROR;
         log::Log(level, "ControllerPI: Config")
             .write10(m_coeff.kp)
-            .write10(m_coeff.ki)
-            .write10(m_coeff.kf)
-            .write10(m_coeff.ymax);
+            .write10(m_coeff.ki);
     } else if (!coeff.ok()) {
         log::Log(log::ERROR, "ControllerPI: Bad config.");
     }
@@ -200,19 +210,19 @@ void ControllerPI::reset() {
 
 void ControllerPI::rate(s64 delta_subns, u32 elapsed_usec) {
     // Limit input to a sensible range...
-    delta_subns = satcat5::util::clamp(delta_subns, 10 * SUBNS_PER_MSEC);
-    // After division, scaling factor is typically 2^36 to 2^44.
-    u64 scale = (1ull << m_coeff.SCALE) / elapsed_usec;
+    delta_subns = satcat5::util::clamp(delta_subns, SLEW_MAX_IN);
     int128_t rate(delta_subns);                 // Range +/- 2^40
-    rate *= int128_t(m_coeff.kf);               // Range +/- 2^68
-    rate *= int128_t(scale);                    // Range +/- 2^112
+    rate <<= m_coeff.SCALE;                     // Range +/- 2^100
+    rate *= int128_t(USEC_PER_SEC);             // Range +/- 2^120
+    rate /= int128_t(elapsed_usec);             // Range +/- 2^100
+    rate.clamp(int128_t(m_slew) << m_coeff.SCALE);
     m_accum += rate;
 }
 
 s64 ControllerPI::update(s64 delta_subns, u32 elapsed_usec) {
     // Ignore invalid inputs and clamp to a sensible limit.
     if (delta_subns == INT64_MAX) return INT64_MAX;
-    delta_subns = satcat5::util::clamp(delta_subns, SUBNS_PER_MSEC);
+    delta_subns = satcat5::util::clamp(delta_subns, SLEW_MAX_IN);
 
     // Convert inputs to extra-wide integers for more dynamic range,
     // then multiply by the KI and KP loop-gain coefficients.
@@ -234,19 +244,22 @@ s64 ControllerPI::update(s64 delta_subns, u32 elapsed_usec) {
     // KI * sum(phi) ensures continuity after bandwidth changes.
     m_accum += delta_i;                         // Range +/- 2^121
 
-    // Clamp accumulator term to +/- ymax, to mitigate windup.
-    int128_t ymax(m_coeff.ymax);                // Range 2^33..2^54
+    // Clamp accumulator term to mitigate windup.
+    int128_t ymax(m_slew);                      // Range 2^33..2^54
     m_accum.clamp(ymax << m_coeff.SCALE);       // Range +/- 2^114
 
     // Tracking output is the sum of all filter terms.
     // (Sum up to +/- 2^121, output up to +/- 2^61.)
-    return wide_output(m_accum + delta_p, m_coeff.SCALE);
+    int128_t ysum(m_accum + delta_p);
+    ysum.clamp(ymax << m_coeff.SCALE);
+    return wide_output(ysum, m_coeff.SCALE);
 }
 
 ControllerPII::ControllerPII(const CoeffPII& coeff)
     : m_coeff(coeff)
     , m_accum1(INT128_ZERO)
     , m_accum2(INT256_ZERO)
+    , m_slew(SLEW_MAX_OUT)
 {
     set_coeff(coeff);   // For error-reporting.
 }
@@ -258,9 +271,7 @@ void ControllerPII::set_coeff(const CoeffPII& coeff) {
         log::Log(level, "ControllerPII: Config")
             .write10(m_coeff.kp)
             .write10(m_coeff.ki)
-            .write10(m_coeff.kr)
-            .write10(m_coeff.kf)
-            .write10(m_coeff.ymax);
+            .write10(m_coeff.kr);
     } else if (!coeff.ok()) {
         log::Log(log::ERROR, "ControllerPII: Bad config.");
     }
@@ -273,19 +284,19 @@ void ControllerPII::reset() {
 
 void ControllerPII::rate(s64 delta_subns, u32 elapsed_usec) {
     // Limit input to a sensible range...
-    delta_subns = satcat5::util::clamp(delta_subns, 10 * SUBNS_PER_MSEC);
+    delta_subns = satcat5::util::clamp(delta_subns, SLEW_MAX_IN);
     int256_t rate(delta_subns);                 // Range +/- 2^40
     rate <<= m_coeff.SCALE;                     // Range +/- 2^174
-    rate *= int256_t(m_coeff.kf);               // Range +/- 2^202
-    rate /= int256_t(elapsed_usec);             // Range +/- 2^226
-    rate.clamp(int256_t(m_coeff.ymax) << m_coeff.SCALE);
+    rate *= int256_t(USEC_PER_SEC);             // Range +/- 2^194
+    rate /= int256_t(elapsed_usec);             // Range +/- 2^174
+    rate.clamp(int256_t(SLEW_MAX_OUT) << m_coeff.SCALE);
     m_accum2 += rate;                           // Range +/- 2^188
 }
 
 s64 ControllerPII::update(s64 delta_subns, u32 elapsed_usec) {
     // Ignore invalid inputs and clamp to a sensible limit.
     if (delta_subns == INT64_MAX) return INT64_MAX;
-    delta_subns = satcat5::util::clamp(delta_subns, SUBNS_PER_MSEC);
+    delta_subns = satcat5::util::clamp(delta_subns, SLEW_MAX_IN);
 
     // Convert inputs to extra-wide integers for more dynamic range,
     // then multiply by the KI and KP loop-gain coefficients.
@@ -305,23 +316,63 @@ s64 ControllerPII::update(s64 delta_subns, u32 elapsed_usec) {
     delta_p *= int128_t(USEC_PER_SEC);          // Range +/- 2^120
 
     // Update the primary accumulator, i.e., sum(K2 * phi).
-    // As with ControllerPI, precalculate gain to ensure continuity.
-    int128_t ymax1(m_coeff.ymax);               // Range 2^33..2^54
+    // As with ControllerPI, precalculate gain to ensure continuity
+    // and limit the maximum slew-rate to reduce windup.
+    int128_t ymax128(m_slew);                   // Range 2^33..2^54
     m_accum1 += delta_i;                        // Range +/- 2^125
-    m_accum1.clamp(ymax1 << m_coeff.SCALE1);    // Range +/- 2^124
+    m_accum1.clamp(ymax128 << m_coeff.SCALE1);    // Range +/- 2^124
 
     // Update the secondary accumulator, i.e.,  sum(sum(K3 * phi)).
     // To avoid using a third accumulator, re-scale the primary by K3 / K2.
-    int256_t ymax2(m_coeff.ymax);               // Range 2^33..2^54
+    int256_t ymax256(m_slew);                   // Range 2^33..2^54
     int256_t delta_r(m_accum1);                 // Range +/- 2^124
     delta_r *= int256_t(m_coeff.kr);            // Range +/- 2^188
     delta_r *= int256_t(elapsed_usec);          // Range +/- 2^208
     m_accum2 += delta_r;                        // Range +/- 2^209
-    m_accum2.clamp(ymax2 << m_coeff.SCALE);     // Range +/- 2^188
+    m_accum2.clamp(ymax256 << m_coeff.SCALE);   // Range +/- 2^188
 
     // Tracking output is the sum of all filter terms.
-    int128_t delta_ii((m_accum2 + big_dither(m_coeff.SCALE2)) >> m_coeff.SCALE2);
-    return wide_output(m_accum1 + delta_ii + delta_p, m_coeff.SCALE1);
+    int128_t ysum((m_accum2 + big_dither(m_coeff.SCALE2)) >> m_coeff.SCALE2);
+    ysum += m_accum1;
+    ysum += delta_p;
+    ysum.clamp(ymax128 << m_coeff.SCALE1);
+    return wide_output(ysum, m_coeff.SCALE1);
+}
+
+LinearRegression::LinearRegression(
+    const unsigned window, const s64* x, const s64* y)
+{
+    // Calculate the sum of each input vector.
+    int128_t sum_x = INT128_ZERO, sum_y = INT128_ZERO;
+    for (unsigned n = 0 ; n < window ; ++n) {
+        sum_x += int128_t(x[n]);
+        sum_y += int128_t(y[n]);
+    }
+
+    // Calculate the covariance terms:
+    //  cov_xx = sum(dx * dx) and cov_xy = sum(dx * dy),
+    //  where dx[n] = x[n] - mean(x) and dy[n] = y[n] - mean(y).
+    // To avoid loss of precision, don't divide by the window size:
+    //  cov_xx * N^2 = sum(dx' * dx'), where dx' = N*x - sum(x).
+    const int128_t win128((u32)window);
+    int256_t cov_xx(INT256_ZERO), cov_xy(INT256_ZERO);
+    for (unsigned n = 0 ; n < window ; ++n) {
+        int256_t dx(int128_t(x[n]) * win128 - sum_x);
+        int256_t dy(int128_t(y[n]) * win128 - sum_y);
+        cov_xx += dx * dx;
+        cov_xy += dx * dy;
+    }
+
+    // Calculate slope and intercept by linear regression.
+    // https://en.wikipedia.org/wiki/Simple_linear_regression
+    beta = int128_t((cov_xy << TSCALE).div_round(cov_xx));
+    int128_t xbeta((beta * sum_x + big_dither(TSCALE)) >> TSCALE);
+    alpha = int128_t((sum_y - xbeta).div_round(win128));
+}
+
+s64 LinearRegression::extrapolate(s64 t) const
+{
+    return wide_output((alpha << TSCALE) + (beta * int128_t(t)), TSCALE);
 }
 
 ControllerLR_Inner::ControllerLR_Inner(const CoeffLR& coeff, unsigned window)
@@ -337,7 +388,6 @@ void ControllerLR_Inner::set_coeff(const CoeffLR& coeff)
         auto level = coeff.ok() ? log::DEBUG : log::ERROR;
         log::Log(level, "ControllerLR: Config")
             .write10(m_coeff.ki)
-            .write10(m_coeff.kf)
             .write10(m_coeff.kw);
     } else if (!coeff.ok()) {
         log::Log(log::ERROR, "ControllerLR: Bad config.");
@@ -346,10 +396,10 @@ void ControllerLR_Inner::set_coeff(const CoeffLR& coeff)
 
 void ControllerLR_Inner::rate(s64 delta_subns, u32 elapsed_usec) {
     // Limit input to a sensible range...
-    delta_subns = satcat5::util::clamp(delta_subns, 10 * SUBNS_PER_MSEC);
+    delta_subns = satcat5::util::clamp(delta_subns, SLEW_MAX_IN);
     int128_t rate(delta_subns);
-    rate <<= m_coeff.SCALE1;
-    rate *= int128_t(m_coeff.kf);
+    rate <<= LinearRegression::TSCALE;
+    rate *= int128_t(USEC_PER_SEC);
     rate /= int128_t(elapsed_usec);
     m_accum += rate;
 }
@@ -357,52 +407,98 @@ void ControllerLR_Inner::rate(s64 delta_subns, u32 elapsed_usec) {
 s64 ControllerLR_Inner::update_inner(const u32* dt, const s64* y) {
     // Convert incremental timesteps to cumulative time,
     // using t = 0 for the most recent input sample.
-    s64 x[m_window] = {0};
+    // Note: ControllerLR::set_window(...) ensures m_window >= 2.
+    s64 x[m_window];    // NOLINT
+    x[m_window-1] = 0;
     for (unsigned n = m_window-1 ; n != 0 ; --n) {
         x[n-1] = x[n] - dt[n];
     }
 
-    // Calculate the sum of each input vector.
-    int128_t sum_x = INT128_ZERO, sum_y = INT128_ZERO;
-    for (unsigned n = 0 ; n < m_window ; ++n) {
-        sum_x += int128_t(x[n]);
-        sum_y += int128_t(y[n]);
-    }
-
-    // Calculate the covariance terms:
-    //  cov_xx = sum(dx * dx) and cov_xy = sum(dx * dy),
-    //  where dx[n] = x[n] - mean(x) and dy[n] = y[n] - mean(y).
-    // To avoid loss of precision, don't divide by the window size:
-    //  cov_xx * N^2 = sum(dx' * dx'), where dx' = N*x - sum(x).
-    const int128_t window((u32)m_window);
-    int256_t cov_xx(INT256_ZERO), cov_xy(INT256_ZERO);
-    for (unsigned n = 0 ; n < m_window ; ++n) {
-        int256_t dx(int128_t(x[n]) * window - sum_x);
-        int256_t dy(int128_t(y[n]) * window - sum_y);
-        cov_xx += dx * dx;
-        cov_xy += dx * dy;
-    }
-
     // Discard degenerate cases where timestamps are too close together.
-    constexpr u64 MIN_SPAN_USEC = 2000;
-    constexpr u64 MIN_COV = MIN_SPAN_USEC * MIN_SPAN_USEC / 12;
-    int256_t min_cov_xx(MIN_COV * m_window);
-    if (cov_xx < min_cov_xx) return INT64_MIN;
+    s64 span_usec = -x[0];
+    if (span_usec < 2000) return INT64_MIN;
 
     // Calculate slope and intercept by linear regression.
-    // https://en.wikipedia.org/wiki/Simple_linear_regression
-    int128_t beta(((cov_xy << m_coeff.SCALE1) + (cov_xx >> 1)) / cov_xx);
-    int128_t xbeta((beta * sum_x + big_dither(m_coeff.SCALE1)) >> m_coeff.SCALE1);
-    int128_t alpha((sum_y - xbeta) / window);
+    LinearRegression fit(m_window, x, y);
 
     // Calculate change in slope required for an intercept at t = tau/2.
-    int128_t xalpha(alpha * int128_t(m_coeff.kw) + big_dither(m_coeff.SCALE1));
-    int128_t delta((xalpha >> m_coeff.SCALE1) + beta);
+    int128_t delta(fit.alpha * int128_t(m_coeff.kw) + fit.beta);
 
     // Gradually steer towards the designated target slope.
     m_accum += delta * int128_t(m_coeff.ki);
 
-    // Clamp slew rate to +/- ymax.
-    m_accum.clamp(int128_t(m_coeff.ymax) << m_coeff.SCALE);
-    return wide_output(m_accum, m_coeff.SCALE);
+    // Clamp maximum slew rate.
+    m_accum.clamp(int128_t(SLEW_MAX_OUT) << fit.TSCALE);
+    return wide_output(m_accum, fit.TSCALE);
+}
+
+void LinearPrediction::reset() {
+    // Reset all inner filter(s).
+    satcat5::ptp::Filter* ptr = m_filters.head();
+    while (ptr) {
+        ptr->reset();
+        ptr = m_filters.next(ptr);
+    }
+    // Reset internal state.
+    m_first = 0;
+    m_rate = 0;
+    m_accum = INT128_ZERO;
+}
+
+void LinearPrediction::rate(s64 delta_subns, u32 elapsed_usec) {
+    // Update all inner filter(s).
+    satcat5::ptp::Filter* ptr = m_filters.head();
+    while (ptr) {
+        ptr->rate(delta_subns, elapsed_usec);
+        ptr = m_filters.next(ptr);
+    }
+    // Update internal state.
+    int128_t rate(delta_subns);                 // Range +/- 2^63
+    rate *= int128_t(USEC_PER_SEC);             // Range +/- 2^83
+    rate /= int128_t(elapsed_usec);             // Range +/- 2^63
+    m_rate = s64(rate);
+}
+
+s64 LinearPrediction::update(s64 next, u32 elapsed_usec) {
+    if (m_first) {
+        // First-time initialization?
+        m_accum = int128_t(next) << SCALE;
+        m_first = false;
+        return next;
+    } else {
+        // Increment along estimated trendline.
+        m_accum += incr(elapsed_usec);
+        s64 trend = wide_output(m_accum, SCALE);
+        // Compare actual vs predicted and apply each filter.
+        s64 delta = next - trend;
+        satcat5::ptp::Filter* ptr = m_filters.head();
+        while (ptr) {
+            delta = ptr->update(delta, elapsed_usec);
+            ptr = m_filters.next(ptr);
+        }
+        // Update accumulator state.
+        if (delta != INT64_MIN) m_rate = delta;
+        return trend;
+    }
+}
+
+s64 LinearPrediction::predict(u32 elapsed_usec) const {
+    return wide_output(m_accum + incr(elapsed_usec), SCALE);
+}
+
+int128_t LinearPrediction::incr(u32 elapsed_usec) const {
+    static constexpr u64 TICKS_PER_USEC = satcat5::util::round_u64(
+        satcat5::util::pow2d(SCALE) / double(satcat5::ptp::USEC_PER_SEC));
+    return int128_t(m_rate) * int128_t(TICKS_PER_USEC) * int128_t(elapsed_usec);
+}
+
+s64 RateConversion::convert(s64 offset) const
+{
+    return wide_output(int128_t(offset) * int128_t(m_scale), SHIFT);
+}
+
+s64 RateConversion::invert(s64 rate) const
+{
+    int128_t temp(rate); temp <<= SHIFT;
+    return s64(temp.div_round(int128_t(m_scale)));
 }

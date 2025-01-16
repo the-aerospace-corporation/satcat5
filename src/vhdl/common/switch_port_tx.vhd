@@ -32,6 +32,8 @@ entity switch_port_tx is
     SUPPORT_VLAN    : boolean;      -- Support or ignore 802.1q VLAN tags?
     ALLOW_JUMBO     : boolean;      -- Allow jumbo frames? (Size up to 9038 bytes)
     ALLOW_RUNT      : boolean;      -- Allow runt frames? (Size < 64 bytes)
+    INPUT_HAS_FCS   : boolean;      -- Does input stream include FCS field?
+    PTP_DOPPLER     : boolean;      -- Enable Doppler-TLV tags?
     PTP_STRICT      : boolean;      -- Drop frames with missing timestamps?
     INPUT_BYTES     : positive;     -- Width of shared pipeline
     OUTPUT_BYTES    : positive;     -- Width of output pipeline
@@ -57,12 +59,14 @@ entity switch_port_tx is
     tx_ready        : in  std_logic;
     tx_pstart       : in  std_logic;
     tx_tnow         : in  tstamp_t;
+    tx_tfreq        : in  tfreq_t;
     tx_macerr       : in  std_logic;
     tx_reset_p      : in  std_logic;
 
     -- Port-specific control flags.
     pause_tx        : in  std_logic;    -- Flow-control for PAUSE frames
     port_2step      : in  std_logic;    -- PTP format conversion
+    queue_state     : out unsigned(7 downto 0);
 
     -- Error strobes, referenced to core_clk.
     err_overflow    : out std_logic;
@@ -79,6 +83,10 @@ entity switch_port_tx is
 end switch_port_tx;
 
 architecture switch_port_tx of switch_port_tx is
+
+-- Do we need to add or adjust the FCS for outgoing frames?
+-- (i.e., If frame contents may change or there's no FCS in the input.)
+constant FCS_ADJUST : boolean := SUPPORT_PTP or SUPPORT_VLAN or not INPUT_HAS_FCS;
 
 -- Minimum padding requirement?
 -- The switch itself already prevents short frames from reaching this point,
@@ -170,6 +178,7 @@ u_fifo : entity work.fifo_priority
     in_last_hipri   => in_hipri,
     in_write        => in_write,
     in_overflow     => err_overflow,
+    in_pct_full     => queue_state,
     out_clk         => tx_clk,
     out_data        => fifo_data,
     out_meta        => meta_vec_out,
@@ -185,17 +194,17 @@ gen_ptp1 : if SUPPORT_PTP generate
     u_ptp : entity work.ptp_egress
         generic map(
         IO_BYTES    => OUTPUT_BYTES,
+        PTP_DOPPLER => PTP_DOPPLER,
         PTP_STRICT  => PTP_STRICT,
         DEVADDR     => DEV_ADDR,
-        REGADDR     => REGADDR_PORT_BASE(PORT_INDEX) + REGOFFSET_PORT_PTP_TX)
+        REGADDR     => SW_ADDR_PORT_BASE(PORT_INDEX) + REGOFFSET_PORT_PTP_TX)
         port map(
         port_tnow   => tx_tnow,
+        port_tfreq  => tx_tfreq,
         port_pstart => tx_pstart,
         port_dvalid => fcs_valid,
-        in_tref     => fifo_meta.tstamp,
-        in_pmode    => fifo_meta.pmode,
-        in_vtag     => fifo_meta.vtag,
         in_data     => fifo_data,
+        in_meta     => fifo_meta,
         in_nlast    => fifo_nlast,
         in_valid    => fifo_valid,
         in_ready    => fifo_ready,
@@ -226,7 +235,7 @@ gen_vlan1 : if SUPPORT_VLAN generate
     u_vtag : entity work.eth_frame_vtag
         generic map(
         DEV_ADDR    => DEV_ADDR,
-        REG_ADDR    => REGADDR_VLAN_PORT,
+        REG_ADDR    => SW_ADDR_VLAN_PORT,
         PORT_INDEX  => PORT_INDEX,
         IO_BYTES    => OUTPUT_BYTES)
         port map(
@@ -255,12 +264,12 @@ gen_vlan0 : if not SUPPORT_VLAN generate
 end generate;
 
 -- If we may have modified the frame contents, modify FCS.
-gen_adj1 : if SUPPORT_PTP or SUPPORT_VLAN generate
+gen_adj1 : if FCS_ADJUST generate
     u_adj : entity work.eth_frame_adjust
         generic map(
         MIN_FRAME   => get_min_pad,
-        STRIP_FCS   => true,    -- Remove old FCS...
-        APPEND_FCS  => true,    -- ...then add a new one
+        STRIP_FCS   => INPUT_HAS_FCS,   -- Remove old FCS if present...
+        APPEND_FCS  => true,            -- ...then add a new one.
         IO_BYTES    => OUTPUT_BYTES)
         port map(
         in_data     => vlan_data,
@@ -276,7 +285,7 @@ gen_adj1 : if SUPPORT_PTP or SUPPORT_VLAN generate
         reset_p     => port_reset_p);
 end generate;
 
-gen_adj0 : if not(SUPPORT_PTP or SUPPORT_VLAN) generate
+gen_adj0 : if not FCS_ADJUST generate
     fcs_data    <= vlan_data;
     fcs_nlast   <= vlan_nlast;
     fcs_valid   <= vlan_valid;

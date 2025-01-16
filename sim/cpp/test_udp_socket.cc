@@ -18,11 +18,11 @@ using satcat5::udp::PORT_CFGBUS_ACK;
 using satcat5::udp::PORT_NONE;
 
 TEST_CASE("UDP-socket") {
-    satcat5::log::ToConsole log;
-    satcat5::util::PosixTimer timer;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Network communication infrastructure.
-    satcat5::test::CrosslinkIp xlink;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
 
     // Shortcuts and aliases:
     const auto MAC_CONTROLLER(xlink.MAC0);
@@ -49,6 +49,12 @@ TEST_CASE("UDP-socket") {
         CHECK(net_controller.m_ip.macaddr() == net_controller.m_udp.macaddr());
         CHECK(net_controller.m_ip.reply_ip() == net_controller.m_udp.reply_ip());
         CHECK(net_controller.m_ip.reply_mac() == net_controller.m_udp.reply_mac());
+        uut_controller.connect(IP_PERIPHERAL, MAC_PERIPHERAL, PORT_CFGBUS_CMD, PORT_CFGBUS_ACK);
+        CHECK(uut_controller.dstaddr() == IP_PERIPHERAL);
+        CHECK(uut_controller.dstmac() == MAC_PERIPHERAL);
+        CHECK(uut_controller.dstport() == PORT_CFGBUS_CMD);
+        CHECK(uut_controller.gateway() == ADDR_NONE);
+        CHECK(uut_controller.srcport() == PORT_CFGBUS_ACK);
     }
 
     SECTION("basic") {
@@ -61,6 +67,7 @@ TEST_CASE("UDP-socket") {
         CHECK(uut_controller.ready_rx());
         CHECK(uut_peripheral.ready_rx());
         satcat5::poll::service_all();
+        CHECK(uut_controller.dstmac() == MAC_PERIPHERAL);
         CHECK(uut_controller.ready_tx());
         CHECK_FALSE(uut_peripheral.ready_tx());
         CHECK(uut_controller.ready_rx());
@@ -89,8 +96,9 @@ TEST_CASE("UDP-socket") {
 
     SECTION("full") {
         // Keep auto-binding local ports until the entire space is full.
-        // (Dynamic allocation = 0xC000 - 0xFFFF = 16,384 sockets!)
-        std::vector<satcat5::udp::Socket*> bigvec(16384, 0);
+        // (Dynamic allocation up to SATCAT5_UDP_MAXDYN sockets. Default
+        //  is 16384, but we reduce this for unit-testing purposes.)
+        std::vector<satcat5::udp::Socket*> bigvec(SATCAT5_UDP_MAXDYN, 0);
         unsigned ready_count = 0;
         for (auto a = bigvec.begin() ; a != bigvec.end() ; ++a) {
             // Specify MAC address so socket is ready to operate immediately.
@@ -115,7 +123,7 @@ TEST_CASE("UDP-socket") {
     }
 
     SECTION("raw-rx") {
-        // Setup Rx only.
+        // Setup Rx-only socket on the client.
         uut_peripheral.bind(satcat5::udp::Port{63419});
         // Inject a reference UDP datagram
         // (Source: Random VPN traffic captured using Wireshark.)
@@ -182,8 +190,32 @@ TEST_CASE("UDP-socket") {
         CHECK(uut_peripheral.read_u64() == 0xdd93785f11fea01f);
     }
 
+    SECTION("reply") {
+        // Create a raw udp::Address object on the client.
+        satcat5::udp::Address addr(&xlink.net1.m_udp);
+        satcat5::io::Writeable* wr = 0;
+        // Send and receive a small UDP datagram from the server.
+        // (No one is listening, so suppress the ICMP warning.)
+        log.suppress("Destination port unreachable");
+        uut_controller.connect(IP_PERIPHERAL, PORT_CFGBUS_CMD);
+        uut_controller.write_u32(0x12345678u);
+        CHECK(uut_controller.write_finalize());
+        satcat5::poll::service_all();
+        // Use the saved reply address to send a message.
+        CHECK_FALSE(xlink.net1.m_udp.reply_is_multicast());
+        CHECK_FALSE(addr.matches_reply_address());
+        addr.save_reply_address();
+        CHECK(addr.matches_reply_address());
+        REQUIRE((wr = addr.open_write(4)));
+        wr->write_u32(0xDEADBEEFu);
+        CHECK(wr->write_finalize());
+        // Confirm the reply is received by the server.
+        satcat5::poll::service_all();
+        CHECK(uut_controller.read_u32() == 0xDEADBEEFu);
+    }
+
     SECTION("runt-rx") {
-        // Setup Rx only.
+        // Setup Rx-only socket on the client.
         uut_peripheral.bind(satcat5::udp::Port{63419});
         // Inject a truncated version of the same datagram.
         // (Length in IP header is correct, but not the one in UDP header.)
@@ -298,18 +330,18 @@ TEST_CASE("UDP-socket") {
         CHECK(uut_controller.ready_tx());
         CHECK(uut_controller.ready_rx());
         // Send and receive 125 packets, each 1000 bytes = 1 Mbit total
-        u32 tref = timer.now();
-        Catch::SimplePcg32 rng;
+        satcat5::util::PosixTimer timer;
+        auto tref = timer.now();
         for (unsigned a = 0 ; a < 125 ; ++a) {
             for (unsigned n = 0 ; n < 250 ; ++n)
-                uut_controller.write_u32(rng());
+                uut_controller.write_u32(satcat5::test::rand_u32());
             REQUIRE(uut_controller.write_finalize());
             satcat5::poll::service_all();
             REQUIRE(uut_peripheral.get_read_ready() == 1000);
             uut_peripheral.read_finalize();
         }
         // Report elapsed time.
-        unsigned elapsed = timer.elapsed_usec(tref);
+        unsigned elapsed = tref.elapsed_usec();
         printf("UDP throughput: 1 Mbit / %u usec = %.1f Mbps\n",
             elapsed, 1e6f / elapsed);
     }

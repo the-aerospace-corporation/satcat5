@@ -5,6 +5,9 @@
 --
 -- Address Resolution Protocol (ARP) packet interface
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block handles byte-by-byte implementation of the Address Resolution
 -- Protocol (IETF RFC 826) to implement Proxy-ARP (IETF RFC 1027).  The
 -- input is a filtered byte stream containing specific ARP fields only

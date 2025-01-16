@@ -24,6 +24,13 @@ static const unsigned DEVADDR_SWSTATUS  = 8;    // Legacy status UART
 static const unsigned DEVADDR_TEXTLCD   = 9;    // Two-line LCD display
 static const unsigned DEVADDR_DIP_SW    = 10;   // DIP switches, other buttons
 static const unsigned DEVADDR_SYNTH     = 11;   // Reference-signal synthesis
+static const unsigned DEVADDR_VREF      = 12;   // Vernier reference generator
+
+// The design operates from a nominal 125 MHz clock (on-board or external).
+// The vernier reference synthesizes a 9.99 MHz clock from that signal.
+// Preferred multiplier and divider copied from "7series_mem.vhd".
+static constexpr double MAIN_CLK_HZ = 125e6;
+static constexpr double VREF_CLK_HZ = 0.5 * MAIN_CLK_HZ * 9.25 / 57.875;
 
 // VC707's SGMII Ethernet PHY address for MDIO queries.
 static const unsigned RJ45_PHYADDR      = 7;    // From UG885

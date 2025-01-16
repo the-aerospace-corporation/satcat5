@@ -14,6 +14,8 @@ package COMMON_FUNCTIONS is
 -- Functions
     -- Convert a standard logic vector to an unsigned integer
     function U2I(a: std_logic_vector) return natural;
+    -- Convert unsigned vector to an integer.
+    function U2I(a: unsigned) return natural;
     -- Convert a standard logic (bit) to an integer: '0'->0, '1'->1
     function U2I(a: std_logic) return natural;
     -- Convert a boolean value to an integer: false->0, true->1
@@ -24,6 +26,10 @@ package COMMON_FUNCTIONS is
     function R2S(a: real; w: natural) return signed;
     -- Convert real to a L-bit unsigned (including W > 32)
     function R2U(a: real; w: natural) return unsigned;
+    -- As R2U, but with rounding instead of truncation.
+    function R2UR(a: real; w: natural) return unsigned;
+    -- Convert signed vector to an integer.
+    function S2I(a: signed) return integer;
     -- Convert signed to real, avoiding integer overflow.
     function S2R(a: signed) return real;
     -- Convert unsigned to real, avoiding integer overflow.
@@ -42,6 +48,7 @@ package COMMON_FUNCTIONS is
 
     -- Add the two inputs, sizing the result to prevent overflow.
     function extend_add(a, b: unsigned) return unsigned;
+    function extend_sub(a, b: unsigned) return signed;
 
     -- Perform an XOR reduction
     -- (i.e., Return '1' if an odd number of input bits are '1')
@@ -65,8 +72,10 @@ package COMMON_FUNCTIONS is
 
     -- Return the maximum of the two inputs
     function int_max(a,b: integer) return integer;
+    function real_max(a,b: real) return real;
     -- Return the minimum of the two inputs
     function int_min(a,b: integer) return integer;
+    function real_min(a,b: real) return real;
     -- Return the least common multiple of two inputs
     function int_lcm(a,b: positive) return positive;
 
@@ -88,15 +97,29 @@ package COMMON_FUNCTIONS is
     -- Given a bit-mask with exactly one set bit, return its index.
     function one_hot_decode(x: std_logic_vector; w: positive) return unsigned;
 
+    -- Given a bit-index, return a bit-mask with exactly one set bit.
+    function one_hot_encode(n: natural; w: positive) return std_logic_vector;
+
     -- Given a bit-mask, return true if more than one bit is set.
     function one_hot_error(x: std_logic_vector) return std_logic;
 
     -- Given a bit-mask, return the lowest-indexed '1' bit (if any).
     function priority_encoder(x: std_logic_vector) return natural;
 
-    -- Map 'X', 'U' to '0'
+    -- Convert integer quantity d = [0..N] to a B-bit fraction [0..2^B-1].
+    function scale_fraction(x,n,b: natural) return unsigned;
+
+    -- Map all std_logic values (0/1/H/L/Z/X/U) to either '0' or '1'.
     function to_01_vec(a: std_logic_vector) return std_logic_vector;
+    function to_01_vec(a: unsigned)         return unsigned;
+    function to_01_vec(a: signed)           return signed;
     function to_01_std(a: std_logic)        return std_logic;
+
+    -- Convert std_logic_vector to a string, for debugging.
+    function slv_to_string(a: std_logic_vector) return string;
+
+    -- Check string equality
+    function str_equal(str1: string; str2: string) return boolean;
 
     -- Given clock rate and baud rate, calculate clocks per bit.
     function clocks_per_baud(
@@ -122,7 +145,11 @@ end package;
 package body COMMON_FUNCTIONS is
     function U2I(a: std_logic_vector) return natural is
     begin
-        return TO_INTEGER(UNSIGNED(to_01_vec(a)));
+        return to_integer(unsigned(to_01_vec(a)));
+    end;
+    function U2I(a: unsigned) return natural is
+    begin
+        return to_integer(to_01_vec(a));
     end;
     function U2I(a: std_logic) return natural is
     begin
@@ -169,6 +196,16 @@ package body COMMON_FUNCTIONS is
             end loop;
         end if;
         return result;
+    end function;
+
+    function R2UR(a: real; w: natural) return unsigned is
+    begin
+        return R2U(a + 0.5, w);
+    end function;
+
+    function S2I(a: signed) return integer is
+    begin
+        return to_integer(to_01_vec(a));
     end function;
 
     function S2R(a: signed) return real is
@@ -236,6 +273,14 @@ package body COMMON_FUNCTIONS is
         variable sum : unsigned(ws-1 downto 0) := resize(a, ws) + resize(b, ws);
     begin
         return sum;
+    end;
+
+    function extend_sub(a, b: unsigned) return signed is
+        -- Calculate sum with enough width to never overflow.
+        constant ws  : natural := 1 + int_max(a'length, b'length);
+        variable dif : signed(ws-1 downto 0) := signed(resize(a, ws)) - signed(resize(b, ws));
+    begin
+        return dif;
     end;
 
     function xor_reduce(a: std_logic_vector) return std_logic is
@@ -313,6 +358,20 @@ package body COMMON_FUNCTIONS is
     end;
 
     function int_min(a, b: integer) return integer is
+    begin
+        if a < b then return a;
+        else return b;
+        end if;
+    end;
+
+    function real_max(a, b: real) return real is
+    begin
+        if a > b then return a;
+        else return b;
+        end if;
+    end;
+
+    function real_min(a, b: real) return real is
     begin
         if a < b then return a;
         else return b;
@@ -411,6 +470,15 @@ package body COMMON_FUNCTIONS is
         return tmp;
     end function;
 
+    function one_hot_encode(n: natural; w: positive) return std_logic_vector is
+        variable tmp : std_logic_vector(w-1 downto 0) := (others => '0');
+    begin
+        for b in tmp'range loop
+            tmp(b) := bool2bit(b = n);
+        end loop;
+        return tmp;
+    end function;
+
     function one_hot_error(x: std_logic_vector) return std_logic is
         variable tmp : std_logic := '0';
     begin
@@ -434,6 +502,19 @@ package body COMMON_FUNCTIONS is
         return NMAX;
     end function;
 
+    function scale_fraction(x,n,b: natural) return unsigned is
+        -- Estimate required precision for intermediate calculations.
+        constant shift : natural := int_max(b, 8 + log2_ceil(n));
+        constant total : natural := b + shift;
+        -- Direct method: floor((x * 2^b) / (n+1))
+        -- For constant N, simpler to precalculate inverse and multiply.
+        constant inv : natural := div_floor(2**total, n+1);
+        variable y : unsigned(total-1 downto 0) :=
+            shift_right(to_unsigned(x * inv, total), shift);
+    begin
+        return y(b-1 downto 0);
+    end;
+
     -- This function is useful to avoid having X's in simulation when feedback
     -- loops are present.  Note that it synthesizes to no hardware.
     function to_01_vec(a: std_logic_vector) return std_logic_vector is
@@ -451,6 +532,16 @@ package body COMMON_FUNCTIONS is
         return result;
     end;
 
+    function to_01_vec(a: unsigned) return unsigned is
+    begin
+        return unsigned(to_01_vec(std_logic_vector(a)));
+    end function;
+
+    function to_01_vec(a: signed) return signed is
+    begin
+        return signed(to_01_vec(std_logic_vector(a)));
+    end function;
+
     function to_01_std(a: std_logic) return std_logic is
         variable result : std_logic := a;
     begin
@@ -463,6 +554,31 @@ package body COMMON_FUNCTIONS is
 -- translate_on
         return result;
     end;
+
+    function slv_to_string(a: std_logic_vector) return string is
+        variable result : string(1 to a'length) := (others => NUL);
+        variable wr_idx : positive := 1;
+    begin
+-- translate_off
+        for n in a'range loop
+            -- Value of std_logic'image(x) is three characters: '1', '0', etc.
+            -- Select the interesting character, i.e., index 2 of [1, 2, 3].
+            result(wr_idx) := std_logic'image(a(n))(2);
+            wr_idx := wr_idx + 1;   -- Input vector may be "to" or "downto"
+        end loop;
+-- translate_on
+        return result;
+    end function;
+
+    function str_equal(str1: string; str2:string ) return boolean is
+    begin
+        -- String equality operator only works on strings of same length
+        if str1'length /= str2'length then
+            return false;
+        else
+            return (str1 = str2);
+        end if;
+    end function;
 
     function clocks_per_baud(
         clkref_hz   : positive;
@@ -501,8 +617,8 @@ package body COMMON_FUNCTIONS is
         return unsigned
     is
         -- Subtract offset / base-address.
-        variable xb : unsigned(x'length-1 downto 0)
-            := unsigned(x) - to_unsigned(b, x'length);
+        variable xb : unsigned(w+1 downto 0)
+            := resize(unsigned(x) - to_unsigned(b, x'length), w+2);
         -- Divide-by-four converts byte address to word-address.
         -- Ignore MSBs; not all implementations force them to zero.
         variable xu : unsigned(w-1 downto 0) := xb(w+1 downto 2);

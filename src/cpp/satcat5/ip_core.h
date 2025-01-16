@@ -37,9 +37,15 @@ namespace satcat5 {
             constexpr satcat5::ip::Addr operator+(unsigned offset) const
                 {return satcat5::ip::Addr(value + (u32)offset);}
 
-            // Is this address reserved for broadcast or multicast?
-            bool is_multicast() const;
-            bool is_unicast() const;
+            // Log formatting.
+            void log_to(satcat5::log::LogBuffer& wr) const;
+
+            // Tests for various reserved address ranges:
+            bool is_broadcast() const;  // Limited broadcast (255.255.255.255)
+            bool is_multicast() const;  // IP multicast (224.*.*.*)
+            bool is_reserved() const;   // Reserved blocks (0.*.*.* or 127.*.*.*)
+            bool is_unicast() const;    // Any normal single-destination address
+            bool is_valid() const;      // Any nonzero address
         };
 
         // CIDR "prefix" is the number of leading ones in the subnet mask.
@@ -58,6 +64,10 @@ namespace satcat5 {
                 : Addr(a, b, c, d) {}
             constexpr Mask(const satcat5::ip::Addr& addr)  // NOLINT
                 : Addr(addr.value) {}
+
+            // Convert this subnet-mask to a CIDR prefix length.
+            // (Undefined if this mask is not a valid CIDR subnet.)
+            unsigned prefix() const;
         };
 
         // An IPv4 subnet consists of a base address and a subnet mask.
@@ -71,10 +81,19 @@ namespace satcat5 {
                 {return (addr.value & mask.value) == (other.value & mask.value);}
 
             // Commonly used operators.
+            constexpr bool operator==(const satcat5::ip::Addr& other) const
+                {return (addr == other) && (mask == Mask(32));}
             constexpr bool operator==(const satcat5::ip::Subnet& other) const
                 {return (addr == other.addr) && (mask == other.mask);}
             constexpr bool operator!=(const satcat5::ip::Subnet& other) const
                 {return (addr != other.addr) || (mask != other.mask);}
+
+            // Get the CIDR prefix length for this subnet.
+            inline unsigned prefix() const
+                {return mask.prefix();}
+
+            // Log formatting.
+            void log_to(satcat5::log::LogBuffer& wr) const;
         };
 
         // UDP and TCP ports are both 16-bit unsigned integers.
@@ -114,8 +133,12 @@ namespace satcat5 {
         constexpr satcat5::ip::Port PORT_NONE   = 0;
         constexpr satcat5::ip::Addr ADDR_BROADCAST
             = satcat5::ip::Addr(255, 255, 255, 255);
+        constexpr satcat5::ip::Addr ADDR_LOOPBACK
+            = satcat5::ip::Addr(127, 0, 0, 1);
         constexpr satcat5::ip::Subnet DEFAULT_ROUTE
             = {ADDR_NONE, MASK_NONE};
+        constexpr satcat5::ip::Subnet UDP_MULTICAST
+            = {Addr(224, 0, 0, 0), Mask(4)};
 
         constexpr u8 PROTO_ICMP                 = 0x01;
         constexpr u8 PROTO_IGMP                 = 0x02;
@@ -136,10 +159,14 @@ namespace satcat5 {
                 {return (data[0] >> 8) & 0x0F;}
             constexpr unsigned len_total() const        // Total bytes including header
                 {return data[1];}
+            constexpr u16 id() const                    // Identifier / sequence number
+                {return data[2];}
             constexpr u16 frg() const                   // Fragment offset
                 {return data[3] & 0xBFFF;}
             constexpr unsigned len_inner() const        // Inner bytes excluding header
                 {return len_total() - 4*ihl();}
+            constexpr u8 ttl() const                    // Time to Live (TTL)
+                {return (u8)(data[4] >> 8);}
             constexpr u8 proto() const                  // Inner protocol (UDP/TCP/etc.)
                 {return (u8)(data[4] & 0x00FF);}
             constexpr u16 chk() const                   // Checksum (incoming only)
@@ -149,16 +176,21 @@ namespace satcat5 {
             constexpr satcat5::ip::Addr dst() const     // Destination address
                 {return satcat5::ip::Addr(data[8], data[9]);}
 
-            // Write Ethernet header to the designated stream.
+            // Write IPv4 header to the designated stream.
             void write_to(satcat5::io::Writeable* wr) const;
 
-            // Read Ethernet header from the designated stream.
+            // Read a partial IPv4 header from the designated stream.
+            // First 20 bytes contains all fields except options (IHL > 5).
+            // (Returns true for valid header ignoring checksum, false otherwise.)
+            bool read_core(satcat5::io::Readable* rd);  // Core header (first 20 bytes)
+
+            // Read an entire IPv4 header from the designated stream.
             // (Returns true for valid header+checksum, false otherwise.)
-            bool read_from(satcat5::io::Readable* rd);
+            bool read_from(satcat5::io::Readable* rd);  // Entire header (up to 64 bytes)
         };
 
         // Calculate the IP header checksum over a block of data.
         // (To verify: Returned value should be equal to zero.)
-        u16 checksum(unsigned wcount, const u16* data);
+        u16 checksum(unsigned wcount, const u16* data, u16 prev = UINT16_MAX);
     }
 }

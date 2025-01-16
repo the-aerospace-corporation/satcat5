@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2023 The Aerospace Corporation.
+-- Copyright 2019-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -31,19 +31,46 @@ package eth_frame_common is
     -- Ethernet header: https://en.wikipedia.org/wiki/Ethernet_frame
     --  Bytes  0- 5 = Destination MAC
     --  Bytes  6-11 = Source MAC
-    --  Bytes 12-13 = EtherType
-    --  User data starts at byte 14.
+    --  Bytes 12-13 = EtherType (outer)
+    --  User data starts at byte 14, unless a VLAN tag is present.
     --  Last four bytes are FCS (CRC32), if present.
     constant ETH_HDR_DSTMAC     : integer := 0;
     constant ETH_HDR_SRCMAC     : integer := 6;
     constant ETH_HDR_ETYPE      : integer := 12;
     constant ETH_HDR_DATA       : integer := 14;
+    -- If a VLAN tag is present (i.e., outer EtherType = 0x8100):
+    --  Bytes 14-15 = VLAN tag (PCP/DEI/VID)
+    --  Bytes 16-17 = EtherType (inner)
+    --  Bytes 18+   = User data
+    constant ETH_HDR_VTAG       : integer := 14;
+    constant ETH_HDR_VTYPE      : integer := 16;
+    constant ETH_HDR_VDATA      : integer := 18;
+
+    -- Define byte-offsets for the Address Resolution Protocol (ARP) header.
+    -- See also: https://en.wikipedia.org/wiki/Address_Resolution_Protocol
+    constant ARP_HDR_HTYPE      : integer := ETH_HDR_DATA + 0;
+    constant ARP_HDR_PTYPE      : integer := ETH_HDR_DATA + 2;
+    constant ARP_HDR_HLEN       : integer := ETH_HDR_DATA + 4;
+    constant ARP_HDR_PLEN       : integer := ETH_HDR_DATA + 5;
+    constant ARP_HDR_OPER       : integer := ETH_HDR_DATA + 6;
+    constant ARP_HDR_SHA        : integer := ETH_HDR_DATA + 8;
+    constant ARP_HDR_SPA        : integer := ETH_HDR_DATA + 14;
+    constant ARP_HDR_THA        : integer := ETH_HDR_DATA + 18;
+    constant ARP_HDR_TPA        : integer := ETH_HDR_DATA + 24;
+
+    -- Other ARP-related constants.
+    constant ARP_HTYPE_ETH      : std_logic_vector(15 downto 0) := x"0001";
+    constant ARP_PTYPE_IPV4     : std_logic_vector(15 downto 0) := x"0800";
+
+    -- Minimum and maximum for the IPv4 header length field (IHL).
+    constant IP_IHL_MIN : nybb_u := x"5";
+    constant IP_IHL_MAX : nybb_u := x"F";
 
     -- Define byte-offsets for fields in a standard IP frame header.
     -- (Assume IP header is preceded by the 14-byte Ethernet header.)
     -- See also: https://en.wikipedia.org/wiki/IPv4#Header
     constant IP_HDR_VERSION     : integer := ETH_HDR_DATA + 0;  -- Version + IP Header length
-    constant IP_HDR_DSCP_ECH    : integer := ETH_HDR_DATA + 1;  -- QoS and ECN flags
+    constant IP_HDR_DSCP_ECN    : integer := ETH_HDR_DATA + 1;  -- QoS and ECN flags
     constant IP_HDR_TOTAL_LEN   : integer := ETH_HDR_DATA + 2;  -- Length (hdr + contents)
     constant IP_HDR_IDCOUNT     : integer := ETH_HDR_DATA + 4;  -- Pkt ID (usually a counter)
     constant IP_HDR_FRAGMENT    : integer := ETH_HDR_DATA + 6;  -- Fragment flags and offset
@@ -53,14 +80,32 @@ package eth_frame_common is
     constant IP_HDR_SRCADDR     : integer := ETH_HDR_DATA + 12; -- Source address
     constant IP_HDR_DSTADDR     : integer := ETH_HDR_DATA + 16; -- Destination address
     constant IP_HDR_OPTIONS     : integer := ETH_HDR_DATA + 20; -- Optional field(s)
+    constant IP_HDR_MIN         : integer := ETH_HDR_DATA + 20; -- Minimum end of IP header
     constant IP_HDR_MAX         : integer := ETH_HDR_DATA + 60; -- Maximum end of IP header
     function IP_HDR_DATA(ihl : nybb_u) return integer;          -- Start of data field
     -- Note: Data starts after the variable-length OPTIONS field, provide
     --       IP-header length (IHL) field to determine the initial offset.
 
+    -- Define byte-offsets for fields in the IPv4 + TCP frame header.
+    -- (Assume IP header is preceded by the 14-byte Ethernet header.)
+    -- See also: https://en.wikipedia.org/wiki/Transmission_Control_Protocol#TCP_segment_structure
+    constant TCP_HDR_MIN        : integer := IP_HDR_MIN + 20;   -- Minimum end of TCP header
+    constant TCP_HDR_MAX        : integer := IP_HDR_MAX + 60;   -- Maximum end of TCP header
+    function TCP_HDR_SRC(ihl : nybb_u) return integer;          -- Source port (U16)
+    function TCP_HDR_DST(ihl : nybb_u) return integer;          -- Destination port (U16)
+    function TCP_HDR_SEQ(ihl : nybb_u) return integer;          -- Sequence number (U32)
+    function TCP_HDR_ACKN(ihl : nybb_u) return integer;         -- Acknolwedgement number (U32)
+    function TCP_HDR_FLAGS(ihl : nybb_u) return integer;        -- Data offset + other flags (U16)
+    function TCP_HDR_WSIZE(ihl : nybb_u) return integer;        -- Window size (U16)
+    function TCP_HDR_CHK(ihl : nybb_u) return integer;          -- Checksum (U16)
+    function TCP_HDR_URG(ihl : nybb_u) return integer;          -- Urgent pointer (U16)
+    function TCP_HDR_OPT(ihl : nybb_u) return integer;          -- Optional field(s)
+    function TCP_HDR_DATA(ihl, dat : nybb_u) return integer;    -- Start of user data
+
     -- Define byte-offsets for fields in the IPv4 + UDP frame header.
     -- (Assume IP header is preceded by the 14-byte Ethernet header.)
     -- See also: https://en.wikipedia.org/wiki/User_Datagram_Protocol#UDP_datagram_structure
+    constant UDP_HDR_MIN        : integer := IP_HDR_MIN + 8;    -- Minimum end of UDP header
     constant UDP_HDR_MAX        : integer := IP_HDR_MAX + 8;    -- Maximum end of UDP header
     function UDP_HDR_SRC(ihl : nybb_u) return integer;          -- Source port (U16)
     function UDP_HDR_DST(ihl : nybb_u) return integer;          -- Destination port (U16)
@@ -89,8 +134,10 @@ package eth_frame_common is
 
     -- Local type definitions for Frame Check Sequence (FCS):
     subtype crc_word_t is std_logic_vector(31 downto 0);
+    subtype crc16_word_t is std_logic_vector(15 downto 0);
     type byte_array_t is array(natural range <>) of byte_t;
     constant CRC_INIT    : crc_word_t := (others => '1');
+    constant CRC16_INIT  : crc16_word_t := (others => '1');
     constant CRC_RESIDUE : crc_word_t := x"C704DD7B";
     constant FCS_BYTES   : integer := 4;
 
@@ -99,12 +146,14 @@ package eth_frame_common is
     constant MAC_TYPE_WIDTH : integer := 16;
     subtype mac_addr_t is std_logic_vector(MAC_ADDR_WIDTH-1 downto 0);
     subtype mac_type_t is std_logic_vector(MAC_TYPE_WIDTH-1 downto 0);
+    constant MAC_ADDR_NONE      : mac_addr_t := (others => '0');
     constant MAC_ADDR_BROADCAST : mac_addr_t := (others => '1');
 
     -- Functions for checking special MAC addresses:
     function mac_is_swcontrol(mac : mac_addr_t) return boolean;
     function mac_is_l2multicast(mac : mac_addr_t) return boolean;
     function mac_is_l3multicast(mac : mac_addr_t) return boolean;
+    function mac_is_invalid(mac : mac_addr_t) return boolean;
     function mac_is_broadcast(mac : mac_addr_t) return boolean;
 
     -- Define well-known EtherTypes:
@@ -161,6 +210,9 @@ package eth_frame_common is
     constant SLIP_ESC_END   : byte_t := X"DC";  -- Escaped FEND
     constant SLIP_ESC_ESC   : byte_t := X"DD";  -- Escaped ESC
 
+    -- HDLC frame delimeter.
+    constant HDLC_DELIM     : byte_t := X"7E";
+
     -- Utility functions for determining if a given byte is currently
     -- present in an arbitrary-width data stream, then extracting it.
     function strm_byte_present(
@@ -178,6 +230,12 @@ package eth_frame_common is
         data    : std_logic_vector) -- Input vector (width = arbitrary)
         return byte_t;
 
+    -- As strm_byte_value, but reads past end-of-input return zero.
+    function strm_byte_zpad(
+        bidx    : natural;          -- Byte index of interest
+        data    : std_logic_vector) -- Input vector (width = arbitrary)
+        return byte_t;
+
     -- Flip bit-order of the given byte, or each byte in a word.
     function flip_byte(data : byte_t) return byte_t;
     function flip_word(data : crc_word_t) return crc_word_t;
@@ -189,6 +247,9 @@ package eth_frame_common is
     -- Byte-at-a-time CRC32 update function for polynomial 0x04C11DB7
     -- Derived from general-purpose CRC32 by Michael Cheung, 2014 June.
     function crc_next(prev : crc_word_t; data : byte_t) return crc_word_t;
+
+    -- Byte-at-a-time CRC-CCITT update function for polynomial 0x1021
+    function crc16_next(prev : crc16_word_t; data : byte_t) return crc16_word_t;
 end package;
 
 
@@ -226,6 +287,62 @@ end function;
 function UDP_HDR_DAT(ihl : nybb_u) return integer is
 begin
     return IP_HDR_DATA(ihl) + 8;
+end function;
+
+function TCP_HDR_SRC(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 0;
+end function;
+
+function TCP_HDR_DST(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 2;
+end function;
+
+function TCP_HDR_SEQ(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 4;
+end function;
+
+function TCP_HDR_ACKN(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 8;
+end function;
+
+function TCP_HDR_FLAGS(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 12;
+end function;
+
+function TCP_HDR_WSIZE(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 14;
+end function;
+
+function TCP_HDR_CHK(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 16;
+end function;
+
+function TCP_HDR_URG(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 18;
+end function;
+
+function TCP_HDR_OPT(ihl : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 20;
+end function;
+
+function TCP_HDR_DATA(ihl, dat : nybb_u) return integer is
+begin
+    return IP_HDR_DATA(ihl) + 4 * to_integer(dat);
+end function;
+
+function mac_is_invalid(mac : mac_addr_t) return boolean is
+begin
+    -- Is this a null or link-local destination MAC address?
+    return (mac = MAC_ADDR_NONE) or mac_is_swcontrol(mac);
 end function;
 
 function mac_is_swcontrol(mac : mac_addr_t) return boolean is
@@ -340,6 +457,20 @@ begin
     return result;
 end function;
 
+function strm_byte_zpad(
+    bidx    : natural;
+    data    : std_logic_vector)
+    return byte_t
+is
+    constant ZERO : byte_t := (others => '0');
+begin
+    if (8*bidx+7 < data'length) then
+        return strm_byte_value(bidx, data);
+    else
+        return ZERO;
+    end if;
+end function;
+
 function flip_byte(data : byte_t) return byte_t is
     variable drev : byte_t;
 begin
@@ -416,6 +547,28 @@ begin
     result(29) := drev(7) xor drev(6) xor drev(3) xor prev(21) xor prev(27) xor prev(30) xor prev(31);
     result(30) := drev(7) xor drev(4) xor prev(22) xor prev(28) xor prev(31);
     result(31) := drev(5) xor prev(23) xor prev(29);
+    return result;
+end function;
+
+function crc16_next(prev : crc16_word_t; data : byte_t) return crc16_word_t is
+    variable result : crc16_word_t;
+begin
+    result(0)  := prev(8) xor prev(12) xor data(0) xor data(4);
+    result(1)  := prev(9) xor prev(13) xor data(1) xor data(5);
+    result(2)  := prev(10) xor prev(14) xor data(2) xor data(6);
+    result(3)  := prev(11) xor prev(15) xor data(3) xor data(7);
+    result(4)  := prev(12) xor data(4);
+    result(5)  := prev(8) xor prev(12) xor prev(13) xor data(0) xor data(4) xor data(5);
+    result(6)  := prev(9) xor prev(13) xor prev(14) xor data(1) xor data(5) xor data(6);
+    result(7)  := prev(10) xor prev(14) xor prev(15) xor data(2) xor data(6) xor data(7);
+    result(8)  := prev(0) xor prev(11) xor prev(15) xor data(3) xor data(7);
+    result(9)  := prev(1) xor prev(12) xor data(4);
+    result(10) := prev(2) xor prev(13) xor data(5);
+    result(11) := prev(3) xor prev(14) xor data(6);
+    result(12) := prev(4) xor prev(8) xor prev(12) xor prev(15) xor data(0) xor data(4) xor data(7);
+    result(13) := prev(5) xor prev(9) xor prev(13) xor data(1) xor data(5);
+    result(14) := prev(6) xor prev(10) xor prev(14) xor data(2) xor data(6);
+    result(15) := prev(7) xor prev(11) xor prev(15) xor data(3) xor data(7);
     return result;
 end function;
 

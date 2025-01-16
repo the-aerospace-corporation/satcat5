@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the ConfigBus Timer controller
@@ -21,8 +21,8 @@ static const unsigned REG_TIMER_IRQ = 5;
 static const uint32_t WDOG_DISABLE  = -1;
 
 TEST_CASE("cfgbus_timer") {
-    // Print any SatCat5 messages to console.
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Object for counting callback events.
     satcat5::test::CountOnDemand callback;
@@ -50,7 +50,7 @@ TEST_CASE("cfgbus_timer") {
         for (unsigned a = 0 ; a < 10 ; ++a)
             regs[REG_PERF_CTR].read_push(4*a + 7);
         for (unsigned a = 0 ; a < 10 ; ++a)
-            CHECK(uut.now() == (4*a + 7));
+            CHECK(uut.now().tval == (4*a + 7));
     }
 
     SECTION("last_event") {
@@ -58,7 +58,7 @@ TEST_CASE("cfgbus_timer") {
         for (unsigned a = 0 ; a < 10 ; ++a)
             regs[REG_LAST_EVT].read_push(3*a + 2);
         for (unsigned a = 0 ; a < 10 ; ++a)
-            CHECK(uut.last_event() == (3*a + 2));
+            CHECK(uut.last_event().tval == (3*a + 2));
     }
 
     SECTION("timer_interval") {

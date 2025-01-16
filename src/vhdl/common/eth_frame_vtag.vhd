@@ -39,10 +39,13 @@ use     work.eth_frame_common.all;
 
 entity eth_frame_vtag is
     generic (
+    -- To disable ConfigBus, set DEV_ADDR = CFGBUS_ADDR_NONE.
     DEV_ADDR    : integer;          -- ConfigBus device address
     REG_ADDR    : integer;          -- ConfigBus register address
-    PORT_INDEX  : natural;          -- Port index (for ConfigBus filtering)
-    IO_BYTES    : positive := 1);   -- Width of main data port
+    PORT_INDEX  : integer := -1;    -- Port index (for ConfigBus filtering)
+    IO_BYTES    : positive := 1;    -- Width of main data port
+    -- Default policy on reset, or adjust through ConfigBus.
+    VTAG_POLICY : tag_policy_t := VTAG_ADMIT_ALL);
     port (
     -- Input data stream
     in_data     : in  std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -59,8 +62,8 @@ entity eth_frame_vtag is
     out_valid   : out std_logic;
     out_ready   : in  std_logic;
 
-    -- Configuration interface (write-only).
-    cfg_cmd     : in  cfgbus_cmd;
+    -- Configuration interface (optional, write-only).
+    cfg_cmd     : in  cfgbus_cmd := CFGBUS_CMD_NULL;
 
     -- System interface.
     clk         : in  std_logic;
@@ -99,7 +102,7 @@ signal mod_vtag_d   : vlan_hdr_t := (others => '0');
 
 -- Control and MUX logic.
 signal tag_wcount   : integer range 0 to WCOUNT_MAX := 0;
-signal tag_policy   : tag_policy_t := VTAG_ADMIT_ALL;
+signal tag_policy   : tag_policy_t := VTAG_POLICY;
 signal tag_data     : data_t := (others => '0');
 signal tag_nlast    : last_t := 0;
 signal tag_novr     : shift_t := 0;
@@ -112,7 +115,7 @@ signal tag_prewr    : std_logic;
 signal tag_final    : std_logic;
 
 -- ConfigBus interface
-signal cfg_policy   : tag_policy_t := VTAG_ADMIT_ALL;
+signal cfg_policy   : tag_policy_t := VTAG_POLICY;
 
 begin
 
@@ -130,7 +133,7 @@ in_sreg(8*IO_BYTES-1 downto 0) <= in_data;
 
 gen_sreg : for b in 0 to OVR_MAX-1 generate
     p_sreg : process(clk)
-        constant POS_RD : natural := 8*b; 
+        constant POS_RD : natural := 8*b;
         constant POS_WR : natural := 8*(IO_BYTES + b);
     begin
         if rising_edge(clk) then
@@ -212,7 +215,7 @@ begin
         -- Latch new tag policy at EOF or when idle.
         -- (i.e., Don't change it in the middle of a frame.)
         if (reset_p = '1') then
-            tag_policy <= VTAG_ADMIT_ALL;   -- Global reset
+            tag_policy <= VTAG_POLICY;      -- Global reset
         elsif (tag_next = '1' and tag_nlast > 0) then
             tag_policy <= cfg_policy;       -- End of frame
         elsif (tag_next = '0' and tag_wcount = 0) then
@@ -269,20 +272,22 @@ out_nlast   <= tag_nlast;
 out_valid   <= tag_valid;
 tag_ready   <= out_ready;
 
--- ConfigBus interface handling.
-p_cfg : process(cfg_cmd.clk)
-begin
-    if rising_edge(cfg_cmd.clk) then
-        if (cfg_cmd.reset_p = '1') then
-            -- Global reset reverts to required default under 802.1Q.
-            cfg_policy <= VTAG_ADMIT_ALL;
-        elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REG_ADDR)) then
-            -- Ignore writes unless they have a matching port-index.
-            if (u2i(cfg_cmd.wdata(31 downto 24)) = PORT_INDEX) then
-                cfg_policy <= cfg_cmd.wdata(21 downto 20);
+-- Optional ConfigBus interface handling.
+gen_cfg : if cfgbus_reg_enable(DEV_ADDR, REG_ADDR) generate
+    p_cfg : process(cfg_cmd.clk)
+    begin
+        if rising_edge(cfg_cmd.clk) then
+            if (cfg_cmd.reset_p = '1') then
+                -- Global reset reverts to required default under 802.1Q.
+                cfg_policy <= VTAG_POLICY;
+            elsif (cfgbus_wrcmd(cfg_cmd, DEV_ADDR, REG_ADDR)) then
+                -- Ignore writes unless they have a matching port-index.
+                if (u2i(cfg_cmd.wdata(31 downto 24)) = PORT_INDEX) then
+                    cfg_policy <= cfg_cmd.wdata(21 downto 20);
+                end if;
             end if;
         end if;
-    end if;
-end process;
+    end process;
+end generate;
 
 end eth_frame_vtag;

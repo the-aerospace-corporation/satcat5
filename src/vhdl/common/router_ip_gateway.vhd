@@ -5,6 +5,9 @@
 --
 -- Multipurpose IP-Gateway and ICMP server.
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block inspects IPv4 packets and handles various error conditions.
 -- By default, it forwards IPv4 frames only, but it can be configured to
 -- allow selective forwarding of raw-Ethernet frames.
@@ -203,7 +206,7 @@ begin
         cmd := (others => 'X');         -- Don't care
         rdy := '0';                     -- Default = no-change
         if (parse_bct = 5) then         -- Destination MAC (6 bytes)
-            if (mac_is_swcontrol(rx_data48) or
+            if (mac_is_invalid(rx_data48) or
                 mac_is_l2multicast(rx_data48)) then
                 cmd := ACT_DROP;        -- Block (illegal destination)
                 rdy := rx_write;

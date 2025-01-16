@@ -43,6 +43,9 @@ else
     IMAGE=$DOCKER_REG/csaps/vivado:${VIVADO_VERSION}_latest
 fi
 
+# First-time download and/or confirm cache is fresh.
+docker pull ${IMAGE}
+
 # Fetch current user-ID
 USER_ID=$(id -u)
 

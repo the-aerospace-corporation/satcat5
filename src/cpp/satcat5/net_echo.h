@@ -2,12 +2,9 @@
 // Copyright 2021 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Generic Echo service
-//
-// The Echo protocol can be attached to any Dispatch object.  It copies
-// each received frame back to the original sender.  Variants are provided
-// for raw-Ethernet and UDP networking.
-//
+//! \file
+//! Generic Echo service.
+//!
 
 #pragma once
 
@@ -16,28 +13,34 @@
 
 namespace satcat5 {
     namespace net {
-        // Generic version requires a wrapper to be used.
+        //! The Echo protocol can be attached to any Dispatch object.  It copies
+        //! each received frame back to the original sender.  Variants are
+        //! provided for raw-Ethernet and UDP networking. Generic version
+        //! requires a wrapper to be used.
         class ProtoEcho : public satcat5::net::Protocol {
         protected:
-            // Only children can safely access constructor/destructor.
+            //! Only children can safely access constructor/destructor.
+            //! @{
             ProtoEcho(
                 satcat5::net::Dispatch* iface,
                 const satcat5::net::Type& type_req,
                 const satcat5::net::Type& type_ack);
             ~ProtoEcho() SATCAT5_OPTIONAL_DTOR;
+            //! @}
 
-            // Event handler for incoming frames.
+            //! Event handler to process incoming frames and respond.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
 
-            satcat5::net::Dispatch* const m_iface;
-            satcat5::net::Type const m_replytype;
+            satcat5::net::Dispatch* const m_iface;      //!< Registered iface.
+            satcat5::net::Type const m_replytype;       //!< Type for replies.
         };
     }
 
-    // Thin wrappers for commonly used protocols:
     namespace eth {
-        // Note: Always use different request/reply EtherTypes to
-        //       avoid the potential for infinite reply loops.
+        //! Thin wrapper for echo of ethernet frames through eth::Dispatch.
+        //! Note: Always use different request/reply EtherTypes to
+        //!       avoid the potential for infinite reply loops.
+        //! \copydoc satcat5::net::ProtoEcho
         class ProtoEcho : public satcat5::net::ProtoEcho {
         public:
             ProtoEcho(
@@ -48,6 +51,8 @@ namespace satcat5 {
     }
 
     namespace udp {
+        //! Thin wrapper for echo of UDP/IP frames through udp::Dispatch.
+        //! \copydoc satcat5::net::ProtoEcho
         class ProtoEcho : public satcat5::net::ProtoEcho {
         public:
             ProtoEcho(

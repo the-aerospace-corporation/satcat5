@@ -41,15 +41,16 @@ public:
 };
 
 TEST_CASE("cfgbus-remote-eth") {
-    satcat5::log::ToConsole log;
-    satcat5::util::PosixTimekeeper timer;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+    satcat5::test::TimerSimulation timer;
 
     // Memory-mapped buffer is large enough for two full device-pages.
     std::vector<u32> mmap(2*cfg::REGS_PER_DEVICE, 0);
     cfg::ConfigBusMmap cfg(&mmap[0], satcat5::irq::IRQ_NONE);
 
     // Network communication infrastructure.
-    satcat5::test::CrosslinkEth xlink;
+    satcat5::test::CrosslinkEth xlink(__FILE__);
 
     // Shortcuts and aliases:
     auto& c2p(xlink.eth0);      // Inject controller-to-peripheral traffic
@@ -68,7 +69,7 @@ TEST_CASE("cfgbus-remote-eth") {
     };
 
     // Unit under test.
-    eth::ConfigBus uut_controller(&xlink.net0, timer.timer());
+    eth::ConfigBus uut_controller(&xlink.net0);
     eth::ProtoConfig uut_peripheral(&xlink.net1, &cfg);
     uut_controller.connect(xlink.MAC1);
 
@@ -285,9 +286,7 @@ TEST_CASE("cfgbus-remote-eth") {
     SECTION("polling") {
         satcat5::test::MockInterrupt irq(&uut_controller);
         uut_controller.set_irq_polling(5);  // Poll every 5 msec.
-        u32 tref = timer.timer()->now();    // Run for 10 msec...
-        while (timer.timer()->elapsed_usec(tref) < 10000)
-            satcat5::poll::service_all();
+        timer.sim_wait(10);                 // Run for 10 msec...
         CHECK(irq.count() > 0);             // At least one event?
     }
 
@@ -301,15 +300,15 @@ TEST_CASE("cfgbus-remote-eth") {
 }
 
 TEST_CASE("cfgbus-remote-udp") {
-    satcat5::log::ToConsole log;
-    satcat5::util::PosixTimekeeper timer;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
 
     // Memory-mapped buffer is large enough for two full device-pages.
     std::vector<u32> mmap(2*cfg::REGS_PER_DEVICE, 0);
     cfg::ConfigBusMmap cfg(&mmap[0], satcat5::irq::IRQ_NONE);
 
     // Network communication infrastructure.
-    satcat5::test::CrosslinkIp xlink;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
     auto& c2p = xlink.eth0;     // Alias for controller-to-peripheral traffic
     auto& p2c = xlink.eth1;     // Alias for peripheral-to-controller traffic
 

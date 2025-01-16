@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for packet buffer
@@ -18,9 +18,8 @@ using satcat5::test::IoEventCounter;
 const u32 WRITE_ERROR = (u32)(-1);
 
 TEST_CASE("Empty packet buffers are empty", "[pkt_buffer]") {
-    // Print any SatCat5 messages to console.
+    // Simulation infrastructure.
     satcat5::log::ToConsole log;
-
     u8 buf_backing[BUF_SIZE];
 
     SECTION("Buffer without max_pkt") {
@@ -60,6 +59,8 @@ TEST_CASE("Empty packet buffers are empty", "[pkt_buffer]") {
 }
 
 TEST_CASE("normal writes to non-packet buffers", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[BIG_BUF_SIZE];
     u8 buf_data[BIG_BUF_SIZE];
     unsigned bytes_written = 0;
@@ -93,7 +94,7 @@ TEST_CASE("normal writes to non-packet buffers", "[pkt_buffer]") {
 
         // Check that the correct size is written
         SECTION("Data is present after finalize") {
-            uut.write_finalize();
+            CHECK(uut.write_finalize());
             CHECK(uut.get_write_partial() == 0);
             CHECK(uut.get_write_space() == free_space);
         }
@@ -113,6 +114,8 @@ TEST_CASE("normal writes to non-packet buffers", "[pkt_buffer]") {
 }
 
 TEST_CASE("zero-size write", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[BUF_SIZE];
     u8 buf_data[BUF_SIZE];
 
@@ -127,9 +130,9 @@ TEST_CASE("zero-size write", "[pkt_buffer]") {
     CHECK(uut.get_percent_full() == 0);
     CHECK(uut.get_write_partial() == 0);
 
-    // Try to commit or revert that 0
+    // Try to commit or revert the null write.
     SECTION("Data is present after finalize") {
-        uut.write_finalize();
+        CHECK_FALSE(uut.write_finalize());
         CHECK(uut.get_write_partial() == 0);
         CHECK((u32)uut.get_percent_full() == 0);
         CHECK(uut.get_write_space() == original_write_space);
@@ -150,15 +153,17 @@ TEST_CASE("zero-size write", "[pkt_buffer]") {
 
 
 TEST_CASE("Abandon packet on oversize write", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[BUF_SIZE];
     u8 buf_data[BUF_SIZE];
 
     PacketBuffer uut(buf_backing, BUF_SIZE);
     u32 original_write_space = uut.get_write_space();
 
-    // Write a single byte packet
+    // Write a single-byte packet
     uut.write_u8('a');
-    uut.write_finalize();
+    CHECK(uut.write_finalize());
     CHECK(uut.get_write_space() == original_write_space-1);
 
     // Write to almost full
@@ -194,17 +199,17 @@ TEST_CASE("Abandon packet on oversize write", "[pkt_buffer]") {
         CHECK(uut.get_write_space() == 0);
         CHECK(uut.get_write_partial() == WRITE_ERROR);
 
-
-        // Try to commit or revert
-        SECTION("Data is erased after finalize") {
-            uut.write_finalize();
+        // Commit or revert from the overflow state.
+        // Either should revert the buffer to empty.
+        SECTION("Finalize after overflow") {
+            CHECK_FALSE(uut.write_finalize());
         }
-        SECTION("Data is erased after abort") {
+        SECTION("Abort after overflow") {
             uut.write_abort();
         }
-            CHECK(uut.get_write_partial() == 0);
-            CHECK((u32)uut.get_percent_full() == 0);
-            CHECK(uut.get_write_space() == original_write_space-1);
+        CHECK(uut.get_write_partial() == 0);
+        CHECK((u32)uut.get_percent_full() == 0);
+        CHECK(uut.get_write_space() == original_write_space-1);
     }
 
     // Buffer returns to empty after clear
@@ -216,6 +221,8 @@ TEST_CASE("Abandon packet on oversize write", "[pkt_buffer]") {
 
 
 TEST_CASE("large packet", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[BIG_BUF_SIZE];
     u8 buf_data[BIG_BUF_SIZE];
     unsigned big_write_size = (1<<16)+1;
@@ -229,9 +236,8 @@ TEST_CASE("large packet", "[pkt_buffer]") {
     // Write a small packet
     uut.write_u8('a');
     ++bytes_written;
-    bool small_result = uut.write_finalize();
+    CHECK(uut.write_finalize());
     u32 small_space = uut.get_write_space();
-    CHECK(small_result == true);
 
     // Write 0xFFFF+1 bytes
     uut.write_bytes(big_write_size, buf_data);
@@ -241,8 +247,7 @@ TEST_CASE("large packet", "[pkt_buffer]") {
     CHECK(uut.get_write_space() == 0);
 
     // Commit should fail
-    bool big_result = uut.write_finalize();
-    REQUIRE(big_result == false);
+    CHECK_FALSE(uut.write_finalize());
     CHECK(uut.get_write_partial() == 0);
     CHECK(uut.get_write_space() == small_space);
 
@@ -258,21 +263,58 @@ TEST_CASE("large packet", "[pkt_buffer]") {
 }
 
 // Test write after read, including wrap around get_write_space
-TEST_CASE("wrap-around read", "[pkt_buffer]") {
+TEST_CASE("wrap-around-read-nopacket", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
+    u8 buf_backing[500];
+    u8 buf_src[500];
+    u8 buf_dst[500];
+
+    // Unit under test in stream mode
+    PacketBuffer uut(buf_backing, 500);
+
+    // Buffer starts out empty
+    REQUIRE((u32)uut.get_percent_full() == 0);
+
+    // Write 400 bytes and check resulting state.
+    uut.write_bytes(400, buf_src);
+    CHECK(uut.write_finalize());
+
+    // Read 200 bytes, leaving 200 in the buffer.
+    CHECK(uut.read_bytes(200, buf_dst));
+    CHECK(uut.get_read_ready() == 200);
+    CHECK(uut.get_write_space() == 300);
+
+    // Write another 200 to force wraparound.
+    uut.write_bytes(200, buf_src);
+    CHECK(uut.write_finalize());
+    CHECK(uut.get_read_ready() == 400);
+    CHECK(uut.get_write_space() == 100);
+
+    // Drain the buffer contents.
+    CHECK(uut.read_bytes(400, buf_dst));
+    CHECK(uut.get_read_ready() == 0);
+    CHECK(uut.get_write_space() == 500);
+}
+
+TEST_CASE("wrap-around-read-packet", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[500];
     u8 buf_src[500];
     u8 buf_dst[500];
     unsigned bytes_written = 0;
 
+    // Unit under test in packet mode (max 5)
     PacketBuffer uut(buf_backing, 500, 5);
 
     // Buffer starts out empty
     REQUIRE((u32)uut.get_percent_full() == 0);
-    u32 original_write_space = uut.get_write_space();
+    unsigned original_write_space = uut.get_write_space();
 
     // Write a 100-byte packet
     uut.write_bytes(100, buf_src);
-    uut.write_finalize();
+    CHECK(uut.write_finalize());
     bytes_written += 100;
 
     // Write a bit of a second packet
@@ -287,7 +329,7 @@ TEST_CASE("wrap-around read", "[pkt_buffer]") {
 
     // Finish the second 100-byte packet
     uut.write_bytes(75, buf_src);
-    uut.write_finalize();
+    CHECK(uut.write_finalize());
     bytes_written += 75;
     u8 filled_pct = uut.get_percent_full();
     CHECK(filled_pct > 0);
@@ -311,7 +353,7 @@ TEST_CASE("wrap-around read", "[pkt_buffer]") {
     // Write a packet that wraps around (with known data)
     memset(buf_src, 'w', 500);
     uut.write_bytes(370, buf_src);
-    uut.write_finalize();
+    CHECK(uut.write_finalize());
     bytes_written += 370;
     CHECK(uut.get_write_partial() == 0);
     CHECK(uut.get_write_space() + bytes_written == original_write_space);
@@ -342,6 +384,8 @@ TEST_CASE("wrap-around read", "[pkt_buffer]") {
 }
 
 TEST_CASE("zero-copy write", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[256];
     u8* wrptr = 0;
     PacketBuffer uut(buf_backing, sizeof(buf_backing), 2);
@@ -385,7 +429,9 @@ TEST_CASE("zero-copy write", "[pkt_buffer]") {
     CHECK(uut.get_read_ready() == 0);
 }
 
-TEST_CASE("zero-copy full1", "[pkt_buffer]") {
+TEST_CASE("zero-copy-full1", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[256];
     PacketBuffer uut(buf_backing, sizeof(buf_backing), 1);
 
@@ -399,6 +445,8 @@ TEST_CASE("zero-copy full1", "[pkt_buffer]") {
 }
 
 TEST_CASE("zero-copy full2", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[256];
     PacketBuffer uut(buf_backing, sizeof(buf_backing), 10);
 
@@ -413,6 +461,8 @@ TEST_CASE("zero-copy full2", "[pkt_buffer]") {
 }
 
 TEST_CASE("underflow read", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[256], buf_test[256];
     PacketBuffer uut(buf_backing, sizeof(buf_backing), 2);
 
@@ -455,6 +505,8 @@ TEST_CASE("underflow read", "[pkt_buffer]") {
 }
 
 TEST_CASE("Write too many packets", "[pkt_buffer]") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
     u8 buf_backing[256];
     PacketBuffer uut(buf_backing, sizeof(buf_backing), 2);
 
@@ -481,6 +533,9 @@ TEST_CASE("Write too many packets", "[pkt_buffer]") {
 }
 
 TEST_CASE("Notifications") {
+    // Simulation infrastructure.
+    satcat5::log::ToConsole log;
+
     // Unit under test with working buffer.
     u8 buf_backing[256];
     PacketBuffer uut(buf_backing, sizeof(buf_backing), 16);

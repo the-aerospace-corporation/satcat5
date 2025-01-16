@@ -5,6 +5,9 @@
 --
 -- Send ICMP Replies
 --
+-- WARNING: This block has been deprecated in favor of "router2".
+--  It may be removed in a future release of SatCat5.
+--
 -- This block accepts a packet-routing command and a copy of the associated
 -- packet.  If the action requires an ICMP reply, this block constructs and
 -- sends the ICMP reply, including the first N bytes of the original packet.
@@ -292,7 +295,7 @@ p_header : process(clk)
 begin
     if rising_edge(clk) then
         -- IPv4 "Identification" field is just a simple packet counter.
-        -- (If we have multiple 
+        -- TODO: Coordinate with other outputs using the same source-IP?
         if (reset_p = '1') then
             hdr_ip_id <= HDRID_INIT;
         elsif (pkt_done = '1') then
@@ -467,7 +470,7 @@ begin
             elsif (TIME_ENABLE and parse_cmd = ACT_ICMP_TIME and pkt_bcount < 54) then
                 -- Special case for the "Timestamp reply" message:
                 if (pkt_bcount < 46) then       -- Buffer contents (8 bytes)
-                    pkt_data <= fifo_rd_data;   
+                    pkt_data <= fifo_rd_data;
                 elsif (pkt_bcount < 50) then    -- Receive timestamp (4 bytes)
                     pkt_data <= get_byte_u(hdr_tstamp, 49-pkt_bcount);
                 else                            -- Transmit timestamp (4 bytes)

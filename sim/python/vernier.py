@@ -102,7 +102,7 @@ def vernier_diff(fsamp, fref, df, dt, jitter=0.0, alg='ctr', npts=250000):
 
 @jit(nopython=True)
 def vernier_sync(npts, fsamp, fref, df, dt,
-    jitter=0.0, pha_lsb=None, tau_lsb=None, tau_sec=0.004):
+    jitter=0.0, new_bal=True, pha_lsb=None, tau_lsb=None, tau_sec=0.004):
     """
     Fixed-point simulation of a VERDACT synchronized counter, comparing the
     synthesized clock pair against the received signal to update estimated
@@ -153,15 +153,23 @@ def vernier_sync(npts, fsamp, fref, df, dt,
     tau_0 = int(tau_scale / fsamp)      # Initial period estimate
     if gain_acc == 0 or gain_tau == 0:
         raise ValueError('Gain rounded to zero!')
-    # Set synchronizer initial state.
+    # Set synchronizer initial state and configure the ratiometric balancer.
     # There are separate phase accumulators for CLKA and CLKB, but they
     # share a common estimate of the user-clock period (tau).
     phase_a = 0
     phase_b = 0
     tau_u = tau_0                       # Estimated user-clock period
     tau_s = 0                           # Sub-LSB accumulator for tau_u
-    tau_a = int(pha_scale / fref[0])    # Period of RefA
-    tau_b = int(pha_scale / fref[1])    # Period of RefB
+    if new_bal:                         # New ratiometric balancer?
+        tau_a = round(pha_scale / fref[0])      # Period of RefA (round)
+        tau_b = round(pha_scale / fref[1])      # Period of RefB (round)
+        rbal  = lambda x: 1 if x else -1        # Forcing function +1/-1
+        rlim  = 1                               # Windup limit
+    else:                               # Original ratiometric balancer?
+        tau_a = int(pha_scale / fref[0])        # Period of RefA (floor)
+        tau_b = int(pha_scale / fref[1])        # Period of RefB (floor)
+        rbal  = lambda x: 1 if x else 0         # Forcing function 1/0
+        rlim  = 15                              # Windup limit
     sc_ratio = int(tau_scale / pha_scale)
     # Ratiometric accumulator maintains exact ratio between RefA and RefB.
     # (Otherwise we will accumulate sub-LSB offsets over time and lose lock.)
@@ -189,14 +197,14 @@ def vernier_sync(npts, fsamp, fref, df, dt,
         # Sub-LSB user clock accumulator.
         pincr = (tau_s + tau_u) // sc_ratio
         tau_s = (tau_s + tau_u)  % sc_ratio
-        tau_a2 = tau_a + (ratio_accum < 0)
-        tau_b2 = tau_b + (ratio_accum >= 0)
+        tau_a2 = tau_a + rbal(ratio_accum <  0)
+        tau_b2 = tau_b + rbal(ratio_accum >= 0)
         # Update loop-filter state, including ratiometric accumulator.
         phase_a = (phase_a + pincr + gain_acc*(erra+errb)) % tau_a2
         phase_b = (phase_b + pincr + gain_acc*(erra+errb)) % tau_b2
         tau_u = tau_u + gain_tau * (erra + errb)
         # Ratiometric accumulator.  Hard caps help mitigate windup effects.
-        ratio_accum = max(-15, min(15, ratio_accum + erra - errb))
+        ratio_accum = max(-rlim, min(rlim, ratio_accum + erra - errb))
         # Sanity check on loop stability.
         if (10*tau_u < 8*tau_0) or (10*tau_u > 12*tau_0):
             raise ValueError('Tau unstable!')
@@ -262,7 +270,7 @@ def plot_vernier_sync(device, refin, fsamp=125e6, jitter=1e-10, npts=8000000, sh
     fig, ax = plt.subplots()
     ax.plot(t * 1e3, step_phase * 1e9, 'b')
     ax.plot(t * 1e3, step_freq * 1e9, 'r')
-    ax.set_xlabel('Time offset (msec)')
+    ax.set_xlabel('Elapsed Time (msec)')
     ax.set_ylabel('Phase error (nsec)')
     # Optionally display all plots.
     if show: plt.show()
@@ -272,6 +280,7 @@ def print_help():
     print('Usage: python %s [cmd] [cmd] ...' % sys.argv[0])
     print('  Where each [cmd] is one of the following:')
     print('  * [any number]: Set reference frequency in MHz.')
+    print('  * fs[number]: Set user-clock frequency in MHz.')
     print('  * [device name]: Set device family, see "mmcm_cfg.py".')
     print('  * scurve: Plot S-curves for the Vernier PED.')
     print('  * step: Plot step response of VERDACT')

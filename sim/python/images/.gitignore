@@ -1,0 +1,6 @@
+# Copyright 2024 The Aerospace Corporation.
+# This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
+
+# Ignore generated images in this folder.
+*.gif
+*.png

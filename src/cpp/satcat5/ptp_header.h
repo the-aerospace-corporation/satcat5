@@ -29,9 +29,12 @@ namespace satcat5 {
             }
 
             // I/O functions.
+            void log_to(satcat5::log::LogBuffer& wr) const;
             bool read_from(satcat5::io::Readable* rd);
             void write_to(satcat5::io::Writeable* wr) const;
         };
+
+        constexpr satcat5::ptp::PortId PORT_NONE = {0, 0};
 
         // Struct representing the PTP header used for all message types.
         struct Header {
@@ -80,10 +83,22 @@ namespace satcat5 {
                 FLAG_PROFILE1       = (1u << 13),
                 FLAG_PROFILE2       = (1u << 14);
 
+            // SPTP uses the PROFILE1 flag, so define an alias.
+            static constexpr u16 FLAG_SPTP = FLAG_PROFILE1;
+
+            // Expected length of message fields, not including header.
+            // i.e., the initial offset for parsing any attached TLVs.
+            unsigned msglen() const;
+            static constexpr unsigned MAX_MSGLEN = 30;
+
             // I/O functions
+            void log_to(satcat5::log::LogBuffer& wr) const;
             bool read_from(satcat5::io::Readable* rd);
             void write_to(satcat5::io::Writeable* wr) const;
         };
+
+        constexpr satcat5::ptp::Header HEADER_NULL =
+            {0, 0, 0, 0, 0, 0, 0, 0, {0, 0}, 0, 0, 0};
 
         // Clock configuration metadata for the ANNOUNCE message.
         struct ClockInfo {

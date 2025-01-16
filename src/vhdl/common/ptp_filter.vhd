@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2023 The Aerospace Corporation.
+-- Copyright 2023-2024 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -24,12 +24,15 @@ entity ptp_filter is
     generic (
     LOOP_TAU    : real;             -- Tracking time constant (normalized)
     USER_CLK_HZ : positive;         -- User clock frequency (Hz)
+    SYNC_FRQ_EN : boolean := true;  -- Enable frequency offset measurement?
     PHA_SCALE   : natural := 0;     -- Phase scale (0=auto, or 1 nsec = 2^N units)
     TAU_SCALE   : natural := 0);    -- Slope scale (0=auto, or 1 nsec = 2^N units)
     port (
     in_locked   : in  std_logic;
     in_tstamp   : in  tstamp_t;
     out_tstamp  : out tstamp_t;
+    out_trate   : out tstamp_t;
+    out_tfreq   : out tfreq_t;
     user_clk    : in  std_logic);
 end ptp_filter;
 
@@ -72,6 +75,7 @@ constant TAU_INIT : slope_t :=
 
 -- Filter pipeline.
 signal filt_diff    : signed(TSTAMP_WIDTH-1 downto 0) := (others => '0');
+signal filt_freq    : signed(TAU_WIDTH+31 downto 0) := (others => '0');
 signal filt_alpha   : phase_t := (others => '0');
 signal filt_beta    : slope_t := (others => '0');
 signal filt_incr    : phase_t := (others => '0');
@@ -88,6 +92,8 @@ assert (LOOP_TAU > 100.0)
 
 -- Drive top-level outputs.
 out_tstamp <= filt_pha(filt_pha'left downto PHA_SCALE2);
+out_trate  <= filt_incr(filt_incr'left downto PHA_SCALE2);
+out_tfreq  <= resize(shift_right(filt_freq, TAU_SCALE2), TFREQ_WIDTH);
 
 -- Filter pipeline.
 p_filter : process(user_clk)
@@ -113,6 +119,7 @@ p_filter : process(user_clk)
     end function;
 
     variable next_sub : subclk_t := (others => '0');
+    variable tau_diff : SIGNED(TAU_WIDTH-1 downto 0);
 begin
     if rising_edge(user_clk) then
         -- Pipeline stage 4: Accumulators.
@@ -139,6 +146,13 @@ begin
 
         -- Pipeline stage 1: Difference signal.
         filt_diff   <= signed(in_tstamp - filt_pha(filt_pha'left downto PHA_SCALE2));
+
+        -- Unsynchronized pipeline: Scale tau into normalized frequency units.
+        -- (Slope does not change rapidly enough for extra delay to matter.)
+        if (SYNC_FRQ_EN) then
+            filt_freq <= tau_diff * to_signed(USER_CLK_HZ, 32);
+            tau_diff  := SIGNED(TAU_INIT - filt_tau);
+        end if;
     end if;
 end process;
 

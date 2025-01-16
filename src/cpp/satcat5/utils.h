@@ -23,16 +23,40 @@ namespace satcat5 {
         inline void clr_mask_u16(u16& val, u16 mask)        {val &= ~mask;}
         inline void set_mask_u32(u32& val, u32 mask)        {val |= mask;}
         inline void clr_mask_u32(u32& val, u32 mask)        {val &= ~mask;}
+        template<typename T>
+        inline void clr_mask(T& val, T mask)                {val &= ~mask;}
+        template<typename T>
+        inline void set_mask(T& val, T mask)                {val |= mask;}
 
-        inline void set_mask_if(u32& val, u32 mask, bool b) {
-            if (b) set_mask_u32(val, mask);
-            else   clr_mask_u32(val, mask);
+        template<typename T>
+        inline void set_mask_if(T& val, T mask, bool b) {
+            if (b) set_mask<T>(val, mask);
+            else   clr_mask<T>(val, mask);
         }
 
         // Return a bit-mask where the N LSBs are set.
         template <typename T> inline constexpr T mask_lower(unsigned n) {
             return ((n >= 8*sizeof(T)) ? 0 : (T(1) << n)) - 1;
         }
+
+        // Basic implementation of an std::optional equivalent compatible with
+        // C++11. ONLY for use by basic types with trivial default constructors
+        // and destructors.
+        // https://www.club.cc.cmu.edu/%7Eajo/disseminate/2017-02-15-Optional-From-Scratch.pdf
+        template <typename T>
+        struct optional {
+            optional() : val_(), has_val_(false) {}
+            optional(const T& t) : val_(t), has_val_(true) {} // NOLINT
+            inline void reset() { has_val_ = false; }
+            inline optional& operator=(const T& t)
+                { val_ = t; has_val_ = true; return *this; }
+            inline T value() const { return val_; }
+            inline T value_or(const T& t) const { return has_val_ ? val_ : t; }
+            inline bool has_value() const { return has_val_; }
+            inline explicit operator bool() const { return has_val_; }
+        private:
+            T val_; bool has_val_;
+        };
 
         // Min and max functions
         inline constexpr u8 min_u8(u8 a, u8 b)
@@ -83,6 +107,11 @@ namespace satcat5 {
         inline constexpr u64 abs_s64(s64 a)
             {return (u64)((a < 0) ? -a : +a);}
 
+        // Sign function (-x/0/+x -> -1/0/+1)
+        template <typename T> inline constexpr T sign(T x) {
+            return T((x < 0) ? -1 : (x > 0 ? 1 : 0));
+        }
+
         // Square an input (and double output width)
         inline u32 square_u16(u16 x) {
             u32 xx = x;
@@ -127,6 +156,19 @@ namespace satcat5 {
             return (a % b < 0) ? (a % b + b) : (a % b);
         }
 
+        // Calculate log2(x), rounding up or down.
+        template <typename T> unsigned log2_ceil(T x) {
+            unsigned count = 0;
+            while (x > 1) { ++count; x = (x+1)/2; }
+            return count;
+        }
+
+        template <typename T> unsigned log2_floor(T x) {
+            unsigned count = 0;
+            while (x > 1) { ++count; x /= 2; }
+            return count;
+        }
+
         // Round a floating-point value to the nearest integer.
         // Behavior at the boundary is indeterminate (e.g., 1.5 -> 1 or 2).
         // Note: The round() in <cmath> isn't always marked as constexpr.
@@ -138,8 +180,21 @@ namespace satcat5 {
         }
 
         // Variant of "round_u64" that returns zero if input is out of range.
+        template <typename T> inline constexpr u64 round_s64z(T x) {
+            return (T(INT64_MIN) < x && x < T(INT64_MAX)) ? satcat5::util::round_s64(x) : 0;
+        }
         template <typename T> inline constexpr u64 round_u64z(T x) {
             return (x < T(UINT64_MAX)) ? satcat5::util::round_u64(x) : 0;
+        }
+
+        // Unsigned add with saturation: min(A + B, C)
+        // If "C" is not specified, default to maximum representable value.
+        // (i.e., UINT32_MAX, UINT64_MAX, etc., equal to 2^N - 1.)
+        // This operation is nontrivial due to handling of integer overflow.
+        // This function is NOT suitable for use with signed integers.
+        template <typename T>
+        inline constexpr T saturate_add(T a, T b, T c = T(-1)) {
+            return (a + b < c && a + b >= a) ? (a + b) : (c);
         }
 
         // Calculate 2^N for very large N, returning a double.
@@ -149,11 +204,11 @@ namespace satcat5 {
 
         // Integer division functions with various rounding options:
         template <typename T> inline constexpr T div_floor(T a, T b)
-            {return divide(a, b);}
+            {return divide<T>(a, b);}
         template <typename T> inline constexpr T div_round(T a, T b)
-            {return divide(a + b/2, b);}
+            {return divide<T>(a + b/2, b);}
         template <typename T> inline constexpr T div_ceil(T a, T b)
-            {return divide(a + b-1, b);}
+            {return divide<T>(a + b-1, b);}
 
         inline constexpr u32 div_floor_u32(u32 a, u32 b)
             {return div_floor<u32>(a, b);}
@@ -170,6 +225,32 @@ namespace satcat5 {
 
         // Check if A is a multiple of B:
         bool is_multiple_u32(u32 a, u32 b);
+
+        // Count the number of '1' bits in an integer.
+        unsigned popcount(u32 x);
+
+        // Reverse the order of bytes in an integer.
+        inline constexpr u64 reverse_bytes_u64(u64 num) {
+            return ((num & 0xFF00000000000000ull) >> 56)
+                 | ((num & 0x00FF000000000000ull) >> 40)
+                 | ((num & 0x0000FF0000000000ull) >> 24)
+                 | ((num & 0x000000FF00000000ull) >> 8)
+                 | ((num & 0x00000000FF000000ull) << 8)
+                 | ((num & 0x0000000000FF0000ull) << 24)
+                 | ((num & 0x000000000000FF00ull) << 40)
+                 | ((num & 0x00000000000000FFull) << 56);
+        }
+
+        inline constexpr u32 reverse_bytes_u32(u32 num) {
+            return ((num & 0xFF000000u) >> 24)
+                 | ((num & 0x00FF0000u) >> 8)
+                 | ((num & 0x0000FF00u) << 8)
+                 | ((num & 0x000000FFu) << 24);
+        }
+
+        inline constexpr u16 reverse_bytes_u16(u16 num) {
+            return ((num & 0xFF00u) >> 8) | ((num & 0x00FFu) << 8);
+        }
 
         // XOR-reduction of all bits in a word:
         bool xor_reduce_u8(u8 x);
@@ -217,14 +298,20 @@ namespace satcat5 {
         }
 
         // Simple cross-platform psuedorandom number generator (PRNG).
-        // Generates uniform psuedorandom outputs in the range [0..2^32).
+        // Generates uniform psuedorandom integer outputs.
         class Prng final {
         public:
-            explicit constexpr Prng(u64 seed = 123456789ull) : m_state(seed) {}
-            u32 next();
+            explicit constexpr Prng(u64 seed = 123456789ull)
+                : m_state(seed) {}
+            u32 next();                     // Range [0..2^32)
+            u32 next(u32 mn, u32 mx);       // Range [mn..mx]
+            inline void seed(u64 seed) {m_state = seed;}
         protected:
             u64 m_state;
         };
+
+        // Global instance of the Prng class, above.
+        extern satcat5::util::Prng prng;
 
         // A simple class for tracking the record-holder for any unsigned
         // integer (e.g., elapsed microseconds, buffer size, etc.)
@@ -250,8 +337,7 @@ namespace satcat5 {
         inline constexpr u32 HOST_BYTE_ORDER() {return HOST_ORDER_CANARY.value;}
 
         // In-place byte-for-byte format conversion, aka "type-punning".
-        template<typename T1, typename T2> inline T2 reinterpret(T1 x)
-        {
+        template<typename T1, typename T2> inline T2 reinterpret(T1 x) {
             static_assert(sizeof(T1) == sizeof(T2), "Type size mismatch");
             // Note: Using "memcpy" for type-punning is preferred safe-ish method.
             // Most compilers will optimize this to a no-op, as desired.  See also:

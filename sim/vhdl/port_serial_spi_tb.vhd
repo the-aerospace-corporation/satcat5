@@ -9,7 +9,7 @@
 -- It connects a the clock-in and clock-out variants back-to-back to confirm
 -- correct operation.
 --
--- The complete test takes about 81 milliseconds.
+-- The complete test takes just under 87 milliseconds.
 --
 
 library ieee;
@@ -63,9 +63,10 @@ p_flow : process
     variable rand   : real := 0.0;
     variable ctr    : integer := 0;
 begin
-    -- Brief idle period.
+    -- Brief idle period.  Each burst is ~57 usec long,
+    -- so hold this a while to ensure it takes effect.
     ext_pause <= '1';
-    wait for 10 us;
+    wait for 80 us;
 
     -- Allow traffic for up to N chunks.
     uniform(seed1, seed2, rand);

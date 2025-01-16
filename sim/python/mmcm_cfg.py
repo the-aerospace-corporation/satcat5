@@ -171,6 +171,7 @@ if __name__ == '__main__':
     for device in ['7series', 'ultrascale', 'ultraplus']:
         limits = clkgen_limits(device)
         print('Device family: ' + device)
+        clkgen_vernier(limits,  10.00e6, 20e6)
         clkgen_vernier(limits,  20.00e6, 20e6)
         clkgen_vernier(limits,  25.00e6, 20e6)
         clkgen_vernier(limits,  50.00e6, 20e6)

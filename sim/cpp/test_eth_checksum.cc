@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2024 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for Ethernet checksum functions
@@ -78,6 +78,9 @@ static const u8 REF2C[] = {
     0xFD, 0xC0};
 
 TEST_CASE("eth-checksum-raw") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
     SECTION("crc32-array") {
         // Call crc32() on each raw example array.
         CHECK(satcat5::eth::crc32(sizeof(REF1A), REF1A) == REF1_CRC);
@@ -94,7 +97,8 @@ TEST_CASE("eth-checksum-raw") {
 }
 
 TEST_CASE("eth-checksum-tx") {
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
     satcat5::io::PacketBufferHeap rx;
     satcat5::eth::ChecksumTx uut(&rx);
 
@@ -119,7 +123,8 @@ TEST_CASE("eth-checksum-tx") {
 }
 
 TEST_CASE("eth-checksum-rx") {
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
     satcat5::io::PacketBufferHeap rx;
     satcat5::eth::ChecksumRx uut(&rx);
 
@@ -158,7 +163,8 @@ TEST_CASE("eth-checksum-rx") {
 }
 
 TEST_CASE("eth-slip-codec") {
-    satcat5::log::ToConsole log;
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
     satcat5::io::PacketBufferHeap tx, rx;
     satcat5::eth::SlipCodec uut(&tx, &rx);
 
@@ -180,5 +186,26 @@ TEST_CASE("eth-slip-codec") {
         // Expect each original reference.
         CHECK(read(&uut, sizeof(REF1A), REF1A));
         CHECK(read(&uut, sizeof(REF2A), REF2A));
+    }
+
+    SECTION("loopback") {
+        // Connect SlipCodec in loopback with SlipCodecInverse.
+        satcat5::eth::SlipCodecInverse inv(&rx, &tx);
+        for (unsigned a = 0 ; a < 100 ; ++a) {
+            // Write a randomized test packet.
+            u32 ref1 = satcat5::test::rand_u32();
+            u32 ref2 = satcat5::test::rand_u32();
+            uut.write_u32(ref1);
+            uut.write_u32(ref2);
+            REQUIRE(uut.write_finalize());
+            // Encode and decode the message in loopback.
+            satcat5::poll::service_all();
+            inv.copy_and_finalize(&inv);
+            satcat5::poll::service_all();
+            // Confirm the received contents.
+            CHECK(uut.read_u32() == ref1);
+            CHECK(uut.read_u32() == ref2);
+            uut.read_finalize();
+        }
     }
 }

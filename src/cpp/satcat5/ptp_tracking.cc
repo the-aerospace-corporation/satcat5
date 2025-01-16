@@ -6,7 +6,6 @@
 #include <satcat5/log.h>
 #include <satcat5/net_core.h>
 #include <satcat5/ptp_tracking.h>
-#include <satcat5/timer.h>
 #include <satcat5/utils.h>
 
 namespace log = satcat5::log;
@@ -16,12 +15,13 @@ using satcat5::ptp::USEC_PER_SEC;
 using satcat5::ptp::Callback;
 using satcat5::ptp::Filter;
 using satcat5::ptp::Measurement;
+using satcat5::ptp::Source;
 using satcat5::ptp::Time;
 using satcat5::ptp::TrackingClock;
+using satcat5::ptp::TrackingCoarse;
 using satcat5::ptp::TrackingController;
-using satcat5::ptp::TrackingDither;
+using satcat5::ptp::TrackingSimple;
 using satcat5::util::divide;
-using satcat5::util::GenericTimer;
 using satcat5::util::min_u32;
 using satcat5::util::modulo;
 
@@ -33,42 +33,10 @@ static constexpr unsigned DEBUG_VERBOSE = 0;
 #define SATCAT5_PTRK_FASTACQ 1
 #endif
 
-TrackingDither::TrackingDither(TrackingClock* clk)
-    : m_clk(clk)
-    , m_disparity(0)
-{
-    timer_every(1);
-}
-
-Time TrackingDither::clock_adjust(const Time& amount)
-{
-    // Coarse adjustments are a direct passthrough.
-    return m_clk->clock_adjust(amount);
-}
-
-void TrackingDither::clock_rate(s64 offset)
-{
-    // Update target and immediately regenerate dither.
-    m_offset = offset;
-    timer_event();
-}
-
-void TrackingDither::timer_event()
-{
-    // Add running disparity to the requested output.
-    s64 div = divide(m_offset + m_disparity, (s64)65536);
-    s64 rem = modulo(m_offset + m_disparity, (s64)65536);
-    // Update output and running disparity.
-    m_clk->clock_rate(div);
-    m_disparity = (u16)rem;
-}
-
-TrackingController::TrackingController(
-    GenericTimer* timer, TrackingClock* clk, Client* client)
-    : Callback(client)
-    , m_timer(timer)
-    , m_clk(clk)
-    , m_tref(timer->now())
+TrackingController::TrackingController(TrackingClock* clk, Source* source)
+    : Callback(source)
+    , m_clocks(clk)
+    , m_tref(SATCAT5_CLOCK->now())
     , m_freq_accum(0)
     , m_lock_alarm(0)
     , m_lock_usec(0)
@@ -82,10 +50,10 @@ void TrackingController::ptp_ready(const Measurement& data)
     update(-data.offset_from_master());
 }
 
-void TrackingController::reset()
+void TrackingController::reset(bool linear)
 {
-    // Reset oscillator control signal.
-    if (m_clk) m_clk->clock_rate(0);
+    // Reset all attached clock objects.
+    clock_rate(0);
 
     // Reset each filter in the chain.
     Filter* filter = m_filters.head();
@@ -98,18 +66,17 @@ void TrackingController::reset()
     m_freq_accum = 0;
     m_lock_alarm = 0;
     m_lock_usec = 0;
-    m_lock_state = LockState::RESET;
+    m_lock_state = linear ? LockState::LINEAR : LockState::RESET;
+    m_tref = SATCAT5_CLOCK->now();
 }
 
 void TrackingController::update(const Time& delta)
 {
     // Calculate time since the last received message.
     // Use microsecond-resolution timers to support higher message rates.
-    u32 elapsed_usec = min_u32(1000000, m_timer->elapsed_incr(m_tref));
+    u32 elapsed_usec = m_tref.increment_usec();
+    elapsed_usec = min_u32(1000000, elapsed_usec);
     m_lock_usec = min_u32(1000000000, m_lock_usec + elapsed_usec);
-
-    // Sanity check: Abort immediately if no clock is configured.
-    if (!m_clk) return;
 
     // Apply coarse adjustments if required, then fine tracking.
     s64 input = coarse(delta);
@@ -123,13 +90,16 @@ s64 TrackingController::coarse(const Time& delta)
     constexpr Time ADJ_FINE(SUBNS_PER_USEC * 10);
 
     Time filter_input = delta;
-    if (delta.abs() > ADJ_COARSE) {
+    if (m_lock_state == LockState::LINEAR) {
+        // Linear mode skips all coarse-acquisition logic.
+    } else if (delta.abs() > ADJ_COARSE) {
+        // Large errors may indicate that we've lost lock.
         log::Log(log::INFO, "PTP-Track: Coarse").write_obj(delta);
         if (m_lock_state == LockState::RESET || m_lock_alarm >= 3) {
             // Initial startup or several consecutive alarms.
             reset();
             m_lock_state = LockState::ACQUIRE;
-            filter_input = m_clk->clock_adjust(delta);
+            filter_input = clock_adjust(delta);
         } else if (m_lock_usec >= 1000000) {
             // Once locked, don't reset based on one outlier.
             ++m_lock_alarm;
@@ -139,7 +109,7 @@ s64 TrackingController::coarse(const Time& delta)
         // If enabled, keep making coarse phase adjustments after each reset.
         // Cumulative adjustments are used to estimate coarse frequency.
         if (delta.abs() < ADJ_FREQ) {
-            filter_input = m_clk->clock_adjust(delta);
+            filter_input = clock_adjust(delta);
             m_freq_accum += (delta - filter_input).delta_subns();
         }
         // Wait for at least one second to improve estimation quality.
@@ -174,8 +144,7 @@ void TrackingController::filter(u32 elapsed_usec, s64 delta_subns)
     }
 
     // Keep this output sample?
-    if (m_clk && result != INT64_MAX)
-        m_clk->clock_rate(result);
+    if (result != INT64_MAX) clock_rate(result);
 
     // Additinoal diagnostics?
     if (DEBUG_VERBOSE > 1) {
@@ -187,4 +156,50 @@ void TrackingController::filter(u32 elapsed_usec, s64 delta_subns)
         log::Log(log::DEBUG, "PTP-Track: Update")
             .write10(delta_subns).write10(result);
     }
+}
+
+Time TrackingController::clock_adjust(const Time& amount)
+{
+    // Clocks are added first-in-last-out, so final item is the primary.
+    Time result(0);
+    TrackingClock* item = m_clocks.head();
+    while (item) {
+        result = item->clock_adjust(amount);
+        item = m_clocks.next(item);
+    }
+    return result;
+}
+
+void TrackingController::clock_rate(s64 offset)
+{
+    TrackingClock* item = m_clocks.head();
+    while (item) {
+        item->clock_rate(offset);
+        item = m_clocks.next(item);
+    }
+}
+
+static constexpr satcat5::ptp::CoeffPII DEFAULT_TIME_CONSTANT(3.0);
+
+TrackingSimple::TrackingSimple(
+    satcat5::ptp::TrackingClock* clk,
+    satcat5::ptp::Source* source)
+    : TrackingController(clk, source)
+    , m_ctrl(DEFAULT_TIME_CONSTANT)
+{
+    add_filter(&m_ampl);
+    add_filter(&m_ctrl);
+}
+
+TrackingCoarse::TrackingCoarse(TrackingClock* clk, Source* source)
+    : Callback(source)
+    , m_clock(clk)
+{
+    // Nothing else to initialize.
+}
+
+void TrackingCoarse::ptp_ready(const satcat5::ptp::Measurement& data)
+{
+    Time delta = data.offset_from_master();
+    if (m_clock) m_clock->clock_adjust(-delta);
 }

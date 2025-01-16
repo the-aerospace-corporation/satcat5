@@ -67,6 +67,7 @@ entity wrap_port_stream is
     sw_rx_rate  : out std_logic_vector(15 downto 0);
     sw_rx_status: out std_logic_vector(7 downto 0);
     sw_rx_tsof  : out std_logic_vector(47 downto 0);
+    sw_rx_tfreq : out std_logic_vector(39 downto 0);
     sw_rx_reset : out std_logic;
     sw_tx_clk   : out std_logic;
     sw_tx_data  : in  std_logic_vector(7 downto 0);
@@ -76,6 +77,7 @@ entity wrap_port_stream is
     sw_tx_error : out std_logic;
     sw_tx_pstart: out std_logic;
     sw_tx_tnow  : out std_logic_vector(47 downto 0);
+    sw_tx_tfreq : out std_logic_vector(39 downto 0);
     sw_tx_reset : out std_logic);
 end wrap_port_stream;
 
@@ -99,12 +101,14 @@ sw_rx_write     <= prx_data.write;
 sw_rx_error     <= prx_data.rxerr;
 sw_rx_rate      <= prx_data.rate;
 sw_rx_tsof      <= std_logic_vector(prx_data.tsof);
+sw_rx_tfreq     <= std_logic_vector(prx_data.tfreq);
 sw_rx_status    <= prx_data.status;
 sw_rx_reset     <= prx_data.reset_p;
 sw_tx_clk       <= ptx_ctrl.clk;
 sw_tx_ready     <= ptx_ctrl.ready;
 sw_tx_pstart    <= ptx_ctrl.pstart;
 sw_tx_tnow      <= std_logic_vector(ptx_ctrl.tnow);
+sw_tx_tfreq     <= std_logic_vector(ptx_ctrl.tfreq);
 sw_tx_error     <= ptx_ctrl.txerr;
 sw_tx_reset     <= ptx_ctrl.reset_p;
 ptx_data.data   <= sw_tx_data;

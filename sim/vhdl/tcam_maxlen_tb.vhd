@@ -118,11 +118,11 @@ u_dly : entity work.fifo_smol_sync
 -- Convert type-codes to the enumerated type.
 in_type  <= TCAM_SEARCH_NONE when (in_code = "00")
        else TCAM_SEARCH_USER when (in_code = "01")
-       else TCAM_SEARCH_DUPL when (in_code = "10")
+       else TCAM_SEARCH_CTRL when (in_code = "10")
        else TCAM_SEARCH_SCAN;
 ref_type <= TCAM_SEARCH_NONE when (dly_code = "00")
        else TCAM_SEARCH_USER when (dly_code = "01")
-       else TCAM_SEARCH_DUPL when (dly_code = "10")
+       else TCAM_SEARCH_CTRL when (dly_code = "10")
        else TCAM_SEARCH_SCAN;
 
 -- Reference stream (combinational logic)

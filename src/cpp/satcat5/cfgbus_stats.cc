@@ -27,7 +27,7 @@ void cfg::NetworkStats::refresh_now()
 
 cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
 {
-    cfg::TrafficStats stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    cfg::TrafficStats stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned reg = 16 * idx;         // Fixed size, 16 registers per port
     if (reg < cfg::REGS_PER_DEVICE) {
         // Read ConfigBus registers.
@@ -39,7 +39,8 @@ cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
         stats.sent_frames   = m_traffic[reg+5];
         u32 errct_word      = m_traffic[reg+6];
         u32 errct_ptp       = m_traffic[reg+7];
-        stats.status        = m_traffic[reg+8];
+        u32 status_word     = m_traffic[reg+8];
+        stats.delta_freq    = m_traffic[reg+9];
         // Split individual byte fields from errct_word.
         // (This method works on both little-endian and big-endian hosts.)
         stats.errct_mac     = (u8)(errct_word >> 24);
@@ -48,7 +49,9 @@ cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
         stats.errct_pkt     = (u8)(errct_word >> 0);
         stats.errct_ptp_rx  = (u8)(errct_ptp >> 8);
         stats.errct_ptp_tx  = (u8)(errct_ptp >> 0);
-
+        // Split individual fields from the status word.
+        stats.rate_mbps     = (u16)(status_word >> 16);
+        stats.status        = (u8)(status_word & 0xFF);
     }
     return stats;
 }
