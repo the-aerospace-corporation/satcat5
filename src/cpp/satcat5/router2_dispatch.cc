@@ -45,6 +45,11 @@ satcat5::eth::MacAddr Dispatch::macaddr() const {
     return m_local_iface ? m_local_iface->macaddr() : satcat5::eth::MACADDR_NONE;
 }
 
+void Dispatch::set_ipaddr(const satcat5::ip::Addr& addr) {
+    if (m_local_iface) m_local_iface->set_ipaddr(addr);
+    if (m_offload) m_offload->reconfigure();
+}
+
 unsigned Dispatch::deliver(satcat5::io::MultiPacket* packet) {
     // Attempt to read the Ethernet and partial IPv4 headers.
     SwitchPlugin::PacketMeta meta{};

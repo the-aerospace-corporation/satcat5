@@ -14,6 +14,7 @@
 #include <satcat5/udp_socket.h>
 
 using satcat5::eth::MACADDR_NONE;
+using satcat5::ip::ADDR_BROADCAST;
 using satcat5::udp::PORT_CBOR_TLM;
 
 // Define the MAC and IP address for each test device.
@@ -199,5 +200,26 @@ TEST_CASE("router2_stack_software") {
         nic1.stack().m_ping.ping(IP2, 1);
         timer.sim_wait(5000);
         CHECK(log.contains("Ping: Reply from = 192.168.2.2"));
+    }
+
+    // Confirm port-number metadata is propagated by the MAC-address cache.
+    SECTION("port_cache") {
+        log.suppress("Ping: Reply from");
+        // Reconfigure the network with a local subnet 192.168.1.*.
+        const satcat5::ip::Addr ROUTER(192, 168, 1, 2);
+        nic1.route()->route_simple(ROUTER);
+        uut.set_ipaddr(ROUTER);
+        uut.table()->route_clear();
+        uut.table()->route_static({IP1, 24}, ADDR_BROADCAST, MACADDR_NONE, 1);
+        uut.table()->route_static({IP2, 24}, IP2, MACADDR_NONE, 2);
+        uut.table()->route_static({IP3, 24}, IP3, MACADDR_NONE, 3);
+        // Send a ping request from NIC1 to the router.
+        // (This should trigger the ARP query and update the router cache.)
+        nic1.stack().m_ping.ping(ROUTER, 1);
+        timer.sim_wait(5000);
+        CHECK(log.contains("Ping: Reply from = 192.168.1.2"));
+        // Confirm the contents of the router's ARP cache.
+        auto route = uut.table()->route_lookup(IP1);
+        CHECK(route.port == 1);
     }
 }

@@ -135,17 +135,13 @@ bool Table::route_static(
     }
 }
 
-bool Table::route_cache(
-    const ip::Addr& gateway, const MacAddr& dstmac, u8 port, u8 flags)
-{
+bool Table::route_cache(const ip::Addr& gateway, const MacAddr& dstmac) {
     // Sanity check: Ignore invalid or multicast addresses.
     if (!gateway.is_unicast()) return false;
     if (!dstmac.is_unicast()) return false;
 
-    // Ephemeral routes cannot set the fixed-MAC-address flag.
-    clr_mask_u8(flags, Route::FLAG_MAC_FIXED);
-
     // Update the gateway MAC address for matching cache-eligible entries.
+    // As we perform this search, find the narrowest matching subnet.
     // TODO: Should we do anything to detect or mitigate ARP spoofing?
     bool self_match = false;
     for (unsigned a = 0 ; a < SATCAT5_ROUTING_TABLE ; ++a) {
@@ -164,12 +160,18 @@ bool Table::route_cache(
     // If table is completely full of static routes, no action is possible.
     if (m_wridx_static >= SATCAT5_ROUTING_TABLE) return false;
 
+    // Port number and other flags are copied from the best matching route,
+    // except that ephemeral routes cannot set the fixed-MAC-address flag.
+    Route best = route_lookup(gateway);
+    u8 flags = best.flags;
+    clr_mask_u8(flags, Route::FLAG_MAC_FIXED);
+
     // Otherwise, create a new entry or overwrite the oldest ephemeral entry.
     // TODO: Do we need a proper LRU cache? This evicts by order of creation, not usage.
     // TODO: How to implement LRU for a hardware-accelerated implementation?
     if (m_wridx_ephemeral < m_wridx_static || m_wridx_ephemeral >= SATCAT5_ROUTING_TABLE)
         m_wridx_ephemeral = SATCAT5_ROUTING_TABLE - 1;  // Wraparound?
-    route_write(m_wridx_ephemeral--, simple_route(gateway, dstmac, port, flags));
+    route_write(m_wridx_ephemeral--, simple_route(gateway, dstmac, best.port, flags));
     return true;
 }
 
