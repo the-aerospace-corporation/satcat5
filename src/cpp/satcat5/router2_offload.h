@@ -48,6 +48,11 @@ namespace satcat5 {
             //! Deliver a given packet to the hardware queue.
             void deliver(const satcat5::eth::SwitchPlugin::PacketMeta& meta);
 
+            //! Reload router IP address and MAC address.
+            //! The router2::Dispatch class calls this after any address change.
+            //! Return value is for internal use only and should be ignored.
+            u32 reconfigure();
+
             //! Mask indicating hardware-defined ports in the shutdown state.
             inline u32 link_shdn_hw()
                 { return m_ctrl->port_shdn; }
@@ -68,7 +73,6 @@ namespace satcat5 {
         protected:
             // Internal event-handlers.
             void irq_event() override;
-            u32 reconfigure();
 
             // Hardware register map:
             // TODO: Provide accessors for some of these hardware registers?

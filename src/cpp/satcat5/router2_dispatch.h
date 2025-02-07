@@ -66,6 +66,7 @@ namespace satcat5 {
                 { return m_local_iface; }
             satcat5::ip::Addr ipaddr() const;
             satcat5::eth::MacAddr macaddr() const;
+            void set_ipaddr(const satcat5::ip::Addr& addr);
 
         protected:
             // Deferred forwarding needs privileged access.

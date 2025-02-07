@@ -153,8 +153,7 @@ namespace satcat5 {
             // Returns true if any records are updated.
             bool route_cache(
                 const satcat5::ip::Addr& gateway,
-                const satcat5::eth::MacAddr& dstmac,
-                u8 port = 0, u8 flags = 0);
+                const satcat5::eth::MacAddr& dstmac);
 
             // Remove a single static route.
             // Returns true if successful, false if no match is found.

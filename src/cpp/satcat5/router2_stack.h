@@ -66,6 +66,8 @@ namespace satcat5 {
                 { return m_ip.table(); }
             inline satcat5::udp::Dispatch* udp()
                 { return &m_udp; }
+            inline void set_ipaddr(const satcat5::ip::Addr& addr)
+                { return m_dispatch.set_ipaddr(addr); }
 
         protected:
             //! Constructor should only be called by the child class.
