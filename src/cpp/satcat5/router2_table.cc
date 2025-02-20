@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -10,8 +10,8 @@ using satcat5::ip::Route;
 using satcat5::router2::Table;
 
 // Register map defined in "router2_common.vhd"
-static constexpr unsigned REG_CTRL  = 508;
-static constexpr unsigned REG_DATA  = 509;
+static constexpr unsigned REG_CTRL  = 509;
+static constexpr unsigned REG_DATA  = 508;
 
 // Bit masks for the control register.
 static constexpr u32 MASK_BUSY      = (1u << 31);
