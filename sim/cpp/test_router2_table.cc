@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the routing table's mirror-to-hardware variant
@@ -11,8 +11,8 @@
 
 // Define register map (see "router2_common.vhd")
 static const unsigned CFG_DEVADDR   = 42;
-static const unsigned REG_CTRL      = 508;
-static const unsigned REG_DATA      = 509;
+static const unsigned REG_CTRL      = 509;
+static const unsigned REG_DATA      = 508;
 static const unsigned TABLE_SIZE    = 8;
 
 TEST_CASE("router2_table") {
