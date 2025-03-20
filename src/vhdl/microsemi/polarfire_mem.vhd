@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -26,6 +26,7 @@ package body common_primitives is
     constant PREFER_DPRAM_AWIDTH : positive := 6;
     constant PREFER_DPRAM_ONEBIT : boolean := false;
     constant PREFER_FIFO_SREG    : boolean := false;
+    constant PREFER_SPI_SYNC     : boolean := false;
 
     -- TODO: Add support for Vernier clock generator on this platform.
     function create_vernier_config(
@@ -184,6 +185,10 @@ gen_usram : if (AWIDTH < 7) generate
     wr_val_pad <= resize(wr_val, 12*RAM12_COUNT);
 
     gen_bits : for b in 0 to RAM12_COUNT-1 generate
+        -- Instantiate the RAM64x12 primitive with the following parameters:
+        --  * Write address/data/enable inputs registered (unconditional).
+        --  * Read address input is not registered (R_ADDR_BYPASS = '1').
+        --  * Read data is registered by the primitive (R_DATA_BYPASS = '0').
         RAM64x12_inst : RAM64x12
             port map(
             W_EN =>             wr_en,
@@ -194,35 +199,26 @@ gen_usram : if (AWIDTH < 7) generate
             R_CLK =>            rd_clk,
             R_ADDR =>           rd_addr_pad,
             R_ADDR_BYPASS =>    '1', -- Bypass register on read address
-            R_ADDR_EN =>        '0', -- don't care
-            R_ADDR_SL_N =>      '1', -- Disable asynchronous load
-            R_ADDR_SD =>        '0', -- don't care
-            R_ADDR_AL_N =>      '1', -- Disable asynchronous load
-            R_ADDR_AD_N =>      '0', -- don't care
+            R_ADDR_EN =>        '0', -- Don't care
+            R_ADDR_SL_N =>      '1', -- Don't care
+            R_ADDR_SD =>        '0', -- Don't care
+            R_ADDR_AL_N =>      '1', -- Don't care
+            R_ADDR_AD_N =>      '0', -- Don't care
             R_DATA =>           rd_val_pad(12*(b+1)-1 downto 12*b),
-            R_DATA_BYPASS =>    '0', -- use register on read data
+            R_DATA_BYPASS =>    '0', -- Use register on read data
             R_DATA_EN =>        rd_en,
-            R_DATA_SL_N =>      '1', -- Disable asynchronous load
-            R_DATA_SD =>        '0', -- don't care
+            R_DATA_SL_N =>      '1', -- Disable synchronous load
+            R_DATA_SD =>        '0', -- Don't care
             R_DATA_AL_N =>      '1', -- Disable asynchronous load
-            R_DATA_AD_N =>      '0', -- don't care
+            R_DATA_AD_N =>      '0', -- Don't care
             BUSY_FB =>          '0',
             ACCESS_BUSY =>      open);
     end generate;
 
-    -- Register for buffering async reads.
-    -- (Plus logic for simulation-only formal verification.)
-    p_rbuff : process(rd_clk)
-    begin
-        if rising_edge(rd_clk) then
-            if (SIMTEST and rd_en = '0') then
-                rd_reg <= (others => 'X');
-            else
-                rd_reg <= rd_val_pad(DWIDTH-1 downto 0);
-            end if;
-        end if;
-    end process;
+    -- Use registered output from primitive to drive rd_reg.
+    rd_reg <= rd_val_pad(DWIDTH-1 downto 0);
 
+    -- Logic for simulation-only formal verification.
     p_wbuff : process(wr_clk)
     begin
         if rising_edge(wr_clk) then
