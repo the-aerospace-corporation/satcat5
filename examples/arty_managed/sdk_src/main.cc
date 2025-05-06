@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Microblaze software top-level for the "Arty Managed" example design
@@ -9,6 +9,7 @@
 #include <hal_ublaze/uart16550.h>
 #include <satcat5/build_date.h>
 #include <satcat5/cfgbus_core.h>
+#include <satcat5/cfgbus_gpio.h>
 #include <satcat5/cfgbus_mdio.h>
 #include <satcat5/cfgbus_led.h>
 #include <satcat5/cfgbus_spi.h>
@@ -63,6 +64,7 @@ satcat5::port::SerialAuto   pmod3           (&cfgbus, DEVADDR_PMOD3);
 satcat5::port::SerialAuto   pmod4           (&cfgbus, DEVADDR_PMOD4);
 satcat5::eth::SwitchConfig  eth_switch      (&cfgbus, DEVADDR_SWCORE);
 satcat5::cfg::NetworkStats  traffic_stats   (&cfgbus, DEVADDR_TRAFFIC);
+satcat5::cfg::GpiRegister   cfg_sw          (&cfgbus, DEVADDR_CFGSW, 0);
 satcat5::cfg::Mdio          eth_mdio        (&cfgbus, DEVADDR_MDIO);
 satcat5::cfg::Spi           spi_j6          (&cfgbus, DEVADDR_SPI);
 satcat5::cfg::Spi           spi_tft         (&cfgbus, DEVADDR_TFT);

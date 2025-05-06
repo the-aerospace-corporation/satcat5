@@ -1,4 +1,4 @@
-# Copyright 2021-2024 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 # Synthesis constraints for arty_managed
@@ -52,6 +52,16 @@ set_property PACKAGE_PIN D3     [get_ports {pmod4[1]}];
 set_property PACKAGE_PIN F4     [get_ports {pmod4[2]}];
 set_property PACKAGE_PIN F3     [get_ports {pmod4[3]}];
 
+# Configuration buttons and switches
+set_property PACKAGE_PIN A8     [get_ports {cfg_sw[0]}];    # SW0
+set_property PACKAGE_PIN C11    [get_ports {cfg_sw[1]}];    # SW1
+set_property PACKAGE_PIN C10    [get_ports {cfg_sw[2]}];    # SW2
+set_property PACKAGE_PIN A10    [get_ports {cfg_sw[3]}];    # SW3
+set_property PACKAGE_PIN D9     [get_ports {cfg_sw[4]}];    # BTN0
+set_property PACKAGE_PIN C9     [get_ports {cfg_sw[5]}];    # BTN1
+set_property PACKAGE_PIN B9     [get_ports {cfg_sw[6]}];    # BTN2
+set_property PACKAGE_PIN B8     [get_ports {cfg_sw[7]}];    # BTN3
+
 # I2C interface (J3)
 set_property PACKAGE_PIN L18    [get_ports i2c_sck];        # CK_SCL
 set_property PACKAGE_PIN M18    [get_ports i2c_sda];        # CK_SDA
@@ -81,8 +91,8 @@ set_property PACKAGE_PIN G1     [get_ports spi_sdi];        # CK_MISO
 set_property PACKAGE_PIN H1     [get_ports spi_sdo];        # CK_MOSI
 
 # USB-UART Interface
-set_property PACKAGE_PIN D10    [get_ports uart_txd];
-set_property PACKAGE_PIN A9     [get_ports uart_rxd];
+set_property PACKAGE_PIN D10    [get_ports uart_txd];       # UART_RXD_OUT
+set_property PACKAGE_PIN A9     [get_ports uart_rxd];       # UART_TXD_IN
 
 # Text-mode LCD on ChipKit header
 set_property PACKAGE_PIN V15    [get_ports {text_lcd_db[0]}];   # CK_IO0
@@ -104,6 +114,7 @@ set_property PACKAGE_PIN R17    [get_ports tft_sdo];    # CK_IO12
 ### Set all voltages and signaling standards
 
 # All I/O pins at 3.3V
+set_property IOSTANDARD LVCMOS33 [get_ports cfg_sw*];
 set_property IOSTANDARD LVCMOS33 [get_ports ext_clk100];
 set_property IOSTANDARD LVCMOS33 [get_ports ext_reset_n];
 set_property IOSTANDARD LVCMOS33 [get_ports i2c*];
