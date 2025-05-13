@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -23,16 +23,12 @@ Ping::Ping(satcat5::ip::Dispatch* iface)
 }
 
 #if SATCAT5_ALLOW_DELETION
-Ping::~Ping()
-{
+Ping::~Ping() {
     stop();
 }
 #endif
 
-void Ping::arping(
-    const satcat5::ip::Addr& dstaddr,
-    unsigned qty)
-{
+void Ping::arping(const satcat5::ip::Addr& dstaddr, unsigned qty) {
     stop();                         // Reset internal state.
     if (qty > 0) {
         // Set initial state for ARP-ping.
@@ -46,14 +42,11 @@ void Ping::arping(
     }
 }
 
-void Ping::ping(
-    const satcat5::ip::Addr& dstaddr,
-    unsigned qty)
-{
+void Ping::ping(const satcat5::ip::Addr& dstaddr, unsigned qty) {
     stop();                         // Reset internal state.
     if (qty > 0) {
         // Set initial state for ICMP-ping.
-        m_arp_remct = 2;            // Additional ARP attempts?
+        m_arp_remct = 4;            // Additional ARP attempts?
         m_icmp_remct = qty;         // How many ICMP queries?
         timer_every(1000);          // Timer for follow-up
         m_iface->m_icmp.add(this);  // Register for callback
@@ -62,8 +55,7 @@ void Ping::ping(
     }
 }
 
-void Ping::stop()
-{
+void Ping::stop() {
     // Reset internal state.
     m_arp_remct = 0;
     m_icmp_remct = 0;
@@ -85,8 +77,7 @@ void Ping::arp_event(
     }
 }
 
-void Ping::ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec)
-{
+void Ping::ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec) {
     if (from == m_addr.dstaddr()) {
         m_reply_rcvd = true;
         log::Log(log::INFO, "Ping: Reply from").write(from)
@@ -94,8 +85,7 @@ void Ping::ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec)
     }
 }
 
-void Ping::send_arping()
-{
+void Ping::send_arping() {
     // Send an ARP query to the stored address.
     m_reply_rcvd = false;
     m_arp_tref = SATCAT5_CLOCK->now();
@@ -105,11 +95,11 @@ void Ping::send_arping()
     if (m_arp_remct != Ping::UNLIMITED) {--m_arp_remct;}
 }
 
-void Ping::send_ping()
-{
+void Ping::send_ping() {
     if (m_addr.ready()) {
         // Send an ICMP query to the resolved address.
         m_reply_rcvd = false;
+        m_arp_tref = SATCAT5_CLOCK->now();
         m_iface->m_icmp.send_ping(m_addr);
         // Decrement counter (unless unlimited).
         m_arp_remct = 0;
@@ -125,8 +115,7 @@ void Ping::send_ping()
     }
 }
 
-void Ping::timer_event()
-{
+void Ping::timer_event() {
     if (m_icmp_remct && m_arp_remct && m_addr.ready()) {
         // No message after a successful ARP handshake.
     } else if (!m_reply_rcvd) {

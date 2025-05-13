@@ -76,7 +76,7 @@ set uart_rxd [ create_bd_port -dir I uart_rxd ]
 set uart_txd [ create_bd_port -dir O uart_txd ]
 set rmii [ create_bd_intf_port -mode Master -vlnv xilinx.com:interface:rmii_rtl:1.0 rmii ]
 set rmii_clkout [ create_bd_port -dir O rmii_clkout ]
-set rmii_mode [ create_bd_port -dir O rmii_mode ]
+set rmii_mode [ create_bd_port -dir O -from 1 -to 0 rmii_mode ]
 set rmii_resetn [ create_bd_port -dir O rmii_resetn ]
 set mdio_clk [ create_bd_port -dir O mdio_clk ]
 set mdio_data [ create_bd_port -dir IO mdio_data ]
@@ -346,7 +346,14 @@ set_property -dict [list \
 
 set port_adapter_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_adapter port_adapter_0 ]
 set rmii_mode_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant rmii_mode_0 ]
+set_property -dict [ list \
+    CONFIG.CONST_WIDTH {2} \
+    CONFIG.CONST_VAL {3} \
+] $rmii_mode_0
 set rmii_reset_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:reset_hold rmii_reset_0 ]
+set_property -dict [ list \
+    CONFIG.RESET_HOLD {1000000} \
+] $rmii_reset_0
 set port_rmii_0 [ create_bd_cell -type ip -vlnv aero.org:satcat5:port_rmii port_rmii_0 ]
 set_property -dict [ list \
     CONFIG.MODE_CLKOUT {true} \

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2023 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -32,7 +32,7 @@ entity switch_top_arty_a7_rmii is
     rmii_rxd    : in    std_logic_vector(1 downto 0);
     rmii_rxen   : in    std_logic;
     rmii_rxer   : in    std_logic;
-    rmii_mode   : out   std_logic; -- 1 for RMII, 0 for MII
+    rmii_mode   : out   std_logic_vector(1 downto 0);
     rmii_refclk : out   std_logic; -- 50 MHz reference from clkgen
     rmii_resetn : out   std_logic; -- PHY reset#
 
@@ -102,7 +102,7 @@ u_clkbuf : BUFG
     I   => ref_clk100,
     O   => clk_100);
 
-rmii_mode   <= '1';
+rmii_mode   <= "11";    -- Force RMII mode with PHYADDR = 1
 ext_reset_p <= not ext_reset_n;
 rmii_resetn <= not rmii_reset_p;
 
