@@ -23,8 +23,10 @@ set_property PACKAGE_PIN H15    [get_ports rmii_tx_en];
 set_property PACKAGE_PIN H14    [get_ports {rmii_txd[0]}];
 set_property PACKAGE_PIN J14    [get_ports {rmii_txd[1]}];
 set_property PACKAGE_PIN G18    [get_ports rmii_clkout];    # 50 MHz clock reference
-set_property PACKAGE_PIN G16    [get_ports rmii_mode];      # Bootstrap to RMII mode
+set_property PACKAGE_PIN D17    [get_ports {rmii_mode[0]}]; # Bootstrap PHYADDR = 1
+set_property PACKAGE_PIN G16    [get_ports {rmii_mode[1]}]; # Bootstrap RMII mode
 set_property PACKAGE_PIN C16    [get_ports rmii_resetn];
+set_property PULLDOWN TRUE      [get_ports rmii_rx*];       # Bootstrap PHYADDR = 1
 
 # PMOD JA = EoS-PMOD1
 # Pin 1/2/3/4 = RTSb, RXD, TXD, CTSb = Out, In, Out, In wrt USB-UART

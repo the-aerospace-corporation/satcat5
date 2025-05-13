@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -166,7 +166,7 @@ namespace satcat5 {
             //! Get the system time reference, if one is set.
             //! Note: The SATCAT5_CLOCK macro is an alias for
             //!  satcat5::poll::timekeeper.get_clock().
-            satcat5::util::TimeRef* get_clock() { return m_clock; }
+            satcat5::util::TimeRef* get_clock() const;
 
             //! Has a system time reference been provided?
             bool clock_ready() const;
@@ -186,7 +186,6 @@ namespace satcat5 {
 
         protected:
             void poll_demand() override;
-            satcat5::util::TimeRef* m_clock;
             satcat5::util::TimeVal m_tref;
         };
 

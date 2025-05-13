@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -39,6 +39,10 @@ static poll::Timer*     g_list_timer  = 0;
 
 // Placeholder used if no other timer is available.
 satcat5::util::NullTimer null_timer;
+
+// Global pointer to the preferred timer object.
+// (As above, syntax ensures expected initialization order.)
+static TimeRef* g_main_timer = &null_timer;
 
 // Global helper object for Timers.
 poll::Timekeeper poll::timekeeper;
@@ -219,27 +223,30 @@ unsigned poll::OnDemand::count_ondemand() {
 }
 
 poll::Timekeeper::Timekeeper()
-    : m_clock(&null_timer)
-    , m_tref(null_timer.now())
+    : m_tref(g_main_timer->now())
 {
     // No other initialization required.
 }
 
 bool poll::Timekeeper::clock_ready() const {
-    return (m_clock) && (m_clock != &null_timer);
+    return g_main_timer != &null_timer;
+}
+
+satcat5::util::TimeRef* poll::Timekeeper::get_clock() const {
+    return g_main_timer;
 }
 
 void poll::Timekeeper::set_clock(TimeRef* timer) {
     // Atomically set the global clock pointer.
     AtomicLock lock(LBL_POLL);
-    m_clock = timer ? timer : &null_timer;
-    m_tref = m_clock->now();
+    g_main_timer = timer ? timer : &null_timer;
+    m_tref = g_main_timer->now();
 }
 
 void poll::Timekeeper::suggest_clock(TimeRef* timer) {
     // Keep the clock with better resolution
     AtomicLock lock(LBL_POLL);
-    if (timer && timer->ticks_per_msec() > m_clock->ticks_per_msec())
+    if (timer && timer->ticks_per_msec() > g_main_timer->ticks_per_msec())
         set_clock(timer);
 }
 
@@ -255,7 +262,7 @@ void poll::Timekeeper::poll_demand() {
     unsigned elapsed_msec = 1;      // Default = 1 msec
     if (clock_ready()) {
         // Measure elapsed time since last call to "elapsed_msec".
-        // ("m_tref" updated to m_clock->now(), less fractional leftovers.)
+        // ("m_tref" updated to g_main_timer->now(), less fractional leftovers.)
         AtomicLock lock(LBL_POLL);
         elapsed_msec = m_tref.increment_msec();
         if (!elapsed_msec) return;  // Less than 1 msec elapsed?

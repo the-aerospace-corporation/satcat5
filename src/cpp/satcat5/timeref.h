@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -189,7 +189,7 @@ namespace satcat5 {
         //! Placeholder used if no timer is available.
         class NullTimer : public satcat5::util::TimeRef {
         public:
-            NullTimer() : TimeRef(1) {}
+            constexpr NullTimer() : TimeRef(1) {}
             u32 raw() override {return 0;}
         };
 

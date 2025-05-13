@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for Ping utilities
@@ -70,7 +70,7 @@ TEST_CASE("Ping") {
     SECTION("icmp-badip") {
         // Attempt to ping a nonexistent address.
         net_a.m_ping.ping(IP_C, 2);
-        xlink.timer.sim_wait(3500);   // Attempt ARP 3 times then abort
+        xlink.timer.sim_wait(5500);   // Attempt ARP 5 times then abort
         CHECK(log.contains("Gateway unreachable"));
     }
 
