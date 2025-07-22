@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the pulse-per-second (PPS) input and output
@@ -82,12 +82,14 @@ TEST_CASE("cfgbus_ppso") {
 
     // Confirm phase-offset configuration.
     SECTION("set_offset") {
+        CHECK(uut.get_offset() == 0);
         uut.set_offset(0x123456789ABll);
         CHECK(regs[REG_PPSO].write_pop() == 0x80000123u);
         CHECK(regs[REG_PPSO].write_pop() == 0x456789ABu);
         uut.set_offset(-1);
         CHECK(regs[REG_PPSO].write_pop() == 0x8000FFFFu);
         CHECK(regs[REG_PPSO].write_pop() == 0xFFFFFFFFu);
+        CHECK(uut.get_offset() == -1);
     }
 
     // Confirm rising/falling-edge configuration.
@@ -95,8 +97,10 @@ TEST_CASE("cfgbus_ppso") {
         uut.set_polarity(false);
         CHECK(regs[REG_PPSO].write_pop() == 0x00000000u);
         CHECK(regs[REG_PPSO].write_pop() == 0x00000000u);
+        CHECK_FALSE(uut.get_polarity());
         uut.set_polarity(true);
         CHECK(regs[REG_PPSO].write_pop() == 0x80000000u);
         CHECK(regs[REG_PPSO].write_pop() == 0x00000000u);
+        CHECK(uut.get_polarity());
     }
 }

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2022 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -41,7 +41,7 @@ signal reset_p      : std_logic := '1';
 signal in_data      : std_logic_vector(8*IO_BYTES-1 downto 0);
 signal in_write     : std_logic;
 signal in_nlast     : integer range 0 to IO_BYTES;
-signal in_commit    : std_logic;
+signal in_result    : frm_result_t;
 
 -- Reference stream
 signal ref_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
@@ -57,9 +57,7 @@ signal out_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
 signal out_vtag     : vlan_hdr_t;
 signal out_write    : std_logic;
 signal out_nlast    : integer range 0 to IO_BYTES;
-signal out_commit   : std_logic;
-signal out_revert   : std_logic;
-signal out_error    : std_logic;
+signal out_result   : frm_result_t;
 
 -- Test control.
 constant LOAD_BYTES : positive := IO_BYTES;
@@ -81,7 +79,7 @@ reset_p <= '0' after 1 us;
 cfg_cmd.clk <= clk100;
 
 -- Input and reference queues.
-in_commit <= in_write and bool2bit(in_nlast > 0);
+in_result <= frm_result_ok(in_write = '1' and in_nlast > 0);
 
 u_ififo : entity work.fifo_sim_throttle
     generic map(
@@ -133,16 +131,12 @@ uut : entity work.eth_frame_vstrip
     in_data     => in_data,
     in_write    => in_write,
     in_nlast    => in_nlast,
-    in_commit   => in_commit,
-    in_revert   => '0',     -- Not tested
-    in_error    => '0',     -- Not tested
+    in_result   => in_result,
     out_data    => out_data,
     out_vtag    => out_vtag,
     out_write   => out_write,
     out_nlast   => out_nlast,
-    out_commit  => out_commit,
-    out_revert  => out_revert,
-    out_error   => out_error,
+    out_result  => out_result,
     cfg_cmd     => cfg_cmd,
     clk         => clk100,
     reset_p     => reset_p);
@@ -162,14 +156,14 @@ begin
 
         if (out_write = '1' and out_nlast > 0) then
             if (ref_valid = '1') then
-                assert (out_commit = '0' or out_vtag = ref_vtag)
+                assert (out_result.commit = '0' or out_vtag = ref_vtag)
                     report "VTAG mismatch." severity error;
-                assert (out_commit = ref_commit
-                    and out_revert = ref_revert
-                    and out_error = ref_error)
+                assert (out_result.commit = ref_commit
+                    and out_result.revert = ref_revert
+                    and out_result.error = ref_error)
                     report "Frame status mismatch." severity error;
             elsif (ignore_data = '1') then
-                assert (out_revert = '1' and out_error = '1')
+                assert (out_result.revert = '1' and out_result.error = '1')
                     report "Missing ERROR strobe." severity error;
             else
                 report "Unexpected end-of-frame." severity error;

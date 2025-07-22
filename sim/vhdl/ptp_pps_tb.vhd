@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -38,6 +38,12 @@ constant PAR_CLK_HZ : positive := 999;
 constant TSAMP_SEC  : real := 1.0 / real(PAR_CLK_HZ * PAR_COUNT);
 constant MAX_ERROR  : real := 1.5 * TSAMP_SEC;
 
+-- Set edge-detection type (rising/falling/both).
+constant EDGE_FALLING   : cfgbus_word := x"00000000";
+constant EDGE_RISING    : cfgbus_word := x"00000001";
+constant EDGE_BOTH_TXF  : cfgbus_word := x"00000002";
+constant EDGE_BOTH_TXR  : cfgbus_word := x"00000003";
+
 -- ConfigBus register addresses:
 constant DEV_ADDR   : integer := 42;
 constant REG_PPSI   : integer := 43;
@@ -53,7 +59,7 @@ signal uut_pps      : std_logic_vector(PAR_COUNT-1 downto 0);
 signal cfg_cmd      : cfgbus_cmd;
 signal cfg_ack      : cfgbus_ack;
 signal test_phase   : tstamp_t := (others => '0');
-signal test_rising  : std_logic := '0';
+signal test_mode    : cfgbus_word := (others => '0');
 signal test_check   : std_logic := '0';
 
 begin
@@ -90,9 +96,9 @@ begin
             phase := real(n) * TSAMP + get_time_sec(subns - test_phase);
             phase := phase mod 1.0;
             if (TSAMP <= phase and phase <= 0.5 - TSAMP) then
-                pval := test_rising;        -- First half of cycle
+                pval := test_mode(0);       -- First half of cycle
             elsif (0.5 + TSAMP <= phase and phase <= 1.0 - TSAMP) then
-                pval := not test_rising;    -- Second half of cycle
+                pval := not test_mode(0);   -- Second half of cycle
             else
                 pval := 'Z';                -- Margin for rounding error
             end if;
@@ -158,22 +164,35 @@ p_test : process
         wait until rising_edge(cfg_cmd.clk) and (cfg_ack.rdata(30) = '1');
         assert (cfg_ack.rdata(31) = bool2bit(idx = 3))
             report "LAST mismatch at index " & integer'image(idx) severity error;
+        if (test_mode = EDGE_FALLING) then
+            assert (cfg_ack.rdata(24) = '0') report "Falling-edge mismatch.";
+        elsif (test_mode = EDGE_RISING) then
+            assert (cfg_ack.rdata(24) = '1') report "Rising-edge mismatch.";
+        end if;
     end procedure;
 
-    procedure run_one(phase : real; edge: std_logic) is
-        -- Workaround: HALF_SEC should be a constant, but ISIM initializes it to "UUU..."
-        variable HALF_SEC : tstamp_t := shift_right(TSTAMP_ONE_SEC, 1);
-        variable tsec, tsub, tdiff : tstamp_t := (others => '0');
+    procedure run_one(phase : real; edge: cfgbus_word) is
+        variable tmax, tmod, tsec, tsub, tdiff : tstamp_t := (others => '0');
     begin
         -- Set the new test conditions.
         test_phase  <= get_tstamp_sec(phase);
-        test_rising <= edge;
+        test_mode   <= edge;
         test_check  <= '0';
+        if (edge = EDGE_RISING or edge = EDGE_FALLING) then
+            -- Single-edge mode: Range is +/- 0.50 seconds.
+            tmax := shift_right(TSTAMP_ONE_SEC, 1);
+        elsif (edge = EDGE_BOTH_TXR or edge = EDGE_BOTH_TXF) then
+            -- Double-edge mode: Range is +/- 0.25 seconds.
+            tmax := shift_right(TSTAMP_ONE_SEC, 2);
+        else
+            report "Unsupported edge mode." severity error;
+        end if;
+        tmod := shift_left(tmax, 1);
         -- Configure the PPS output. (Write 2x then read.)
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.regaddr <= REG_PPSO;
         cfg_cmd.wrcmd   <= '1';
-        cfg_cmd.wdata   <= edge & i2s(0, 15) & std_logic_vector(test_phase(47 downto 32));
+        cfg_cmd.wdata   <= edge(0) & i2s(0, 15) & std_logic_vector(test_phase(47 downto 32));
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.wdata   <= std_logic_vector(test_phase(31 downto 0));
         wait until rising_edge(cfg_cmd.clk);
@@ -185,7 +204,7 @@ p_test : process
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.regaddr <= REG_PPSI;
         cfg_cmd.wrcmd   <= '1';
-        cfg_cmd.wdata   <= i2s(0, 31) & edge;
+        cfg_cmd.wdata   <= edge;
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.wrcmd   <= '0';
         -- Wait for dust to settle, then clear FIFO again.
@@ -210,12 +229,13 @@ p_test : process
             wait_fifo_read(3);
             tsub(23 downto  0) := unsigned(cfg_ack.rdata(23 downto 0));
             -- Calculate the difference from the expected timestamp.
+            -- (Modulo to nearest second or half-second boundary.)
             tdiff := tsub - test_phase;
-            while (signed(tdiff) < signed(not HALF_SEC)) loop
-                tdiff := tdiff + TSTAMP_ONE_SEC;
+            while (signed(tdiff) < signed(not tmax)) loop
+                tdiff := tdiff + tmod;
             end loop;
-            while (tdiff >= HALF_SEC) loop
-                tdiff := tdiff - TSTAMP_ONE_SEC;
+            while (tdiff >= tmax) loop
+                tdiff := tdiff - tmod;
             end loop;
             -- Report the raw measurement:
             report "Pulse detected: " & integer'image(to_integer(tsec))
@@ -229,7 +249,7 @@ p_test : process
 begin
     -- Reset the ConfigBus interface.
     test_phase      <= (others => '0');
-    test_rising     <= '0';
+    test_mode       <= (others => '0');
     test_check      <= '0';
     cfg_cmd.devaddr <= DEV_ADDR;
     cfg_cmd.regaddr <= 0;
@@ -242,15 +262,15 @@ begin
     cfg_cmd.reset_p <= '0';
     wait for 1 us;
     -- Run a test at various offsets.
-    run_one(-0.4000, '0');
-    run_one(-0.3214, '1');
-    run_one(-0.2098, '0');
-    run_one(-0.1185, '1');
-    run_one( 0.0003, '0');
-    run_one( 0.1577, '1');
-    run_one( 0.2222, '0');
-    run_one( 0.3681, '1');
-    run_one( 0.4321, '0');
+    run_one(-0.4000, EDGE_RISING);
+    run_one(-0.3214, EDGE_FALLING);
+    run_one(-0.2098, EDGE_BOTH_TXR);
+    run_one(-0.1185, EDGE_BOTH_TXF);
+    run_one( 0.0003, EDGE_RISING);
+    run_one( 0.1577, EDGE_FALLING);
+    run_one( 0.2222, EDGE_BOTH_TXR);
+    run_one( 0.3681, EDGE_BOTH_TXF);
+    run_one( 0.4321, EDGE_RISING);
     report "All tests completed!";
     wait;
 end process;

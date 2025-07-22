@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -7,20 +7,27 @@
 #include <satcat5/log.h>
 #include <satcat5/utils.h>
 
-using satcat5::ccsds_spp::Header;
 using satcat5::ccsds_spp::Address;
+using satcat5::ccsds_spp::BytesToSpp;
 using satcat5::ccsds_spp::Dispatch;
+using satcat5::ccsds_spp::Header;
 using satcat5::ccsds_spp::Packetizer;
 using satcat5::ccsds_spp::Protocol;
+using satcat5::ccsds_spp::SppToBytes;
 using satcat5::io::LimitedRead;
 using satcat5::io::Readable;
 using satcat5::io::Writeable;
+using satcat5::log::DEBUG;
+using satcat5::log::Log;
+using satcat5::log::WARNING;
 using satcat5::net::Type;
 using satcat5::util::min_unsigned;
 
+// Set debugging verbosity (0/1/2)
+#define DEBUG_VERBOSE 0
+
 void Header::set(bool cmd, u16 apid, u16 seq) {
-    // TODO: Should the default be SEQF_FIRST or SEQF_LAST?
-    value = VERSION_1 | SEQF_FIRST
+    value = VERSION_1 | SEQF_UNSEG
           | (cmd ? TYPE_CMD : TYPE_TLM)
           | pack_apid(apid) | pack_seqc(seq);
 }
@@ -33,57 +40,62 @@ Header& Header::operator++() {
     return *this;
 }
 
-Packetizer::Packetizer(Readable* src, u8* buff, unsigned rxbytes, unsigned rxpkt)
+Packetizer::Packetizer(u8* buff, unsigned rxbytes, unsigned rxpkt, Readable* src)
     : ReadableRedirect(&m_buff)
-    , m_src(src)
+    , m_copy(src, this)
     , m_buff(buff, rxbytes, rxpkt)
     , m_rem(0)
     , m_timeout(1000)
+    , m_wridx(0)
+    , m_sreg(0)
 {
-    m_src->set_callback(this);
+    // Nothing else to initialize.
 }
 
-#if SATCAT5_ALLOW_DELETION
-Packetizer::~Packetizer() {
-    if (m_src) m_src->set_callback(0);
-}
-#endif
-
-void Packetizer::data_rcvd(Readable* src) {
-    // At the start of each packet, attempt to read the header.
-    if (!m_rem) {
-        // Start watchdog timer only on the first attempt.
-        // (Source will call data_rcvd on every service loop.)
-        if (!timer_remaining()) timer_once(m_timeout);
-        // Can we read the entire header?
-        if (src->get_read_ready() < 6) return;
-        // Read header contents.
-        u32 hdr = src->read_u32();  // Read header
-        u16 len = src->read_u16();
-        m_rem = 1 + unsigned(len);  // Note length
-        m_buff.write_u32(hdr);      // Forward header
-        m_buff.write_u16(len);
-    }
-
-    // Once we've read the header, forward packet contents verbatim.
-    if (m_rem) {
-        // Copy as much data as we can...
-        unsigned max_rd = min_unsigned(m_rem, src->get_read_ready());
-        m_rem -= LimitedRead(m_src, max_rd).copy_to(&m_buff);
-        // If there's still data pending, restart the watchdog.
-        if (m_rem) {timer_once(m_timeout); return;}
-        // Otherwise, stop watchdog and mark end-of-frame.
-        timer_stop();
-        m_buff.write_finalize();
-    }
+unsigned Packetizer::get_write_space() const {
+    return m_buff.get_write_space();
 }
 
-void Packetizer::data_unlink(Readable* src) {m_src = 0;} // GCOVR_EXCL_LINE
+void Packetizer::flush() {
+    auto src = m_copy.src();
+    m_buff.write_abort();           // Flush partial output
+    if (src) src->read_finalize();  // Flush partial input
+    m_rem = 0;                      // Reset packet state
+    m_wridx = 0;                    // Reset header state
+}
+
+void Packetizer::reset() {
+    m_buff.clear();                 // Discard buffer contents
+    flush();                        // Reset parser state
+}
 
 void Packetizer::timer_event() {
-    satcat5::log::Log(satcat5::log::WARNING, "CCSDS-SDS packetizer timeout.");
-    m_buff.write_abort();       // Flush partial output
-    m_src->read_finalize();     // Flush partial input
+    Log(WARNING, "CCSDS-SDS packetizer timeout.");
+    flush();                        // Discard partials and reset state
+}
+
+void Packetizer::write_next(u8 data) {
+    // Always copy new data to the output buffer.
+    m_buff.write_u8(data);
+
+    // Shift-register holds the two most recent bytes.
+    m_sreg = 256 * m_sreg + data;
+
+    // Update packet-parsing state...
+    if (m_rem) {
+        // Countdown to end of SPP packet.
+        bool ok = (--m_rem) || m_buff.write_finalize();
+        if (DEBUG_VERBOSE > 0 && !ok)
+            Log(DEBUG, "ccsds_spp::Packetizer overflow");
+    } else if (++m_wridx == 6) {
+        // End of 6-byte SPP primary header.
+        m_rem = 1 + unsigned(m_sreg);
+        m_wridx = 0;
+    }
+
+    // Refresh the watchdog timer.
+    if (m_rem || m_wridx) timer_once(m_timeout);
+    else timer_stop();
 }
 
 satcat5::net::Dispatch* Address::iface() const {
@@ -118,7 +130,7 @@ Dispatch::Dispatch(Readable* src, Writeable* dst)
     , m_dst(dst)
     , m_rcvd_hdr{0}
 {
-    m_src->set_callback(this);
+    if (m_src) m_src->set_callback(this);
 }
 
 #if SATCAT5_ALLOW_DELETION
@@ -136,6 +148,10 @@ Writeable* Dispatch::open_reply(const Type& type, unsigned len) {
 }
 
 Writeable* Dispatch::open_write(const Header& hdr, unsigned len) {
+    // Sanity check if user provided a null destination.
+    if (!m_dst) return nullptr;
+    if (DEBUG_VERBOSE > 1)
+        Log(DEBUG, "ccsds_spp::Transmit").write(hdr.apid()).write10(u32(len));
     // Flush leftovers from incomplete previous transmissions.
     m_dst->write_abort();
     // Sanity check: Is user trying to send an empty packet?
@@ -149,11 +165,18 @@ Writeable* Dispatch::open_write(const Header& hdr, unsigned len) {
 }
 
 void Dispatch::data_rcvd(Readable* src) {
-    // Read the incoming SPP header.
-    m_rcvd_hdr.value = src->read_u32();
-    unsigned len = 1 + unsigned(src->read_u16());
-    bool ok = (src->get_read_ready() >= len)
-        && (m_rcvd_hdr.apid() != APID_IDLE);
+    // Attempt to read the incoming SPP header.
+    u32 len = 0; bool ok = false;
+    if (src->get_read_ready() >= 6) {
+        m_rcvd_hdr.value = src->read_u32();
+        len = 1 + u32(src->read_u16());
+        ok = (src->get_read_ready() >= len)
+            && (m_rcvd_hdr.apid() != APID_IDLE);
+    }
+
+    // Optionally log each received packet.
+    if (DEBUG_VERBOSE > 1 && ok)
+        Log(DEBUG, "ccsds_spp::Received").write(m_rcvd_hdr.apid()).write10(u32(len));
 
     // Attempt delivery, filtered by APID.
     Type typ(m_rcvd_hdr.apid());
@@ -177,3 +200,22 @@ Protocol::~Protocol() {
     m_iface->remove(this);
 }
 #endif
+
+BytesToSpp::BytesToSpp(Readable* src, Dispatch* dst, u16 apid, unsigned max_chunk)
+    : m_dst(dst)
+    , m_strm(src, &m_dst, max_chunk)
+{
+    m_dst.connect(false, apid);
+}
+
+SppToBytes::SppToBytes(Dispatch* src, Writeable* dst, u16 apid)
+    : Protocol(src, apid)
+    , m_dst(dst)
+{
+    // Nothing else to initialize.
+}
+
+void SppToBytes::frame_rcvd(satcat5::io::LimitedRead& src) {
+    // Copy all data, ignoring header fields.
+    src.copy_and_finalize(m_dst, satcat5::io::CopyMode::STREAM);
+}

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2021 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -181,7 +181,8 @@ uut_b : entity work.io_spi_peripheral
     rx_write    => rxb_write,
     cfg_gdly    => to_unsigned(GLITCH_DLY, 8),
     cfg_mode    => SPI_MODE,
-    refclk      => refclk_b);
+    refclk      => refclk_b,
+    reset_p     => reset_p);
 
 -- Measure the actual SCLK baud rate.
 p_baud : process

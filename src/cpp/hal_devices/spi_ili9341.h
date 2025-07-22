@@ -1,36 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-//
 // Display device driver for the ILI9341
-//
-// The ILI9341 is an ASIC for driving 320x240 TFT LCD displays.
-// It uses an SPI interface to update an internal frame buffer.
-// (Other interface options are not supported by this driver.)
-//
-// The ILI9341 ASIC is used in several off-the-shelf display modules:
-//  * Adafruit 2.8" display: https://www.adafruit.com/products/1651
-//  * Adafruit 2.8" display: https://www.adafruit.com/product/1770
-//  * Adafruit 2.4" display: https://www.adafruit.com/product/2478
-//  * Adafruit 2.4" display: https://www.adafruit.com/product/3315
-//
-// This driver supports all API methods, including scrolling viewports.
-// Due to the limited SPI bandwidth, a complete screen refresh takes at
-// least 122 msec.  As a result, this gui::Display driver must always be
-// used with a buffered gui::Canvas object.
-//
-// The SPI controller is required to drive the "DCX" pin.  The ILI9341
-// uses this to distinguish commands from data, deasserting DCX for the
-// first byte in each SPI transaction.
-//
-// The complete ISI9341 datasheet can be found here:
-//  http://www.adafruit.com/datasheets/ILI9341.pdf
-//
-// Startup sequence and color definitions are adapted from the Adafruit
-// ILI9341 Arduino Library, which uses the MIT license:
-//  https://github.com/adafruit/Adafruit_ILI9341
-//
 
 #pragma once
 
@@ -41,14 +13,41 @@
 namespace satcat5 {
     namespace device {
         namespace spi {
+            //! Display device driver for the ILI9341.
+            //! The ILI9341 is an ASIC for driving 320x240 TFT LCD displays.
+            //! It uses an SPI interface to update an internal frame buffer.
+            //! Other interface options are not supported by this driver.
+            //!
+            //! The ILI9341 ASIC is used in several off-the-shelf display modules:
+            //!  * [Adafruit 2.8" display](https://www.adafruit.com/products/1651)
+            //!  * [Adafruit 2.8" display](https://www.adafruit.com/product/1770)
+            //!  * [Adafruit 2.4" display](https://www.adafruit.com/product/2478)
+            //!  * [Adafruit 2.4" display](https://www.adafruit.com/product/3315)
+            //!
+            //! This driver supports all API methods, including scrolling viewports.
+            //! Due to the limited SPI bandwidth, a complete screen refresh takes at
+            //! least 122 msec.  As a result, this gui::Display driver must always be
+            //! used with a buffered gui::Canvas object.
+            //!
+            //! The SPI controller is required to drive the "DCX" pin.  The ILI9341
+            //! uses this to distinguish commands from data, deasserting DCX for the
+            //! first byte in each SPI transaction.
+            //!
+            //! The complete ISI9341 datasheet can be found [on the Adafruit website]
+            //! (http://www.adafruit.com/datasheets/ILI9341.pdf).
+            //!
+            //! Startup sequence and color definitions are adapted from the Adafruit
+            //! [ILI9341 Arduino Library](https://github.com/adafruit/Adafruit_ILI9341),
+            //! which uses the MIT license.
             class Ili9341
                 : public satcat5::poll::Timer
                 , public satcat5::gui::Display
                 , public satcat5::cfg::SpiEventListener
             {
             public:
-                // Constants for the MADCTL register (Section 8.2.29)
-                // This sets the panel type and panel rotation.
+                //! Constants for the MADCTL register (Section 8.2.29).
+                //! This sets the panel type and panel rotation.
+                //!@{
                 static constexpr u8
                     MADCTL_MY   = 0x80,
                     MADCTL_MX   = 0x40,
@@ -56,43 +55,47 @@ namespace satcat5 {
                     MADCTL_ML   = 0x10,
                     MADCTL_BGR  = 0x08,
                     MADCTL_MH   = 0x04;
+                //!@}
 
-                // Adafruit panels all use BGR mode with MH = 0.
-                // Use the MX, MY, and MV bits to set orientation.
+                //! Adafruit panels all use BGR mode with MH = 0.
+                //! Use the MX, MY, and MV bits to set orientation.
+                //!@{
                 static constexpr u8
                     ADAFRUIT_ROT0   = MADCTL_BGR | MADCTL_MX,
                     ADAFRUIT_ROT90  = MADCTL_BGR | MADCTL_MV,
                     ADAFRUIT_ROT180 = MADCTL_BGR | MADCTL_MY,
                     ADAFRUIT_ROT270 = MADCTL_BGR | MADCTL_MX | MADCTL_MY | MADCTL_MV;
+                //!@}
 
-                // Constructor links to the specified SPI interface.
-                // SPI rate is controlled by parent, recommend 10 Mbps.
-                // A separate GPO pin is required for the D/CX signal.
+                //! Constructor links to the specified SPI interface.
+                //! SPI rate is controlled by parent, recommend 10 Mbps.
+                //! A separate GPO pin is required for the D/CX signal.
                 Ili9341(
                     satcat5::cfg::SpiGeneric* spi, u8 devidx,   // SPI interface
                     u8 madctl = ADAFRUIT_ROT0);                 // LCD configuration
 
-                // Busy with initialization or a previous command?
+                //! Busy with initialization or a previous command?
                 bool busy() const;
 
-                // Invert entire display.
-                // (Returns true if command was accepted.)
+                //! Invert entire display.
+                //! \return True if command was accepted.
                 bool invert(bool inv);
 
-                // Software reset.
+                //! Initiate software reset.
                 void reset();
 
-                // Current scroll position.
+                //! Current scroll position.
                 inline u16 scroll_pos() const {return m_scroll;}
 
-                // Configure the scrolling viewport:
-                //  * Rows above above "top" are fixed.
-                //  * Next "size" rows enable scrolling.
-                //  * Any remaining rows are also fixed.
-                // Note: This feature can only be used if MADCTL_MV = 0.
+                //! Configure the scrolling viewport:
+                //!  * Rows above above "top" are fixed.
+                //!  * Next "size" rows enable scrolling.
+                //!  * Any remaining rows are also fixed.
+                //! Note: This feature can only be used if MADCTL_MV = 0.
                 bool viewport(u16 top, u16 size);
 
-                // Definitions for 16-bit color mode:
+                //! Constant definitions for 16-bit color mode.
+                //!@{
                 static constexpr u16            //   R    G    B
                     COLOR_BLACK     = 0x0000,   //   0,   0,   0
                     COLOR_NAVY      = 0x000F,   //   0,   0, 123
@@ -113,15 +116,19 @@ namespace satcat5 {
                     COLOR_ORANGE    = 0xFD20,   // 255, 165,   0
                     COLOR_GRELLOW   = 0xAFE5,   // 173, 255,  41
                     COLOR_PINK      = 0xFC18;   // 255, 130, 198
+                //!@}
 
-                // Recommended colors for dark theme (white text on a dark
-                // background) and light theme (black text on white):
+                //! Recommended colors for dark theme (white text on black).
+                //! \see gui::LogToDisplay
                 static constexpr satcat5::gui::LogColors DARK_THEME = {
                     COLOR_BLACK,        COLOR_LIGHTGREY,    // Text
                     COLOR_BLACK,        COLOR_RED,          // Error
                     COLOR_BLACK,        COLOR_ORANGE,       // Warning
                     COLOR_BLACK,        COLOR_CYAN,         // Info
                     COLOR_BLACK,        COLOR_BLUE};        // Debug
+
+                //! Recommended colors for light theme (black text on white).
+                //! \see gui::LogToDisplay
                 static constexpr satcat5::gui::LogColors LIGHT_THEME = {
                     COLOR_WHITE,        COLOR_DARKGREY,     // Text
                     COLOR_RED,          COLOR_BLACK,        // Error

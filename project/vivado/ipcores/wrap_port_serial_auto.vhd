@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -23,6 +23,7 @@ entity wrap_port_serial_auto is
     CLKREF_HZ       : positive;     -- Reference clock rate (Hz)
     SPI_MODE        : natural;      -- SPI clock phase & polarity
     UART_BAUD       : positive;     -- UART baud rate
+    RTS_SYMM        : boolean;      -- Alt. RTS mode: assert when TX data avail
     PULLUP_EN       : boolean;      -- Enable FPGA pullups on ext_pads?
     FORCE_SHDN      : boolean);     -- In shutdown, drive ext_pads to zero?
     port (
@@ -125,6 +126,7 @@ u_wrap : entity work.port_serial_auto
     CLKREF_HZ   => CLKREF_HZ,
     SPI_MODE    => SPI_MODE,
     UART_BAUD   => UART_BAUD,
+    RTS_SYMM    => RTS_SYMM,
     PULLUP_EN   => PULLUP_EN,
     FORCE_SHDN  => FORCE_SHDN)
     port map(

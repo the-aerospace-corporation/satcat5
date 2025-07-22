@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -9,6 +9,7 @@
 
 using satcat5::io::ReadPcap;
 using satcat5::io::WritePcap;
+using satcat5::io::WritePcapInterface;
 using satcat5::log::Log;
 using satcat5::util::TimeRef;
 
@@ -47,8 +48,7 @@ ReadPcap::ReadPcap(const char* filename)
     if (filename) open(filename);
 }
 
-void ReadPcap::open(const char* filename)
-{
+void ReadPcap::open(const char* filename) {
     if (DEBUG_VERBOSE > 0)
         Log(satcat5::log::DEBUG, "ReadPcap::open");
 
@@ -85,8 +85,7 @@ void ReadPcap::open(const char* filename)
     if (m_mode_ng || m_mode_pc) read_finalize();
 }
 
-void ReadPcap::read_finalize()
-{
+void ReadPcap::read_finalize() {
     // Done with current frame, clear the working buffer.
     read_reset(0);
 
@@ -100,8 +99,7 @@ void ReadPcap::read_finalize()
     }
 }
 
-void ReadPcap::pcap_hdr()
-{
+void ReadPcap::pcap_hdr() {
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "ReadPcap::pcap_hdr");
 
@@ -120,8 +118,7 @@ void ReadPcap::pcap_hdr()
     }
 }
 
-bool ReadPcap::pcap_dat()
-{
+bool ReadPcap::pcap_dat() {
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "ReadPcap::pcap_dat");
 
@@ -147,8 +144,7 @@ bool ReadPcap::pcap_dat()
     return get_read_ready() > 0;
 }
 
-bool ReadPcap::pcapng_blk()
-{
+bool ReadPcap::pcapng_blk() {
     // Read the block type and parse accordingly...
     switch (file_rd32()) {
     case BLK_PCAPNG_IDB:    pcapng_idb(); break;
@@ -162,8 +158,7 @@ bool ReadPcap::pcapng_blk()
     return get_read_ready() > 0;
 }
 
-void ReadPcap::pcapng_shb()
-{
+void ReadPcap::pcapng_shb() {
     if (DEBUG_VERBOSE > 0)
         Log(satcat5::log::DEBUG, "ReadPcap::pcapng_shb");
 
@@ -180,8 +175,7 @@ void ReadPcap::pcapng_shb()
     if (len > 12) m_file.read_consume(len - 12);
 }
 
-void ReadPcap::pcapng_idb()
-{
+void ReadPcap::pcapng_idb() {
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "ReadPcap::pcapng_idb");
 
@@ -216,8 +210,7 @@ void ReadPcap::pcapng_idb()
     m_file.read_consume(blen - rdpos);
 }
 
-void ReadPcap::pcapng_spb()
-{
+void ReadPcap::pcapng_spb() {
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "ReadPcap::pcapng_spb");
 
@@ -242,8 +235,7 @@ void ReadPcap::pcapng_spb()
     }
 }
 
-void ReadPcap::pcapng_epb()
-{
+void ReadPcap::pcapng_epb() {
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "ReadPcap::pcapng_epb");
 
@@ -270,8 +262,7 @@ void ReadPcap::pcapng_epb()
     }
 }
 
-void ReadPcap::pcapng_skip()
-{
+void ReadPcap::pcapng_skip() {
     if (DEBUG_VERBOSE > 1)
         Log(satcat5::log::DEBUG, "ReadPcap::pcapng_skip");
 
@@ -285,12 +276,13 @@ WritePcap::WritePcap(bool pcapng)
     , m_file(0)
     , m_pass(0)
     , m_mode_ng(pcapng)
+    , m_interface_count(0)
+    , m_interface_next(0)
 {
     m_clock.set(posix_timer.gps());
 }
 
-void WritePcap::open(const char* filename, u16 linktype)
-{
+void WritePcap::open(const char* filename, u16 linktype) {
     if (DEBUG_VERBOSE > 0)
         Log(satcat5::log::DEBUG, "WritePcap::open");
 
@@ -307,14 +299,9 @@ void WritePcap::open(const char* filename, u16 linktype)
         m_file.write_u64(-1ull);                    // Section length disabled
         m_file.write_u32(0);                        // Options (none)
         m_file.write_u32(32);                       // Block total length (again)
-        // Write PCAPNG-IDB block (Section 4.2).
-        m_file.write_u32(BLK_PCAPNG_IDB);           // Block type
-        m_file.write_u32(24);                       // Block total length
-        m_file.write_u16(linktype);                 // LinkType
-        m_file.write_u16(0);                        // Reserved
-        m_file.write_u32(SATCAT5_PCAP_BUFFSIZE);    // SnapLen
-        m_file.write_u32(0);                        // Options (none)
-        m_file.write_u32(24);                       // Block total length (again)
+        // Write PCAPNG-IDB block for the default capture interface.
+        m_interface_count = 0;
+        add_interface("Default", linktype);
     } else {
         // Write the legacy PCAP header (Section 4).
         m_file.write_u32(BLK_PCAP_HDR1_BE);         // Magic number
@@ -327,8 +314,33 @@ void WritePcap::open(const char* filename, u16 linktype)
     }
 }
 
-bool WritePcap::write_finalize()
-{
+u32 WritePcap::add_interface(const char* name, u16 linktype) {
+    // Calculate length of block, including label.
+    unsigned block_len = 24, name_len = 0, name_pad = 0;
+    if (name) {
+        name_len = strlen(name);
+        name_pad = word_pad(name_len);
+        block_len += 4 + name_len + name_pad;
+    }
+    // Write PCAPNG-IDB block (Section 4.2).
+    m_file.write_u32(BLK_PCAPNG_IDB);           // Block type
+    m_file.write_u32(block_len);                // Block total length
+    m_file.write_u16(linktype);                 // LinkType
+    m_file.write_u16(0);                        // Reserved
+    m_file.write_u32(SATCAT5_PCAP_BUFFSIZE);    // SnapLen
+    if (name_len) {                             // Add "if_name" option?
+        // Write type/length/value (Section 3.5)
+        m_file.write_u16(2);                    // Type = 2 (Figure 13)
+        m_file.write_u16(name_len);             // Length = Variable
+        m_file.write_bytes(name_len, name);     // Value
+        while (name_pad--) m_file.write_u8(0);  // Zero-pad?
+    }
+    m_file.write_u32(0);                        // End of options
+    m_file.write_u32(block_len);                // Block total length (again)
+    return m_interface_count++;
+}
+
+bool WritePcap::write_finalize() {
     // Timestamp is measured in microseconds since UNIX epoch.
     constexpr u64 GPS2UNIX = 315964800000000ull;
     u64 unix_usec = 1000 * m_clock.now() + GPS2UNIX;
@@ -359,13 +371,15 @@ bool WritePcap::write_finalize()
         // Write the PCAPNG-EPB block.
         m_file.write_u32(BLK_PCAPNG_EPB);           // Block type
         m_file.write_u32(36 + plen);                // Block total length
-        m_file.write_u32(0);                        // Interface ID = 0
+        m_file.write_u32(m_interface_next);         // Interface ID
         m_file.write_u64(unix_usec);                // Timestamp
         m_file.write_u32(clen);                     // Captured packet length
         m_file.write_u32(olen);                     // Original packet length
         m_file.write_bytes(plen, m_buff);           // Packet data
         m_file.write_u32(0);                        // Options (none)
         m_file.write_u32(36 + plen);                // Block total length (again)
+        // Reset default interface-ID for the next packet.
+        m_interface_next = 0;
     } else {
         // Write the legacy PCAP packet record.
         m_file.write_u32(unix_usec / 1000000ull);   // Timestamp (sec)
@@ -375,4 +389,18 @@ bool WritePcap::write_finalize()
         m_file.write_bytes(clen, m_buff);           // Packet data
     }
     return m_file.write_finalize();
+}
+
+WritePcapInterface::WritePcapInterface(WritePcap* pcap, const char* label, u16 type)
+    : WriteableRedirect(pcap)
+    , m_pcap(pcap)
+    , m_id(pcap ? pcap->add_interface(label, type) : 0)
+{
+    // Nothing else to initialize.
+}
+
+bool WritePcapInterface::write_finalize() {
+    if (!m_pcap) return false;
+    m_pcap->set_interface(m_id);
+    return m_pcap->write_finalize();
 }

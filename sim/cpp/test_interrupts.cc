@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the generic Interrupt Controller
@@ -7,7 +7,6 @@
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
 #include <satcat5/interrupts.h>
-#include <unistd.h>
 
 static const char* SLOW_IRQ_LBL = "SlowHandler";
 class SlowInterruptHandler : public satcat5::irq::Handler {
@@ -17,7 +16,7 @@ public:
 
 protected:
     void irq_event() override {
-        usleep(1000);
+        SATCAT5_CLOCK->busywait_usec(1000);
     }
 };
 
@@ -87,9 +86,7 @@ protected:
 TEST_CASE("interrupts") {
     // Simulation infrastructure.
     SATCAT5_TEST_START;
-
-    // Use system time for statistics monitoring.
-    satcat5::util::PosixTimer timer;
+    satcat5::test::TimerSimulation timer;
 
     // Unit under test: One controller and two handlers.
     MockInterruptController ctrl;
@@ -275,9 +272,7 @@ TEST_CASE("interrupts-null-timer") {
 TEST_CASE("ControllerNull") {
     // Simulation infrastructure.
     SATCAT5_TEST_START;
-
-    // Use system time for statistics monitoring.
-    satcat5::util::PosixTimer timer;
+    satcat5::test::TimerSimulation timer;
 
     // Unit under test: One controller and two handlers.
     satcat5::irq::ControllerNull ctrl(&timer);

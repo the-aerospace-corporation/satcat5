@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020-2021 The Aerospace Corporation.
+-- Copyright 2020-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -61,7 +61,7 @@ constant UART_CLKDIV : unsigned(15 downto 0) :=
 
 -- Define convenience types.
 subtype bit_array is std_logic_vector(PORT_COUNT-1 downto 0);
-
+type frm_array is array(0 to PORT_COUNT-1) of frm_result_t;
 subtype stats_word is unsigned(31 downto 0);
 type stats_array is array(0 to PORT_COUNT-1) of stats_word;
 constant STATS_ZERO : stats_word := (others => '0');
@@ -78,9 +78,8 @@ end function;
 -- Per-port signals and event strobes.
 signal tx_clk       : bit_array;
 signal rx_clk       : bit_array;
+signal rx_result    : frm_array;
 signal tx_commit_t  : bit_array;    -- Toggle in port-Tx domain
-signal rx_commit_i  : bit_array;    -- Strobe in port-Rx domain
-signal rx_revert_i  : bit_array;    -- Strobe in port-Rx domain
 signal tx_commit_r  : bit_array;    -- Strobe in refclk domain
 signal rx_commit_r  : bit_array;    -- Strobe in refclk domain
 signal rx_revert_r  : bit_array;    -- Strobe in refclk domain
@@ -146,8 +145,7 @@ gen_ports : for p in 0 to PORT_COUNT-1 generate
         in_write    => rx_data(p).write,
         out_data    => open,
         out_write   => open,
-        out_commit  => rx_commit_i(p),
-        out_revert  => rx_revert_i(p),
+        out_result  => rx_result(p),
         clk         => rx_clk(p),
         reset_p     => rx_data(p).reset_p);
 
@@ -160,14 +158,14 @@ gen_ports : for p in 0 to PORT_COUNT-1 generate
 
     u_sync_rx0 : sync_pulse2pulse
         port map(
-        in_strobe   => rx_revert_i(p),
+        in_strobe   => rx_result(p).revert,
         in_clk      => rx_clk(p),
         out_strobe  => rx_revert_r(p),
         out_clk     => refclk);
 
     u_sync_rx1 : sync_pulse2pulse
         port map(
-        in_strobe   => rx_commit_i(p),
+        in_strobe   => rx_result(p).commit,
         in_clk      => rx_clk(p),
         out_strobe  => rx_commit_r(p),
         out_clk     => refclk);

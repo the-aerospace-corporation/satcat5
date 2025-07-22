@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -23,10 +23,10 @@ bool Measurement::done() const {
 }
 
 void Measurement::log_to(satcat5::log::LogBuffer& wr) const {
-    wr.wr_str("\n  t1");  t1.log_to(wr);
-    wr.wr_str("\n  t2");  t2.log_to(wr);
-    wr.wr_str("\n  t3");  t3.log_to(wr);
-    wr.wr_str("\n  t4");  t4.log_to(wr);
+    wr.wr_str("\r\n  t1");  t1.log_to(wr);
+    wr.wr_str("\r\n  t2");  t2.log_to(wr);
+    wr.wr_str("\r\n  t3");  t3.log_to(wr);
+    wr.wr_str("\r\n  t4");  t4.log_to(wr);
 }
 
 bool Measurement::match(const Header& hdr, const PortId& port) const {

@@ -1,15 +1,19 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/datetime.h>
+#include <satcat5/log.h>
 
 namespace date = satcat5::datetime;
 namespace ptp = satcat5::ptp;
 using satcat5::datetime::Clock;
 using satcat5::datetime::GpsTime;
 using satcat5::datetime::RtcTime;
+
+// Global instance of the datetime::Clock class.
+Clock satcat5::datetime::clock;
 
 // The offset from GPS to PTP is fixed by the IEEE1588 standard.
 constexpr s64 PTP_EPOCH = 1000LL * 315964819;
@@ -35,6 +39,16 @@ Clock::Clock()
     // Update about once per millisecond if possible.
     // (Slower is fine; we just don't want to hog the CPU.)
     timer_every(1);
+}
+
+u32 Clock::uptime_usec() const {
+    // Add elapsed time since the coarse m_tcount/m_tref pair.
+    return 1000 * m_tcount + m_tref.elapsed_usec();
+}
+
+void Clock::reset(bool full) {
+    m_tref = SATCAT5_CLOCK->now();
+    if (full) {m_tcount = 0; m_gps = 0;}
 }
 
 void Clock::set(s64 gps) {
@@ -102,16 +116,26 @@ u8 bcd_convert_24hr(u8 val) {
     return 0xFF;
 }
 
-// Given year, return days in that year.
-static inline unsigned days_per_year(u8 yy) {
-    // Assume year "00" is 2000, which is a leap year.
-    return (yy % 4) ? 365 : 366;
+// Test if a given century+year is a leap-year.
+static inline bool is_leap_year(u8 ct, u8 yy) {
+    return (yy % 4 == 0) && ((yy > 0) || (ct % 4 == 0));
+}
+
+// Given century number, return days in that century.
+static inline unsigned days_per_century(u8 ct) {
+    // Years 2000, 2400 are leap years; but 2100, 2200, 2300 are not.
+    return is_leap_year(ct, 0) ? 36525 : 36524;
+}
+
+// Given century+year, return days in that year.
+static inline unsigned days_per_year(u8 ct, u8 yy) {
+    return is_leap_year(ct, yy) ? 366 : 365;
 }
 
 // Given year and month, return days in that month.
-static unsigned days_per_month(u8 yy, u8 mm) {
+static unsigned days_per_month(u8 ct, u8 yy, u8 mm) {
     // Special-case for leap years:
-    if ((mm == 2) && (yy % 4 == 0))
+    if ((mm == 2) && is_leap_year(ct, yy))
         return 29;
 
     // All other months by lookup table:
@@ -125,23 +149,27 @@ static unsigned days_per_month(u8 yy, u8 mm) {
     }
 }
 
-unsigned RtcTime::days_since_epoch() const {
+u32 RtcTime::days_since_epoch() const {
     if (!validate()) return UINT32_MAX;
 
-    // Count days for each full year.
+    // Count days for each full century.
     unsigned total = 0;
+    for (unsigned c = 20 ; c < ct ; ++c)
+        total += days_per_century(c);
+
+    // Count days for each full year.
     for (unsigned y = 0 ; y < yr ; ++y)
-        total += days_per_year(y);
+        total += days_per_year(ct, y);
 
     // Count days for each full month.
     for (u32 m = 1 ; m < mo ; ++m)
-        total += days_per_month(yr, m);
+        total += days_per_month(ct, yr, m);
 
     // Count days in the current month.
     return total + dt - 1;
 }
 
-unsigned RtcTime::msec_since_midnight() const {
+u32 RtcTime::msec_since_midnight() const {
     // Calculate total offset in milliseconds.
     if (validate())
         return 10*ss + 1000*sc + 60000*mn + 3600000*hr;
@@ -168,22 +196,27 @@ RtcTime date::to_rtc(s64 time) {
     u32 days = (u32)(time / date::ONE_DAY);
     u32 msec = (u32)(time % date::ONE_DAY);
 
-    // This format can't represent anything outside 2000 - 2099.
-    if ((time < 0) || (days >= 36525))
+    // This format can represent anything from year 2000 - 9999.
+    if ((time < 0) || (days >= 2921940))
         return date::RTC_ERROR;
 
     // Calculate day of week (epoch is a Saturday = 6).
     u8 dw = (u8)((days + 6) % 7);
 
+    // Deduct days for each full century.
+    u8 ct = 20;
+    while (days >= days_per_century(ct))
+        days -= days_per_century(ct++);
+
     // Deduct days for each full year.
     u8 yr = 0;
-    while (days >= days_per_year(yr))
-        days -= days_per_year(yr++);
+    while (days >= days_per_year(ct, yr))
+        days -= days_per_year(ct, yr++);
 
     // Deduct days for each full month.
     u8 mo = 1;
-    while (days >= days_per_month(yr, mo))
-        days -= days_per_month(yr, mo++);
+    while (days >= days_per_month(ct, yr, mo))
+        days -= days_per_month(ct, yr, mo++);
 
     // Whatever's leftover = Day-of-month.
     u8 dt = (u8)(days + 1);
@@ -196,7 +229,7 @@ RtcTime date::to_rtc(s64 time) {
     u8 hr = (u8)(rem);
 
     // Construct the new RTC object.
-    return RtcTime {dw, yr, mo, dt, hr, mn, sc, ss};
+    return RtcTime {dw, ct, yr, mo, dt, hr, mn, sc, ss};
 }
 
 s64 date::from_rtc(const RtcTime& time) {
@@ -230,12 +263,14 @@ bool GpsTime::operator==(const GpsTime& other) const {
 
 bool RtcTime::validate() const {
     return (ss < 100) && (sc < 60) && (mn < 60) && (hr < 24)
-        && (dt > 0) && (dt <= days_per_month(yr, mo))
-        && (mo > 0) && (mo <= 12) && (yr < 100) && (dw < 7);
+        && (dt > 0) && (dt <= days_per_month(ct, yr, mo))
+        && (mo > 0) && (mo <= 12) && (yr < 100)
+        && (ct >= 20) && (ct < 100) && (dw < 7);
 }
 
 void RtcTime::write_to(satcat5::io::Writeable* wr) const {
     // Convert each field to BCD format, then write.
+    // TODO: Update format to include century or deprecate this method.
     u8 temp[8];
     temp[0] = int2bcd(ss);      // Sub-seconds (0-99)
     temp[1] = int2bcd(sc);      // Seconds (0-59)
@@ -254,6 +289,7 @@ bool RtcTime::read_from(satcat5::io::Readable* rd) {
     bool rdok = rd->read_bytes(8, temp);
 
     // Convert each field, ignoring most status flags.
+    // TODO: Update format to include century or deprecate this method.
     if (rdok) {
         ss = bcd2int(temp[0] & 0xFF);       // Sub-seconds (0-99)
         sc = bcd2int(temp[1] & 0x7F);       // Seconds (0-59)
@@ -262,17 +298,39 @@ bool RtcTime::read_from(satcat5::io::Readable* rd) {
         dt = bcd2int(temp[4] & 0x3F);       // Day of month (1-31)
         mo = bcd2int(temp[5] & 0x1F);       // Month (1-12)
         yr = bcd2int(temp[6] & 0xFF);       // Year (00-99)
+        ct = 20;                            // Assume 2000 - 2099
         dw = bcd2int(temp[7] & 0x07);       // Day of week (0-6)
     }
 
     // Validate before returning.
     bool ok = rdok && validate();
-    if (!ok) {ss = sc = mn = hr = dt = mo = yr = dw = 0;}
+    if (!ok) {ss = sc = mn = hr = dt = mo = yr = ct = dw = 0;}
     return ok;
+}
+
+void RtcTime::log_to(satcat5::log::LogBuffer& wr) const {
+    // Format as an ISO8601 / RFC3339 timestamp.
+    u32 year = 100*ct + yr;
+    wr.wr_d32(year, 9999);      // Year (4 digits)
+    wr.wr_str("-");
+    wr.wr_d32(mo, 99);          // Month (1-12)
+    wr.wr_str("-");
+    wr.wr_d32(dt, 99);          // Day-of-month (1-31)
+    wr.wr_str("T");
+    wr.wr_d32(hr & 0x7F, 99);   // Hour (0-23) + MIL bit
+    wr.wr_str(":");
+    wr.wr_d32(mn, 99);          // Minutes (0-59)
+    wr.wr_str(":");
+    wr.wr_d32(sc, 99);          // Seconds (0-59)
+    wr.wr_str(".");
+    wr.wr_d32(ss, 99);          // Sub-seconds (0-99)
+    wr.wr_str("Z");             // Time-zone = UTC (sort of)
 }
 
 bool RtcTime::operator<(const RtcTime& other) const {
     // Note: Ignore day-of-week field.
+    if (ct < other.ct) return true;
+    if (ct > other.ct) return false;
     if (yr < other.yr) return true;
     if (yr > other.yr) return false;
     if (mo < other.mo) return true;

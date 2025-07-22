@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -13,8 +13,8 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
-use     work.common_functions.all;
 use     work.cfgbus_common.all;
+use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
 entity cfgbus_host_uart is
@@ -53,8 +53,7 @@ signal rx_dec_data      : byte_t;
 signal rx_dec_last      : std_logic;
 signal rx_dec_write     : std_logic;
 signal rx_chk_data      : byte_t;
-signal rx_chk_commit    : std_logic;
-signal rx_chk_revert    : std_logic;
+signal rx_chk_result    : frm_result_t;
 signal rx_chk_write     : std_logic;
 signal rx_fifo_data     : byte_t;
 signal rx_fifo_last     : std_logic;
@@ -106,9 +105,7 @@ gen_fcs1 : if CHECK_FCS generate
         in_write    => rx_dec_write,
         out_data    => rx_chk_data,
         out_write   => rx_chk_write,
-        out_commit  => rx_chk_commit,
-        out_revert  => rx_chk_revert,
-        out_error   => open,
+        out_result  => rx_chk_result,
         clk         => sys_clk,
         reset_p     => reset_p);
 end generate;
@@ -116,8 +113,7 @@ end generate;
 gen_fcs0 : if not CHECK_FCS generate
     rx_chk_data     <= rx_dec_data;
     rx_chk_write    <= rx_dec_write;
-    rx_chk_commit   <= rx_dec_last;
-    rx_chk_revert   <= '0';
+    rx_chk_result   <= frm_result_ok(rx_dec_last = '1');
 end generate;
 
 -- Rx datapath: Command FIFO
@@ -130,8 +126,8 @@ u_fifo : entity work.fifo_packet
     port map(
     in_clk          => sys_clk,
     in_data         => rx_chk_data,
-    in_last_commit  => rx_chk_commit,
-    in_last_revert  => rx_chk_revert,
+    in_last_commit  => rx_chk_result.commit,
+    in_last_revert  => rx_chk_result.revert,
     in_write        => rx_chk_write,
     in_overflow     => open,
     out_clk         => sys_clk,

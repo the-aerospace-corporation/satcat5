@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // File I/O wrappers
@@ -12,19 +12,24 @@
 
 namespace satcat5 {
     namespace io {
+        //! Write bytes or packets to a file.
         class FileWriter : public satcat5::io::Writeable {
         public:
+            //! Create the FileWriter object.
+            //! \param filename Optionally open a file immediately.
+            //! \param close_on_finalize If true, calling `write_finalize`
+            //!     closes the current file. If false, keep writing.
             explicit FileWriter(
                 const char* filename = 0,
                 bool close_on_finalize = false);
             virtual ~FileWriter();
 
-            // Open the specified file. If "close_on_finalize" is set, then
-            // user must call open() after each call to write_finalize().
+            //! Open the specified file. If "close_on_finalize" is set, then
+            //! user must call open() after each call to write_finalize().
             void open(const char* filename);
             void close();
 
-            // Move write cursor to the specified absolute offset.
+            //! Move write cursor to the specified absolute offset.
             void seek(unsigned offset);
 
             // Required and optional function overrides.
@@ -39,15 +44,22 @@ namespace satcat5 {
             unsigned m_last_commit; // Position of last commit
         };
 
+        //! Read bytes or packets from a file.
         class FileReader : public satcat5::io::Readable {
         public:
+            //! Create the FileWriter object.
+            //! \param filename Optionally open a file immediately.
+            //! \param close_on_finalize If true, calling `read_finalize`
+            //!     closes the current file. If false, keep reading.
             explicit FileReader(
                 const char* filename = 0,
                 bool close_on_finalize = false);
             virtual ~FileReader();
 
-            // Open the specified file to read the next frame.
-            // Specify maximum read length, or zero to auto-detect file length.
+            //! Open the specified file to read the next frame.
+            //! \param filename Filename to be opened (required).
+            //! \param len Optionally specify maximum read length.
+            //!     A length of zero (default) auto-detects file length.
             void open(const char* filename, unsigned len = 0);
             void close();
 

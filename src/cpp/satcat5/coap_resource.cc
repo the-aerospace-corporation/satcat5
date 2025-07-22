@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -15,6 +15,20 @@ using satcat5::coap::ResourceLog;
 using satcat5::coap::ResourceServer;
 namespace log = satcat5::log;
 
+Resource::Resource(ResourceServer* server, const char* uri_path)
+    : m_uri_path(normalize_uri(uri_path))
+    , m_server(server)
+    , m_next(nullptr)
+{
+    if (m_server) m_server->add_resource(this);
+}
+
+#if SATCAT5_ALLOW_DELETION
+Resource::~Resource() {
+    if (m_server) m_server->remove_resource(this);
+}
+#endif
+
 bool Resource::operator==(const Resource& other) const {
     // Uri-Path must match, be null-terminated, and less than max length
     // Some of this validation should happen when Uri-Path is first provided,
@@ -26,30 +40,37 @@ bool Resource::operator==(const Resource& other) const {
         memchr(other.m_uri_path, '\0', SATCAT5_COAP_MAX_URI_PATH_LEN + 1);
 }
 
-bool ResourceEcho::request_get(Connection* obj, Reader& msg) {
+satcat5::ip::Dispatch* Resource::ip() const
+    { return m_server->ip(); }
+satcat5::udp::Dispatch* Resource::udp() const
+    { return m_server->udp(); }
+
+bool ResourceEcho::request_get(Connection* obj, Reader* msg) {
     // Return 2.05 Content with the payload copied
     Writer reply(obj->open_response());
     if (!reply.ready()) { return false; }
-    u8 type = msg.type() == TYPE_CON ? TYPE_ACK : TYPE_NON;
-    bool ok = reply.write_header(type, CODE_CONTENT, msg);
-    if (ok) { ok = reply.write_option(OPTION_FORMAT, FORMAT_BYTES); }
-    satcat5::io::Readable* src = msg.read_data();
+    bool ok = reply.write_header(CODE_CONTENT, obj);
+    if (ok && msg->format()) {
+        u16 format = msg->format().value_or(FORMAT_BYTES);
+        ok = reply.write_option(OPTION_FORMAT, format);
+    }
+    satcat5::io::Readable* src = msg->read_data();
     satcat5::io::Writeable* dst = reply.write_data();
     if (!ok || !src || !dst) { return false; }
-    return src->copy_to(dst) && reply.write_finalize();
+    return src->copy_and_finalize(dst, io::CopyMode::ALWAYS);
 }
 
-bool ResourceLog::request_post(Connection* obj, Reader& msg) {
+bool ResourceLog::request_post(Connection* obj, Reader* msg) {
     // Validate Content-Format
-    if (msg.format() && msg.format().value() != FORMAT_TEXT) {
-        return obj->error_response(CODE_BAD_FORMAT, msg);
+    if (msg->format() && msg->format().value() != FORMAT_TEXT) {
+        return obj->error_response(CODE_BAD_FORMAT);
     }
 
     // Write a log entry with a useful prefix, source IP would be better?
     satcat5::io::ArrayWriteStatic<SATCAT5_COAP_BUFFSIZE> log_str;
     satcat5::io::Readable* src = nullptr;
-    if (!(src = msg.read_data()) || !src->get_read_ready()) {
-        return obj->error_response(CODE_BAD_REQUEST, msg, "No message given");
+    if (!(src = msg->read_data()) || !src->get_read_ready()) {
+        return obj->error_response(CODE_BAD_REQUEST, "Missing message");
     }
     src->copy_to(&log_str);
     log_str.write_u8(0); // Ensure null termination
@@ -59,15 +80,13 @@ bool ResourceLog::request_post(Connection* obj, Reader& msg) {
     // Return 2.01 Created
     Writer reply(obj->open_response());
     if (!reply.ready()) { return false; }
-    u8 type = msg.type() == TYPE_CON ? TYPE_ACK : TYPE_NON;
-    bool ok = reply.write_header(type, CODE_CREATED, msg);
+    bool ok = reply.write_header(CODE_CREATED, obj);
     return ok && reply.write_finalize();
 }
 
-void ResourceServer::coap_request(Connection* obj, Reader& msg) {
-
+void ResourceServer::coap_request(Connection* obj, Reader* msg) {
     // Look up the parsed Uri-Path against the server's registered resources
-    Resource target_resource(msg.uri_path().value_or("")); // Empty is valid
+    ResourceNull target_resource(msg->uri_path().value_or("")); // Empty is valid
     Resource* matched_resource = nullptr;
     Resource* resource = m_resources.head();
     while (resource) {
@@ -79,26 +98,26 @@ void ResourceServer::coap_request(Connection* obj, Reader& msg) {
 
     // Return an error if no resources matched
     if (!matched_resource) {
-        obj->error_response(CODE_NOT_FOUND, msg, "Unrecognized Uri-Path");
+        obj->error_response(CODE_NOT_FOUND, "Unrecognized Uri-Path");
         return;
     }
 
     // The found resource may generate a response, sent as a piggybacked reply
     bool ok;
-    if (msg.code() == CODE_GET) {
+    if (msg->code() == CODE_GET) {
         ok = matched_resource->request_get(obj, msg);
-    } else if (msg.code() == CODE_PUT) {
+    } else if (msg->code() == CODE_PUT) {
         ok = matched_resource->request_put(obj, msg);
-    } else if (msg.code() == CODE_POST) {
+    } else if (msg->code() == CODE_POST) {
         ok = matched_resource->request_post(obj, msg);
-    } else if (msg.code() == CODE_DELETE) {
+    } else if (msg->code() == CODE_DELETE) {
         ok = matched_resource->request_delete(obj, msg);
     } else { // Reject per Section 5.8
-        ok = obj->error_response(CODE_BAD_METHOD, msg);
+        ok = obj->error_response(CODE_BAD_METHOD);
     }
 
     // Send 5.00 SERVER_ERROR if the Resource failed to generate a response
     if (!ok) {
-        obj->error_response(CODE_SERVER_ERROR, msg); // GCOVR_EXCL_LINE
+        obj->error_response(CODE_SERVER_ERROR); // GCOVR_EXCL_LINE
     }
 }

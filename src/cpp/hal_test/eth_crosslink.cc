@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -29,10 +29,14 @@ Crosslink::Crosslink(const char* filename, u16 type)
     pcap.open(satcat5::test::sim_filename(filename, "pcap"), type);
 }
 
-void Crosslink::set_loss_rate(float rate)
-{
+void Crosslink::set_loss_rate(float rate) {
     eth0.set_loss_rate(rate);
     eth1.set_loss_rate(rate);
+}
+
+void Crosslink::set_zero_pad(unsigned len) {
+    eth0.set_zero_pad(len);
+    eth1.set_zero_pad(len);
 }
 
 CrosslinkEth::CrosslinkEth(const char* filename)

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Deferred packet forwarding for the IPv4 router
@@ -26,7 +26,7 @@ namespace satcat5 {
             u16 trem;                       //!< Remaining time in msec
 
             //! Reconstitute switch PacketMeta from this object.
-            bool read_meta(satcat5::eth::SwitchPlugin::PacketMeta& meta);
+            bool read_meta(satcat5::eth::PluginPacket& meta);
 
         private:
             // Linked list to the next packet object.
@@ -53,7 +53,7 @@ namespace satcat5 {
         {
         public:
             //! Accept this packet into the queue?
-            bool accept(const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+            bool accept(const satcat5::eth::PluginPacket& meta);
 
         protected:
             //! Constructor should only be accessed by children, and

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -35,12 +35,14 @@ entity router2_pipeline is
     generic (
     DEV_ADDR        : integer;          -- Device address for all registers
     IO_BYTES        : positive;         -- Width of main data ports
+    OVR_DELAY       : positive;         -- Delay from out_write to out_overflow
     PORT_COUNT      : positive;         -- Number of Ethernet ports
     TABLE_SIZE      : positive;         -- Size of the CIDR routing table
     CORE_CLK_HZ     : positive;         -- Core clock frequency (Hz)
     PTP_DOPPLER     : boolean;          -- Enable Doppler-TLV tags?
     PTP_MIXED_STEP  : boolean;          -- Support PTP format conversion?
     PTP_STRICT      : boolean;          -- Drop frames with missing timestamps?
+    SUPPORT_LOG     : boolean;          -- Support packet logging diagnostics?
     SUPPORT_PTP     : boolean;          -- Support Precision Time Protocol?
     SUPPORT_VPORT   : boolean;          -- Support virtual-LAN port control?
     SUPPORT_VRATE   : boolean;          -- Support virtual-LAN rate control?
@@ -55,6 +57,12 @@ entity router2_pipeline is
     in_valid        : in  std_logic;
     in_ready        : out std_logic;
 
+    -- Optional packet logging metadata.
+    log_data        : out log_meta_t;
+    log_psrc        : out integer range 0 to PORT_COUNT-1;
+    log_dmask       : out std_logic_vector(PORT_COUNT-1 downto 0);
+    log_write       : out std_logic;
+
     -- Main output, with end-of-frame strobes for each port.
     out_data        : out std_logic_vector(8*IO_BYTES-1 downto 0);
     out_meta        : out switch_meta_t;
@@ -62,6 +70,7 @@ entity router2_pipeline is
     out_write       : out std_logic;
     out_priority    : out std_logic;
     out_keep        : out std_logic_vector(PORT_COUNT-1 downto 0);
+    out_overflow    : in  std_logic_vector(PORT_COUNT-1 downto 0);
 
     -- Configuration interface
     cfg_cmd         : in  cfgbus_cmd := CFGBUS_CMD_NULL;
@@ -86,6 +95,8 @@ subtype port_mask0 is std_logic_vector(PORT_COUNT-1 downto 0);
 subtype port_mask1 is std_logic_vector(PORT_COUNT downto 0);
 subtype last_idx_t is integer range 0 to IO_BYTES;
 subtype port_idx_t is integer range 0 to PORT_COUNT;
+constant MASK0_NONE : port_mask0 := (others => '0');
+constant MASK1_NONE : port_mask1 := (others => '0');
 
 -- Main datapath
 signal gate_data    : data_word;
@@ -114,6 +125,7 @@ signal ptp_write    : std_logic;
 signal ptp_pdst     : port_mask1;
 signal ptp_psrc     : port_idx_t;
 signal ptp_meta     : switch_meta_t;
+signal ptp_psrc_v   : byte_t;
 
 signal qstate_pad   : unsigned(8*PORT_COUNT+7 downto 0);
 signal qsel_data    : data_word;
@@ -133,13 +145,19 @@ signal chk_data     : data_word;
 signal chk_nlast    : last_idx_t;
 signal chk_write    : std_logic;
 signal chk_pdst     : port_mask0;
+signal chk_keep     : port_mask0;
+signal chk_result   : frm_result_t;
+signal chk_meta     : switch_meta_t;
 
+signal ovr_dmask    : port_mask0 := (others => '0');
+signal ovr_strobe   : std_logic := '0';
 signal packet_done  : std_logic;
 
 -- PTP routing and timestamps (optional)
 signal ptpf_mask0   : port_mask0 := (others => '1');
 signal ptpf_mask1   : port_mask1 := (others => '1');
 signal ptpf_meta    : switch_meta_t := SWITCH_META_NULL;
+signal ptpf_psrc    : port_idx_t := 0;
 signal ptpf_valid   : std_logic := '1';
 signal error_ptp_i  : port_mask1 := (others => '0');
 
@@ -323,6 +341,7 @@ gen_ptp1 : if SUPPORT_PTP generate
         cfg_2step   => cfg_stpmask,
         frm_pmask   => ptpf_mask1,
         frm_meta    => ptpf_meta,
+        frm_psrc    => ptpf_psrc,
         frm_valid   => ptpf_valid,
         frm_ready   => packet_done,
         error_mask  => error_ptp_i,
@@ -341,6 +360,7 @@ gen_ptp0 : if not SUPPORT_PTP generate
 end generate;
 
 ptp_last    <= bool2bit(ptp_nlast > 0);
+ptp_psrc_v  <= i2s(ptp_psrc, 8);
 ptpf_mask0  <= ptpf_mask1(PORT_COUNT-1 downto 0);
 
 -----------------------------------------------------------
@@ -462,18 +482,66 @@ u_chksum : entity work.router2_ipchksum
     clk         => clk,
     reset_p     => reset_p);
 
+-- Consolidate metadata from various sources.
+chk_meta.pmsg   <= ptpf_meta.pmsg;
+chk_meta.pfreq  <= ptpf_meta.pfreq;
+chk_meta.tstamp <= ptpf_meta.tstamp;
+chk_meta.tfreq  <= ptpf_meta.tfreq;
+chk_meta.vtag   <= vport_vtag;
+
+chk_keep <= chk_pdst and ptpf_mask0 and vport_mask and vrate_mask;
+
+chk_result <= frm_result_silent(DROP_IPROUTE)  when (chk_pdst = MASK0_NONE)
+         else frm_result_error(DROP_PTPERR)    when (ptpf_mask1 = MASK1_NONE)
+         else frm_result_error(DROP_VLAN)      when (vport_mask = MASK0_NONE)
+         else frm_result_silent(DROP_VRATE)    when (vrate_mask = MASK0_NONE)
+         else frm_result_ok;
+
+-- Optional diagnostic logging.
+gen_log1 : if SUPPORT_LOG generate
+    -- Log as overflow if ALL applicable outputs drop the packet.
+    ovr_strobe <= bool2bit(out_overflow = ovr_dmask);
+
+    u_log : entity work.eth_frame_log
+        generic map(
+        INPUT_BYTES => IO_BYTES,
+        FILTER_MODE => false,   -- Log all packets
+        OUT_BUFFER  => false,   -- Unbuffered OK
+        OVR_DELAY   => OVR_DELAY,
+        PORT_COUNT  => PORT_COUNT)
+        port map(
+        in_data     => chk_data,
+        in_dmask    => chk_keep,
+        in_meta     => chk_meta,
+        in_psrc     => ptpf_psrc,
+        in_nlast    => chk_nlast,
+        in_result   => chk_result,
+        in_write    => chk_write,
+        ovr_dmask   => ovr_dmask,
+        ovr_strobe  => ovr_strobe,
+        out_data    => log_data,
+        out_dmask   => log_dmask,
+        out_psrc    => log_psrc,
+        out_strobe  => log_write,
+        clk         => clk,
+        reset_p     => reset_p);
+end generate;
+
+gen_log0 : if not SUPPORT_LOG generate
+    log_data    <= LOG_META_NULL;
+    log_psrc    <= 0;
+    log_dmask   <= (others => '0');
+    log_write   <= '0';
+end generate;
+
 -- Drive top-level outputs.
 -- Final "KEEP" flag is the bitwise-AND of all port masks.
-out_meta.pmsg   <= ptpf_meta.pmsg;
-out_meta.pfreq  <= ptpf_meta.pfreq;
-out_meta.tstamp <= ptpf_meta.tstamp;
-out_meta.tfreq  <= ptpf_meta.tfreq;
-out_meta.vtag   <= vport_vtag;
 out_data        <= chk_data;
+out_meta        <= chk_meta;
 out_nlast       <= chk_nlast;
 out_write       <= chk_write;
 out_priority    <= vport_hipri and vrate_allow;
-out_keep        <= chk_pdst and ptpf_mask0 and vport_mask and vrate_mask;
+out_keep        <= chk_keep;
 packet_done     <= chk_write and bool2bit(chk_nlast > 0);
 port_2step      <= cfg_stpmask;
 error_ptp       <= error_ptp_i(PORT_COUNT-1 downto 0);

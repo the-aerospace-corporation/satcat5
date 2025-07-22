@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -12,10 +12,8 @@
 #include <satcat5/router2_offload.h>
 #include <satcat5/utils.h>
 
-using satcat5::eth::ETYPE_ARP;
-using satcat5::eth::ETYPE_IPV4;
 using satcat5::eth::MacAddr;
-using satcat5::eth::SwitchPlugin;
+using satcat5::eth::PluginPacket;
 using satcat5::io::MultiPacket;
 using satcat5::ip::checksum;
 using satcat5::log::DEBUG;
@@ -52,10 +50,10 @@ void Dispatch::set_ipaddr(const satcat5::ip::Addr& addr) {
 
 unsigned Dispatch::deliver(satcat5::io::MultiPacket* packet) {
     // Attempt to read the Ethernet and partial IPv4 headers.
-    SwitchPlugin::PacketMeta meta{};
+    PluginPacket meta{};
     if (!meta.read_from(packet)) return 0;
 
-    // Update statistics before additional rules checks.
+    // Update statistics before additional rule checks.
     process_stats(meta);
 
     // Enforce various drop-silently rules from IETF RFC-1812.
@@ -64,32 +62,33 @@ unsigned Dispatch::deliver(satcat5::io::MultiPacket* packet) {
     if (meta.hdr.dst.is_swcontrol()) return 0;
     if (meta.hdr.src.is_multicast()) return 0;
     if (meta.hdr.src.is_swcontrol()) return 0;
-    if (meta.hdr.type == ETYPE_IPV4) {
+    if (meta.is_ip()) {
         if (meta.ip.src().is_multicast()) return 0;
         if (meta.ip.src().is_reserved()) return 0;
         if (meta.ip.dst().is_reserved()) return 0;
         if (meta.hdr.dst.is_multicast() && !meta.ip.dst().is_multicast()) return 0;
     }
 
-    // For valid packets, query any Switch plugins.
-    // (In particular, we're relying on this for VLAN rules enforcement.)
-    if (process_plugins(meta)) return 1;
+    // Query applicable plugins (PluginPort or PluginCore).
+    // (In particular, we rely on this for VLAN rules enforcement.)
+    auto plg_result = process_plugins(meta);
+    if (plg_result) return plg_result.value();
 
     // Further processing based on EtherType:
-    if (meta.hdr.type == ETYPE_ARP && meta.src_port() == m_local_port.port_index()) {
+    if (meta.is_arp() && meta.src_port() == m_local_port.port_index()) {
         // Forward ARP messages from the internal stack based on the target address.
         if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.deliver.arp_out");
         return deliver_arp(meta);
-    } else if (meta.hdr.type == ETYPE_ARP) {
+    } else if (meta.is_arp()) {
         // Forward ARP messages from external ports to the internal stack.
         // (ARP messages are never forwarded from one port to another.)
         if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.deliver.arp_from").write10((u32)meta.src_port());
         return deliver_local(meta);
-    } else if (meta.hdr.type == ETYPE_IPV4 && meta.ip.dst() == ipaddr()) {
+    } else if (meta.is_ip() && meta.ip.dst() == ipaddr()) {
         // IPv4 packets sent to the router itself.
         if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.deliver.ip_self").write10((u32)meta.src_port());
         return deliver_local(meta);
-    } else if (meta.hdr.type == ETYPE_IPV4) {
+    } else if (meta.is_ip()) {
         // IPv4 packets sent to other destinations.
         if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.deliver.ip_from").write10((u32)meta.src_port());
         return process_gateway(meta);
@@ -101,9 +100,9 @@ unsigned Dispatch::deliver(satcat5::io::MultiPacket* packet) {
     }
 }
 
-unsigned Dispatch::deliver_arp(satcat5::eth::SwitchPlugin::PacketMeta& meta) {
+unsigned Dispatch::deliver_arp(satcat5::eth::PluginPacket& meta) {
     // Sanity check this is a valid Ethernet/IPv4 ARP message.
-    if (meta.hdr.type != ETYPE_ARP) return 0;
+    if (!meta.is_arp()) return 0;
 
     // Read the Ethernet and ARP message headers.
     // (All required packet headers are in the first 44 bytes.)
@@ -125,14 +124,14 @@ unsigned Dispatch::deliver_arp(satcat5::eth::SwitchPlugin::PacketMeta& meta) {
     return deliver_offload(meta) + deliver_switch(meta);
 }
 
-unsigned Dispatch::deliver_defer(const satcat5::eth::SwitchPlugin::PacketMeta& meta) {
+unsigned Dispatch::deliver_defer(const satcat5::eth::PluginPacket& meta) {
     // Unknown next-hop MAC address, handoff to the deferred forwarding system.
     // (If that queue is full, silently drop the packet.)
     if (DEBUG_VERBOSE > 0) Log(DEBUG, "router.defer").write(meta.ip.dst());
     return (m_defer_fwd && m_defer_fwd->accept(meta)) ? 1 : 0;
 }
 
-unsigned Dispatch::deliver_local(const SwitchPlugin::PacketMeta& meta) {
+unsigned Dispatch::deliver_local(const PluginPacket& meta) {
     // Write this packet to the local port adapter.
     // This eventually delivers it to the local IP/ICMP/UDP stack.
     // (If that queue is full, silently drop the packet.)
@@ -140,7 +139,7 @@ unsigned Dispatch::deliver_local(const SwitchPlugin::PacketMeta& meta) {
     return m_local_port.accept(meta.dst_mask, meta.pkt) ? 1 : 0;
 }
 
-unsigned Dispatch::deliver_offload(const SwitchPlugin::PacketMeta& meta) {
+unsigned Dispatch::deliver_offload(const PluginPacket& meta) {
     // Write this packet to the hardware-accelerated offload port.
     // (If that queue is full, silently drop the packet.)
     if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.offload").write(meta.hdr.type.value);
@@ -148,7 +147,7 @@ unsigned Dispatch::deliver_offload(const SwitchPlugin::PacketMeta& meta) {
     return 0;   // Data is already copied, so returned refcount is always zero.
 }
 
-unsigned Dispatch::process_gateway(SwitchPlugin::PacketMeta& meta) {
+unsigned Dispatch::process_gateway(PluginPacket& meta) {
     // Read and validate the full IPv4 header, including options.
     // (Initial parsing hasn't validated the IPv4 checksum.)
     // TODO: How to preserve VLAN metadata in the hardware-accelerated case?
@@ -167,7 +166,7 @@ unsigned Dispatch::process_gateway(SwitchPlugin::PacketMeta& meta) {
     // Lookup destination address in the routing table.
     if (!m_local_iface) return 0;
     auto route = m_local_iface->route_lookup(meta.ip.dst());
-    if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.gateway.route\n\t").write_obj(route);
+    if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.gateway.route\r\n  ").write_obj(route);
 
     // Update the destination mask if applicable.
     // TODO: Proper multicast support including IGMP?
@@ -217,7 +216,7 @@ unsigned Dispatch::process_gateway(SwitchPlugin::PacketMeta& meta) {
     }
 }
 
-void Dispatch::adjust_mac(const MacAddr& dst, SwitchPlugin::PacketMeta& meta) {
+void Dispatch::adjust_mac(const MacAddr& dst, PluginPacket& meta) {
     // In-place replacement of the destination and source MAC address.
     // (Both fields are guaranteed to be in the first MultiPacket "chunk".)
     u8* const dptr = meta.pkt->m_chunks.head()->m_data;
@@ -226,7 +225,7 @@ void Dispatch::adjust_mac(const MacAddr& dst, SwitchPlugin::PacketMeta& meta) {
     wr.write_obj(macaddr());                    // Source MAC address
 }
 
-bool Dispatch::decrement_ttl(SwitchPlugin::PacketMeta& meta) {
+bool Dispatch::decrement_ttl(PluginPacket& meta) {
     // If time-to-live (TTL) is zero, abort.
     if (meta.ip.ttl() == 0) return false;
 
@@ -251,7 +250,7 @@ bool Dispatch::decrement_ttl(SwitchPlugin::PacketMeta& meta) {
 static constexpr unsigned ICMP_WORDS = 4;
 static constexpr unsigned ECHO_WORDS = satcat5::ip::ICMP_ECHO_BYTES / 2;
 
-bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const SwitchPlugin::PacketMeta& meta) {
+bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const PluginPacket& meta) {
     satcat5::eth::Header rx_eth;
     satcat5::ip::Header rx_ip, tx_ip;
     u16 tx_icmp[ICMP_WORDS];
@@ -281,7 +280,7 @@ bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const SwitchPlugin::PacketMeta& m
 
     // Is the reply interface ready to go?
     satcat5::io::Writeable* wr = m_local_iface->iface()
-        ->open_write(rx_eth.src, ETYPE_IPV4, rx_eth.vtag);
+        ->open_write(rx_eth.src, satcat5::eth::ETYPE_IPV4, rx_eth.vtag);
     if (!wr) return false;
 
     // Construct the IPv4 header for the reply.
@@ -298,7 +297,7 @@ bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const SwitchPlugin::PacketMeta& m
     return wr->write_finalize();
 }
 
-bool Dispatch::is_from_offload(const SwitchPlugin::PacketMeta& meta) {
+bool Dispatch::is_from_offload(const PluginPacket& meta) {
     // Check the source mask against the offload port, if it's enabled.
     return m_offload && !!(m_offload->port_mask_all() & meta.src_mask());
 }

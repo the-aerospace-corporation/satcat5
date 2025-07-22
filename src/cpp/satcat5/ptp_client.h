@@ -1,23 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Client for the IEEE 1588-2019 Precision Time Protocol (PTP)
-//
-// This file implements a simple "Client" endpoint for the Precision Time
-// Protocol, which may act as either master or slave depending on mode.
-// It uses a single network port and acts as an "Ordinary Clock" as defined
-// in IEEE 1588-2019 Section 9.
-//
-// This client also supports Meta's proposed "Simple Precision Time Protocol"
-// (SPTP) extention, which reduces overhead for unicast PTP exchanges.
-//  https://engineering.fb.com/2024/02/07/production-engineering/simple-precision-time-protocol-sptp-meta/
-//  https://ieeexplore.ieee.org/document/10296989
-//
-// Long-term feature wishlist:
-//  * Support for automatic configuration and master/grandmaster selection.
-//  * Support for asymmetric handshakes (i.e., many SYNC, few DELAY_REQ).
-//
 
 #pragma once
 
@@ -31,8 +16,7 @@
 
 namespace satcat5 {
     namespace ptp {
-        // Configure the operating mode of a given PTP Client.
-        // TODO: Add support for auto-config?
+        //! Configure the operating mode of a given ptp::Client.
         enum class ClientMode {
             DISABLED,       // Complete shutdown (Section 9.2.5)
             MASTER_L2,      // Master only, Ethernet mode (Section 9.2.2.1)
@@ -42,9 +26,11 @@ namespace satcat5 {
             PASSIVE,        // Passive mode (for Pdelay) (Section 9.2.5)
         };
 
-        // Internal states correspond to Section 9.2.5 and Table 27, except that
-        // INITIALIZING and certain optional states (Section 17.7.2) are ignored.
-        // State is visible for diagnostics but cannot be changed directly.
+        //! Operational state for a given ptp::Client.
+        //! Internal states correspond to Section 9.2.5 and Table 27, except
+        //! that INITIALIZING and certain optional states (Section 17.7.2)
+        //! are ignored. State is visible for diagnostics but cannot be
+        //! changed directly.
         enum class ClientState {
             DISABLED,       // Manual shutdown
             LISTENING,      // Waiting for ANNOUNCE to select a master
@@ -53,54 +39,75 @@ namespace satcat5 {
             SLAVE,          // Actively synchronizing local clock to master
         };
 
-        // Convert the above to human-readable strings.
+        //! Convert ClientMode to a human-readable string.
         const char* to_string(satcat5::ptp::ClientMode mode);
+        //! Convert ClientState to a human-readable string.
         const char* to_string(satcat5::ptp::ClientState state);
 
-        // Top-level object representing a complete PTP Client.
+        //! Client for the IEEE 1588-2019 Precision Time Protocol (PTP)
+        //!
+        //! This file implements a simple "Client" endpoint for the Precision
+        //! Time Protocol, which may act as either master or slave depending
+        //! on mode. It uses a single network port and acts as an "Ordinary
+        //! Clock" as defined in IEEE 1588-2019 Section 9.  Other modes such
+        //! as boundary clocks may be added in a future release.
+        //!
+        //! This client also supports Meta's proposed "Simple Precision Time Protocol"
+        //! (SPTP) extention, which reduces overhead for unicast PTP exchanges.
+        //!  https://engineering.fb.com/2024/02/07/production-engineering/simple-precision-time-protocol-sptp-meta/
+        //!  https://ieeexplore.ieee.org/document/10296989
+        //!
+        //! Long-term feature wishlist:
+        //!  * Support for automatic configuration and master/grandmaster selection.
+        //!  * Support for asymmetric handshakes (i.e., many SYNC, few DELAY_REQ).
         class Client
             : public satcat5::poll::Timer
             , public satcat5::ptp::Source
         {
         public:
-            // Set the network interface for this client.
+            //! Set the network interface for this client.
             Client(
                 satcat5::ptp::Interface* ptp_iface,
                 satcat5::ip::Dispatch* ip_dispatch,
                 satcat5::ptp::ClientMode mode = ClientMode::DISABLED);
             ~Client() SATCAT5_OPTIONAL_DTOR;
 
-            // Clock configuration accessors.
+            //! Set clock information for outgoing ANNOUNCE messages.
             inline void set_clock(const satcat5::ptp::ClockInfo& clk)
                 { m_clock_local = clk; }
+            //! Get local clock information.
             inline satcat5::ptp::ClockInfo get_clock() const
                 { return m_clock_local; }
+            //! Read the current time from the network interface.
             inline satcat5::ptp::Time get_time_now()
                 { return m_iface.ptp_time_now(); }
 
-            // Mode and state accessors.
+            //! Mode and state accessors.
+            //!@{
             void set_mode(satcat5::ptp::ClientMode mode);
             inline satcat5::ip::Dispatch* get_iface() const {return m_iface.iface();}
             inline satcat5::ptp::ClientMode get_mode() const {return m_mode;}
             inline satcat5::ptp::ClientState get_state() const {return m_state;}
             inline satcat5::ptp::PortId get_source() const {return m_current_source;}
+            //!@}
 
-            // Master only: Set the SYNC message rate to 2^N / sec.
-            // (Range 0-8. Negative rates disable outgoing SYNC messages.)
+            //! Master only: Set the SYNC message rate to 2^N / sec.
+            //! Range 0-8. Negative rates disable outgoing SYNC messages.
             void set_sync_rate(int rate);
 
-            // Set the pdelay message rate to 0.9 x 2^N / sec.
-            // (Range 0-8. Negative rates disable outgoing PDELAY_REQ messages.)
+            //! Set the pdelay message rate to 0.9 x 2^N / sec.
+            //! Range 0-8. Negative rates disable outgoing PDELAY_REQ messages.
             void set_pdelay_rate(int rate);
 
-            // Send a unicast Sync message to the designated address.
-            // (Unicast allows higher message rates than broadcast mode.)
+            //! Send a unicast Sync message to the designated address.
+            //! Unicast allows higher message rates than broadcast mode,
+            //! and ignores the rate parameter from `set_sync_rate`.
             bool send_sync_unicast(
                 const satcat5::eth::MacAddr& mac,
                 const satcat5::ip::Addr& ip = satcat5::ip::ADDR_NONE,
                 const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
-            // Dispatch calls this method for each incoming packet.
+            //! Dispatch calls this method for each incoming packet.
             void ptp_rcvd(satcat5::io::LimitedRead& rd);
 
         protected:
@@ -194,12 +201,16 @@ namespace satcat5 {
             u16 m_pdelay_id;
         };
 
-        // Helper classes for sending unicast Sync messages on a separate timer.
-        // (Section 9.5.9.2 allows this rate to be as high as needed.)
+        //! Helper class for sending unicast Sync messages to an L2 client.
+        //! This helper class sends unicast Sync messages on a separate timer.
+        //! IEEE1588 Section 9.5.9.2 allows this rate to be as high as needed,
+        //! if client and server administrators agree on the configuration.
         class SyncUnicastL2 : public satcat5::poll::Timer {
         public:
-            // Create this object and manage its connection.
+            //! Create this object.
             explicit SyncUnicastL2(satcat5::ptp::Client* client);
+
+            //! Set the destination for outgoing SYNC messages.
             inline void connect(const satcat5::eth::MacAddr& addr)
                 { m_dstmac = addr; }
 
@@ -211,13 +222,18 @@ namespace satcat5 {
             satcat5::eth::MacAddr m_dstmac;
         };
 
-        class SyncUnicastL3 : public satcat5::poll::Timer
-        {
+        //! Helper class for sending unicast Sync messages to an L3 client.
+        //! \copydetails SyncUnicastL2
+        class SyncUnicastL3 : public satcat5::poll::Timer {
         public:
-            // Create this object and manage its connection.
+            //! Create this object.
             explicit SyncUnicastL3(satcat5::ptp::Client* client);
+
+            //! Set the destination for outgoing SYNC messages.
             inline void connect(const satcat5::ip::Addr& dstaddr)
                 { m_addr.connect(dstaddr); }
+
+            //! Close the connection to the remote client.
             inline void close()
                 { m_addr.close(); }
 

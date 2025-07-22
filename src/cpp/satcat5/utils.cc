@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -9,7 +9,11 @@ namespace util = satcat5::util;
 
 // Use GCC intrinsics where possible?
 #ifndef SATCAT5_GCC_INTRINSICS
-#define SATCAT5_GCC_INTRINSICS defined(__GNUC__)
+    #if defined(__GNUC__)
+        #define SATCAT5_GCC_INTRINSICS 1
+    #else
+        #define SATCAT5_GCC_INTRINSICS 0
+    #endif
 #endif
 
 // Instantiate the global PRNG object.

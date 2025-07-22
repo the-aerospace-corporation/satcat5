@@ -1,15 +1,16 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Build-date reporting
-//
-// Use preprocessor macros to obtain and manipulate the build timestamp.
-//
-// To ensure fresh results, the associated .o file should always be deleted
-// and rebuilt by the build script before compiling any other changes.
-// Keeping these functions separate minimizes the resulting time overhead.
-//
+//!\file
+//! Build-date reporting
+//!
+//!\details
+//! Use preprocessor macros to obtain and manipulate the build timestamp.
+//!
+//! To ensure fresh results, the associated .o file should always be deleted
+//! and rebuilt by the build script before compiling any other changes.
+//! Keeping these functions separate minimizes the resulting time overhead.
 
 #pragma once
 

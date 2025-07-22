@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -251,6 +251,7 @@ void WriteableRedirect::write_next(u8 data)
 void WriteableRedirect::write_overflow()
     { if (m_dst) m_dst->write_overflow(); }
 
+// NullWrite functions simply discard their inputs.
 unsigned NullWrite::get_write_space() const
     { return m_write_space; }
 

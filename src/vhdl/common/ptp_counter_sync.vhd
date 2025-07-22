@@ -487,7 +487,7 @@ p_pll : process(user_clk)
         else
             return MINUS_ONE;
         end if;
-    end function;     
+    end function;
 
     -- Phase error detector compares two pseudo-clock signals.  On mismatch,
     -- make an early/late decision based on time since last change.

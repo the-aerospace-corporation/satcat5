@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -26,7 +26,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
-use     work.common_primitives.sync_buffer;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
 use     work.ptp_types.all;
 use     work.switch_types.all;
@@ -76,6 +76,7 @@ signal tx_pwren     : std_logic;
 signal tx_pkten     : std_logic;
 signal tx_frmst     : std_logic;
 signal tx_test      : std_logic;
+signal tx_reset_p   : std_logic;
 
 -- Receive chain
 signal rx_data_msb  : std_logic_vector(9 downto 0);
@@ -94,6 +95,7 @@ signal rx_cfg_rcvd  : std_logic;
 signal rx_cfg_reg   : std_logic_vector(15 downto 0);
 signal rx_rep_rate  : byte_u;
 signal rx_rep_valid : std_logic;
+signal rx_reset_p   : std_logic;
 
 -- Rate detection
 signal rate_10      : std_logic := '0';
@@ -130,10 +132,22 @@ hs_cfg_test : sync_buffer
     out_flag    => tx_test,
     out_clk     => tx_clk);
 
+-- Synchronize the reset signal in each clock domain.
+sync_reset_tx : sync_reset
+    port map(
+    in_reset_p  => reset_p,
+    out_reset_p => tx_reset_p,
+    out_clk     => tx_clk);
+sync_reset_rx : sync_reset
+    port map(
+    in_reset_p  => reset_p,
+    out_reset_p => rx_reset_p,
+    out_clk     => rx_clk);
+
 -- Set configuration register for auto-negotiate handshake.
 -- Handshake defined by IEEE 802.3-2015, Section 37.2.1 (Config_Reg)
 -- Bit assignments set by Cisco ENG-46158, SGMII Specification 1.8, Table 1.
-tx_pwren    <= not reset_p;                 -- Idle except during reset
+tx_pwren    <= not tx_reset_p;              -- Idle except during reset
 tx_cfg_xmit <= not tx_cfg_ack;              -- Transmit until acknowledged
 tx_cfg_reg  <= (14 => '1', 0 => '1', others => '0');    -- MAC to PHY
 
@@ -175,7 +189,7 @@ u_txenc : entity work.eth_enc8b10b
     out_cken    => open,
     out_test    => tx_test,
     io_clk      => tx_clk,
-    reset_p     => reset_p);
+    reset_p     => tx_reset_p);
 
 -- Receive: Buffer inputs for better timing
 p_rxbuf : process(rx_clk)
@@ -205,7 +219,8 @@ u_rxdec : entity work.eth_dec8b10b
     out_data    => rx_dec_data,
     out_tsof    => rx_dec_tsof,
     cfg_rcvd    => rx_cfg_rcvd,
-    cfg_word    => rx_cfg_reg);
+    cfg_word    => rx_cfg_reg,
+    reset_p     => rx_reset_p);
 
 -- Receive: Preamble detection and removal
 u_rxamb : entity work.eth_preamble_rx
@@ -258,7 +273,7 @@ end process;
 
 -- Upstream status reporting.
 status_word <= (
-    0 => reset_p,
+    0 => rx_reset_p,
     1 => rx_tvalid and tx_tvalid,
     2 => rx_dly_lock and rx_dec_lock,
     3 => rx_cfg_rcvd,

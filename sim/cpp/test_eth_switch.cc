@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the software-defined Ethernet switch
@@ -9,39 +9,76 @@
 #include <hal_test/eth_endpoint.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/eth_checksum.h>
+#include <satcat5/eth_plugin.h>
 #include <satcat5/eth_socket.h>
 #include <satcat5/eth_switch.h>
 #include <satcat5/eth_sw_cache.h>
+#include <satcat5/eth_sw_log.h>
 #include <satcat5/eth_sw_vlan.h>
 #include <satcat5/port_adapter.h>
 #include <satcat5/udp_socket.h>
 
 using satcat5::eth::ETYPE_CBOR_TLM;
 using satcat5::eth::MACADDR_BROADCAST;
+using satcat5::eth::PluginPacket;
+using satcat5::eth::VPOL_DEMOTE;
 using satcat5::eth::VPOL_STRICT;
 using satcat5::eth::VtagPolicy;
 
-class TestPlugin : satcat5::eth::SwitchPlugin {
+// Test plugin with logging and passthrough/divert toggle.
+class TestPlugin : satcat5::eth::PluginCore {
 public:
     TestPlugin(satcat5::eth::SwitchCore* sw, bool divert)
-        : SwitchPlugin(sw), m_divert(divert) {}
+        : PluginCore(sw), m_divert(divert), m_prev(nullptr) {}
 
-    bool query(PacketMeta& pkt) override {
+    ~TestPlugin() {
+        if (m_prev) m_switch->free_packet(m_prev);
+    }
+
+    void query(PluginPacket& pkt) override {
         // Create a Reader object and log the contents of each packet.
         satcat5::io::MultiPacket::Reader rd(pkt.pkt);
         satcat5::log::Log(satcat5::log::INFO, "Packet contents").write(&rd);
         rd.read_finalize();
         // Divert this packet?
         if (m_divert) {
-            m_switch->free_packet(pkt.pkt);
-            return false;   // Tell SwitchCore we took the packet.
-        } else {
-            return true;    // Resume normal processing.
+            // Notify parent that we are claiming ownership.
+            pkt.divert();
+            // Delete the previous packet, if applicable.
+            // (Plugins are not allowed to delete before returning.)
+            if (m_prev) m_switch->free_packet(m_prev);
+            m_prev = pkt.pkt;
         }
     }
 
 protected:
     bool m_divert;
+    satcat5::io::MultiPacket* m_prev;
+};
+
+// Test plugin that makes an illegal header change.
+class BadPlugin : satcat5::eth::PluginCore {
+public:
+    BadPlugin(satcat5::eth::SwitchCore* sw)
+        : PluginCore(sw) {}
+
+    void query(PluginPacket& pkt) override {
+        // Adding a VLAN tag changes the header length.
+        // (Length changes are only allowed during egress.)
+        pkt.adjust();
+        pkt.hdr.vtag.value = 0x1234;
+    }
+};
+
+// Test plugin that drops the packet during egress.
+class DropPlugin : satcat5::eth::PluginPort {
+public:
+    DropPlugin(satcat5::eth::SwitchPort* port)
+        : PluginPort(port) {}
+
+    void egress(PluginPacket& pkt) override {
+        pkt.dst_mask = 0;
+    }
 };
 
 TEST_CASE("eth_switch") {
@@ -52,15 +89,16 @@ TEST_CASE("eth_switch") {
 
     // Define the MAC and IP address for each test device.
     const satcat5::eth::MacAddr
-        MAC0 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11}},
-        MAC1 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22}},
-        MAC2 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x33, 0x33}},
-        MAC3 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x33, 0x44}};
+        MAC0 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00}},
+        MAC1 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x11}},
+        MAC2 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x22, 0x22}},
+        MAC3 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x33, 0x33}},
+        MAC4 = {{0xDE, 0xAD, 0xBE, 0xEF, 0x44, 0x44}};
     const satcat5::ip::Addr
-        IP0(192, 168, 0, 1),
-        IP1(192, 168, 0, 2),
-        IP2(192, 168, 0, 3),
-        IP3(192, 168, 0, 4);
+        IP0(192, 168, 0, 0),
+        IP1(192, 168, 0, 1),
+        IP2(192, 168, 0, 2),
+        IP3(192, 168, 0, 3);
 
     // Buffers and an IP-stack for each simulated Ethernet endpoint.
     // (Two regular endpoints and one SLIP-encoded endpoint.)
@@ -73,9 +111,14 @@ TEST_CASE("eth_switch") {
     nic2.set_rate(921600);
 
     // Unit under test with MAC-address cache.
-    satcat5::eth::SwitchCoreStatic<> uut;
-    satcat5::eth::SwitchCache<> cache(&uut);
+    satcat5::eth::SwitchCoreStatic<8192> uut;
+    satcat5::eth::SwitchCache<16> cache(&uut);
     uut.set_debug(&pcap);
+
+    // Install the packet-logging plugin.
+    satcat5::io::PacketBufferHeap pktlog;
+    satcat5::eth::SwitchLogWriter logwr(&pktlog);
+    uut.add_log(&logwr);
 
     // Create switch ports connected to each simulated endpoint.
     // (Two regular ports and one SLIP-encoded port.)
@@ -108,7 +151,7 @@ TEST_CASE("eth_switch") {
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
         CHECK(satcat5::test::write(&sock1, "Message from 1 to 2."));
         CHECK(satcat5::test::write(&sock2, "Message from 2 to 0."));
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::read(&sock0, "Message from 2 to 0."));
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
         CHECK(satcat5::test::read(&sock2, "Message from 1 to 2."));
@@ -121,10 +164,38 @@ TEST_CASE("eth_switch") {
         satcat5::udp::Socket rx(nic1.udp());
         rx.bind(satcat5::udp::PORT_CBOR_TLM);
         tx.connect(IP1, satcat5::udp::PORT_CBOR_TLM);
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::write(&tx, "Message from 0 to 1."));
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::read(&rx, "Message from 0 to 1."));
+    }
+
+    // Exercise packet logs using miss-as-broadcast controls.
+    SECTION("cache-miss-log") {
+        // Forward packet events to the human-readable log.
+        log.suppress("PktLog");
+        satcat5::eth::SwitchLogFormatter fmt(&pktlog, "PktLog");
+        // Connect to a non-existent MAC address.
+        sock0.connect(MAC4, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.bind(ETYPE_CBOR_TLM);
+        // Cache-miss = Broadcast
+        cache.set_miss_mask(satcat5::eth::PMASK_ALL);
+        CHECK(satcat5::test::write(&sock0, "Broadcast packet."));
+        timer.sim_wait(100);
+        CHECK(log.contains("Delivered to: 0xFFFFFFFE"));
+        CHECK(satcat5::test::read(&sock1, "Broadcast packet."));
+        // Cache-miss = Drop
+        cache.set_miss_mask(satcat5::eth::PMASK_NONE);
+        CHECK(satcat5::test::write(&sock0, "Dropped packet."));
+        timer.sim_wait(100);
+        CHECK(log.contains("Dropped: No route"));
+        CHECK(sock1.get_read_ready() == 0);
+        // Disable the logging source.
+        log.clear();
+        uut.remove_log(&logwr);
+        CHECK(satcat5::test::write(&sock0, "Un-logged packet."));
+        timer.sim_wait(100);
+        CHECK(log.empty());
     }
 
     // Test the null-adapter.
@@ -136,11 +207,37 @@ TEST_CASE("eth_switch") {
         log.suppress("Ping:");
         stack.m_ping.ping(IP0);
         timer.sim_wait(1000);
-        CHECK(log.contains("Ping: Reply from = 192.168.0.1"));
+        CHECK(log.contains("Ping: Reply from = 192.168.0.0"));
+    }
+
+    // Overflow the data buffer and the packet log.
+    SECTION("overflow-data") {
+        // Disable callbacks to prevent egress from the switch.
+        port0.set_callback(nullptr);
+        port1.set_callback(nullptr);
+        port2.set_callback(nullptr);
+        // Construct a large reference packet for the test.
+        // (Small packets fill up egress queues before the main buffer.)
+        satcat5::io::ArrayWriteStatic<2048> pkt;
+        pkt.write_obj(MAC1);            // DstMAC
+        pkt.write_obj(MAC0);            // SrcMAC
+        pkt.write_obj(ETYPE_CBOR_TLM);  // EtherType
+        satcat5::test::write_random_final(&pkt, 1000);
+        // Send packets until the SwitchCore buffer overflows.
+        // Note: Write directly to the port, not through the socket's buffer.
+        while(satcat5::test::write(&port0, pkt.written_len(), pkt.buffer())) {
+            timer.sim_wait(1);          // Allow switch to ingest each packet
+            pktlog.clear();             // Flush "Delivered" log message
+        }
+        // The last logged packet event should be the overflow.
+        log.suppress("PktLog");
+        satcat5::eth::SwitchLogFormatter fmt(&pktlog, "PktLog");
+        timer.sim_wait(1);
+        CHECK(log.contains("Dropped: Overflow"));
     }
 
     // Add ports until we exceed the design limit.
-    SECTION("overflow") {
+    SECTION("overflow-port") {
         log.suppress("overflow");
         std::vector<satcat5::port::MailAdapter*> ports;
         // We've already added three ports. Add more up to a total of 33.
@@ -171,7 +268,7 @@ TEST_CASE("eth_switch") {
         sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
         // The contents should appear in the log and at the destination.
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(log.contains("DEADBEEF"));
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
     }
@@ -186,9 +283,69 @@ TEST_CASE("eth_switch") {
         sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
         // The contents should appear in the log but not the destination.
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(log.contains("DEADBEEF"));
         CHECK(sock1.get_read_ready() == 0);;
+    }
+
+    // Test that header-length changes cause an error.
+    SECTION("plugin-bad-len") {
+        log.disable();
+        // Attach the length-change plugin.
+        BadPlugin plugin(&uut);
+        // Send a brief message.
+        sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
+        // The length-change should be detected.
+        timer.sim_wait(100);
+        CHECK(log.contains("Plugin changed header length."));
+        CHECK(sock1.get_read_ready() == 0);;
+    }
+
+    // Test that packet drops during egress are handled correctly.
+    SECTION("plugin-drop-egress") {
+        // Attach the egress-drop plugin.
+        DropPlugin plugin(&port1);
+        // Send a brief message in each direction.
+        sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
+        CHECK(satcat5::test::write(&sock1, "Message from 1 to 0."));
+        // One of the two packets should be dropped.
+        timer.sim_wait(100);
+        CHECK(satcat5::test::read(&sock0, "Message from 1 to 0."));
+        CHECK(sock1.get_read_ready() == 0);;
+    }
+
+    // Disable a specific port.
+    SECTION("port_enable") {
+        sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.connect(MAC2, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock2.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        port2.port_enable(false);
+        CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
+        CHECK(satcat5::test::write(&sock1, "Message from 1 to 2."));
+        CHECK(satcat5::test::write(&sock2, "Message from 2 to 0."));
+        timer.sim_wait(100);
+        CHECK(sock0.get_read_ready() == 0);
+        CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
+        CHECK(sock2.get_read_ready() == 0);
+    }
+
+    // Flush data before it's written.
+    SECTION("port_flush") {
+        // Write some junk data and discard it.
+        port0.write_str("Junk data delete me plz.");
+        port0.port_flush();
+        // Proceed with a conventional test.
+        sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
+        CHECK(satcat5::test::write(&sock1, "Message from 1 to 0."));
+        timer.sim_wait(100);
+        CHECK(satcat5::test::read(&sock0, "Message from 1 to 0."));
+        CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
     }
 
     // Test the promiscuous-port mode.
@@ -199,10 +356,28 @@ TEST_CASE("eth_switch") {
         sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
         sock2.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1 and 2."));
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1 and 2."));
         CHECK(satcat5::test::read(&sock2, "Message from 0 to 1 and 2."));
         CHECK(uut.get_traffic_count() == 1);
+    }
+
+    // Test egress and ingress fault handling for invalid frame headers.
+    SECTION("runt-egress-ingress") {
+        sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.bind(ETYPE_CBOR_TLM);
+        // Inject a runt frame into the egress path.
+        satcat5::io::MultiWriter wr(&uut);
+        wr.write_u32(123456);
+        wr.write_bypass(port1.get_egress());
+        // Inject a runt frame into the ingress path.
+        wr.write_u32(123456);
+        wr.write_finalize();
+        // Send a regular message to the same destination.
+        CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
+        timer.sim_wait(100);
+        // Only the second message should be received.
+        CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
     }
 
     // Send a few packets in VLAN mode.
@@ -229,7 +404,7 @@ TEST_CASE("eth_switch") {
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));    // Accept
         CHECK(satcat5::test::write(&sock1, "Message from 1 to 0."));    // Accept
         CHECK(satcat5::test::write(&sock2, "Message from 2 to 0."));    // Reject
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::read(&sock0, "Message from 1 to 0."));
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
         CHECK(sock2.get_read_ready() == 0);
@@ -241,7 +416,7 @@ TEST_CASE("eth_switch") {
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 2."));    // Accept
         CHECK(satcat5::test::write(&sock1, "Message from 1 to 0."));    // Reject
         CHECK(satcat5::test::write(&sock2, "Message from 2 to 0."));    // Accept
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::read(&sock0, "Message from 2 to 0."));
         CHECK(satcat5::test::read(&sock2, "Message from 0 to 2."));
         CHECK(sock1.get_read_ready() == 0);
@@ -253,7 +428,7 @@ TEST_CASE("eth_switch") {
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));    // Accept
         CHECK(satcat5::test::write(&sock1, "Message from 1 to 2."));    // Accept
         CHECK(satcat5::test::write(&sock2, "Message from 2 to 0."));    // Accept
-        satcat5::poll::service_all();
+        timer.sim_wait(100);
         CHECK(satcat5::test::read(&sock0, "Message from 2 to 0."));
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
         CHECK(satcat5::test::read(&sock2, "Message from 1 to 2."));
@@ -327,5 +502,13 @@ TEST_CASE("eth_switch") {
         CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));    // Accept
         satcat5::poll::service_all();
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1."));
+        // Continue the test in "demote" mode.
+        // Same rate parameters, but reduce priority instead of dropping packets.
+        vlan.vlan_set_rate(42, satcat5::eth::VlanRate(VPOL_DEMOTE, 40000, 10));
+        CHECK(satcat5::test::write(&sock0, "Regular priority message."));
+        CHECK(satcat5::test::write(&sock0, "Reduced priority message."));
+        satcat5::poll::service_all();
+        CHECK(satcat5::test::read(&sock1, "Regular priority message."));
+        CHECK(satcat5::test::read(&sock1, "Reduced priority message."));
     }
 }

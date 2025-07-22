@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2021 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -150,7 +150,8 @@ u_src_b2a : entity work.port_test_common
 uut_a : entity work.port_serial_uart_4wire
     generic map(
     CLKREF_HZ   => 125000000,
-    BAUD_HZ     => 921600)
+    BAUD_HZ     => 921600,
+    RTS_SYMM    => true)
     port map(
     uart_txd    => uart_a2b,
     uart_rxd    => uart_b2a,
@@ -165,7 +166,8 @@ uut_a : entity work.port_serial_uart_4wire
 uut_b : entity work.port_serial_uart_4wire
     generic map(
     CLKREF_HZ   => 125000000,
-    BAUD_HZ     => 921600)
+    BAUD_HZ     => 921600,
+    RTS_SYMM    => true)
     port map(
     uart_txd    => uart_b2a,
     uart_rxd    => uart_a2b,

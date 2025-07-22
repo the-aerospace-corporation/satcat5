@@ -1,4 +1,4 @@
-# Copyright 2022-2023 The Aerospace Corporation
+# Copyright 2022-2025 The Aerospace Corporation
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 ### constants
@@ -11,12 +11,12 @@ ifeq ($(OS),Windows_NT)
     MKDIR=mkdir
     REMOVE=del /q /f
     PCAP_INC=./npcap/Include
-    PCAP_LIB=-L./npcap/Lib/x64 -lws2_32 -lwpcap
+    LDFLAGS=-L./npcap/Lib/x64 -lws2_32 -lwpcap -lpthread
 else
     MKDIR=mkdir -p
     REMOVE=rm -rf
     PCAP_INC=
-    PCAP_LIB=-lpcap
+    LDFLAGS=-lpcap
 endif
 
 ### files
@@ -26,7 +26,7 @@ SRCS := \
 	$(wildcard ../../src/cpp/hal_posix/*.cc) \
 	$(wildcard ../../src/cpp/satcat5/*.cc)
 BASENAME_SRCS := $(notdir $(SRCS))
-VPATH += $(dir $(SRCS)) 
+VPATH += $(dir $(SRCS))
 OBJS := $(BASENAME_SRCS:%=$(BUILD_DIR)/%.o)
 
 INC_DIRS := \
@@ -36,7 +36,6 @@ INC_DIRS := \
 
 ### flags
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
-LDFLAGS := $(PCAP_LIB)
 COMMON_FLAGS := -Wall -Wextra -Wno-unused-parameter \
 	-DHAVE_REMOTE -DSATCAT5_LOG_EMOJI=0 $(INC_FLAGS)
 CFLAGS := $(COMMON_FLAGS)
@@ -67,4 +66,7 @@ $(BUILD_DIR)/%.c.o: %.c | $(BUILD_DIR)
 
 # Binary
 %.bin: $(OBJS)
-	$(CXX) $^ $(LDFLAGS) -o $@
+	$(CXX) $^ $(LDFLAGS) $(LIBS) -o $@
+
+# Forces rebuild of an object file if an included header is updated
+-include $(OBJS:.o=.d)

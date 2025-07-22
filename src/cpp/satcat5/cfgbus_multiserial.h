@@ -1,15 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Partial driver for the multipurpose serial peripheral
-//
-// This incomplete driver controls the "cfgbus_multiserial" block in
-// transaction-based protocols, such as I2C and SPI.  It handles core
-// functions such as interrupt servicing, and is designed to maintain
-// good throughput, but requires additional logic to implement specific
-// protocols.  See also: cfgbus_i2c, cfgbus_spi.
-//
 
 #pragma once
 
@@ -18,25 +11,33 @@
 
 namespace satcat5 {
     namespace cfg {
-        // Helper class for transaction-based variants of "cfgbus_multiserial".
-        // (This includes ConfigBusI2C and ConfigBusSPI, but not ConfigBusUART.)
+        //! Partial driver for the multipurpose serial peripheral.
+        //!
+        //! This incomplete driver controls the "cfgbus_multiserial" block in
+        //! transaction-based protocols, such as I2C and SPI.  It handles core
+        //! functions such as interrupt servicing, and is designed to maintain
+        //! good throughput, but requires additional logic to implement specific
+        //! protocols. \see cfg::I2c, cfg::Spi.
+        //!
+        //! This driver should not be used for when "cfgbus_multiserial" is used
+        //! in streaming mode. \see cfg::Uart.
         class MultiSerial
             : public    satcat5::cfg::Interrupt
             , protected satcat5::io::EventListener
             , public    satcat5::poll::OnDemand
         {
         public:
-            // How full is the transmit queue? (0-100%)
+            //! How full is the transmit queue? (0-100%)
             inline u8 get_percent_full() const
                 {return m_tx.get_percent_full();}
 
-            // Is the queue empty and the bus idle?
+            //! Is the queue empty and the bus idle?
             inline bool idle() const
                 {return m_cmd_queued == 0;}
 
         protected:
-            // Set all parameters for this Multiserial instance:
-            // (Only children should create or destroy base class.)
+            //! Set all parameters for this Multiserial instance.
+            //! (Only children should create or destroy base class.)
             MultiSerial(
                 satcat5::cfg::ConfigBus* cfg,   // ConfigBus interface object
                 unsigned devaddr,               // ConfigBus device address
@@ -45,19 +46,24 @@ namespace satcat5 {
                 u8* rxbuff, unsigned rxsize);   // Reply buffer (ptr + len)
             ~MultiSerial() {}
 
-            // Is there enough space in the software queue?
-            // If it returns true, write each opcode and then call write_finish().
+            //! Is there enough space in the software queue?
+            //! If it returns true, write each opcode and then call write_finish().
             bool write_check(
                 unsigned ncmd,      // Number of opcodes in this transaction
                 unsigned nread);    // Number of reads in this transaction
 
-            // Complete write.  Returns the command-index, if you'd like to store
-            // any additional metadata associated with this command.
+            //! Enqueue transaction after calling write_check().
+            //! The child object must call write_check, then write each opcode
+            //! to the queue (m_tx), then call write_finish.
+            //! \returns The new command-index, to allow storage of additional
+            //! metadata associated with this command.
             unsigned write_finish();
 
-            // Command #N finished.  Read data from m_rx, last byte is error flag.
-            //  cidx    = Command index (for child class to retrieve metadata)
-            // (Child MUST override this method.)
+            //! Callback when each transaction is finished.
+            //! The child object must reads N+1 bytes m_rx, where the first
+            //! N bytes are reply data and the last byte is an error flag.
+            //! \param cidx Command index (for child class to retrieve metadata).
+            //! (Child MUST override this method.)
             virtual void read_done(unsigned cidx) = 0;
 
             // ConfigBus register map.
@@ -70,8 +76,8 @@ namespace satcat5 {
             satcat5::cfg::Register m_ctrl;
 
             // Command and reply buffers
-            satcat5::io::PacketBuffer m_tx; // Buffer for hardware commands
-            satcat5::io::PacketBuffer m_rx; // Buffer for reply data
+            satcat5::io::PacketBuffer m_tx; //!< Buffer for hardware commands
+            satcat5::io::PacketBuffer m_rx; //!< Buffer for reply data
 
         private:
             // Internal event handlers

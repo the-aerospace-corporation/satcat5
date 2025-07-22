@@ -128,6 +128,7 @@ hardware-in-the-loop testig, can also be found in the [DevOps documentation](doc
   * chat_client: A demo application that implements chatroom functions using raw Ethernet frames.
   * log_viewer: A demo application for viewing Chat/Log messages from example designs.
   * pi_wire: A tool for connecting to SatCat5 with a Raspberry Pi.
+  * pkt_viewer: A demo application for viewing Packet-Log messages from example designs.
   * telem_receive: A Python tool for receiving CBOR telemetry.
 
 # Contributing

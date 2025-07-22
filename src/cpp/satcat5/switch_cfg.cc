@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -32,6 +32,7 @@ constexpr unsigned REG_MACTBL_CTRL  = 13;   // MAC-table control (read-write)
 constexpr unsigned REG_MISS_BCAST   = 14;   // Miss-as-broadcast port mask (read-write)
 constexpr unsigned REG_PTP_2STEP    = 15;   // PTP "twoStep" mode flag (read-write)
 constexpr unsigned REG_VLAN_RATE    = 16;   // VLAN rate-control configuration (write-only)
+constexpr unsigned REG_LOGGING      = 17;   // Packet logging diagnostics (read-only)
 
 // Additional ConfigBus registers for each port.
 static constexpr unsigned REG_PORT(unsigned idx)       {return 512 + 16*idx;}
@@ -55,24 +56,21 @@ SwitchConfig::SwitchConfig(satcat5::cfg::ConfigBus* cfg, unsigned devaddr)
     priority_reset();
 }
 
-void SwitchConfig::log_info(const char* label)
-{
+void SwitchConfig::log_info(const char* label) {
     log::Log msg(log::INFO, label);
-    msg.write("\r\n\tPorts").write10(m_reg[REG_PORTCOUNT]);
-    msg.write("\r\n\tDatapath").write10(m_reg[REG_DATAPATH]);
-    msg.write("\r\n\tCoreClk").write10(m_reg[REG_CORECLOCK]);
-    msg.write("\r\n\tMAC-count").write10(m_reg[REG_MACCOUNT]);
-    msg.write("\r\n\tPRI-count").write10(m_reg[REG_PRIORITY]);
+    msg.write("\r\n  Ports").write10(m_reg[REG_PORTCOUNT]);
+    msg.write("\r\n  Datapath").write10(m_reg[REG_DATAPATH]);
+    msg.write("\r\n  CoreClk").write10(m_reg[REG_CORECLOCK]);
+    msg.write("\r\n  MAC-count").write10(m_reg[REG_MACCOUNT]);
+    msg.write("\r\n  PRI-count").write10(m_reg[REG_PRIORITY]);
 }
 
 // Note: Method cannot be "const" because register reads may have side-effects.
-u32 SwitchConfig::port_count()
-{
+u32 SwitchConfig::port_count() {
     return m_reg[REG_PORTCOUNT];
 }
 
-void SwitchConfig::priority_reset()
-{
+void SwitchConfig::priority_reset() {
     // Read table size, then zeroize.
     u32 tsize = m_reg[REG_PRIORITY];
     for (u32 a = 0 ; a < tsize ; ++a) {
@@ -83,8 +81,7 @@ void SwitchConfig::priority_reset()
     m_pri_wridx = 0;
 }
 
-bool SwitchConfig::priority_set(u16 etype, unsigned plen)
-{
+bool SwitchConfig::priority_set(u16 etype, unsigned plen) {
     // Sanity checks before we write:
     u32 tsize = m_reg[REG_PRIORITY];
     if (m_pri_wridx >= tsize) {
@@ -105,40 +102,34 @@ bool SwitchConfig::priority_set(u16 etype, unsigned plen)
     return true;
 }
 
-void SwitchConfig::set_miss_bcast(unsigned port_idx, bool enable)
-{
+void SwitchConfig::set_miss_bcast(unsigned port_idx, bool enable) {
     u32 temp = m_reg[REG_MISS_BCAST];
     u32 mask = (1u << port_idx);
     util::set_mask_if(temp, mask, enable);
     m_reg[REG_MISS_BCAST] = temp;
 }
 
-u32 SwitchConfig::get_miss_mask()
-{
+u32 SwitchConfig::get_miss_mask() {
     return m_reg[REG_MISS_BCAST];
 }
 
-void SwitchConfig::set_promiscuous(unsigned port_idx, bool enable)
-{
+void SwitchConfig::set_promiscuous(unsigned port_idx, bool enable) {
     u32 temp = m_reg[REG_PROMISC];
     u32 mask = (1u << port_idx);
     util::set_mask_if(temp, mask, enable);
     m_reg[REG_PROMISC] = temp;
 }
 
-u32 SwitchConfig::get_promiscuous_mask()
-{
+u32 SwitchConfig::get_promiscuous_mask() {
     return m_reg[REG_PROMISC];
 }
 
-void SwitchConfig::set_traffic_filter(u16 etype)
-{
+void SwitchConfig::set_traffic_filter(u16 etype) {
     m_stats_filter = etype;
     get_traffic_count();
 }
 
-u32 SwitchConfig::get_traffic_count()
-{
+u32 SwitchConfig::get_traffic_count() {
     // Write any value to refresh the counter register.
     // (This also sets filter configuration for the *next* interval.)
     m_reg[REG_PKTCOUNT] = m_stats_filter;
@@ -147,53 +138,48 @@ u32 SwitchConfig::get_traffic_count()
     return m_reg[REG_PKTCOUNT];
 }
 
-u16 SwitchConfig::get_frame_min()
-{
+u16 SwitchConfig::get_frame_min() {
     u32 regval = m_reg[REG_FRAMESIZE];
     return (u16)((regval >> 0) & 0xFFFF);
 }
 
-u16 SwitchConfig::get_frame_max()
-{
+u16 SwitchConfig::get_frame_max() {
     u32 regval = m_reg[REG_FRAMESIZE];
     return (u16)((regval >> 16) & 0xFFFF);
 }
 
-s32 SwitchConfig::ptp_get_offset_rx(unsigned port_idx)
-{
+satcat5::cfg::Register SwitchConfig::get_log_register() {
+    return m_reg + REG_LOGGING;
+}
+
+s32 SwitchConfig::ptp_get_offset_rx(unsigned port_idx) {
     return (s32)m_reg[REG_PTP_RX(port_idx)];
 }
 
-s32 SwitchConfig::ptp_get_offset_tx(unsigned port_idx)
-{
+s32 SwitchConfig::ptp_get_offset_tx(unsigned port_idx) {
     return (s32)m_reg[REG_PTP_TX(port_idx)];
 }
 
-u32 SwitchConfig::ptp_get_2step_mask()
-{
+u32 SwitchConfig::ptp_get_2step_mask() {
     return m_reg[REG_PTP_2STEP];
 }
 
-void SwitchConfig::ptp_set_offset_rx(unsigned port_idx, s32 subns)
-{
+void SwitchConfig::ptp_set_offset_rx(unsigned port_idx, s32 subns) {
     m_reg[REG_PTP_RX(port_idx)] = (u32)subns;
 }
 
-void SwitchConfig::ptp_set_offset_tx(unsigned port_idx, s32 subns)
-{
+void SwitchConfig::ptp_set_offset_tx(unsigned port_idx, s32 subns) {
     m_reg[REG_PTP_TX(port_idx)] = (u32)subns;
 }
 
-void SwitchConfig::ptp_set_2step(unsigned port_idx, bool enable)
-{
+void SwitchConfig::ptp_set_2step(unsigned port_idx, bool enable) {
     u32 temp = m_reg[REG_PTP_2STEP];
     u32 mask = (1u << port_idx);
     util::set_mask_if(temp, mask, enable);
     m_reg[REG_PTP_2STEP] = temp;
 }
 
-void SwitchConfig::vlan_reset(bool lockdown)
-{
+void SwitchConfig::vlan_reset(bool lockdown) {
     // Set default policy and port-mask.
     u32 policy = lockdown ? eth::VTAG_RESTRICT : eth::VTAG_ADMIT_ALL;
     u32 mask   = lockdown ? eth::VLAN_CONNECT_NONE : eth::VLAN_CONNECT_ALL;
@@ -219,33 +205,28 @@ void SwitchConfig::vlan_reset(bool lockdown)
     }
 }
 
-u32 SwitchConfig::vlan_get_mask(u16 vid)
-{
+u32 SwitchConfig::vlan_get_mask(u16 vid) {
     m_reg[REG_VLAN_VID] = (u32)vid;
     return m_reg[REG_VLAN_MASK];
 }
 
-void SwitchConfig::vlan_set_mask(u16 vid, u32 mask)
-{
+void SwitchConfig::vlan_set_mask(u16 vid, u32 mask) {
     m_reg[REG_VLAN_VID] = (u32)vid;
     m_reg[REG_VLAN_MASK] = mask;
 }
 
-void SwitchConfig::vlan_set_port(const VtagPolicy& cfg)
-{
+void SwitchConfig::vlan_set_port(const VtagPolicy& cfg) {
     m_reg[REG_VLAN_PORT] = cfg.value;
 }
 
-void SwitchConfig::vlan_set_rate(u16 vid, const VlanRate& cfg)
-{
+void SwitchConfig::vlan_set_rate(u16 vid, const VlanRate& cfg) {
     // Three consecutive writes sets the new rate-limit.
     m_reg[REG_VLAN_RATE] = cfg.tok_rate;
     m_reg[REG_VLAN_RATE] = cfg.tok_max;
     m_reg[REG_VLAN_RATE] = cfg.tok_policy | vid;
 }
 
-void SwitchConfig::vlan_join(u16 vid, unsigned port)
-{
+void SwitchConfig::vlan_join(u16 vid, unsigned port) {
     // Read original mask.
     m_reg[REG_VLAN_VID] = (u32)vid;
     u32 mask = m_reg[REG_VLAN_MASK];
@@ -255,8 +236,7 @@ void SwitchConfig::vlan_join(u16 vid, unsigned port)
     m_reg[REG_VLAN_MASK] = mask;
 }
 
-void SwitchConfig::vlan_leave(u16 vid, unsigned port)
-{
+void SwitchConfig::vlan_leave(u16 vid, unsigned port) {
     // Read original mask.
     m_reg[REG_VLAN_VID] = (u32)vid;
     u32 mask = m_reg[REG_VLAN_MASK];
@@ -293,7 +273,7 @@ bool SwitchConfig::mactbl_read(
 
 bool SwitchConfig::mactbl_write(
     unsigned port_idx,
-    const satcat5::eth::MacAddr& mac_addr)
+    const eth::MacAddr& mac_addr)
 {
     // Wait until other commands are finished.
     if (!mactbl_wait_idle()) return false;  // Timeout?
@@ -307,14 +287,12 @@ bool SwitchConfig::mactbl_write(
     return mactbl_wait_idle();              // Success?
 }
 
-unsigned SwitchConfig::mactbl_size()
-{
+unsigned SwitchConfig::mactbl_size() {
     // Read table size from hardware (typ. 32-128)
     return (unsigned)m_reg[REG_MACCOUNT];
 }
 
-bool SwitchConfig::mactbl_clear()
-{
+bool SwitchConfig::mactbl_clear() {
     // Wait until other commands are finished.
     if (!mactbl_wait_idle()) return false;  // Timeout?
 
@@ -323,8 +301,7 @@ bool SwitchConfig::mactbl_clear()
     return mactbl_wait_idle();              // Success?
 }
 
-bool SwitchConfig::mactbl_learn(bool enable)
-{
+bool SwitchConfig::mactbl_learn(bool enable) {
     // Wait until other commands are finished.
     if (!mactbl_wait_idle()) return false;  // Timeout?
 
@@ -333,8 +310,7 @@ bool SwitchConfig::mactbl_learn(bool enable)
     return mactbl_wait_idle();              // Success?
 }
 
-void SwitchConfig::mactbl_log(const char* label)
-{
+void SwitchConfig::mactbl_log(const char* label) {
     unsigned port_idx;
     eth::MacAddr mac_addr;
 
@@ -352,8 +328,7 @@ void SwitchConfig::mactbl_log(const char* label)
     }
 }
 
-bool SwitchConfig::mactbl_wait_idle()
-{
+bool SwitchConfig::mactbl_wait_idle() {
     // Poll the control register up to N times.
     // TODO: Tie this to real-world timeout of a few microseconds.
     for (unsigned a = 0 ; a < 100 ; ++a) {

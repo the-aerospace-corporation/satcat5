@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -23,7 +23,7 @@ namespace ip = satcat5::ip;
 #endif
 
 Address::Address(Dispatch* iface, u8 proto)
-    : m_iface(iface)
+    : m_iface(nullptr)
     , m_proto(proto)
     , m_ready(0)
     , m_arp_tref(SATCAT5_CLOCK->now())
@@ -32,17 +32,25 @@ Address::Address(Dispatch* iface, u8 proto)
     , m_gateway(ip::ADDR_NONE)
     , m_vtag(VTAG_NONE)
 {
-    // Register for ARP callbacks.
-    m_iface->m_arp.add(this);
+    init(iface);
 }
 
 #if SATCAT5_ALLOW_DELETION
 Address::~Address() {
-    m_iface->m_arp.remove(this);
+    if (m_iface) m_iface->m_arp.remove(this);
 }
 #endif
 
+void Address::init(Dispatch* iface) {
+    if (iface && !m_iface) {
+        m_iface = iface;
+        m_iface->m_arp.add(this);
+    }
+}
+
 void Address::connect(const Addr& dstaddr, const VlanTag& vtag) {
+    if (!m_iface) return;
+
     // Set destination MAC to a placeholder for now.
     auto route  = m_iface->route_lookup(dstaddr);
     m_dstaddr   = dstaddr;
@@ -74,7 +82,7 @@ void Address::connect(const Addr& dstaddr, const MacAddr& dstmac, const VlanTag&
 
 void Address::retry() {
     // Retry ARP query (automatic address resolution only).
-    if (!m_ready) {
+    if (m_iface && !m_ready) {
         m_iface->m_arp.send_query(m_gateway, m_vtag);
     }
 }
@@ -90,15 +98,14 @@ satcat5::net::Dispatch* Address::iface() const
     {return m_iface;}
 
 satcat5::io::Writeable* Address::open_write(unsigned len) {
-    if (!m_ready) {
-        // If we haven't gotten an ARP reply, try again subject to rate-limit.
-        if (m_arp_tref.interval_msec(SATCAT5_ARP_RETRY_MSEC))
-            m_iface->m_arp.send_query(m_gateway, m_vtag);
-        return 0;   // Unable to send.
-    } else {
+    if (m_ready) {
         // Send the IP packet.
         return m_iface->open_write(m_dstmac, m_vtag, m_dstaddr, m_proto, len);
+    } else if (m_iface && m_arp_tref.interval_msec(SATCAT5_ARP_RETRY_MSEC)) {
+        // If we haven't gotten an ARP reply, try again subject to rate-limit.
+        m_iface->m_arp.send_query(m_gateway, m_vtag);
     }
+    return 0;   // Unable to send.
 }
 
 bool Address::is_multicast() const {
@@ -106,6 +113,7 @@ bool Address::is_multicast() const {
 }
 
 bool Address::matches_reply_address() const {
+    if (!m_iface) return false;
     bool eth_match = m_dstmac.is_multicast() || m_dstmac == m_iface->reply_mac();
     bool ip_match  = m_dstaddr.is_multicast() || m_dstaddr == m_iface->reply_ip();
     bool vid_match = m_iface->reply_vtag().vid() == m_vtag.vid();
@@ -113,14 +121,16 @@ bool Address::matches_reply_address() const {
 }
 
 bool Address::reply_is_multicast() const {
-    return m_iface->reply_is_multicast();
+    return m_iface && m_iface->reply_is_multicast();
 }
 
 void Address::save_reply_address() {
-    m_dstmac    = m_iface->reply_mac();
-    m_dstaddr   = m_iface->reply_ip();
-    m_gateway   = ip::ADDR_NONE;
-    m_ready     = 1;
+    if (m_iface) {
+        m_dstmac    = m_iface->reply_mac();
+        m_dstaddr   = m_iface->reply_ip();
+        m_gateway   = ip::ADDR_NONE;
+        m_ready     = 1;
+    }
 }
 
 void Address::arp_event(const MacAddr& mac, const Addr& ip) {

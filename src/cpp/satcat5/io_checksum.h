@@ -1,10 +1,10 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Inline checksum insertion (ChecksumTx) and verification (ChecksumRx).
-//
 //! \file
+//! Inline checksum insertion (ChecksumTx) and verification (ChecksumRx).
+//!
 //! \details
 //! Many frame formats consist of frame data followed by a checksum.
 //! io::ChecksumTx and io::ChecksumRx define two templates for working with
@@ -57,7 +57,7 @@ namespace satcat5 {
         protected:
             //! Only the child class has access to the constructor.
             ChecksumTx(satcat5::io::Writeable* dst, T init)
-                : m_dst(dst), m_chk(init), m_ovr(false), m_init(init)
+                : m_dst(dst), m_chk(init), m_init(init), m_ovr(false)
             {
                 // Nothing else to initialize
             }
@@ -79,8 +79,8 @@ namespace satcat5 {
             // Internal state:
             satcat5::io::Writeable* const m_dst;    //!< Output object
             T m_chk;                                //!< Checksum state
-            bool m_ovr;                             //!< Overflow flag
             const T m_init;                         //!< State after reset
+            bool m_ovr;                             //!< Overflow flag
         };
 
         //! Check and remove FCS from each incoming frame.
@@ -89,23 +89,45 @@ namespace satcat5 {
             : public satcat5::io::Writeable
         {
         public:
+            //! Report cumulative error count since last reset.
+            //! By default, each query resets the cumulative error counter.
+            unsigned error_count(bool reset = true) {
+                unsigned tmp = m_err_ct;
+                if (reset) m_err_ct = 0;
+                return tmp;
+            }
+
+            //! Increment the internal error counter.
+            //! Some systems use the checksum error counter to consolidate
+            //! tracking of multiple frame-error types. \see ccsds_aos.h.
+            inline void error_incr()
+                { ++m_err_ct; }
+
+            //! Report cumulative packet count since last reset.
+            //! By default, each query resets the cumulative error counter.
+            unsigned frame_count(bool reset = true) {
+                unsigned tmp = m_frm_ct;
+                if (reset) m_frm_ct = 0;
+                return tmp;
+            }
+
             // Implement required API from Writeable:
-            unsigned get_write_space() const override
-            {
+            unsigned get_write_space() const override {
                 return m_dst->get_write_space();
             }
 
-            void write_abort() override
-            {
+            void write_abort() override {
                 m_dst->write_abort();               // Forward error event
                 m_chk = m_init;                     // Reset internal state
                 m_bidx = 0;
+                ++m_err_ct;                         // Count this as an error
             }
 
         protected:
             //! Only the child class has access to the constructor.
             ChecksumRx(satcat5::io::Writeable* dst, T init)
-                : m_dst(dst), m_chk(init), m_init(init), m_sreg(0), m_bidx(0)
+                : m_dst(dst), m_chk(init), m_init(init)
+                , m_sreg(0), m_bidx(0), m_err_ct(0), m_frm_ct(0)
             {
                 // Nothing else to initialize.
             }
@@ -119,11 +141,13 @@ namespace satcat5 {
                 // Reset internal state.
                 m_chk = m_init;
                 m_bidx = 0;
-                // Call write_finalize() or write_abor
-                if (ok) {
-                    return m_dst->write_finalize();
+                // Call write_finalize() or write_abort().
+                if (ok && m_dst->write_finalize()) {
+                    ++m_frm_ct;
+                    return true;
                 } else {
-                    m_dst->write_abort();
+                    ++m_err_ct;
+                    if (!ok) m_dst->write_abort();
                     return false;
                 }
             }
@@ -153,6 +177,8 @@ namespace satcat5 {
             const T m_init;                         //!< State after reset
             T m_sreg;                               //!< Big-endian input buffer
             unsigned m_bidx;                        //!< Bytes received
+            unsigned m_err_ct;                      //!< Cumulative error count
+            unsigned m_frm_ct;                      //!< Cumulative error count
         };
     }
 }

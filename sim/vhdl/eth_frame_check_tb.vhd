@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2021 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -54,17 +54,13 @@ signal in_nlast     : last_t := 0;
 signal in_write     : std_logic := '0';
 signal ref_data     : data_t := (others => '0');
 signal ref_nlast    : last_t := 0;
-signal ref_commit   : std_logic := '0';
-signal ref_revert   : std_logic := '0';
-signal ref_error    : std_logic := '0';
+signal ref_result   : frm_result_t := FRM_RESULT_NULL;
 
 -- Output stream
 signal out_data     : data_t;
 signal out_nlast    : last_t;
 signal out_write    : std_logic;
-signal out_commit   : std_logic;
-signal out_revert   : std_logic;
-signal out_error    : std_logic;
+signal out_result   : frm_result_t;
 
 -- High-level test control
 signal ref_index    : natural := 0;
@@ -208,22 +204,16 @@ begin
                 ref_rem_dat := int_max(0, tmp_len - 4);
             end if;
             -- Is this a valid frame?
-            if (ref_bflip = '1' or tmp_len < MIN_FRAME_BYTES or tmp_len > MAX_FRAME_BYTES) then
-                ref_commit  <= '0'; -- Invalid FCS or frame size
-                ref_revert  <= '1';
-                ref_error   <= '1';
+            if (ref_bflip = '1' or tmp_len < 4) then
+                ref_result <= frm_result_error(DROP_BADFCS);    -- FCS mismatch
+            elsif (tmp_len < MIN_FRAME_BYTES or tmp_len > MAX_FRAME_BYTES) then
+                ref_result <= frm_result_error(DROP_BADFRM);    -- Invalid length
             elsif (u2i(tmp_typ) >= 1530) then
-                ref_commit  <= '1'; -- EtherType frame
-                ref_revert  <= '0';
-                ref_error   <= '0';
+                ref_result <= frm_result_ok;                    -- EtherType frame
             elsif (u2i(tmp_typ) = tmp_len - 18) then
-                ref_commit  <= '1'; -- Length field match
-                ref_revert  <= '0';
-                ref_error   <= '0';
+                ref_result <= frm_result_ok;                    -- Length field match
             else
-                ref_commit  <= '0'; -- Length field mismatch
-                ref_revert  <= '1';
-                ref_error   <= '1';
+                ref_result <= frm_result_error(DROP_BADFRM);    -- Length mismatch
             end if;
         end loop;
 
@@ -326,9 +316,7 @@ uut : entity work.eth_frame_check
     out_data    => out_data,
     out_nlast   => out_nlast,
     out_write   => out_write,
-    out_commit  => out_commit,
-    out_revert  => out_revert,
-    out_error   => out_error,
+    out_result  => out_result,
     clk         => clk_100,
     reset_p     => reset_p);
 
@@ -350,11 +338,11 @@ begin
         end if;
 
         if (out_write = '1' and ref_nlast > 0) then
-            assert (out_commit = ref_commit and out_revert = ref_revert and out_error = ref_error)
+            assert (out_result = ref_result)
                 report "Commit/revert mismatch for packet " & integer'image(ref_index)
                 severity error;
         elsif (reset_p = '0') then
-            assert (out_commit = '0' and out_revert = '0' and out_error = '0')
+            assert (out_result = FRM_RESULT_NULL)
                 report "Unexpected commit/revert strobe" severity error;
         end if;
 

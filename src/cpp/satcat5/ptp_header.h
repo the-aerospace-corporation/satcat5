@@ -1,13 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Shared message header for the Precision Time Protocol (PTP / IEEE-1588)
-//
-// This file defines an object representing the 34-byte header that is
-// common to all PTP messages, defined in IEEE 1588-2019 Section 13.3.
-// Most PTP messages append additional data after this header.
-//
 
 #pragma once
 
@@ -16,46 +11,52 @@
 
 namespace satcat5 {
     namespace ptp {
-        // Struct used for sourcePortIdentity and requestingPortIdentity.
+        //! Struct used for sourcePortIdentity and requestingPortIdentity.
+        //! These fields uniquely identify a clock and port in a PTP subnet.
+        //! The 10-byte portIdentity structure is defined in Section 7.5.2.1.
         struct PortId {
-            // portIdentity is defined in Section 7.5.2.1
-            u64 clock_id;
-            u16 port_num;
+            u64 clock_id;   //!< Clock identifier
+            u16 port_num;   //!< Port number
 
-            // Equality check.
+            //! Equality check.
             inline bool operator==(const PortId& other) const {
                 return (clock_id == other.clock_id)
                     && (port_num == other.port_num);
             }
 
-            // I/O functions.
+            //! Log human-readable information about this port-identity.
             void log_to(satcat5::log::LogBuffer& wr) const;
+            //! Read port-identifier from a given source.
             bool read_from(satcat5::io::Readable* rd);
+            //! Write port-identifier to the given sink.
             void write_to(satcat5::io::Writeable* wr) const;
         };
 
         constexpr satcat5::ptp::PortId PORT_NONE = {0, 0};
 
-        // Struct representing the PTP header used for all message types.
+        //! Struct representing the PTP header used for all message types.
+        //! This file defines the 34-byte header that is common to all
+        //! PTP messages, defined in IEEE 1588-2019 Section 13.3.
+        //! Most PTP messages append additional data after this header.
         struct Header {
             // Message header fields (Section 13.3)
-            u8  type;                       // messageType (0-15)
-            u8  version;                    // versionPTP only
-            u16 length;                     // messageLength
-            u8  domain;                     // domainNumber
-            u16 sdo_id;                     // majorSdoId + minorSdoId
-            u16 flags;                      // flagField
-            u64 correction;                 // correctionField
-            u32 subtype;                    // messageTypeSpecific
-            satcat5::ptp::PortId src_port;  // sourcePortIdentity
-            u16 seq_id;                     // sequenceId
-            u8  control;                    // controlField
-            s8  log_interval;               // logMessageInterval
+            u8  type;                       //!< messageType (0-15)
+            u8  version;                    //!< versionPTP only
+            u16 length;                     //!< messageLength
+            u8  domain;                     //!< domainNumber
+            u16 sdo_id;                     //!< majorSdoId + minorSdoId
+            u16 flags;                      //!< flagField
+            u64 correction;                 //!< correctionField
+            u32 subtype;                    //!< messageTypeSpecific
+            satcat5::ptp::PortId src_port;  //!< sourcePortIdentity
+            u16 seq_id;                     //!< sequenceId
+            u8  control;                    //!< controlField
+            s8  log_interval;               //!< logMessageInterval
 
-            // Header itself is exactly 34 bytes.
+            //! Header itself is exactly 34 bytes.
             static constexpr unsigned HEADER_LEN = 34;
 
-            // Message types (Section 13.3.2.3 / Table 36)
+            //! Message types (Section 13.3.2.3 / Table 36)
             static constexpr u8
                 TYPE_SYNC           = 0x0,
                 TYPE_DELAY_REQ      = 0x1,
@@ -68,7 +69,7 @@ namespace satcat5 {
                 TYPE_SIGNALING      = 0xC,
                 TYPE_MANAGEMENT     = 0xD;
 
-            // Flag definitions (Section 13.3.2.8 / Table 37)
+            //! Flag definitions (Section 13.3.2.8 / Table 37)
             static constexpr u16
                 FLAG_LEAP61         = (1u << 0),
                 FLAG_LEAP59         = (1u << 1),
@@ -83,27 +84,30 @@ namespace satcat5 {
                 FLAG_PROFILE1       = (1u << 13),
                 FLAG_PROFILE2       = (1u << 14);
 
-            // SPTP uses the PROFILE1 flag, so define an alias.
+            //! SPTP uses the PROFILE1 flag, so define an alias.
             static constexpr u16 FLAG_SPTP = FLAG_PROFILE1;
 
-            // Expected length of message fields, not including header.
-            // i.e., the initial offset for parsing any attached TLVs.
+            //! Expected length of message fields, not including header.
+            //! i.e., the initial offset for parsing any attached TLVs.
             unsigned msglen() const;
             static constexpr unsigned MAX_MSGLEN = 30;
 
-            // I/O functions
+            //! Log human-readable information about this header.
             void log_to(satcat5::log::LogBuffer& wr) const;
+            //! Read header contents from a given source.
             bool read_from(satcat5::io::Readable* rd);
+            //! Write header contents to the given sink.
             void write_to(satcat5::io::Writeable* wr) const;
         };
 
         constexpr satcat5::ptp::Header HEADER_NULL =
             {0, 0, 0, 0, 0, 0, 0, 0, {0, 0}, 0, 0, 0};
 
-        // Clock configuration metadata for the ANNOUNCE message.
+        //! Clock configuration metadata for the ANNOUNCE message.
         struct ClockInfo {
-            // Fields defined in Section 13.5.1, Table 43.
-            // (ClockQuality subfields defined in Section 5.3.7)
+            //! Fields defined in Section 13.5.1, Table 43.
+            //! (ClockQuality subfields defined in Section 5.3.7)
+            //!@{
             u8  grandmasterPriority1;   // Note: Lower takes priority
             u8  grandmasterClass;       // Traceability to reference?
             u8  grandmasterAccuracy;    // Approximate accuracy
@@ -112,22 +116,23 @@ namespace satcat5 {
             u64 grandmasterIdentity;    // Unique identifier
             u16 stepsRemoved;           // Number of hops to grandmaster
             u8  timeSource;             // Reference type
+            //!@}
 
-            // Priority index: Lower values take priority.
+            //! Priority index: Lower values take priority.
             static constexpr u8
                 PRIORITY_MIN    = 255,
                 PRIORITY_MID    = 128,
                 PRIORITY_MAX    = 0;
 
-            // ClockClass values from Section 7.6.2.5, Table 4.
-            // (Indicates whether a clock is traceable to NIST or similar.)
+            //! ClockClass values from Section 7.6.2.5, Table 4.
+            //! (Indicates whether a clock is traceable to NIST or similar.)
             static constexpr u8
                 CLASS_PRIMARY   = 6,        // Primary reference
                 CLASS_APP_SPEC  = 13,       // Application-specific reference
                 CLASS_DEFAULT   = 248,      // Any other clock
                 CLASS_SLAVE     = 255;      // Any slave-only clock
 
-            // Accuracy enumeration from Section 7.6.2.6, Table 5.
+            //! Accuracy enumeration from Section 7.6.2.6, Table 5.
             static constexpr u8
                 ACCURACY_1PSEC      = 0x17,
                 ACCURACY_2PSEC      = 0x18,
@@ -158,10 +163,11 @@ namespace satcat5 {
                 ACCURACY_LOW        = 0x31,
                 ACCURACY_UNK        = 0xFE;
 
-            // The "offsetScaledLogVariance" metric defined in Section 7.6.3.3
-            // is a fixed-point representation of the Allan deviation:
-            //      round(512 * log2(adev_sec) + 32768)
-            // The constants defined below are precalculated examples.
+            //! The "offsetScaledLogVariance" metric.
+            //! The stability heuristic defined in Section 7.6.3.3
+            //! is a fixed-point representation of the Allan deviation:
+            //!      round(512 * log2(adev_sec) + 32768)
+            //! The constants defined below are precalculated examples.
             static constexpr u16
                 VARIANCE_1PSEC      = 0x3046,
                 VARIANCE_10PSEC     = 0x36EB,
@@ -178,7 +184,7 @@ namespace satcat5 {
                 VARIANCE_1SEC       = 0x8000,
                 VARIANCE_MAX        = 0xFFFF;
 
-            // TimeSource values from Section 7.6.2.8, Table 6.
+            //! TimeSource values from Section 7.6.2.8, Table 6.
             static constexpr u8
                 SRC_ATOMIC      = 0x10,     // Local atomic clock
                 SRC_GNSS        = 0x20,     // GPS, Galileo, etc.
@@ -190,12 +196,13 @@ namespace satcat5 {
                 SRC_OTHER       = 0x90,     // Any other source
                 SRC_INTERNAL    = 0xA0;     // Internal oscillator
 
-            // I/O functions
+            //! Read clock information from a given source.
             bool read_from(satcat5::io::Readable* rd);
+            //! Write clock information to the given sink.
             void write_to(satcat5::io::Writeable* wr) const;
         };
 
-        // Default clock with extremely low priority on all metrics.
+        //! Default clock with extremely low priority on all metrics.
         constexpr satcat5::ptp::ClockInfo DEFAULT_CLOCK = {
             ClockInfo::PRIORITY_MIN,    // Lowest possible priority
             ClockInfo::CLASS_DEFAULT,   // Unspecified traceability
@@ -207,7 +214,7 @@ namespace satcat5 {
             ClockInfo::SRC_INTERNAL,
         };
 
-        // Example of a high-quality GPS-disciplined clock.
+        //! Example of a high-quality GPS-disciplined clock.
         constexpr satcat5::ptp::ClockInfo VERY_GOOD_CLOCK = {
             ClockInfo::PRIORITY_MID,    // Mid-priority
             ClockInfo::CLASS_PRIMARY,   // Directly traceable to GPS

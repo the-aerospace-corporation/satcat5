@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -157,6 +157,7 @@ package eth_frame_common is
     function mac_is_broadcast(mac : mac_addr_t) return boolean;
 
     -- Define well-known EtherTypes:
+    constant ETYPE_NONE : mac_type_t := x"0000";    -- Invalid null type
     constant ETYPE_IPV4 : mac_type_t := x"0800";    -- Internet Protocol, Version 4
     constant ETYPE_ARP  : mac_type_t := x"0806";    -- Address Resolution Protocol
     constant ETYPE_VLAN : mac_type_t := x"8100";    -- 802.1Q VLAN tags (C-VLAN)
@@ -210,8 +211,57 @@ package eth_frame_common is
     constant SLIP_ESC_END   : byte_t := X"DC";  -- Escaped FEND
     constant SLIP_ESC_ESC   : byte_t := X"DD";  -- Escaped ESC
 
-    -- HDLC frame delimeter.
-    constant HDLC_DELIM     : byte_t := X"7E";
+    -- HDLC flag (frame delimeter).
+    constant HDLC_FLAG     : byte_t := X"7E";
+
+    -- Reason codes used when dropping a packet.
+    -- See also: frm_result_t (below), log_meta_t (switch_types)
+    constant REASON_WIDTH   : positive := 8;
+    subtype reason_t is std_logic_vector(REASON_WIDTH-1 downto 0);
+    constant REASON_KEEP    : reason_t := x"00";    -- Packet accepted / not dropped
+    constant DROP_OVERFLOW  : reason_t := x"01";    -- FIFO overflow (Rx or Tx)
+    constant DROP_BADFCS    : reason_t := x"02";    -- Invalid frame check sequence
+    constant DROP_BADFRM    : reason_t := x"03";    -- Frame length, source MAC, etc.
+    constant DROP_MCTRL     : reason_t := x"04";    -- Link-local control packet
+    constant DROP_VLAN      : reason_t := x"05";    -- Virtual-LAN policy
+    constant DROP_VRATE     : reason_t := x"06";    -- Virtual-LAN rate limits
+    constant DROP_PTPERR    : reason_t := x"07";    -- PTP error (no timestamp)
+    constant DROP_IPROUTE   : reason_t := x"08";    -- IP routing configuration
+    constant DROP_DISABLED  : reason_t := x"09";    -- Ingress or egress port disabled
+    constant DROP_UNKNOWN   : reason_t := x"FF";    -- Other unspecified error
+
+    -- End-of-frame disposition: Commit or revert, with rationale.
+    type frm_result_t is record
+        commit  : std_logic;    -- Commit = EOF + Accept
+        revert  : std_logic;    -- Revert = EOF + Reject
+        error   : std_logic;    -- When reverting, caused by anomaly?
+        reason  : reason_t;     -- When reverting, indicate why.
+    end record;
+
+    constant FRM_RESULT_NULL : frm_result_t := (
+        commit  => '0',
+        revert  => '0',
+        error   => '0',
+        reason  => REASON_KEEP);
+
+    constant FRM_RESULT_COMMIT : frm_result_t := (
+        commit  => '1',
+        revert  => '0',
+        error   => '0',
+        reason  => REASON_KEEP);
+
+    function frm_result_ok(eof: boolean := true)
+        return frm_result_t;    -- Commit frame
+    function frm_result_error(reason: reason_t; eof: boolean := true)
+        return frm_result_t;    -- Revert with error
+    function frm_result_silent(reason: reason_t; eof: boolean := true)
+        return frm_result_t;    -- Revert silently
+
+    -- Conversion from metadata to std_logic_vector and back.
+    constant FRM_RESULT_WIDTH : integer := 11;
+    subtype frm_result_v is std_logic_vector(FRM_RESULT_WIDTH-1 downto 0);
+    function frm_result_m2v(x: frm_result_t) return frm_result_v;
+    function frm_result_v2m(x: frm_result_v) return frm_result_t;
 
     -- Utility functions for determining if a given byte is currently
     -- present in an arbitrary-width data stream, then extracting it.
@@ -418,6 +468,64 @@ is
         std_logic_vector(pcp) & dei & std_logic_vector(vid);
 begin
     return hdr;
+end function;
+
+function frm_result_ok(eof: boolean := true)
+    return frm_result_t is
+begin
+    if eof then
+        return FRM_RESULT_COMMIT;
+    else
+        return FRM_RESULT_NULL;
+    end if;
+end function;
+
+function frm_result_error(reason: reason_t; eof: boolean := true)
+    return frm_result_t is
+    constant result : frm_result_t := (
+        commit  => '0',
+        revert  => '1',
+        error   => '1',
+        reason  => reason);
+begin
+    if eof then
+        return result;
+    else
+        return FRM_RESULT_NULL;
+    end if;
+end function;
+
+function frm_result_silent(reason: reason_t; eof: boolean := true)
+    return frm_result_t is
+    constant result : frm_result_t := (
+        commit  => '0',
+        revert  => '1',
+        error   => '0',
+        reason  => reason);
+begin
+    if eof then
+        return result;
+    else
+        return FRM_RESULT_NULL;
+    end if;
+end function;
+
+function frm_result_m2v(x: frm_result_t) return frm_result_v is
+    -- Concatenate all the fields together.
+    constant result : frm_result_v :=
+        x.commit & x.revert & x.error & x.reason;
+begin
+    return result;
+end function;
+
+function frm_result_v2m(x: frm_result_v) return frm_result_t is
+    constant result : frm_result_t := (
+        commit => x(10),
+        revert => x(9),
+        error  => x(8),
+        reason => x(7 downto 0));
+begin
+    return result;
 end function;
 
 function strm_byte_present(

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -29,8 +29,10 @@ using satcat5::io::BufferedWriterHeap;
 using satcat5::io::KeyboardStream;
 using satcat5::io::MultiBufferHeap;
 using satcat5::io::PacketBufferHeap;
+using satcat5::io::PacketBufferTee;
 using satcat5::io::Readable;
 using satcat5::io::StreamBufferHeap;
+using satcat5::io::StreamBufferTee;
 using satcat5::io::Writeable;
 using satcat5::log::ToConsole;
 using satcat5::poll::timekeeper;
@@ -189,11 +191,25 @@ PacketBufferHeap::PacketBufferHeap(unsigned nbytes)
     // Nothing else to initialize
 }
 
+PacketBufferTee::PacketBufferTee(unsigned nbytes)
+    : ReadableRedirect(&m_buff)
+    , m_buff(nbytes)
+{
+    add(&m_buff);
+}
+
 StreamBufferHeap::StreamBufferHeap(unsigned nbytes)
     : HeapAllocator(nbytes)
     , PacketBuffer(m_buffptr, nbytes, 0)
 {
     // Nothing else to initialize
+}
+
+StreamBufferTee::StreamBufferTee(unsigned nbytes)
+    : ReadableRedirect(&m_buff)
+    , m_buff(nbytes)
+{
+    add(&m_buff);
 }
 
 PosixTimer::PosixTimer()

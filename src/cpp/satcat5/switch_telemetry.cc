@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -16,8 +16,7 @@ using satcat5::eth::SwitchConfig;
 using satcat5::eth::SwitchTelemetry;
 using satcat5::net::TelemetryCbor;
 
-static void copy_mactbl_array(_QCBOREncodeContext* cbor, SwitchConfig* cfg)
-{
+static void copy_mactbl_array(QCBOREncodeContext* cbor, SwitchConfig* cfg) {
     unsigned port_idx;
     satcat5::eth::MacAddr mac_addr;
     unsigned table_size = cfg->mactbl_size();
@@ -36,8 +35,7 @@ static void copy_mactbl_array(_QCBOREncodeContext* cbor, SwitchConfig* cfg)
     QCBOREncode_CloseArray(cbor);
 }
 
-static void copy_traffic_array(_QCBOREncodeContext* cbor, unsigned port_count, NetworkStats* stats)
-{
+static void copy_traffic_array(QCBOREncodeContext* cbor, unsigned port_count, NetworkStats* stats) {
     // Write a CBOR array containing traffic statistics for each port.
     QCBOREncode_OpenArray(cbor);
     for (unsigned a = 0 ; a < port_count ; ++a) {
@@ -71,8 +69,7 @@ SwitchTelemetry::SwitchTelemetry(
     // Nothing else to initialize.
 }
 
-void SwitchTelemetry::telem_event(u32 tier_id, const TelemetryCbor& cbor)
-{
+void SwitchTelemetry::telem_event(u32 tier_id, TelemetryCbor& cbor) {
     if (tier_id == 1) {
         // Switch status information.
         u32 pmask = m_cfg->get_promiscuous_mask();

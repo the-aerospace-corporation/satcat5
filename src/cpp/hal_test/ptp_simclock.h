@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Tools for simulation and unit testing of PTP clocks
@@ -14,31 +14,39 @@
 
 namespace satcat5 {
     namespace ptp {
-        // Simulated clock mimics operation of "ptp_realtime.vhd"
+        //! Simulated clock mimics operation of "ptp_realtime.vhd".
         class SimulatedClock : public satcat5::ptp::TrackingClock {
         public:
-            // 1 LSB = 2^-40 nanoseconds = 2^-24 subns
-            // (This matches the default for ptp_counter_gen and ptp_realtime.)
+            //! Convert from internal ticks to engineering units.
+            //! 1 Tick = 1 LSB = 2^-40 nanoseconds = 2^-24 subns.
+            //! (This matches the default for ptp_counter_gen and ptp_realtime.)
+            //!@{
             static constexpr unsigned TICK_SCALE_NSEC = 40;
             static constexpr u64 TICKS_PER_SUBNS =
                 (1ull << TICK_SCALE_NSEC) / u64(satcat5::ptp::SUBNS_PER_NSEC);
             static constexpr double TICKS_PER_SEC =
                 double(TICKS_PER_SUBNS) * double(satcat5::ptp::SUBNS_PER_SEC);
+            //!@}
 
-            // Constructor allows user to set desired accuracy.
+            //! Constructor allows user to set nominal vs actual frequency.
+            //! For example, this allows simulations where the reference
+            //! oscillator is running 10 ppm faster than its nominal rate.
             SimulatedClock(double nominal_hz, double actual_hz);
 
-            // Confirm initial configuration is valid.
+            //! Confirm initial configuration is valid.
             inline bool ok() const
                 { return m_scale_nominal.ok(); }
 
-            // Report the number of coarse and fine adjustments.
+            //! Report the number of coarse adjustments.
+            //! (Coarse adjustments are discontinuous phase jumps of any size.)
             inline unsigned num_coarse() const
                 { return m_count_coarse; }
+            //! Report the number of fine adjustments.
+            //! (Fine adjustments are confined to rate changes only.)
             inline unsigned num_fine() const
                 { return m_count_fine; }
 
-            // Mean of all inputs to clock_rate(...)
+            //! Mean of all inputs to clock_rate(...)
             inline double mean() const
                 { return m_stats.mean(); }
 
@@ -50,7 +58,7 @@ namespace satcat5 {
             double clock_offset_ppm() const;
             void clock_set(const satcat5::ptp::Time& t);
 
-            // Advance simulation by X seconds.
+            //! Run simulation for X seconds.
             void run(const satcat5::ptp::Time& dt);
 
         private:
@@ -64,14 +72,18 @@ namespace satcat5 {
             satcat5::test::Statistics m_stats;
         };
 
-        // Helper object for tracking simulation time.
+        //! Helper object for tracking simulation time.
+        //! This allows access to the util::TimeRef API but mimics the
+        //! syntax of the SimulatedClock::run method.
         class SimulatedTimer : public satcat5::ptp::Source {
         public:
             SimulatedTimer();
+
+            //! Accessor for a SatCat5 coarse timer.
             inline satcat5::util::TimeRef* get_timer()
                 {return &m_timer;}
 
-            // Advance simulation by X seconds.
+            //! Advance simulation by X seconds.
             void run(const satcat5::ptp::Time& dt);
 
         protected:

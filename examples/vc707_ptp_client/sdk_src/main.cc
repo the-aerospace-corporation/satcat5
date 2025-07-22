@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Microblaze software top-level for the "VC707 PTP Client" example design
@@ -116,7 +116,7 @@ satcat5::io::ArrayRead tftp_source(TFTP_MESSAGE, sizeof(TFTP_MESSAGE)-1);
 satcat5::udp::TftpServerSimple tftp_server(&ip_stack.m_udp, &tftp_source, 0);
 
 // State-of-health telemetry for the switch status and traffic statistics.
-satcat5::udp::Telemetry tlm(&ip_stack.m_udp, satcat5::udp::PORT_CBOR_TLM);
+satcat5::udp::Telemetry tlm(&ip_stack.m_udp);
 satcat5::eth::SwitchTelemetry tlm_sw(&tlm, &eth_switch, &traffic_stats);
 
 // DHCP client is dormant if user sets a static IP.
@@ -167,8 +167,7 @@ satcat5::cfg::MdioMarvell   eth_phy(&eth_mdio, RJ45_PHYADDR);
 // Timer object for general housekeeping.
 class HousekeepingTimer
     : public satcat5::poll::Timer
-    , public satcat5::cfg::I2cEventListener
-{
+    , public satcat5::cfg::I2cEventListener {
 public:
     HousekeepingTimer() : m_cycle(0), m_phase(0) {
         // Set callback delay for first setup phase.
@@ -266,8 +265,7 @@ public:
 
 // A faster timer object for dealing with GPIO buttons.
 // These are used to control the time-offset of the synthesized outputs.
-class FastHousekeepingTimer : satcat5::poll::Timer
-{
+class FastHousekeepingTimer : satcat5::poll::Timer {
 public:
     // Default one press = 1 nanosecond (2^16 LSB).
     static constexpr u32 DEFAULT_SCALE = 16;
@@ -332,8 +330,7 @@ public:
 
 
 // A slower timer object that activates once every minute.
-class SlowHousekeepingTimer : satcat5::poll::Timer
-{
+class SlowHousekeepingTimer : satcat5::poll::Timer {
 public:
     SlowHousekeepingTimer() {
         timer_every(60000);
@@ -421,6 +418,9 @@ int main()
             trk_ctrl.add_filter(&trk_postbox);
         }
     }
+
+    // State-of-health telemetry in broadcast mode.
+    tlm.connect(satcat5::ip::ADDR_BROADCAST);
 
     // Additional PTP telemetry?
     ptp_telem.connect(ip::ADDR_BROADCAST);

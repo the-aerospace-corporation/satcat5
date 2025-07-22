@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Interface wrapper for the Xilinx "XUart16550" block
@@ -23,18 +23,23 @@
 
 namespace satcat5 {
     namespace ublaze {
+        //! Interface wrapper for the Xilinx "XUart16550" block.
+        //! This class provides a buffered Readable/Writeable interface for
+        //! the Xilinx "XUart16550" IP-core, using the Xilinx-provided API
+        //! to operate the device.
         class Uart16550 final
             : public    satcat5::io::BufferedIO
             , protected satcat5::irq::Handler
             , protected satcat5::poll::Timer
         {
         public:
-            // Initialize this UART and link to a specific hardware instance.
+            //! Initialize this UART and link to a specific hardware instance.
             Uart16550(
                 const char* lbl, int irq, u16 dev_id,
                 u32 baud_rate = 921600, u32 clk_ref_hz = 100000000);
             ~Uart16550() {}
 
+            //! Was initialization successful?
             inline bool ok() const {return (m_status == XST_SUCCESS);}
 
         private:

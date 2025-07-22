@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //!\file
@@ -136,26 +136,36 @@ namespace satcat5 {
             //! Constructor for an empty buffer.
             LogBuffer() : m_wridx(0) {}
 
+            //! Buffer contents, in the form of a null-terminated string.
+            const char* c_str();
+
             //! Write a fixed-length UTF-8 string.
             void wr_fix(const char* str, unsigned len);
             //! Write a null-terminated UTF-8 string.
             void wr_str(const char* str);
             //! Write an integer (u32) in hexadecimal format.
             //! The second argument is the number of hexadecimal digits.
-            void wr_hex(u32 val, unsigned nhex = 8);
+            void wr_h32(u32 val, unsigned nhex = 8);
             //! Write an integer (u64) in hexadecimal format.
             //! The second argument is the number of hexadecimal digits.
             void wr_h64(u64 val, unsigned nhex = 16);
             //! Write an unsigned integer (u32) in decimal format.
-            void wr_d32(u32 val);
+            //! For zero-padding to N digits, set second argument to 10^N-1.
+            //! e.g., wr_d32(123, 9999) --> "0123"
+            void wr_d32(u32 val, unsigned zpad = 0);
             //! Write an unsigned integer (u64) in decimal format.
-            void wr_d64(u64 val);
+            //! For zero-padding to N digits, set second argument to 10^N-1.
+            void wr_d64(u64 val, unsigned zpad = 0);
             //! Write a signed integer (s32) in decimal format.
-            void wr_s32(s32 val);
+            //! For zero-padding to N digits, set second argument to 10^N-1.
+            void wr_s32(s32 val, unsigned zpad = 0);
             //! Write a signed integer (s64) in decimal format.
-            void wr_s64(s64 val);
+            //! For zero-padding to N digits, set second argument to 10^N-1.
+            void wr_s64(s64 val, unsigned zpad = 0);
             //! Legacy alias for `wr_d32`.
             inline void wr_dec(u32 val) {wr_d32(val);}
+            //! Legacy alias for `wr_h32`.
+            inline void wr_hex(u32 val) {wr_h32(val);}
 
             //! Number of characters written to this buffer.
             unsigned len() const {return m_wridx;}

@@ -1,8 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// BufferedIO wrapper for two-way Ethernet communication
+// BufferedIO wrapper for two-way Ethernet communication.
 
 #pragma once
 
@@ -22,18 +22,19 @@
 
 namespace satcat5 {
     namespace eth {
-        // Core functionality with DIY memory allocation.
+        //! BufferedIO wrapper for two-way Ethernet communication.
+        //! This class implements core functionality with DIY memory allocation.
         class SocketCore
             : public satcat5::eth::AddressContainer
             , public satcat5::net::SocketCore
         {
         public:
-            // Listening mode only (no remote address).
+            //! Listening mode only (no remote address).
             void bind(
                 const satcat5::eth::MacType& lcltype,
                 const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
-            // Two-way connection.
+            //! Two-way connection.
             void connect(
                 const satcat5::eth::MacAddr& dstmac,
                 const satcat5::eth::MacType& dsttype,
@@ -44,6 +45,7 @@ namespace satcat5 {
             //  close(), ready_rx(), ready_tx()
 
         protected:
+            //! Child must provide transmit and receive working buffers.
             SocketCore(
                 satcat5::eth::Dispatch* iface,
                 u8* txbuff, unsigned txbytes, unsigned txpkt,
@@ -51,9 +53,10 @@ namespace satcat5 {
             ~SocketCore() {}
         };
 
-        // Wrapper with a fixed-size buffer.
+        //! SocketCore wrapper with a fixed-size buffer.
         class Socket final : public satcat5::eth::SocketCore {
         public:
+            //! Link this socket to a network interface.
             Socket(satcat5::eth::Dispatch* iface);
             ~Socket() {}
 

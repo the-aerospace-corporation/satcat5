@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -72,11 +72,11 @@ TftpTransfer::TftpTransfer(satcat5::udp::Dispatch* iface)
 {
     // Register for incoming UDP packets based on "m_filter",
     // which we will adjust on the fly.
-    m_addr.m_iface->add(this);
+    m_addr.udp()->add(this);
 }
 
 TftpTransfer::~TftpTransfer() {
-    m_addr.m_iface->remove(this);
+    m_addr.udp()->remove(this);
 }
 
 void TftpTransfer::reset(const char* msg) {
@@ -117,7 +117,7 @@ void TftpTransfer::request(
 
     // Open UDP socket on the next available source port.
     // (This will usually issue an ARP request for MAC lookup.)
-    satcat5::udp::Port srcport = m_addr.m_iface->next_free_port();
+    satcat5::udp::Port srcport = m_addr.udp()->next_free_port();
     m_addr.connect(dstaddr, PORT_TFTP_SERVER, srcport);
     m_filter = Type(srcport.value);
 
@@ -137,7 +137,7 @@ void TftpTransfer::request(
 bool TftpTransfer::is_duplicate_request() {
     // If we've got an open connection from the same endpoint,
     // treat it as a duplicate and retransmit the first message.
-    satcat5::udp::Dispatch* iface = m_addr.m_iface;
+    satcat5::udp::Dispatch* iface = m_addr.udp();
     bool duplicate = active()
         && iface->reply_ip() == m_addr.dstaddr()
         && iface->reply_mac() == m_addr.dstmac()
@@ -151,11 +151,11 @@ void TftpTransfer::accept() {
     if (m_dst || m_src) reset("Transfer interrupted.");
 
     // Open UDP socket on the next available source port.
-    satcat5::udp::Port dstport = m_addr.m_iface->reply_src();
-    satcat5::udp::Port srcport = m_addr.m_iface->next_free_port();
+    satcat5::udp::Port dstport = m_addr.udp()->reply_src();
+    satcat5::udp::Port srcport = m_addr.udp()->next_free_port();
     m_addr.connect(
-        m_addr.m_iface->reply_ip(),
-        m_addr.m_iface->reply_mac(),
+        m_addr.udp()->reply_ip(),
+        m_addr.udp()->reply_mac(),
         dstport, srcport);
 
     // Update the filter for incoming packets.
@@ -163,7 +163,7 @@ void TftpTransfer::accept() {
 
     // Log the new connection.
     log::Log(log::INFO, "TFTP: Connected to client")
-        .write(m_addr.m_iface->reply_ip())
+        .write(m_addr.udp()->reply_ip())
         .write(dstport.value).write(srcport.value);
 }
 
@@ -213,7 +213,7 @@ void TftpTransfer::frame_rcvd(satcat5::io::LimitedRead& src) {
         log::Log(log::DEBUG, "TftpTransfer::frame_rcvd").write(opcode);
 
     // Ignore anything that's not from the expected IP address.
-    if (m_addr.m_iface->reply_ip() != m_addr.dstaddr()) return;
+    if (m_addr.udp()->reply_ip() != m_addr.dstaddr()) return;
 
     // If FIRST flag is set, lock in the sender's source port.
     // (i.e., This is how the client learns the UDP destination port.)

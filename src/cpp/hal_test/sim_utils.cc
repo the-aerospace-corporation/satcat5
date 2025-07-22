@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -109,6 +109,10 @@ bool satcat5::test::read(Readable* src, const std::string& ref) {
     return satcat5::test::read(src, ref.size(), (const u8*)ref.c_str());
 }
 
+bool satcat5::test::read(satcat5::io::ArrayRead src, const std::string& ref) {
+    return satcat5::test::read(&src, ref);
+}
+
 void satcat5::test::write_random_bytes(Writeable* dst, unsigned nbytes) {
     for (unsigned a = 0 ; a < nbytes ; ++a)
         dst->write_u8(rand_u8());
@@ -121,14 +125,21 @@ bool satcat5::test::write_random_final(Writeable* dst, unsigned nbytes) {
 
 bool satcat5::test::read_equal(Readable* src1, Readable* src2) {
     // Read from both sources until the end.
+    const unsigned PRINT_LIMIT = 100;
     unsigned diff = 0;
     for (unsigned a = 0 ; src1->get_read_ready() && src2->get_read_ready() ; ++a) {
         u8 x = src1->read_u8(), y = src2->read_u8();
         if (x != y) {
-            ++diff;
-            log::Log(log::ERROR, "Stream mismatch @ index")
-                .write10(a).write(x).write(y);
+            if (++diff <= PRINT_LIMIT) {
+                log::Log(log::ERROR, "Stream mismatch @ index")
+                    .write10(a).write(x).write(y);
+            }
         }
+    }
+
+    if (diff > PRINT_LIMIT) {
+        log::Log(log::ERROR, "Stream mismatch truncated, additional errors")
+            .write10(u32(diff - PRINT_LIMIT));
     }
 
     // Any leftover bytes in either sources?

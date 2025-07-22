@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -8,10 +8,10 @@
 #include <satcat5/router2_dispatch.h>
 
 using satcat5::eth::MacAddr;
+using satcat5::eth::PluginPacket;
 using satcat5::router2::DeferFwd;
 using satcat5::router2::DeferPkt;
 using satcat5::router2::Dispatch;
-using satcat5::eth::SwitchPlugin;
 
 // Set verbosity level for debugging (0/1/2)
 static constexpr unsigned DEBUG_VERBOSE = 0;
@@ -25,7 +25,7 @@ static constexpr unsigned DEBUG_VERBOSE = 0;
 #define SATCAT5_R2_RETRY_MSEC   10
 #endif
 
-bool DeferPkt::read_meta(satcat5::eth::SwitchPlugin::PacketMeta& meta) {
+bool DeferPkt::read_meta(PluginPacket& meta) {
     // Read the Ethernet and IPv4 headers.
     bool ok = meta.read_from(pkt);  // Read packet headers
     meta.dst_mask = dst_mask;       // Restore the destination mask
@@ -55,7 +55,7 @@ DeferFwd::~DeferFwd() {
 }
 #endif
 
-bool DeferFwd::accept(const satcat5::eth::SwitchPlugin::PacketMeta& meta) {
+bool DeferFwd::accept(const PluginPacket& meta) {
     // First-time setup of the interface? Register for ARP callbacks.
     // (This information may not be available during object creation.)
     if (!m_parent->iface()) return false;
@@ -123,7 +123,7 @@ DeferPkt* DeferFwd::request_arp(DeferPkt* pkt) {
         m_arp->send_query(pkt->dst_ip);
     } else {
         // Retry limit exceeded, send an ICMP error.
-        SwitchPlugin::PacketMeta meta;
+        PluginPacket meta;
         if (pkt->read_meta(meta))
             m_parent->icmp_reply(satcat5::ip::ICMP_UNREACHABLE_HOST, 0, meta);
         // Discard the original packet and mark it as empty.
@@ -143,7 +143,7 @@ DeferPkt* DeferFwd::request_fwd(DeferPkt* pkt, const MacAddr& dst) {
     // Reconstitute the packet and forward to the designated MAC address.
     // (This packet has already been validated and had its TTL decremented.)
     unsigned count = 0;
-    SwitchPlugin::PacketMeta meta;
+    PluginPacket meta;
     if (pkt->read_meta(meta)) {
         m_parent->adjust_mac(dst, meta);
         auto debug = m_parent->m_debug;

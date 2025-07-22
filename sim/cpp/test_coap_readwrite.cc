@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the "coap::Reader" and "coap::Writer" classes.
@@ -60,12 +60,18 @@ static const u8 EXAMPLE_UNKNOWN_CRIT[] {
 static const u8 EXAMPLE_SIZE1[] = {
     0x64, 0x43, 0xa8, 0x94, 0x7d, 0x5b, 0x82, 0x5d,
     0xd2, 0x2f, 0x05, 0xDC};                            // Option #1
+static const u8 EXAMPLE_BLOCK1[] = {
+    0x44, 0x01, 0xa8, 0x94, 0x7d, 0x5b, 0x82, 0x5d,
+    0xd1, 0x0e, 0x0e};
+static const u8 EXAMPLE_BLOCK2[] = {
+    0x44, 0x01, 0xa8, 0x94, 0x7d, 0x5b, 0x82, 0x5d,
+    0xd1, 0x0a, 0x06};
 
-class TestReader : public satcat5::coap::Reader
-{
+class TestReader : public satcat5::coap::Reader {
 public:
     satcat5::io::PacketBufferHeap m_options;
-    explicit TestReader(satcat5::io::Readable* src) : Reader(src) {}
+    explicit TestReader(satcat5::io::Readable* src)
+        : Reader(src) { read_options(); }
 protected:
     // Extra options saved as (u16 id, u16 len, data...)
     void read_user_option() override {
@@ -94,7 +100,6 @@ TEST_CASE("coap_reader") {
         CHECK(uut.msg_id()      == 0xA894);
         CHECK(uut.token()       == 0x7D5B825D);
         // Options: URI-Path = "logs", Content-Format = "application/json"
-        uut.read_options();
         CHECK_FALSE(uut.error());
         CHECK(uut.uri_path());
         CHECK(strcmp(uut.uri_path().value(), "logs") == 0);
@@ -120,12 +125,11 @@ TEST_CASE("coap_reader") {
         CHECK(uut.msg_id()      == 0xA894);
         CHECK(uut.token()       == 0x7D5B825D);
         // Options: Etag = 0x000000000000CA0C, Content-Format = "text/plain"
-        uut.read_options();
         CHECK_FALSE(uut.error());
         CHECK(uut.format());
         CHECK(uut.format().value()      == satcat5::coap::FORMAT_TEXT);
         CHECK_FALSE(uut.size1());
-        REQUIRE(uut.m_options.get_read_ready() > 0);
+        REQUIRE(uut.m_options.get_read_ready() == 12);
         CHECK(uut.m_options.read_u16()  == satcat5::coap::OPTION_ETAG);
         CHECK(uut.m_options.read_u16()  == 8); // Length
         CHECK(uut.m_options.read_u64()  == 0xCA0C);
@@ -140,20 +144,18 @@ TEST_CASE("coap_reader") {
         // Start reading the message header.
         ArrayRead msg(EXAMPLE_LONG, sizeof(EXAMPLE_LONG));
         TestReader uut(&msg);
-        uut.read_options();
         // 1st option = Option 13 with 13 data bytes.
         // (Using the 1-byte extended length for both sub-fields.)
-        REQUIRE(uut.m_options.get_read_ready() > 0);
+        REQUIRE(uut.m_options.get_read_ready() == 17);
         CHECK(uut.m_options.read_u16()  == 13);
         CHECK(uut.m_options.read_u16()  == 13);
         CHECK(uut.m_options.get_read_ready() == 13);
         uut.m_options.read_finalize();
         // 2nd option = Option 4942 (13 + 0x1234), with 5 data bytes.
         // (Using the 2-byte extended length for the ID-delta.)
-        REQUIRE(uut.m_options.get_read_ready() > 0);
+        REQUIRE(uut.m_options.get_read_ready() == 9);
         CHECK(uut.m_options.read_u16()  == 4942);
         CHECK(uut.m_options.read_u16()  == 5);
-        CHECK(uut.m_options.get_read_ready() == 5);
         uut.m_options.read_finalize();
         // 3rd option is longer than the input -> error.
         CHECK(uut.error());
@@ -166,37 +168,37 @@ TEST_CASE("coap_reader") {
     SECTION("read_bad_hdr") {
         // The error flag should be set as soon as we read the header.
         ArrayRead msg(EXAMPLE_BAD_HDR, sizeof(EXAMPLE_BAD_HDR));
-        satcat5::coap::Reader uut(&msg);
+        satcat5::coap::ReadSimple uut(&msg);
         CHECK(uut.error());
     }
 
     // Read a packet with an invalid option ID.
     SECTION("read_bad_id") {
         // Start reading the message header and confirm decode failure.
-        ArrayRead msg(EXAMPLE_BAD_ID, sizeof(EXAMPLE_BAD_ID));
-        satcat5::coap::Reader uut(&msg);
-        CHECK_FALSE(uut.error());
-        uut.read_options();
-        CHECK(uut.error());
-        CHECK_FALSE(uut.read_data());
+        ArrayRead msg1(EXAMPLE_BAD_ID, sizeof(EXAMPLE_BAD_ID));
+        ArrayRead msg2(EXAMPLE_BAD_ID, sizeof(EXAMPLE_BAD_ID));
+        satcat5::coap::ReadHeader uut1(&msg1);
+        satcat5::coap::ReadSimple uut2(&msg2);
+        CHECK_FALSE(uut1.error());
+        CHECK(uut2.error());
+        CHECK_FALSE(uut2.read_data());
     }
 
     SECTION("read_empty") {
         // Read an empty CON message without a token (aka "ping").
         ArrayRead msg1(EXAMPLE_EMPTY_VALID, sizeof(EXAMPLE_EMPTY_VALID));
-        satcat5::coap::Reader uut1(&msg1);
+        satcat5::coap::ReadSimple uut1(&msg1);
         CHECK_FALSE(uut1.error());
         // Read an empty message with a token (error per Section 4.1).
         ArrayRead msg2(EXAMPLE_EMPTY_TOKEN, sizeof(EXAMPLE_EMPTY_TOKEN));
-        satcat5::coap::Reader uut2(&msg2);
+        satcat5::coap::ReadSimple uut2(&msg2);
         CHECK(uut2.error());
     }
 
     SECTION("read_no_data") {
         // Start reading the message header.
         ArrayRead msg(EXAMPLE_NO_DATA, sizeof(EXAMPLE_NO_DATA));
-        satcat5::coap::Reader uut(&msg);
-        uut.read_options();
+        satcat5::coap::ReadSimple uut(&msg);
         // No options and no data.
         CHECK_FALSE(uut.error());
         CHECK_FALSE(uut.uri_path());
@@ -208,8 +210,7 @@ TEST_CASE("coap_reader") {
     SECTION("read_unknown_critical") {
         // Create a message with an unknown Critical (odd ID) option
         ArrayRead msg(EXAMPLE_UNKNOWN_CRIT, sizeof(EXAMPLE_UNKNOWN_CRIT));
-        satcat5::coap::Reader uut(&msg);
-        uut.read_options();
+        satcat5::coap::ReadSimple uut(&msg);
         CHECK(uut.error());
         CHECK(uut.error_code() == satcat5::coap::CODE_BAD_OPTION);
     }
@@ -239,8 +240,7 @@ TEST_CASE("coap_reader") {
 
         // Confirm the Uri-Path can be successfully parsed.
         ArrayRead msg(wr_msg.buffer(), wr_msg.written_len());
-        satcat5::coap::Reader uut(&msg);
-        uut.read_options();
+        satcat5::coap::ReadSimple uut(&msg);
         CHECK_FALSE(uut.error());
         CHECK(uut.uri_path());
         CHECK(strcmp(uut.uri_path().value(), full_path.c_str()) == 0);
@@ -269,8 +269,7 @@ TEST_CASE("coap_reader") {
 
         // Confirm the Reader returns the correct error code.
         ArrayRead msg(wr_msg.buffer(), wr_msg.written_len());
-        satcat5::coap::Reader uut(&msg);
-        uut.read_options();
+        satcat5::coap::ReadSimple uut(&msg);
         CHECK(uut.error());
         CHECK(uut.error_code() == satcat5::coap::CODE_BAD_OPTION);
     }
@@ -278,11 +277,48 @@ TEST_CASE("coap_reader") {
     SECTION("read_size1") {
         // Confirm the Size1 field is parsed
         ArrayRead msg(EXAMPLE_SIZE1, sizeof(EXAMPLE_SIZE1));
-        satcat5::coap::Reader uut(&msg);
-        uut.read_options();
+        satcat5::coap::ReadSimple uut(&msg);
         CHECK_FALSE(uut.error());
         CHECK(uut.size1());
         CHECK(uut.size1().value() == 1500);
+        CHECK(satcat5::test::read(uut.read_data(), ""));
+    }
+
+    SECTION("read_block1") {
+        // Confirm the Block1 field is parsed
+        ArrayRead msg(EXAMPLE_BLOCK1, sizeof(EXAMPLE_BLOCK1));
+        satcat5::coap::ReadSimple uut(&msg);
+        CHECK_FALSE(uut.error());
+        CHECK(uut.block());
+        CHECK(uut.block().value() == 0x0E);
+        CHECK(uut.block_size() == 1024);
+        CHECK(uut.block_more());
+        CHECK(uut.block_num() == 0);
+        CHECK(uut.block1());
+        CHECK(uut.block1().value() == 0x0E);
+        CHECK(uut.block1_size() == 1024);
+        CHECK(uut.block1_more());
+        CHECK(uut.block1_num() == 0);
+        CHECK_FALSE(uut.block2());
+        CHECK(satcat5::test::read(uut.read_data(), ""));
+    }
+
+    SECTION("read_block2") {
+        // Confirm the Block2 field is parsed
+        ArrayRead msg(EXAMPLE_BLOCK2, sizeof(EXAMPLE_BLOCK2));
+        satcat5::coap::ReadSimple uut(&msg);
+        CHECK_FALSE(uut.error());
+        CHECK(uut.block());
+        CHECK(uut.block().value() == 0x06);
+        CHECK(uut.block_size() == 1024);
+        CHECK_FALSE(uut.block_more());
+        CHECK(uut.block_num() == 0);
+        CHECK_FALSE(uut.block1());
+        CHECK(uut.block2());
+        CHECK(uut.block2().value() == 0x06);
+        CHECK(uut.block2_size() == 1024);
+        CHECK_FALSE(uut.block2_more());
+        CHECK(uut.block2_num() == 0);
         CHECK(satcat5::test::read(uut.read_data(), ""));
     }
 }
@@ -343,7 +379,6 @@ TEST_CASE("coap_writer") {
         CHECK(satcat5::test::write(uut.write_data(), sizeof(LONG_MSG), LONG_MSG));
         // Parse the constructed message.
         TestReader uut(&buf);
-        uut.read_options();
         CHECK_FALSE(uut.error());
         CHECK(uut.type()        == satcat5::coap::TYPE_CON);
         CHECK(uut.tkl()         == 6);
@@ -351,18 +386,59 @@ TEST_CASE("coap_writer") {
         CHECK(uut.msg_id()      == 0x1234);
         CHECK(uut.token()       == 0xDEADBEEFCAFEull);
         // 1st option = "medium_length_string"
-        REQUIRE(uut.m_options.get_read_ready() > 0);
+        REQUIRE(uut.m_options.get_read_ready() == 24);
         CHECK(uut.m_options.read_u16()  == 42);
         CHECK(uut.m_options.read_u16()  == med_str.length());
         CHECK(satcat5::test::read(&uut.m_options, med_str)); // Calls finalize()
         // 2nd option = LONG_MSG
-        REQUIRE(uut.m_options.get_read_ready() > 0);
+        REQUIRE(uut.m_options.get_read_ready() == 325);
         CHECK(uut.m_options.read_u16()  == 1234);
         CHECK(uut.m_options.read_u16()  == sizeof(LONG_MSG));
         CHECK(satcat5::test::read(&uut.m_options, sizeof(LONG_MSG), LONG_MSG));
         // Next block should be the message data.
         CHECK(uut.m_options.get_read_ready() == 0);
         CHECK(satcat5::test::read(uut.read_data(), sizeof(LONG_MSG), LONG_MSG));
+    }
+
+    // Write a URI consisting of several consecutive options.
+    SECTION("write_uri") {
+        // Write a few multi-part URI strings.
+        CHECK(uut.write_header(
+            satcat5::coap::TYPE_CON,
+            satcat5::coap::CODE_POST,
+            0x1234, 0x2345));
+        CHECK(uut.write_uri(
+            satcat5::coap::OPTION_URI_PATH,
+            "//uri//path//double//slashes"));
+        CHECK(uut.write_uri(
+            satcat5::coap::OPTION_PROXY_URI,
+            "proxy/uri/trailing/slash/"));
+        CHECK(uut.write_finalize());
+        // Parse the constructed message.
+        TestReader rd(&buf);
+        CHECK_FALSE(rd.error());
+        CHECK(rd.type()        == satcat5::coap::TYPE_CON);
+        CHECK(rd.tkl()         == 2);
+        CHECK(rd.code()        == satcat5::coap::CODE_POST);
+        CHECK(rd.msg_id()      == 0x1234);
+        CHECK(rd.token()       == 0x2345);
+        // 1st option URI_PATH is reconstructed automatically.
+        CHECK(rd.uri_path());
+        CHECK(strcmp(rd.uri_path().value(), "uri/path/double/slashes") == 0);
+        // 2nd option PROXY_URI is read as consecutive chunks.
+        CHECK(rd.m_options.read_u16() == satcat5::coap::OPTION_PROXY_URI);
+        CHECK(rd.m_options.read_u16() == 5);
+        CHECK(satcat5::test::read(&rd.m_options, "proxy"));
+        CHECK(rd.m_options.read_u16() == satcat5::coap::OPTION_PROXY_URI);
+        CHECK(rd.m_options.read_u16() == 3);
+        CHECK(satcat5::test::read(&rd.m_options, "uri"));
+        CHECK(rd.m_options.read_u16() == satcat5::coap::OPTION_PROXY_URI);
+        CHECK(rd.m_options.read_u16() == 8);
+        CHECK(satcat5::test::read(&rd.m_options, "trailing"));
+        CHECK(rd.m_options.read_u16() == satcat5::coap::OPTION_PROXY_URI);
+        CHECK(rd.m_options.read_u16() == 5);
+        CHECK(satcat5::test::read(&rd.m_options, "slash"));
+        CHECK(rd.m_options.get_read_ready() == 0);
     }
 
     // Write and read a packet with options but no data.
@@ -376,7 +452,7 @@ TEST_CASE("coap_writer") {
             satcat5::coap::OPTION_URI_PATH, "no_data"));
         CHECK(uut.write_finalize());
         // Parse the constructed message.
-        satcat5::coap::Reader uut(&buf);
+        satcat5::coap::ReadSimple uut(&buf);
         CHECK_FALSE(uut.error());
         CHECK(uut.type()        == satcat5::coap::TYPE_CON);
         CHECK(uut.tkl()         == 6);
@@ -399,7 +475,7 @@ TEST_CASE("coap_writer") {
             0x1234, 0xDEADBEEFCAFEull, 5)); // Intentionally truncate
         CHECK(satcat5::test::write(uut.write_data(), EXAMPLE_JSON));
         // Parse the constructed message.
-        satcat5::coap::Reader uut(&buf);
+        satcat5::coap::ReadSimple uut(&buf);
         CHECK_FALSE(uut.error());
         CHECK(uut.type()        == satcat5::coap::TYPE_CON);
         CHECK(uut.tkl()         == 5);      // Truncated
@@ -426,7 +502,7 @@ TEST_CASE("coap_writer_auto_insert") {
         CHECK(uut.write_header(
             satcat5::coap::TYPE_CON, satcat5::coap::CODE_EMPTY, 0xA894));
         CHECK(uut.write_finalize());
-        satcat5::coap::Reader uut(&buf); // Skip header
+        satcat5::coap::ReadSimple uut(&buf); // Skip header
         CHECK_FALSE(uut.error());
         CHECK(buf.get_read_ready()  == 0);
         buf.read_finalize();
@@ -437,7 +513,7 @@ TEST_CASE("coap_writer_auto_insert") {
         CHECK(uut.write_header(
             satcat5::coap::TYPE_CON, satcat5::coap::CODE_GET, 0xA894));
         CHECK(uut.write_finalize());
-        satcat5::coap::Reader uut(&buf);
+        satcat5::coap::ReadHeader uut(&buf);
         CHECK_FALSE(uut.error());
         CHECK(buf.read_u8()         == (13 << 4)); // u8 ID
         CHECK(buf.read_u8()         == satcat5::coap::OPTION_MAX_AGE - 13);
@@ -452,7 +528,7 @@ TEST_CASE("coap_writer_auto_insert") {
         CHECK(uut.write_option(satcat5::coap::OPTION_ETAG, 0x1234));
         CHECK(uut.write_option(satcat5::coap::OPTION_SIZE1, 1500));
         CHECK(uut.write_finalize());
-        satcat5::coap::Reader uut(&buf);
+        satcat5::coap::ReadHeader uut(&buf);
         CHECK_FALSE(uut.error());
         CHECK(buf.read_u8()         == ((satcat5::coap::OPTION_ETAG << 4) | 2));
         CHECK(buf.read_u16()        == 0x1234);
@@ -473,7 +549,7 @@ TEST_CASE("coap_writer_auto_insert") {
         CHECK(uut.write_option(satcat5::coap::OPTION_MAX_AGE, 30));
         CHECK(uut.write_option(satcat5::coap::OPTION_SIZE1, 1500));
         CHECK(uut.write_finalize());
-        satcat5::coap::Reader uut(&buf);
+        satcat5::coap::ReadHeader uut(&buf);
         CHECK_FALSE(uut.error());
         CHECK(buf.read_u8()         == ((13 << 4) | 1));
         CHECK(buf.read_u8()         == satcat5::coap::OPTION_MAX_AGE - 13);
@@ -491,7 +567,7 @@ TEST_CASE("coap_writer_auto_insert") {
         CHECK(uut.write_header(
             satcat5::coap::TYPE_CON, satcat5::coap::CODE_GET, 0xA894));
         CHECK(satcat5::test::write(uut.write_data(), EXAMPLE_JSON));
-        satcat5::coap::Reader uut(&buf);
+        satcat5::coap::ReadHeader uut(&buf);
         CHECK_FALSE(uut.error());
         CHECK(buf.read_u8()         == (13 << 4));
         CHECK(buf.read_u8()         == satcat5::coap::OPTION_MAX_AGE - 13);

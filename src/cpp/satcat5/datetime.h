@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //!\file
@@ -15,7 +15,7 @@
 //! GPS time has the advantage that it has no time-zones, no leap-seconds, etc.
 //! By definition, GPS time is always behind TAI by exactly 19 seconds.  Because
 //! UTC inserts leap seconds every few years, the offset from GPS to UTC varies.
-//! From 2017-2021, GPS has lead UTC by 18 seconds.
+//! From 2017-2025, GPS has lead UTC by 18 seconds.
 //!
 //! Conversion functions to human-readable calendar formats are effectively in a
 //! GPS "time-zone" that is more-or-less equivalent to TAI/UTC as noted above.
@@ -100,6 +100,7 @@ namespace satcat5 {
         //! Note: HR field will always be in 24-hour "military" format.
         struct RtcTime {
             u8 dw;      //!< Day of week (0-6, 0 = Sunday)
+            u8 ct;      //!< Century (20 = year 20xx)
             u8 yr;      //!< Year (00-99)
             u8 mo;      //!< Month (1-12)
             u8 dt;      //!< Day-of-month (1-31)
@@ -109,21 +110,32 @@ namespace satcat5 {
             u8 ss;      //!< Sub-seconds (0-99)
 
             //! Days since 2000 Jan 1 (a Saturday).
-            unsigned days_since_epoch() const;
+            u32 days_since_epoch() const;
             //! Milliseconds since midnight (0 - 86.4M).
-            unsigned msec_since_midnight() const;
+            u32 msec_since_midnight() const;
             //! Are current contents valid?
             bool validate() const;
 
             bool operator==(const satcat5::datetime::RtcTime& other) const;
             bool operator<(const satcat5::datetime::RtcTime& other) const;
 
+            //! Write legacy binary format (Deprecated).
+            //! Note: Legacy format does not support years beyond 2099.
             void write_to(satcat5::io::Writeable* wr) const;
+
+            //! Read legacy binary format (Deprecated).
+            //! Note: Legacy format does not support years beyond 2099.
             bool read_from(satcat5::io::Readable* rd);
+
+            //! Format as an ISO8601 / RFC3339 timestamp.
+            //! ISO doesn't allow a "GPS" time-zone, so we use UTC instead.
+            //! For better accuracy, add the current leap-second offset
+            //! before converting the GPS timestamp to the RTC format.
+            void log_to(satcat5::log::LogBuffer& wr) const;
         };
 
         //! Special datetime::RtcTime value indicating an error.
-        static const datetime::RtcTime RTC_ERROR = {0, 0, 0, 0, 0, 0, 0, 0};
+        static const datetime::RtcTime RTC_ERROR = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
         //! Bit-flag in HR field indicating 24-HOUR clock format.
         //! When calling RtcTime::write_to, this flag is always set.
@@ -134,7 +146,6 @@ namespace satcat5 {
         //! object tracks that TimeRef to indicate the current date/time.
         //!
         //! To use this class:
-        //!  * Create a Clock instance.
         //!  * Obtain the current date/time from an external source.
         //!  * Convert to the SatCat5 internal format and call `set`.
         //!  * Call `now`, `gps`, or `ptp` at any point to obtain the
@@ -144,11 +155,19 @@ namespace satcat5 {
             //! Constructor defaults to T = 0 (unknown).
             Clock();
 
-            //! Get elapsed time since startup.
+            //! Get elapsed time since startup, in milliseconds.
             //! \returns Uptime in milliseconds, wraps every ~49 days.
             //! This value is useful for ICMP timestamps, or for elapsed-time
             //! that exceeds the dynamic range of a satcat5::util::TimeVal.
-            inline u32 uptime() const {return m_tcount;}
+            inline u32 uptime_msec() const {return m_tcount;}
+
+            //! Get elapsed time since startup, in microseconds.
+            //! \returns Uptime in microseconds, wraps every ~1.2 hours.
+            u32 uptime_usec() const;
+
+            //! Reset internals after changes to SATCAT5_CLOCK.
+            //! Optionally reset uptime and GPS time.
+            void reset(bool full = false);
 
             //! Set current GPS time. (0 = Unknown)
             //! For conversion \see `from_gps`, `from_ptp`, or `from_rtc`.
@@ -167,11 +186,17 @@ namespace satcat5 {
                 { return satcat5::datetime::to_rtc(m_gps); }
 
         protected:
+            friend satcat5::poll::OnDemandHelper;
             void timer_event() override;
 
             satcat5::util::TimeVal m_tref;
             u32 m_tcount;
             s64 m_gps;
         };
+
+        //! Global instance of the datetime::Clock class.
+        //! This instance is provided for general-use and convenience, but
+        //! specialized use-cases may create and manage their own clocks.
+        extern satcat5::datetime::Clock clock;
     }
 }

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -35,8 +35,8 @@ entity router2_qdepth is
     in_qdepth   : in  unsigned(7 downto 0);
     out_qdepth  : out unsigned(7 downto 0);
     out_enable  : in  std_logic := '1';
-    clk         : std_logic;
-    reset_p     : std_logic);
+    clk         : in  std_logic;
+    reset_p     : in  std_logic);
 end router2_qdepth;
 
 architecture router2_qdepth of router2_qdepth is

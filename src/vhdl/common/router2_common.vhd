@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -54,18 +54,19 @@ package router2_common is
 
     -- ConfigBus register addresses for configuring the router:
     --  * Reg 000-399:  Offload Tx/Rx buffer (see router2_mailmap.vhd)
-    --  * Reg 400-489:  Reserved
-    --  * Reg 490:     VLAN configuration (see mac_vlan_mask.vhd)
-    --  * Reg 491:     VLAN configuration (see mac_vlan_mask.vhd)
-    --  * Reg 492:     VLAN rate-control (see mac_vlan_rate.vhd)
-    --  * Reg 493:     Diagnostic packet counter (cfgbus_counter)
-    --  * Reg 494:     Per-port link status (see router2_gateway.vhd)
-    --  * Reg 495:     Build configuration info (see router2_core.vhd)
-    --  * Reg 496:     ECN/RED control (see router2_ecn_red.vhd)
-    --  * Reg 497:     Per-port NAT configuration (see router2_basic_nat.vhd)
-    --  * Reg 498:     Gateway configuration (see router2_gateway.vhd)
-    --  * Reg 499:     Transmit port-mask (see router2_mailmap.vhd)
-    --  * Reg 500:     Transmit offload control (see router2_mailmap.vhd)
+    --  * Reg 400-488:  Reserved
+    --  * Reg 489:      Packet logging diagnostics (see mag_log_cfgbus.vhd)
+    --  * Reg 490:      VLAN configuration (see mac_vlan_mask.vhd)
+    --  * Reg 491:      VLAN configuration (see mac_vlan_mask.vhd)
+    --  * Reg 492:      VLAN rate-control (see mac_vlan_rate.vhd)
+    --  * Reg 493:      Diagnostic packet counter (cfgbus_counter)
+    --  * Reg 494:      Per-port link status (see router2_gateway.vhd)
+    --  * Reg 495:      Build configuration info (see router2_core.vhd)
+    --  * Reg 496:      ECN/RED control (see router2_ecn_red.vhd)
+    --  * Reg 497:      Per-port NAT configuration (see router2_basic_nat.vhd)
+    --  * Reg 498:      Gateway configuration (see router2_gateway.vhd)
+    --  * Reg 499:      Transmit port-mask (see router2_mailmap.vhd)
+    --  * Reg 500:      Transmit offload control (see router2_mailmap.vhd)
     --  * Reg 501-505:  Build-time parameters (see router2_pipeline.vhd)
     --  * Reg 506-507:  Non-IPv4 rule configuration (see router2_noip.vhd)
     --  * Reg 508-509:  CIDR table configuration (see router2_cidr_table.vhd)
@@ -74,6 +75,7 @@ package router2_common is
     --  * Reg 512-1023: Port configuration registers (see switch_types.vhd)
     -- ("RT_ADDR_*" prefix avoids conflicts with switch control registers.)
     constant RT_ADDR_TXRX_DAT   : integer := 0;     -- Reg 000 - 399
+    constant RT_ADDR_LOGGING    : integer := 489;
     constant RT_ADDR_VLAN_VID   : integer := 490;
     constant RT_ADDR_VLAN_MASK  : integer := 491;
     constant RT_ADDR_VLAN_RATE  : integer := 492;
@@ -140,10 +142,12 @@ package body router2_common is
     end function;
 
     function ip_checksum(a: ip_checksum_t; x: std_logic_vector; bidx: natural := 0) return ip_checksum_t is
-        constant w : positive := div_ceil(x'length + 8*bidx, 16);
+        constant bmax : natural := int_max(1, div_ceil(x'length, 8) - 1);
+        constant w : positive := div_ceil(x'length + 8*bmax, 16);
         variable y : unsigned(16*w-1 downto 0) := shift_left(resize(unsigned(x), 16*w), 8*bidx);
         variable z : unsigned(31 downto 0) := resize(a, 32);
     begin
+        assert(bidx <= bmax) report "bidx (" & natural'image(bidx) & ") > bmax (" & natural'image(bmax) & ")";
         for n in 1 to w loop
             z := z + y(16*n-1 downto 16*n-16);
         end loop;

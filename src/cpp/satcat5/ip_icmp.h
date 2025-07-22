@@ -1,22 +1,20 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Protocol handler for the Internet Control Message Protocol (ICMP)
-//
-// ICMP provides various auxiliary services to support IPv4 networks,
-// ranging from "ping" (ICMP Echo/Reply) to error reporting (e.g.,
-// "Destination host unreachable").
 
 #pragma once
 
 #include <satcat5/net_core.h>
 #include <satcat5/ip_core.h>
 #include <satcat5/list.h>
+#include <satcat5/polling.h>
 
 namespace satcat5 {
     namespace ip {
-        // Define combined ICMP message codes (type + subtype).
+        //! Define combined ICMP message codes (type + subtype).
+        //!@{
         constexpr u16 ICMP_ECHO_REPLY           = 0x0000;
         constexpr u16 ICMP_UNREACHABLE_NET      = 0x0300;
         constexpr u16 ICMP_UNREACHABLE_HOST     = 0x0301;
@@ -46,21 +44,25 @@ namespace satcat5 {
         constexpr u16 ICMP_IP_HDR_LENGTH        = 0x0C02;
         constexpr u16 ICMP_TIME_REQUEST         = 0x0D00;
         constexpr u16 ICMP_TIME_REPLY           = 0x0E00;
+        //!@}
 
-        // ICMP type-codes only (ignoring subtype)
+        //! ICMP type-codes only (ignoring subtype).
+        //!@{
         constexpr u16 ICMP_TYPE_MASK            = 0xFF00;
         constexpr u16 ICMP_TYPE_UNREACHABLE     = 0x0300;   // 0x0300 - 03FF
         constexpr u16 ICMP_TYPE_REDIRECT        = 0x0500;   // 0x0500 - 05FF
         constexpr u16 ICMP_TYPE_TIME_EXCEED     = 0x0B00;   // 0x0B00 - 0BFF
         constexpr u16 ICMP_TYPE_BAD_IP_HDR      = 0x0C00;   // 0x0C00 - 0CFF
+        //!@}
 
-        // Bytes required for ICMP error messages.
+        //! Echo-bytes required for ICMP error messages.
         constexpr unsigned ICMP_ECHO_BYTES   = 8;
 
-        // Callback object for handling "ping" reponses.
+        //! Callback API for handling "ping" reponses.
         class PingListener {
         public:
-            // Child class MUST override this method.
+            //! Callback method when a ping response is received.
+            //! Child class MUST override this method.
             virtual void ping_event(
                 const satcat5::ip::Addr& from, u32 elapsed_usec) = 0;
 
@@ -70,44 +72,63 @@ namespace satcat5 {
             satcat5::ip::PingListener* m_next;
         };
 
-        // Protocol handler for ICMP messages.
-        class ProtoIcmp final : public satcat5::net::Protocol
-        {
+        //! Protocol handler for the Internet Control Message Protocol (ICMP).
+        //! ICMP provides various auxiliary services to support IPv4 networks,
+        //! ranging from "ping" (ICMP Echo/Reply) to error reporting (e.g.,
+        //! "Destination host unreachable").
+        class ProtoIcmp final
+            : public satcat5::net::Protocol
+            , protected satcat5::poll::Timer {
         public:
+            //! Link this handler to an IPv4 network interface.
             ProtoIcmp(satcat5::ip::Dispatch* iface);
             ~ProtoIcmp() SATCAT5_OPTIONAL_DTOR;
 
-            // Send various error-messages:
-            //  "Destination unreachable" (Type 3.x, arg = unused)
-            //  "Redirect" (Type 5.x, arg = new address)
-            // Note: Readable "src" should contain the first 8 bytes after
-            //       the IP header of the frame that triggered this error.
-            // Returns true if frame sent successfully, false otherwise.
+            //! Send a specific error message.
+            //! This method is used to send various error-messages, such as
+            //! "Destination unreachable" (Type 3.x, arg = unused) or
+            //! "Redirect" (Type 5.x, arg = new address).
+            //! Note: Readable "src" should contain the first 8 bytes after
+            //!       the IP header of the frame that triggered this error.
+            //! Returns true if frame sent successfully, false otherwise.
             bool send_error(
                 u16 type, satcat5::io::Readable* src, uint32_t arg = 0);
 
-            // Initiate a ping (Echo request = Type 8.0)
-            // Returns true if frame sent successfully, false otherwise.
+            //! Initiate a ping (Echo request = Type 8.0).
+            //! Returns true if frame sent successfully, false otherwise.
             bool send_ping(satcat5::ip::Address& dst);
 
-            // Initiate a timestamp request.
-            // Returns true if frame sent successfully, false otherwise.
+            //! Initiate a timestamp request.
+            //! Returns true if frame sent successfully, false otherwise.
             bool send_timereq(satcat5::ip::Address& dst);
 
-            // Add/remove callback handlers for Ping responses.
+            //! Adjust the rate-limit for ICMP error logging.
+            //! Incoming ICMP errors (e.g., "Destination Unreachable...") are
+            //! written to the SatCat5 log.  If log message forwarding fails
+            //! with another ICMP error, this can produce an infinite loop.
+            //! Prevent this with a rate limit, default once per 500 msec.
+            //! An interval of zero disables this rate-limit.
+            inline void set_log_cooldown(unsigned wait_msec)
+                { m_wait_msec = wait_msec; }
+
+            //! Add/remove callback handlers for Ping responses.
+            //!@{
             inline void add(satcat5::ip::PingListener* cb)
                 {m_listeners.add(cb);}
             inline void remove(satcat5::ip::PingListener* cb)
                 {m_listeners.remove(cb);}
+            //!@}
 
         protected:
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
+            void timer_event() override;
             bool write_icmp(
                 satcat5::io::Writeable* wr,
                 unsigned wcount, u16* data);
 
             satcat5::ip::Dispatch* const m_iface;
             satcat5::util::List<satcat5::ip::PingListener> m_listeners;
+            unsigned m_wait_msec;
         };
     }
 }

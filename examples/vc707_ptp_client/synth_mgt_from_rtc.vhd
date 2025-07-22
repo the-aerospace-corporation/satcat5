@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -241,9 +241,11 @@ u_realsync : entity work.ptp_realsync
     generic map(OUT_CLK_HZ => MGT_PAR_HZ)
     port map(
     ref_clk     => rtc_clk,
+    ref_reset_p => rtc_reset,
     ref_tstamp  => rtc_tstamp,
     ref_rtc     => rtc_time,
     out_clk     => mgt_clk,
+    out_reset_p => mgt_rst_vref,
     out_tstamp  => mgt_tstamp,
     out_rtc     => mgt_time);
 

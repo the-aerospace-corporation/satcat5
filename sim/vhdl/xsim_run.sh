@@ -1,6 +1,6 @@
 #!/bin/bash -f
 # ------------------------------------------------------------------------
-# Copyright 2019-2024 The Aerospace Corporation.
+# Copyright 2019-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -97,6 +97,7 @@ simulate_all()
     simulate_one aes_gcm_tb 20us IS_ENCRYPT false
     simulate_one aes_gcm_tb 10us DATA_WIDTH 32
     simulate_one cfgbus_common_tb 1ms
+    simulate_one cfgbus_hdlc_tb 2ms
     simulate_one cfgbus_host_apb_tb 1ms
     simulate_one cfgbus_host_axi_tb 2ms
     simulate_one cfgbus_host_eth_tb 1ms
@@ -112,9 +113,11 @@ simulate_all()
     simulate_one config_mdio_rom_tb 30ms
     simulate_one config_port_test_tb 4ms
     simulate_one config_send_status_tb 1ms
+    simulate_one config_timestamp_tb 1ms
     simulate_one eth_all8b10b_tb 2ms
     simulate_one eth_frame_adjust_tb 3ms
     simulate_one eth_frame_check_tb 10ms
+    simulate_one eth_frame_log_tb 1ms
     simulate_one eth_frame_parcrc_tb 1ms
     simulate_one eth_frame_vstrip_tb 1ms
     simulate_one eth_frame_vtag_tb 1ms
@@ -132,9 +135,10 @@ simulate_all()
     simulate_one fifo_smol_resize_tb 1ms
     simulate_one fifo_smol_sync_tb 10ms
     simulate_one hdlc_encoder_tb 4ms
+    simulate_one io_clock_div_tb 1ms
     simulate_one io_clock_tolerance_tb 2ms
     simulate_one io_error_reporting_tb 10ms
-    simulate_one io_hdlc_tb 300us
+    simulate_one io_hdlc_tb 200us
     simulate_one io_i2c_tb 1ms
     simulate_one io_mdio_readwrite_tb 3ms
     simulate_one io_resample_fixed_tb 1ms
@@ -143,6 +147,8 @@ simulate_all()
     simulate_one io_uart_tb 3ms
     simulate_one mac_counter_tb 1ms
     simulate_one mac_igmp_simple_tb 4ms
+    simulate_one mac_log_cfgbus_tb 1ms
+    simulate_one mac_log_uart_tb 2ms
     simulate_one mac_lookup_tb 2ms
     simulate_one mac_priority_tb 1ms
     simulate_one mac_query_tb 1ms
@@ -151,6 +157,7 @@ simulate_all()
     simulate_one packet_augment_tb 5ms
     simulate_one packet_delay_tb 1ms
     simulate_one packet_inject_tb 15ms
+    simulate_one packet_prefix_tb 1ms
     simulate_one packet_round_robin_tb 20ms
     simulate_one port_inline_status_tb 4ms
     simulate_one port_mailbox_tb 2ms

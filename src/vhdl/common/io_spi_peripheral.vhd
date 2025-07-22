@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2023 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -76,7 +76,8 @@ entity io_spi_peripheral is
     cfg_gdly    : in  byte_u;       -- Glitch-delay filter
 
     -- Clock and reset
-    refclk      : in  std_logic);   -- Reference clock (refclk >> spi_sck*)
+    refclk      : in  std_logic;    -- Reference clock (refclk >> spi_sck*)
+    reset_p     : in  std_logic);
 end io_spi_peripheral;
 
 architecture io_spi_peripheral of io_spi_peripheral is
@@ -130,7 +131,7 @@ u_buf3: ddr_input
 --  o Sample on rising edge (modes 0, 3) --> XOR_MODE = 0
 --  o Sample on falling edge (modes 1, 2) --> XOR_MODE = 1
 -- Output (Tx) always changes on the opposite edge.
-xcsb  <= csb1 or csb2;
+xcsb  <= reset_p or csb1 or csb2;
 xclk0 <= sclk0 xor xor_mode;    -- Delayed from previous cycle (earliest)
 xclk1 <= sclk1 xor xor_mode;    -- DDR rising-edge (middle)
 xclk2 <= sclk2 xor xor_mode;    -- DDR falling-edge (latest)
@@ -181,7 +182,7 @@ tx_next <= tx_data when (tx_valid = '1') else IDLE_BYTE;
 p_glitch : process (refclk)
 begin
     if rising_edge(refclk) then
-        if (csb1 = '1' or csb2 = '1') then
+        if (xcsb = '1') then
             glitch_ctr <= (others => '0');  -- Reset / idle
         elsif (ptr_sample = '1' or ptr_change = '1') then
             glitch_ctr <= cfg_gdly;         -- Change event

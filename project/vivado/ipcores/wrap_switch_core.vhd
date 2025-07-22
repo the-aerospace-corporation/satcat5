@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -32,8 +32,12 @@ entity wrap_switch_core is
     SUPPORT_VLAN    : boolean;  -- Support or ignore 802.1q VLAN tags?
     MISS_BCAST      : boolean;  -- Broadcast or drop unknown MAC?
     ALLOW_JUMBO     : boolean;  -- Allow jumbo frames? (Size up to 9038 bytes)
-    ALLOW_RUNT      : boolean;  -- Allow runt frames? (Size < 64 bytes)
+    ALLOW_RUNT      : boolean;  -- DEPRECATED. Same as ALLOW_RUNT_IN + ALLOW_RUNT_OUT.
+    ALLOW_RUNT_IN   : boolean;  -- Allow incoming runt frames? (Size < 64 bytes)
+    ALLOW_RUNT_OUT  : boolean;  -- Pad outgoing runt frames to minimum size?
     ALLOW_PRECOMMIT : boolean;  -- Allow output FIFO cut-through?
+    LOG_CFGBUS      : boolean;  -- Enable packet logging to ConfigBus?
+    LOG_UART_BAUD   : natural;  -- Enable packet logging to UART?
     PORT_COUNT      : integer;  -- Total standard Ethernet ports
     PORTX_COUNT     : integer;  -- Total 10-gigabit Ethernet ports
     DATAPATH_BYTES  : integer;  -- Width of shared pipeline
@@ -887,8 +891,9 @@ entity wrap_switch_core is
     x07_tx_tfreq    : in  std_logic_vector(39 downto 0);
     x07_tx_reset    : in  std_logic;
 
-    -- Error reporting (see switch_aux).
+    -- Error reporting (see switch_aux, mac_log_uart).
     errvec_t        : out std_logic_vector(7 downto 0);
+    log_txd         : out std_logic;
 
     -- Statistics reporting (ConfigBus)
     cfg_clk         : in  std_logic;
@@ -2157,8 +2162,11 @@ u_wrap : entity work.switch_core
     SUPPORT_VLAN    => SUPPORT_VLAN,
     MISS_BCAST      => MISS_BCAST,
     ALLOW_JUMBO     => ALLOW_JUMBO,
-    ALLOW_RUNT      => ALLOW_RUNT,
+    ALLOW_RUNT_IN   => ALLOW_RUNT_IN,
+    ALLOW_RUNT_OUT  => ALLOW_RUNT_OUT,
     ALLOW_PRECOMMIT => ALLOW_PRECOMMIT,
+    LOG_CFGBUS      => LOG_CFGBUS,
+    LOG_UART_BAUD   => LOG_UART_BAUD,
     PORT_COUNT      => PORT_COUNT,
     PORTX_COUNT     => PORTX_COUNT,
     DATAPATH_BYTES  => DATAPATH_BYTES,
@@ -2181,6 +2189,7 @@ u_wrap : entity work.switch_core
     errvec_t        => errvec_t,
     cfg_cmd         => cfg_cmd,
     cfg_ack         => cfg_acks(1),
+    log_txd         => log_txd,
     scrub_req_t     => scrub_req_t,
     core_clk        => core_clk,
     core_reset_p    => reset_p);

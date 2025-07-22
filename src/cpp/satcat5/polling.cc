@@ -3,11 +3,13 @@
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
+#include <satcat5/datetime.h>
 #include <satcat5/interrupts.h> // For AtomicLock
 #include <satcat5/list.h>
 #include <satcat5/polling.h>
 
 namespace poll = satcat5::poll;
+using satcat5::datetime::clock;
 using satcat5::irq::AtomicLock;
 using satcat5::util::TimeRef;
 using satcat5::util::ListCore;
@@ -62,19 +64,22 @@ static const char* const LBL_POLL = "POLL";
 class poll::OnDemandHelper final : public poll::Always {
 public:
     // Constructor is the only public method.
-    OnDemandHelper() : m_item(0) {}
+    OnDemandHelper() : m_item(nullptr) {}
 
     // Are we holding on to a working sublist?
     inline unsigned count() const
         {return ListCore::len(m_item);}
 
-    // Forcibly discard all pending OnDemand objects and make sure
-    // this object is the only one in "g_list_always".
+    // Sanity check before starting each unit test:
+    // * Confirm this object is the only item in "g_list_always".
+    // * Confirm the global clock is the only item in "g_list_timer".
+    // * Forcibly discard all pending OnDemand objects.
     bool pre_test_reset() {
         bool ok = true;
-        if (g_list_always != this)  {g_list_always = this;  ok = false;}
-        if (m_item)                 {m_item = 0;            ok = false;}
-        if (m_next)                 {m_next = 0;            ok = false;}
+        if (ListCore::pre_test_reset<poll::Always>(g_list_always, this)) {ok = false;}
+        if (ListCore::pre_test_reset<poll::Timer>(g_list_timer, &clock)) {ok = false;}
+        if (m_item) {m_item = nullptr; ok = false;}
+        if (m_next) {m_next = nullptr; ok = false;}
         return ok;
     }
 
@@ -131,7 +136,7 @@ bool poll::pre_test_reset() {
     if (!on_demand_helper.pre_test_reset()) ok = false;
     if (!timekeeper.pre_test_reset())       ok = false;
     if (g_list_demand)  {g_list_demand = 0; ok = false;}
-    if (g_list_timer)   {g_list_timer = 0;  ok = false;}
+    satcat5::datetime::clock.reset(true);
     return ok;
 }
 
@@ -160,25 +165,31 @@ void poll::service_all(unsigned limit) {
     }
 }
 
-poll::Always::Always()
-    : m_next(0)
-{
-    // Add this item to the head of the global list.
-    AtomicLock lock(LBL_POLL);
-    ListCore::add(g_list_always, this);
+poll::Always::Always(bool auto_register) {
+    if (auto_register) { poll_register(); }
 }
 
 #if SATCAT5_ALLOW_DELETION
 poll::Always::~Always() {
-    // Remove ourselves from the global linked list.
-    AtomicLock lock(LBL_POLL);
-    ListCore::remove(g_list_always, this);
+    poll_unregister();
 }
 #endif
 
 unsigned poll::Always::count_always() {
     AtomicLock lock(LBL_POLL);
     return ListCore::len(g_list_always);
+}
+
+void poll::Always::poll_register() {
+    // Add this item to the head of the global list.
+    AtomicLock lock(LBL_POLL);
+    ListCore::add_safe(g_list_always, this);
+}
+
+void poll::Always::poll_unregister() {
+    // Remove ourselves from the global linked list.
+    AtomicLock lock(LBL_POLL);
+    ListCore::remove(g_list_always, this);
 }
 
 #if SATCAT5_ALLOW_DELETION

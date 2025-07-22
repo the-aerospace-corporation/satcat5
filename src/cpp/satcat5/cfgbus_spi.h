@@ -1,21 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Interface driver for the cfgbus_spi_controller block
-//
-// An SPI Controller is the device that drives the CS and SCK signals
-// of a four-wire or three-wire SPI bus.  This driver operates the
-// controller block defined in "cfgbus_spi_controller.vhd".
-//
-// The ::configure() method sets the baud-rate and SPI mode.  This method
-// should only be called when the bus is idle.  The mode parameter is
-// defined in the SPI specification and sets the clock-polarity (CPOL)
-// and clock-phase (CPHA) options.
-//
-// For more information on the SPI bus:
-//  https://en.wikipedia.org/wiki/Serial_Peripheral_Interface
-//
 
 #pragma once
 
@@ -38,28 +25,43 @@
 
 namespace satcat5 {
     namespace cfg {
-        // Interface controller class.
+        //! Interface driver for the cfgbus_spi_controller block.
+        //!
+        //! An SPI Controller is the device that drives the CS and SCK signals
+        //! of a four-wire or three-wire SPI bus.  This driver operates the
+        //! controller block defined in "cfgbus_spi_controller.vhd".
+        //!
+        //! The configure() method sets the baud-rate and SPI mode.  This method
+        //! should only be called when the bus is idle.  The mode parameter is
+        //! defined in the SPI specification and sets the clock-polarity (CPOL)
+        //! and clock-phase (CPHA) options.
+        //!
+        //! For more information on the SPI bus:
+        //!  https://en.wikipedia.org/wiki/Serial_Peripheral_Interface
         class Spi
             : public satcat5::cfg::SpiGeneric
             , public satcat5::cfg::MultiSerial
         {
         public:
-            // Constructor.
+            //! Link driver to a specific ConfigBus address.
             Spi(ConfigBus* cfg, unsigned devaddr);
 
-            // Initialize SPI controller.
+            //! Configure or reconfigure the SPI controller.
             void configure(
                 unsigned clkref_hz,     // ConfigBus clock frequency
                 unsigned baud_hz,       // SPI baud-rate
                 unsigned mode = 3);     // SPI mode (0/1/2/3)
 
-            // Is the SPI controller currently busy?
+            //! Is the SPI controller currently busy?
             bool busy() override;
 
-            // Queue a bus transaction. (Return true if successful.)
+            //! Queue a bus transaction that reads and writes concurrently.
             bool exchange(
                 u8 devidx, const u8* wrdata, u8 rwbytes,
                 satcat5::cfg::SpiEventListener* callback = 0) override;
+
+            //! Queue a bus transation that reads, then writes.
+            //! Note that read-length or write-length may be zero.
             bool query(
                 u8 devidx, const u8* wrdata, u8 wrbytes, u8 rdbytes,
                 satcat5::cfg::SpiEventListener* callback = 0) override;

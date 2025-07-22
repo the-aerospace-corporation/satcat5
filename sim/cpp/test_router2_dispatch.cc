@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the software-defined IPv4 router
@@ -22,14 +22,13 @@ using satcat5::eth::MACADDR_NONE;
 using satcat5::udp::PORT_CBOR_TLM;
 
 // Test plugin allows or blocks connectivity to specific ports.
-class MaskPlugin : public satcat5::eth::SwitchPlugin {
+class MaskPlugin : public satcat5::eth::PluginCore {
 public:
     SATCAT5_PMASK_TYPE m_prohibit;
     MaskPlugin(satcat5::eth::SwitchCore* sw, unsigned port)
-        : SwitchPlugin(sw), m_prohibit(satcat5::eth::idx2mask(port)) {}
-    bool query(PacketMeta& pkt) override {
-        pkt.dst_mask &= ~m_prohibit;                // Apply designated port-mask.
-        return true;                                // Proceed with normal delivery.
+        : PluginCore(sw), m_prohibit(satcat5::eth::idx2mask(port)) {}
+    void query(satcat5::eth::PluginPacket& pkt) override {
+        pkt.dst_mask &= ~m_prohibit;
     }
 };
 

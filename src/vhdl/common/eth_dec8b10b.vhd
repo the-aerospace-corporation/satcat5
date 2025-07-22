@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2023 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -33,6 +33,7 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
+use     work.common_primitives.all;
 use     work.ptp_types.all;
 
 entity eth_dec8b10b is
@@ -57,10 +58,17 @@ entity eth_dec8b10b is
 
     -- Link configuration state machine.
     cfg_rcvd    : out std_logic;
-    cfg_word    : out std_logic_vector(15 downto 0));
+    cfg_word    : out std_logic_vector(15 downto 0);
+
+    -- System interface
+    reset_p     : in  std_logic);       -- Reset / shutdown
 end eth_dec8b10b;
 
 architecture rtl of eth_dec8b10b is
+
+-- Clock and reset.
+signal out_reset_a  : std_logic := '1';
+signal out_reset_p  : std_logic := '1';
 
 -- Token alignment
 signal align_sreg_d : std_logic_vector(18 downto 0) := (others => '0');
@@ -125,8 +133,8 @@ begin
 
         -- Update alignment-check state machine.
         align_error <= '0';
-        if (in_lock = '0') then
-            -- Reset due to upstream errors or major downstream errors.
+        if (reset_p = '1' or in_lock = '0') then
+            -- System reset / major upstream or downstream errors.
             align_error <= align_lock;
             align_lock  <= '0';
             align_bit   <= 0;
@@ -299,8 +307,8 @@ p_meta : process(io_clk)
 begin
     if rising_edge(io_clk) then
         -- Detect packet start/end/error tokens.
-        if (align_lock = '0') then
-            -- No upstream lock, clear flag.
+        if (reset_p = '1' or align_lock = '0') then
+            -- System reset / no upstream lock, clear flag.
             pkt_active  <= '0';
             pkt_tsof    <= (others => '0');
         elsif (lookup_cken = '1' and lookup_ctrl = '1') then
@@ -311,8 +319,8 @@ begin
         end if;
 
         -- Receive link-configuration word (C1 or C2, see Table 36-3)
-        if (align_lock = '0') then
-            -- No upstream lock, clear configuration.
+        if (reset_p = '1' or align_lock = '0') then
+            -- System reset / no upstream lock, clear configuration.
             cfg_rcvd_i  <= '0';
             cfg_word_i  <= (others => '0');
             cfg_tok     := '0';
@@ -349,7 +357,9 @@ p_filter : process(io_clk)
 begin
     if rising_edge(io_clk) then
         -- Detect errors of various types:
-        if (align_error = '1') then
+        if (reset_p = '1' or in_lock = '0') then
+            err_strobe <= '0';
+        elsif (align_error = '1') then
             err_strobe <= '1';  -- Loss-of-lock is always reported
         elsif (ERR_STRICT and lookup_err = '1') then
             err_strobe <= '1';  -- Strict mode: Report every decode error
@@ -360,7 +370,7 @@ begin
         end if;
 
         -- For filtered mode, keep a running tally of the warning level:
-        if (ERR_STRICT or align_lock = '0') then
+        if (reset_p = '1' or ERR_STRICT or align_lock = '0') then
             danger := (others => '0');  -- Disabled or reset
         elsif (lookup_err = '1') then
             danger := danger + PENALTY; -- Every decode error increments by N
@@ -370,8 +380,17 @@ begin
     end if;
 end process;
 
+-- The align_lock signal is used to drive downstream resets.  Adding a reset
+-- synchronizer ensures resets are high even if the reference clock is stopped.
+out_reset_a <= bool2bit(reset_p = '1' or align_lock = '0' or in_lock = '0');
+u_out_reset : sync_reset
+    port map (
+    in_reset_p  => out_reset_a,
+    out_reset_p => out_reset_p,
+    out_clk     => io_clk);
+
 -- Drive all outputs:
-out_lock    <= align_lock;
+out_lock    <= not out_reset_p;
 out_cken    <= lookup_cken;
 out_dv      <= pkt_active and not lookup_ctrl;
 out_err     <= err_strobe;

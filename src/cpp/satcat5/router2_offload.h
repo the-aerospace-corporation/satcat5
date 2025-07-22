@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Offload port for gateware-accelerated IPv4 routers
@@ -44,9 +44,17 @@ namespace satcat5 {
             void rule_allow(u32 mask);
             //! Clear specific router policy flags.
             void rule_block(u32 mask);
+            //! Enable or disable zero-padding.
+            inline void rule_zpad(bool enable)
+                { m_zero_pad = enable; }
 
             //! Deliver a given packet to the hardware queue.
-            void deliver(const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+            void deliver(const satcat5::eth::PluginPacket& meta);
+
+            //! Get packet-logging register. \see eth_sw_log.h.
+            //! Do not call this method unless LOG_CFGBUS is enabled.
+            inline satcat5::cfg::Register get_log_register() const
+                { return m_pktlog; }
 
             //! Reload router IP address and MAC address.
             //! The router2::Dispatch class calls this after any address change.
@@ -78,7 +86,8 @@ namespace satcat5 {
             // TODO: Provide accessors for some of these hardware registers?
             struct ctrl_reg {
                 u8 txrx_buff[1600];                 // Reg 0-399
-                u32 rx_rsvd[90];                    // Reg 400-489
+                u32 rx_rsvd[89];                    // Reg 400-488
+                volatile u32 pkt_log;               // Reg 489
                 volatile u32 vlan_vid;              // Reg 490
                 volatile u32 vlan_mask;             // Reg 491
                 volatile u32 vlan_rate;             // Reg 492
@@ -107,7 +116,9 @@ namespace satcat5 {
 
             // Connection to the parent object.
             satcat5::router2::Dispatch* const m_router;
+            satcat5::cfg::Register m_pktlog;        // Packet-logging register
             const unsigned m_port_index;            // Index of hardware port #0.
+            bool m_zero_pad;                        // Enable zero-padding?
             SATCAT5_PMASK_TYPE m_port_mask;         // Mask of all associated ports.
             u32 m_policy;                           // Block specific packet types?
         };

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -86,9 +86,11 @@ entity port_serial_auto is
     SPI_MODE    : natural := 3;         -- SPI clock phase & polarity
     UART_BAUD   : positive := 921600;   -- Default UART baud rate
     TIMEOUT_SEC : positive := 15;       -- Activity timeout, in seconds
+    RTS_SYMM    : boolean := false;     -- RTS mode: see port_serial_uart_4wire
     -- Other I/O parameters
     PULLUP_EN   : boolean := true;      -- Enable FPGA pullups on ext_pads?
     FORCE_SHDN  : boolean := false;     -- In shutdown, drive ext_pads to zero?
+    SYNC_MODE   : boolean := PREFER_SPI_SYNC; -- Disable both sync and async process on sclk?
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -357,7 +359,7 @@ spi_sdi      <= ext_din(1);
 uart1_rxd    <= ext_din(2);
 uart2_rxd    <= ext_din(1);
 
-uart0_rtsb <= not enc_valid;
+uart0_rtsb <= not enc_valid when RTS_SYMM else reset_sync;
 
 u_ctsb1 : sync_buffer
     port map(
@@ -374,7 +376,8 @@ u_ctsb2 : sync_buffer
 -- Raw interfaces (one SPI, one Tx UART, two Rx UART)
 u_spi : entity work.io_spi_peripheral
     generic map (
-    IDLE_BYTE   => SLIP_FEND)
+    IDLE_BYTE   => SLIP_FEND,
+    SYNC_MODE   => SYNC_MODE)
     port map (
     spi_csb     => spi_csb,
     spi_sclk    => spi_sclk,
@@ -388,7 +391,8 @@ u_spi : entity work.io_spi_peripheral
     rx_write    => spi_rx_write,
     cfg_mode    => cfg_s_mode,
     cfg_gdly    => cfg_s_gdly,
-    refclk      => refclk);
+    refclk      => refclk,
+    reset_p     => reset_sync);
 
 u_uart0 : entity work.io_uart_tx
     port map (

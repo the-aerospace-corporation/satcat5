@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -24,6 +24,7 @@ package body common_primitives is
     constant PREFER_DPRAM_AWIDTH : positive := 8;
     constant PREFER_DPRAM_ONEBIT : boolean := false;
     constant PREFER_FIFO_SREG    : boolean := false;
+    constant PREFER_SPI_SYNC     : boolean := false;
 
     -- TODO: Add support for Vernier clock generator on this platform.
     function create_vernier_config(

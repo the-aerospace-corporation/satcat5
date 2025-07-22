@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the multi-source / multi-sink packet buffer
@@ -19,6 +19,7 @@ using satcat5::io::Readable;
 using satcat5::io::Writeable;
 using satcat5::test::RandomSource;
 using satcat5::test::write_random_bytes;
+using satcat5::test::write_random_final;
 
 static constexpr bool VERBOSE = false;
 
@@ -210,6 +211,53 @@ TEST_CASE("MultiBuffer") {
         CHECK(rd1.get_read_ready() == 0);
     }
 
+    // Clone the contents of a MultiPacket.
+    SECTION("copy_to") {
+        // Write a test packet into the buffer.
+        CHECK(pkt2->copy_and_finalize(&wr1));
+        satcat5::poll::service_all();
+        // Make a copy of the received packet.
+        satcat5::io::StreamBufferHeap ref;
+        rd1.get_packet()->copy_to(&ref);
+        // Compare the copy to the original.
+        CHECK(satcat5::test::read_equal(&rd1, &ref));
+    }
+
+    // Overwrite the contents of a packet using MultiPacket::Overwriter.
+    SECTION("overwrite1") {
+        // Write a test packet into the buffer.
+        CHECK(pkt2->copy_and_finalize(&wr1));
+        satcat5::poll::service_all();
+        // Overwrite the first N bytes in one bulk copy.
+        MultiPacket::Overwriter uut(rd1.get_packet());
+        CHECK(pkt1->copy_and_finalize(&uut));
+        // Generate an equivalent reference sequence.
+        satcat5::io::StreamBufferHeap ref;
+        pkt1->copy_and_finalize(&ref);  // Overwritten bytes
+        pkt2->read_consume(pkt1->get_read_ready());
+        pkt2->copy_and_finalize(&ref);  // Remaining original bytes
+        // Compare updated packet vs the reference.
+        CHECK(satcat5::test::read_equal(&rd2, &ref));
+    }
+
+    SECTION("overwrite2") {
+        // Write a test packet into the buffer.
+        CHECK(pkt2->copy_and_finalize(&wr1));
+        satcat5::poll::service_all();
+        // Overwrite the first N bytes, one at a time.
+        MultiPacket::Overwriter uut(rd1.get_packet());
+        for (unsigned a = 0 ; a < rand1.len() ; ++a)
+            uut.write_u8(rand1.raw()[a]);
+        CHECK(uut.write_finalize());
+        // Generate an equivalent reference sequence.
+        satcat5::io::StreamBufferHeap ref;
+        pkt1->copy_and_finalize(&ref);  // Overwritten bytes
+        pkt2->read_consume(pkt1->get_read_ready());
+        pkt2->copy_and_finalize(&ref);  // Remaining original bytes
+        // Compare updated packet vs the reference.
+        CHECK(satcat5::test::read_equal(&rd2, &ref));
+    }
+
     // Check the contents of several packets using read_bytes().
     SECTION("read_bytes") {
         // Write a few test packets.
@@ -288,9 +336,33 @@ TEST_CASE("MultiBuffer") {
         CHECK(mbuff.get_free_bytes() == capacity);
     }
 
+    // Test the "write_bypass" method.
+    SECTION("write_bypass") {
+        // Deliver several packets directly to the first read port.
+        // (MultiReader has one active packet plus up to SATCAT5_MBUFF_RXPKT
+        //  queued packets, so we need to write SATCAT5_MBUFF_RXPKT+1 packets
+        //  to completely fill that queue.  Length per packet is irrelevant.)
+        for (unsigned a = 0 ; a <= SATCAT5_MBUFF_RXPKT ; ++a) {
+            write_random_bytes(&wr1, a+1);
+            CHECK(wr1.write_bypass(&rd1));
+        }
+        // Confirm delivery failure if we exceed the maximum.
+        write_random_bytes(&wr1, 123);
+        CHECK_FALSE(wr1.write_bypass(&rd1));
+        // Confirm each packet is delivered to the designated port.
+        for (unsigned a = 0 ; a <= SATCAT5_MBUFF_RXPKT ; ++a) {
+            CHECK(rd1.get_read_ready() == a+1);
+            rd1.read_finalize();
+        }
+        // Both read ports should now be empty.
+        CHECK(rd1.get_read_ready() == 0);
+        CHECK(rd2.get_read_ready() == 0);
+    }
+
     // Test that writes exceeding the maximum packet length are rejected.
     SECTION("write_maxlen") {
         // Write data in short sections until it overflows.
+        // (Maximum length per packet is SATCAT5_MBUFF_PKTLEN.)
         // As soon as the overflow occurs, it should free the working buffer.
         unsigned write_total = 0;
         while (SATCAT5_MBUFF_PKTLEN < write_total) {
@@ -303,6 +375,31 @@ TEST_CASE("MultiBuffer") {
         }
         // Finalizing an overflow packet should fail.
         CHECK_FALSE(wr1.write_finalize());
+    }
+
+    // Test that writes exceeding the maximum packet count are freed.
+    SECTION("write_maxpkt") {
+        // Write the maximum count, plus one more.
+        // (MultiReader has one active packet plus up to SATCAT5_MBUFF_RXPKT
+        //  queued packets, so we need to write SATCAT5_MBUFF_RXPKT+1 packets
+        //  to completely fill that queue.  Length per packet is irrelevant.)
+        for (unsigned a = 0 ; a <= SATCAT5_MBUFF_RXPKT ; ++a) {
+            CHECK(write_random_final(&wr1, a+1));
+        }
+        // Write one more packet, which is expected to overflow.
+        // (i.e., Queued in the MultiBuffer, but rejected by each port.)
+        CHECK(write_random_final(&wr1, 123));
+        // Read the packets that should have been accepted.
+        satcat5::poll::service_all();
+        for (unsigned a = 0 ; a <= SATCAT5_MBUFF_RXPKT ; ++a) {
+            CHECK(rd1.get_read_ready() == a+1);
+            rd1.read_finalize();
+            CHECK(rd2.get_read_ready() == a+1);
+            rd2.read_finalize();
+        }
+        // The extra packet should have been dropped.
+        CHECK(rd1.get_read_ready() == 0);
+        CHECK(rd2.get_read_ready() == 0);
     }
 
     // Timeout waiting for a partial write.
@@ -395,4 +492,7 @@ TEST_CASE("MultiReaderRandom") {
             REQUIRE(rd.consistency());
         }
     }
+
+    // After each test, confirm buffer is still in a self-consistent state.
+    CHECK(mbuff.consistency());
 }

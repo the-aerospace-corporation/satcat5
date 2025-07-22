@@ -1,14 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Message headers for the Network Time Protocol (NTP / IETF RFC-5905)
-//
-// This file defines an object representing an NTP message header,
-// as defined in RFC-5905 Section 7.3 and Figure 8.  It includes all
-// basic information, but not the extension fields or message digest.
-// Support for MD5 authentication may be added in future versions.
-//
 
 #pragma once
 
@@ -17,24 +11,30 @@
 
 namespace satcat5 {
     namespace ntp {
+        //! Message headers for the Network Time Protocol (NTP / IETF RFC-5905).
+        //!
+        //! This struct represents the NTP message header, as defined in
+        //! RFC-5905 Section 7.3 and Figure 8.  It includes all basic
+        //! information, but not the extension fields or message digest.
+        //! Support for MD5 authentication may be added in future versions.
         struct Header {
             // Message header fields (Section 7.3)
-            u8  lvm;                        // Combined LI + VN + Mode
-            u8  stratum;                    // Hops to grandmaster (1-15)
-            s8  poll;                       // Interval = 2^N seconds
-            s8  precision;                  // Precision = 2^N seconds
-            u32 rootdelay;                  // Round trip delay to grandmaster
-            u32 rootdisp;                   // Total dispersion to grandmaster
-            u32 refid;                      // Server-ID or KoD code
-            u64 ref;                        // Time of last sync to parent
-            u64 org;                        // T1 (Client transmit time)
-            u64 rec;                        // T2 (Server receive time)
-            u64 xmt;                        // T3 (Server transmit time)
+            u8  lvm;                        //!< Combined LI + VN + Mode
+            u8  stratum;                    //!< Hops to grandmaster (1-15)
+            s8  poll;                       //!< Interval = 2^N seconds
+            s8  precision;                  //!< Precision = 2^N seconds
+            u32 rootdelay;                  //!< Round trip delay to grandmaster
+            u32 rootdisp;                   //!< Total dispersion to grandmaster
+            u32 refid;                      //!< Server-ID or KoD code
+            u64 ref;                        //!< Time of last sync to parent
+            u64 org;                        //!< T1 (Client transmit time)
+            u64 rec;                        //!< T2 (Server receive time)
+            u64 xmt;                        //!< T3 (Server transmit time)
 
-            // The basic header is exactly 12 words = 48 bytes long.
+            //! The basic header is exactly 12 words = 48 bytes long.
             static constexpr unsigned HEADER_LEN = 34;
 
-            // Leap second indictor (LI) for last minute of current day.
+            //! Leap second indictor (LI) for last minute of current day.
             static constexpr u8
                 LI_MASK     = (3 << 6),     // LI = Bits 7:6
                 LEAP_NONE   = (0 << 6),     // No leap second expected
@@ -42,13 +42,13 @@ namespace satcat5 {
                 LEAP_59     = (2 << 6),     // Remove leap-second (Skip 23:59:59)
                 LEAP_UNK    = (3 << 6);     // Unknown / clock unsynchronized
 
-            // Version number is always 4.
+            //! Version number is always 4.
             static constexpr u8
                 VN_MASK     = (7 << 3),     // VN = Bits 5:3
                 VERSION_3   = (3 << 3),     // Version 3 (RFC-958, published 1992)
                 VERSION_4   = (4 << 3);     // Version 4 (RFC-5905, published 2010)
 
-            // Mode number indicates client or server role.
+            //! Mode number indicates client or server role.
             static constexpr u8
                 MODE_MASK   = 0x7,          // Mode = Bits 2:0
                 MODE_RSVD   = 0,            // Reserved
@@ -60,7 +60,7 @@ namespace satcat5 {
                 MODE_CTRL   = 6,            // NTP control message
                 MODE_PRIVAT = 7;            // Reserved for private use
 
-            // Reserved RefIDs, aka "kiss codes" (Section 7.4)
+            //! Reserved RefIDs, aka "kiss codes" (Section 7.4)
             static constexpr u32
                 KISS_ACST   = 0x41435354u,
                 KISS_AUTH   = 0x41555448u,
@@ -77,7 +77,7 @@ namespace satcat5 {
                 KISS_RMOT   = 0x524D4F54u,
                 KISS_STEP   = 0x53544550u;
 
-            // Named constants for polling intervals and dispersion.
+            //! Named constants for polling intervals and dispersion.
             static constexpr s8
                 TIME_1HOUR      = 12,
                 TIME_32MIN      = 11,
@@ -123,14 +123,18 @@ namespace satcat5 {
                 TIME_2NSEC      = -29,
                 TIME_1NSEC      = -30;
 
-            // Accessors for splitting LI, VN, and Mode fields.
+            //! Accessors for splitting LI, VN, and Mode fields.
+            //!@{
             inline u8 li() const    { return lvm & LI_MASK; }
             inline u8 vn() const    { return lvm & VN_MASK; }
             inline u8 mode() const  { return lvm & MODE_MASK; }
+            //!@}
 
-            // I/O functions
+            //! Human-readable formatting of the header contents.
             void log_to(satcat5::log::LogBuffer& wr) const;
+            //! Read this header from a data source.
             bool read_from(satcat5::io::Readable* rd);
+            //! Write this header to a data sink.
             void write_to(satcat5::io::Writeable* wr) const;
         };
     }

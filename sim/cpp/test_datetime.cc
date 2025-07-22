@@ -1,5 +1,5 @@
 // //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for real-time clock conversion functions
@@ -33,23 +33,22 @@ static RtcTime make_rtc(
     unsigned hr,        // Hour (0-23)
     unsigned mn,        // Minutes (0-59)
     unsigned sc,        // Seconds (0-59)
-    unsigned ss = 0)    // Sub-seconds (0-99)
+    unsigned ss = 0,    // Sub-seconds (0-99)
+    unsigned ct = 20)   // Century (20 = 20xx)
 {
     return RtcTime {
-        (u8)dw, (u8)yr, (u8)mo, (u8)dt,
+        (u8)dw, (u8)ct, (u8)yr, (u8)mo, (u8)dt,
         (u8)hr, (u8)mn, (u8)sc, (u8)ss};
 }
 
-static RtcTime make_rtc(const u8* bytes)
-{
+static RtcTime make_rtc(const u8* bytes) {
     satcat5::io::ArrayRead buff(bytes, 8);
     RtcTime rtc;
     CHECK(buff.read_obj(rtc));
     return rtc;
 }
 
-static bool attempt_read(const u8* bytes)
-{
+static bool attempt_read(const u8* bytes) {
     satcat5::io::ArrayRead buff(bytes, 8);
     RtcTime rtc;
     bool ok = buff.read_obj(rtc);
@@ -101,8 +100,7 @@ static void check_equivalent(
     CHECK(ptp_uut == ptp_ref);
 }
 
-u64 gps_seconds(const GpsTime& gps)
-{
+u64 gps_seconds(const GpsTime& gps) {
     return u64(7 * 86400 * gps.wkn + gps.tow / 1000);
 }
 
@@ -118,14 +116,19 @@ TEST_CASE("DateTime-Clock") {
     uut.set(1234);
 
     // Wait 50 msec and check the resulting datetime.
+    constexpr unsigned TOL = 100;
     timer.sim_wait(50);
     CHECK(uut.now() >= 1283);
     CHECK(uut.now() <= 1285);
+    CHECK(uut.uptime_usec() >= (50000 - TOL));
+    CHECK(uut.uptime_usec() <= (50000 + TOL));
 
     // Wait another 50 msec and check the resulting datetime.
     timer.sim_wait(50);
     CHECK(uut.now() >= 1333);
     CHECK(uut.now() <= 1335);
+    CHECK(uut.uptime_usec() >= (100000 - TOL));
+    CHECK(uut.uptime_usec() <= (100000 + TOL));
 }
 
 TEST_CASE("DateTime-Conversions") {
@@ -169,6 +172,13 @@ TEST_CASE("DateTime-Conversions") {
         GpsTime gps = {1891, 432000000};
         check_equivalent(rtc, gps);
         CHECK(rtc.days_since_epoch() == 5942);
+        CHECK(rtc.msec_since_midnight() == 0);
+    }
+    SECTION("Convert 2100-01-01T00:00:00 (Friday)") {
+        RtcTime rtc = make_rtc(5, 0, 1, 1, 0, 0, 0, 0, 21);
+        GpsTime gps = {6260, 432000000};
+        check_equivalent(rtc, gps);
+        CHECK(rtc.days_since_epoch() == 36525);
         CHECK(rtc.msec_since_midnight() == 0);
     }
 
@@ -265,10 +275,10 @@ TEST_CASE("DateTime-Conversions") {
         CHECK_FALSE(attempt_read(str5));
     }
 
-    // Out-of-range date conversions (RTC only covers year 2000 - 2099)
+    // Out-of-range date conversions (RTC only covers year 2000 - 9999)
     SECTION("RtcString-Range") {
-        s64 too_early = from_gps(GpsTime {1042, 518399000});  // 1999 Dec 31
-        s64 too_late  = from_gps(GpsTime {6260, 432000000});  // 2100 Jan 01
+        s64 too_early = from_gps(GpsTime {1042, 518399000});    // 1999 Dec 31
+        s64 too_late  = from_gps(GpsTime {418462, 518418000});  // 10000 Jan 01
         CHECK(to_rtc(too_early) == RTC_ERROR);
         CHECK(to_rtc(too_late) == RTC_ERROR);
     }
@@ -310,6 +320,12 @@ TEST_CASE("DateTime-Conversions") {
         buff.write_finalize();
         CHECK(buff.read_u32() == 0x00000097);   // Include MIL flag
         CHECK(buff.read_u32() == 0x11112003);
+    }
+    SECTION("RTC-Log") {
+        log.disable();
+        RtcTime ref = make_rtc(3, 25, 6, 20, 16, 12, 34, 56);
+        satcat5::log::Log(satcat5::log::DEBUG).write_obj(ref);
+        CHECK(log.contains("2025-06-20T16:12:34.56Z"));
     }
 }
 

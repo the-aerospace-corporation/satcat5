@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //!\file
@@ -26,10 +26,16 @@ namespace satcat5 {
         //! \see satcat5::ptp::PpsOutput
         class PpsInput : protected satcat5::poll::Timer {
         public:
+            //! Detect rising edges, falling edges, or both.
+            //! In RISING or FALLING mode, the maximum supported offset is
+            //! +/- 500 msec.  In BOTH mode, the maximum is +/- 250 msec.
+            enum class Edge {FALLING=0, RISING=1, BOTH=2};
+
             //! Link this driver to the hardware control register.
             //! \param reg Sets ConfigBus control register.
-            //! \param rising Sets the default input polarity.
-            explicit PpsInput(satcat5::cfg::Register reg, bool rising=true);
+            //! \param mode Sets the default input polarity.
+            explicit PpsInput(satcat5::cfg::Register reg,
+                satcat5::cfg::PpsInput::Edge mode = Edge::RISING);
 
             //! Set recipient for phase-offset information.
             inline void set_callback(satcat5::ptp::TrackingController* cb)
@@ -41,12 +47,11 @@ namespace satcat5 {
 
             //! Set phase offset for calculating clock discipline.
             //! Units are subnanoseconds, \see satcat5::ptp::Time.
-            //! The maximum supported offset is +/- 500 msec.
             //! Positive values indicate the PPS input lags the GPS epoch.
             inline void set_offset(s64 offset)  { m_offset = offset; }
 
             //! Clear FIFO and set the active edge (rising or falling).
-            void reset(bool rising=true);
+            void reset(satcat5::cfg::PpsInput::Edge mode = Edge::RISING);
 
         protected:
             // Internal methods.
@@ -57,6 +62,7 @@ namespace satcat5 {
             satcat5::cfg::Register m_reg;
             satcat5::ptp::TrackingController* m_callback;
             s64 m_offset;
+            s64 m_period;
         };
 
         //! Driver for the PPS output block (ptp_pps_out.vhd).
@@ -71,10 +77,19 @@ namespace satcat5 {
             //! \param rising Sets the default output polarity.
             explicit PpsOutput(satcat5::cfg::Register reg, bool rising=true);
 
+            //! Query the phase-offset for this output.
+            //! Units are subnanoseconds, \see satcat5::ptp::Time.
+            inline s64 get_offset() const
+                { return m_offset; }
+
             //! Adjust the phase-offset for this output.
             //! Units are subnanoseconds, \see satcat5::ptp::Time.
             //! Positive offsets increase delay of the synthesized output.
             void set_offset(s64 offset);
+
+            //! Query the polarity of this output. \see set_polarity.
+            inline bool get_polarity() const
+                { return m_rising; }
 
             //! Set the rising- or falling-edge polarity of this output.
             void set_polarity(bool rising);

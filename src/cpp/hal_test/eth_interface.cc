@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -35,6 +35,7 @@ EthernetInterface::EthernetInterface(Writeable* pcap)
     , m_time_tx1(TIME_ZERO)
     , m_tx_count(0)
     , m_rx_count(0)
+    , m_zero_pad(60)
     , m_support_one_step(true)
     , m_loss_threshold(0)
 {
@@ -112,15 +113,18 @@ bool EthernetInterface::write_finalize()
         // In either case, clear the pre-timestamp for next time around.
         m_time_tx1 = (m_time_tx0 == TIME_ZERO) ? ptp_time_now() : m_time_tx0;
         m_time_tx0 = TIME_ZERO;
+        // Pad to minimum Ethernet frame length = 60 bytes by default.
+        unsigned wrlen = written_len();
+        while (wrlen < m_zero_pad) m_txbuff[wrlen++] = 0;
         // Copy data and/or timestamps to each enabled destination.
         // TODO: Is it possible to gracefully handle desync errors?
         bool desync = false;
         if (m_txpcap) {
-            m_txpcap->write_bytes(written_len(), m_txbuff);
+            m_txpcap->write_bytes(wrlen, m_txbuff);
             if (!m_txpcap->write_finalize()) desync = true;
         }
         if (m_txbuff_data) {
-            m_txbuff_data->write_bytes(written_len(), m_txbuff);
+            m_txbuff_data->write_bytes(wrlen, m_txbuff);
             if (!m_txbuff_data->write_finalize()) desync = true;
         }
         if (m_txbuff_time) {

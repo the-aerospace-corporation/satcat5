@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -16,10 +16,22 @@
 
 #pragma once
 
-#include <satcat5/eth_switch.h>
+#include <satcat5/eth_plugin.h>
 
 namespace satcat5 {
     namespace eth {
+        //! Port plugin for egress formatting of Virtual-LAN tags.
+        //! \see eth_sw_vlan.h
+        class SwitchVlanEgress : public satcat5::eth::PluginPort {
+        public:
+            //! Constructor links to a specified port.
+            explicit SwitchVlanEgress(satcat5::eth::SwitchPort* port)
+                : PluginPort(port) {}
+
+            // Implement the required PluginPort API.
+            void egress(PluginPacket& pkt) override;
+        };
+
         //! Switch plugin for Virtual-LAN connectivity and rate-limiting rules.
         //!
         //! \see eth_sw_vlan.h
@@ -27,12 +39,12 @@ namespace satcat5 {
         //! Configuration methods mimic the eth::SwitchConfig API.
         //! (See also: SwitchVlan template, defined below.)
         class SwitchVlanInner
-            : public satcat5::eth::SwitchPlugin
+            : public satcat5::eth::PluginCore
             , public satcat5::poll::Timer
         {
         public:
-            // Implement the required SwitchPlugin API.
-            bool query(PacketMeta& pkt) override;
+            // Implement the required PluginCore API.
+            void query(PluginPacket& pkt) override;
 
             //! Revert to default VLAN settings for all ports and VIDs.
             //! The "lockdown" setting controls whether rules default to

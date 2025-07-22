@@ -1,14 +1,16 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <cstring>
+#include <satcat5/coap_connection.h>
 #include <satcat5/coap_writer.h>
 #include <satcat5/io_writeable.h>
 #include <satcat5/utils.h>
 
 using satcat5::coap::Code;
+using satcat5::coap::Connection;
 using satcat5::coap::Writer;
 using satcat5::util::write_be_u64;
 
@@ -21,6 +23,9 @@ static unsigned varint_len(u64 x) {
 }
 
 bool Writer::write_header(u8 type, Code code, u16 msg_id, u64 token, u8 tkl) {
+    // Sanity check before writing.
+    if (!m_dst) return false;
+
     // Automatically determine the required token length?
     if (token && !tkl) tkl = varint_len(token);
 
@@ -35,7 +40,14 @@ bool Writer::write_header(u8 type, Code code, u16 msg_id, u64 token, u8 tkl) {
     return true; // Success!
 }
 
+bool Writer::write_header(Code code, Connection* request) {
+    return write_header(
+        request->response_type(), code,
+        request->msg_id(), request->token(), request->tkl());
+}
+
 bool Writer::write_option(u16 id, unsigned len, const void* data) {
+    if (!m_dst) return false;
     insert_max_age(id); // Auto-Insert if necessary
     bool ok = write_optid(id, len);
     if (ok) m_dst->write_bytes(len, data);
@@ -47,6 +59,7 @@ bool Writer::write_option(u16 id, const char* str) {
 }
 
 bool Writer::write_option(u16 id, u64 value) {
+    if (!m_dst) return false;
     insert_max_age(id); // Auto-Insert if necessary
     unsigned len = varint_len(value);
     bool ok = write_optid(id, len);
@@ -54,13 +67,36 @@ bool Writer::write_option(u16 id, u64 value) {
     return ok;
 }
 
+bool Writer::write_uri(u16 id, const char* str) {
+    if (!m_dst) return false;
+    unsigned len = 0;
+    // As we find each delimiter, write the preceding segment.
+    while (1) {
+        if (str[len] == 0 || str[len] == '/') {
+            // Write non-empty segment. (Ignore leading or double slashes.)
+            bool ok = (!len) || write_option(id, len, str);
+            // Halt on error or null-terminator.
+            if (ok && str[len]) {str += len + 1; len = 0;}
+            else return ok;
+        } else {
+            // Add normal characters to the current segment.
+            ++len;
+        }
+    }
+}
+
 satcat5::io::Writeable* Writer::write_data() {
-    insert_max_age(); // Insert Max-Age even if no options added
-    m_dst->write_u8(PAYLOAD_MARKER);
+    if (m_dst) {
+        insert_max_age(); // Insert Max-Age even if no options added
+        m_dst->write_u8(PAYLOAD_MARKER);
+    }
     return m_dst;
 }
 
 bool Writer::write_optid(u16 id, unsigned len) {
+    // Sanity check before writing.
+    if (!m_dst) return false;
+
     // Options must be written in ascending order.
     if (id < m_last_opt) return false;
     u16 delta = id - m_last_opt;

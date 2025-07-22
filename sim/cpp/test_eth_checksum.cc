@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for Ethernet checksum functions
@@ -135,6 +135,7 @@ TEST_CASE("eth-checksum-rx") {
         // Expect matching references without FCS.
         CHECK(read(&rx, sizeof(REF1A), REF1A));
         CHECK(read(&rx, sizeof(REF2A), REF2A));
+        CHECK(uut.frame_count() == 2);      // Expect two valid frames
     }
 
     SECTION("bad-fcs") {
@@ -143,12 +144,14 @@ TEST_CASE("eth-checksum-rx") {
         // Write Ref2 but skip the last byte.
         CHECK_FALSE(write(&uut, sizeof(REF2B) - 1, REF2B));
         CHECK(rx.get_read_ready() == 0);    // Should remain empty
+        CHECK(uut.error_count() == 2);      // Expect two frame errors
     }
 
     SECTION("runt-pkt") {
         // Write only the first three bytes of Ref1.
         CHECK_FALSE(write(&uut, 3, REF1B)); // Should fail (runt packet)
         CHECK(rx.get_read_ready() == 0);    // Should remain empty
+        CHECK(uut.error_count() == 1);      // Expect one frame error
     }
 
     SECTION("abort-then-write") {
@@ -159,7 +162,12 @@ TEST_CASE("eth-checksum-rx") {
         CHECK(uut.write_finalize());
         // Expect only the second packet, minus FCS.
         CHECK(read(&rx, sizeof(REF2A), REF2A));
+        CHECK(uut.error_count() == 1);      // Expect one frame error
+        CHECK(uut.frame_count() == 1);      // Expect one valid frame
     }
+
+    CHECK(uut.frame_count() == 0);
+    CHECK(uut.error_count() == 0);
 }
 
 TEST_CASE("eth-slip-codec") {

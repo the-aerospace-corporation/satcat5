@@ -4,6 +4,22 @@
 
 This log will be updated for each new release, but may not reflect the latest development branch(es).
 
+## v2.7.0 (2025 August)
+
+* Added support for CoAP reverse-proxy.
+* Added support for HDLC (physical layer only).
+* Added support for RTTTL (legacy ringtone format).
+* Completed Doxygen rollout to 100% of C++ files.
+* Fixed edge-cases in CCSDS-AOS and CCSDS-SPP decoders.
+* Fixed standards-compliance of UART flow-control signals.
+* Improved support for complex CBOR data structures.
+* Improved support for FreeRTOS and the SAM V71 microcontroller.
+* New diagnostics for switches and routers, including reason why a given frame was dropped.
+* New multi-mode UART toggles between raw, CCSDS-AOS, CCSDS-SPP, and SLIP mode.
+* Software packet capture now supports multiple interfaces.
+* Software router now supports basic network address translation (NAT).
+* Split the ALLOW_RUNT parameter into separate parameters ALLOW_RUNT_IN, ALLOW_RUNT_OUT.
+
 ## v2.6.0 (2025 January)
 
 * Added client/server for the Constrained Applications Protocol (CoAP)
@@ -129,7 +145,7 @@ This log will be updated for each new release, but may not reflect the latest de
 
 # Copyright Notice
 
-Copyright 2019-2024 The Aerospace Corporation
+Copyright 2019-2025 The Aerospace Corporation
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 

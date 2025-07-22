@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -17,13 +17,17 @@
 --
 -- The ConfigBus interface uses a single register:
 --  * Write: Set the PPS polarity
---      * Bit 31-01: Reserved (write zeros)
---      * Bit 00: Select active edge, '1' for rising or '0' for falling.
+--      * Bit 31-02: Reserved (write zeros)
+--      * Bit 01-00: Select active edge(s):
+--          00 = Falling
+--          01 = Rising
+--          1x = Both
 --      * Writing to this register clears the FIFO.
 --  * Read: Read timestamp information, 24 bits at a time.
 --      * Bit 31: Last word flag (each timestamp contains four words)
 --      * Bit 30: Data valid flag (0 = ignore this read)
---      * Bit 29-24: Reserved
+--      * Bit 29-25: Reserved
+--      * Bit 24: Polarity flag (1 = rising edge, 0 = falling edge)
 --      * Bit 23-00: Concatenated PTP timestamp:
 --          1st word = Seconds (47 downto 24)
 --          2nd word = Seconds (23 downto 00)
@@ -82,18 +86,23 @@ subtype par_t is std_logic_vector(PAR_COUNT-1 downto 0);
 signal par_early    : par_t;
 signal par_late     : par_t;
 signal par_prev     : std_logic := '0';
-signal edge_vec     : par_t := (others => '0');
+signal par_edge     : par_t;
+signal diff_pol     : std_logic := '0';
+signal diff_vec     : par_t := (others => '0');
 signal edge_det     : std_logic := '0';
 signal edge_idx     : integer range 0 to PAR_COUNT-1 := 0;
+signal edge_pol     : std_logic := '0';
 
 -- Timestamp calculation.
 signal adj_sec      : tstamp_t := (others => '0');
 signal adj_subns    : tstamp_t := (others => '0');
+signal adj_pol      : std_logic := '0';
 signal adj_write    : std_logic := '0';
 
 -- FIFO state machine.
 signal fifo_count   : integer range 0 to 4 := 0;
 signal fifo_sreg    : std_logic_vector(95 downto 0) := (others => '0');
+signal fifo_meta    : std_logic_vector(4 downto 0) := (others => '0');
 signal fifo_last    : std_logic;
 signal fifo_valid   : std_logic;
 signal fifo_ready   : std_logic;
@@ -103,12 +112,14 @@ constant CPU_RSTVAL : cfgbus_word := (0 => bool2bit(EDGE_RISING), others => '0')
 signal cpu_clear    : std_logic;
 signal cpu_config   : cfgbus_word;
 signal cpu_rising   : par_t;
+signal cpu_both     : par_t;
 
 begin
 
 -- Convert input to LSB-first and compare adjacent bits.
 par_late  <= flip_vector(par_pps_in) when MSB_FIRST else par_pps_in;
 par_early <= par_late(PAR_COUNT-2 downto 0) & par_prev;
+par_edge  <= (cpu_both) or (cpu_rising xnor par_late);
 
 -- Edge detection state machine:
 p_edge : process(par_clk)
@@ -116,13 +127,16 @@ begin
     if rising_edge(par_clk) then
         -- Pipeline stage 2: Priority encoder
         -- If there's a conflict, take the earliest match.
-        edge_det <= or_reduce(edge_vec) and not cpu_clear;
-        edge_idx <= priority_encoder(edge_vec);
+        edge_det <= or_reduce(diff_vec) and not cpu_clear;
+        edge_idx <= priority_encoder(diff_vec);
+        edge_pol <= diff_pol;
 
         -- Pipeline stage 1: Edge detection
-        -- Compare adjacent bits to find rising or falling edges.
-        edge_vec <= (par_late xor par_early)    -- Edge transition?
-                and (par_late xnor cpu_rising); -- Matching polarity?
+        -- Compare adjacent bits to find rising or falling edges, then
+        -- mask for requested edge type(s), i.e., rising/falling/both.
+        diff_vec <= (par_late xor par_early) and par_edge;
+        -- Note previous state to distinguish rising vs. falling edge.
+        diff_pol <= not par_prev;   -- '1' for rising, '0' for falling
 
         -- Buffer the last bit of each input word.
         par_prev <= par_late(PAR_COUNT-1);
@@ -157,6 +171,8 @@ begin
                 fifo_sreg <= std_logic_vector(adj_sec)
                            & std_logic_vector(adj_subns);
             end if;
+            -- Other metadata, such as rising/falling polarity.
+            fifo_meta <= (0 => adj_pol, others => '0');
         elsif (fifo_count > 0 and fifo_ready = '1') then
             -- Update shift-register until transfer is completed.
             fifo_sreg <= fifo_sreg(71 downto 0) & x"000000";
@@ -167,6 +183,7 @@ begin
         if (edge_det = '1' and par_rtc_ok = '1') then
             adj_sec     <= unsigned(par_rtc.sec);
             adj_subns   <= (par_rtc.nsec & par_rtc.subns) + IDX2OFFSET(edge_idx);
+            adj_pol     <= edge_pol;
             adj_write   <= not cpu_clear;
         else
             adj_write   <= '0';
@@ -179,6 +196,7 @@ fifo_last   <= bool2bit(fifo_count = 1);
 
 -- ConfigBus interface.
 cpu_rising <= (others => cpu_config(0));
+cpu_both   <= (others => cpu_config(1));
 
 u_cfg_rd : entity work.cfgbus_fifo
     generic map(
@@ -186,6 +204,7 @@ u_cfg_rd : entity work.cfgbus_fifo
     REGADDR     => REG_ADDR,
     RD_DEPTH    => 4,   -- 2^4 = 16 words = 4 timestamps
     RD_DWIDTH   => 24,
+    RD_MWIDTH   => 5,
     RD_FLAGS    => true)
     port map(
     cfg_cmd     => cfg_cmd,
@@ -193,6 +212,7 @@ u_cfg_rd : entity work.cfgbus_fifo
     cfg_clear   => cpu_clear,
     rd_clk      => par_clk,
     rd_data     => fifo_sreg(95 downto 72),
+    rd_meta     => fifo_meta,
     rd_last     => fifo_last,
     rd_valid    => fifo_valid,
     rd_ready    => fifo_ready);
@@ -202,7 +222,7 @@ u_cfg_wr : cfgbus_register_sync
     DEVADDR     => DEV_ADDR,
     REGADDR     => REG_ADDR,
     WR_ATOMIC   => true,
-    WR_MASK     => x"00000001",
+    WR_MASK     => x"00000003",
     RSTVAL      => CPU_RSTVAL)
     port map(
     cfg_cmd     => cfg_cmd,

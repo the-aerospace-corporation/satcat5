@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -45,7 +45,7 @@ void Route::log_to(satcat5::log::LogBuffer& wr) const {
     }
     if (flags) {
         wr.wr_str(", f");
-        wr.wr_hex(flags, 2);
+        wr.wr_h32(flags, 2);
     }
 }
 
@@ -59,11 +59,11 @@ Table::Table()
 void Table::log_to(satcat5::log::LogBuffer& wr) const {
     wr.wr_str("Static routes");
     if (route_rddef().gateway != ip::ADDR_NONE) {
-        wr.wr_str("\n\tD: ");
+        wr.wr_str("\r\n  D: ");
         route_rddef().log_to(wr);
     }
     for (unsigned a = 0 ; a < m_wridx_static ; ++a) {
-        wr.wr_str("\n\t");
+        wr.wr_str("\r\n  ");
         wr.wr_d32(a);
         wr.wr_str(": ");
         route_read(a).log_to(wr);

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the Ethernet switch's address-cache plugin
@@ -15,11 +15,11 @@ using satcat5::eth::MACADDR_NONE;
 using satcat5::eth::VTAG_NONE;
 using satcat5::io::MultiPacket;
 
-// Helper object for calling SwitchPlugin::query(...).
+// Helper object for calling PluginCore::query(...).
 // (This test only requires a handful of fields...)
 struct TestPacket {
     satcat5::io::MultiPacket pkt;
-    satcat5::eth::SwitchPlugin::PacketMeta meta;
+    satcat5::eth::PluginPacket meta;
 
     TestPacket(MacAddr dst_mac, MacAddr src_mac, unsigned src_idx)
         : pkt{}
@@ -72,16 +72,16 @@ TEST_CASE("eth_sw_cache") {
         TestPacket pkt2(TEST_MAC[2], TEST_MAC[3], TEST_PORT[3]);
         TestPacket pkt3(TEST_MAC[3], TEST_MAC[4], TEST_PORT[4]);
         TestPacket pkt4(TEST_MAC[4], TEST_MAC[3], TEST_PORT[3]);
-        CHECK(uut.query(pkt0.meta));
-        CHECK(uut.query(pkt1.meta));
-        CHECK(uut.query(pkt2.meta));
-        CHECK(uut.query(pkt3.meta));
+        uut.query(pkt0.meta);
+        uut.query(pkt1.meta);
+        uut.query(pkt2.meta);
+        uut.query(pkt3.meta);
         CHECK(pkt0.meta.dst_mask == 1u << TEST_PORT[0]);
         CHECK(pkt1.meta.dst_mask == 1u << TEST_PORT[1]);
         CHECK(pkt2.meta.dst_mask == 1u << TEST_PORT[2]);
         CHECK(pkt3.meta.dst_mask == 1u << TEST_PORT[3]);
         // Last query above contains a new address, confirm it was learned.
-        CHECK(uut.query(pkt4.meta));
+        uut.query(pkt4.meta);
         CHECK(pkt4.meta.dst_mask == 1u << TEST_PORT[4]);
     }
 
@@ -89,8 +89,8 @@ TEST_CASE("eth_sw_cache") {
     SECTION("query_rsvd") {
         TestPacket pkt_bcast(MACADDR_BROADCAST, TEST_MAC[0], TEST_PORT[0]);
         TestPacket pkt_none(MACADDR_NONE, TEST_MAC[0], TEST_PORT[0]);
-        CHECK(uut.query(pkt_bcast.meta));
-        CHECK(uut.query(pkt_none.meta));
+        uut.query(pkt_bcast.meta);
+        uut.query(pkt_none.meta);
         CHECK(pkt_bcast.meta.dst_mask == UINT32_MAX);
         CHECK(pkt_none.meta.dst_mask == 0);
     }
@@ -98,7 +98,7 @@ TEST_CASE("eth_sw_cache") {
     // Test query logic for a cache miss (default = broadcast).
     SECTION("query_miss") {
         TestPacket pkt_miss(TEST_MAC[4], TEST_MAC[0], TEST_PORT[0]);
-        CHECK(uut.query(pkt_miss.meta));
+        uut.query(pkt_miss.meta);
         CHECK(pkt_miss.meta.dst_mask == UINT32_MAX);
     }
 
@@ -136,16 +136,16 @@ TEST_CASE("eth_sw_cache") {
         TestPacket pkt3(TEST_MAC[1], TEST_MAC[0], TEST_PORT[0]);
         TestPacket pkt4(TEST_MAC[0], TEST_MAC[1], TEST_PORT[1]);
         TestPacket pkt5(TEST_MAC[1], TEST_MAC[0], TEST_PORT[0]);
-        CHECK(uut.query(pkt0.meta));
-        CHECK(uut.query(pkt1.meta));
+        uut.query(pkt0.meta);
+        uut.query(pkt1.meta);
         uut.mactbl_clear();                     // Clear and send two packets
         uut.mactbl_learn(true);                 // (With learning enabled)
-        CHECK(uut.query(pkt2.meta));
-        CHECK(uut.query(pkt3.meta));
+        uut.query(pkt2.meta);
+        uut.query(pkt3.meta);
         uut.mactbl_clear();                     // Clear and send two packets
         uut.mactbl_learn(false);                // (With learning disabled)
-        CHECK(uut.query(pkt4.meta));
-        CHECK(uut.query(pkt5.meta));
+        uut.query(pkt4.meta);
+        uut.query(pkt5.meta);
         CHECK(pkt0.meta.dst_mask == 1u << TEST_PORT[0]);   // Pre-loaded addresses
         CHECK(pkt1.meta.dst_mask == 1u << TEST_PORT[1]);   // Pre-loaded addresses
         CHECK(pkt2.meta.dst_mask == UINT32_MAX);           // After clear (miss)

@@ -1,11 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Interface wrapper for the Xilinx "XUartLite" block
-//
-// This block provides a SatCat5 API for the Xilinx XUartLite functions.
-//
 
 #pragma once
 
@@ -27,13 +24,17 @@
 
 namespace satcat5 {
     namespace ublaze {
+        //! Interface wrapper for the Xilinx "XUartLite" block.
+        //! This class provides a buffered Readable/Writeable interface for
+        //! the Xilinx "XUartLite" IP-core, using the Xilinx-provided API
+        //! to operate the device.
         class UartLite
             : public    satcat5::io::BufferedIO
             , protected satcat5::irq::Handler
             , protected satcat5::poll::Timer
         {
         public:
-            // Initialize this UART and link to a specific hardware instance.
+            //! Initialize this UART and link to a specific hardware instance.
             UartLite(const char* lbl, int irq, u16 dev_id);
 
         private:

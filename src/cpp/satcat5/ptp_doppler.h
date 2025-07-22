@@ -1,20 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Doppler Precision Time Protocol (Doppler-PTP)
-//
-// Ordinary PTP assumes all nodes are stationary, the path length is
-// fixed, and delays in each direction are symmetric.  Violating these
-// assumptions results in biased or inaccurate time transfer.  This
-// file defines experimental extensions that relax these assumptions,
-// allowing motion to be measured and mitigated for better accuracy.
-//
-// The largest change is the creation of a new TLV for Doppler metadata.
-// This file implements the software that initializes and read such tags
-// at each endpoint.  Transparent clocks that support Doppler-TLV require
-// gateware or hardware that increments the tag's contents at each hop.
-//
 
 #pragma once
 
@@ -24,27 +12,43 @@
 
 namespace satcat5 {
     namespace ptp {
-        // TlvHandler for the Doppler-TLV tags.
+        //! TlvHandler for experimental Doppler-TLV tags.
+        //!
+        //! Ordinary PTP assumes all nodes are stationary, the path length is
+        //! fixed, and delays in each direction are symmetric.  Violating these
+        //! assumptions results in biased or inaccurate time transfer.  This
+        //! class defines experimental extensions that relax these assumptions,
+        //! allowing motion to be measured and mitigated for better accuracy.
+        //!
+        //! The largest change is the creation of a new TLV for Doppler metadata.
+        //! This file implements the software that initializes and read such tags
+        //! at each endpoint.  Transparent clocks that support Doppler-TLV require
+        //! gateware or hardware that increments the tag's contents at each hop.
+        //! TlvHandler for the Doppler-TLV tags.
         class DopplerTlv : public satcat5::ptp::TlvHandler {
         public:
-            // Link this instance to a specific PTP client.
+            //! Link this instance to a specific PTP client.
             explicit DopplerTlv(satcat5::ptp::Client* client);
 
-            // Add to the chain of processing filters.
-            // Filters are applied in the order added.
+            //! Add to the chain of processing filters.
+            //! Filters are applied in the order added.
             inline void add_filter(satcat5::ptp::Filter* filter)
                 { m_predict.add_filter(filter); }
 
-            // Enable or disable timestamp compensation.
-            // (The default setting is given by SATCAT5_DOPPLER_TCOMP.)
+            //! Is timestamp compensation currently enabled?
             inline bool get_tcomp_en() const
                 { return m_tcomp; }
+
+            //! Enable or disable timestamp compensation.
+            //! (The default setting is given by SATCAT5_DOPPLER_TCOMP.)
             inline void set_tcomp_en(bool enable)
                 { m_tcomp = enable; }
 
-            // Measured velocity (subns/sec) or acceleration (subns/sec^2).
+            //! Measured velocity (subns/sec).
             inline s64 get_velocity() const
                 { return m_predict.predict(0); }
+
+            //! Measured acceleration (subns/sec^2).
             inline s64 get_acceleration() const
                 { return m_predict.predict(1000000) - m_predict.predict(0); }
 
@@ -65,8 +69,8 @@ namespace satcat5 {
             bool m_tcomp;
         };
 
-        // Streamlined variant of ptp::DopplerTlv, with a built-in
-        // filter chain that is adequate for most PTP applications.
+        //! Streamlined variant of ptp::DopplerTlv, with a built-in
+        //! filter chain that is adequate for most PTP applications.
         class DopplerSimple : public satcat5::ptp::DopplerTlv {
         public:
             explicit DopplerSimple(satcat5::ptp::Client* client);

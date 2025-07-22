@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Unit tests for the CCSDS Space Packet Protocol
@@ -55,21 +55,37 @@ TEST_CASE("ccsds_spp") {
     SECTION("packetizer") {
         log.suppress("packetizer timeout");
         // Test packets:       Header                  Len         Data
-        constexpr u8 PKT1[] = {0x00, 0x7B, 0x49, 0x08, 0x00, 0x01, 0xCA, 0xFE};
-        constexpr u8 PKT2[] = {0x00, 0x7B, 0x49, 0x09, 0x00, 0x05, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-        constexpr u8 PKT3[] = {0x00, 0x7B, 0x49};   // Truncated mid-header
+        constexpr u8 PKT1[] = {0x00, 0x7B, 0xC9, 0x08, 0x00, 0x01, 0xCA, 0xFE};
+        constexpr u8 PKT2[] = {0x00, 0x7B, 0xC9, 0x09, 0x00, 0x05, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+        constexpr u8 PKT3[] = {0x00, 0x7B, 0xC9};   // Truncated mid-header
         // Add unsegmented test data to the input buffer.
-        satcat5::io::PacketBufferHeap src;
+        satcat5::io::StreamBufferHeap src;
         src.write_bytes(sizeof(PKT1), PKT1);
         src.write_bytes(sizeof(PKT2), PKT2);
         src.write_bytes(sizeof(PKT3), PKT3);
         REQUIRE(src.write_finalize());
-        // Create unit test and parse the input data.
+        // Create unit under test and parse the input data.
         satcat5::ccsds_spp::PacketizerStatic<> uut(&src);
         uut.set_timeout(250);   // Timeout = 250 msec
         timer.sim_wait(500);    // Run simulation.
         CHECK(log.contains("packetizer timeout"));
         // Confirm the contents of the output buffer.
+        CHECK(satcat5::test::read(&uut, sizeof(PKT1), PKT1));
+        CHECK(satcat5::test::read(&uut, sizeof(PKT2), PKT2));
+        CHECK(uut.get_read_ready() == 0);
+        // Confirm that accessors aren't returning null-pointers.
+        CHECK(uut.bypass());
+        CHECK(uut.packet());
+        CHECK(uut.listen());
+        // Try again, using explicit "reset" rather than timeout..
+        src.write_bytes(sizeof(PKT3), PKT3);
+        REQUIRE(src.write_finalize());
+        timer.sim_wait(1);
+        uut.reset();            // Discard partial packet.
+        src.write_bytes(sizeof(PKT1), PKT1);
+        src.write_bytes(sizeof(PKT2), PKT2);
+        REQUIRE(src.write_finalize());
+        timer.sim_wait(500);    // Run simulation.
         CHECK(satcat5::test::read(&uut, sizeof(PKT1), PKT1));
         CHECK(satcat5::test::read(&uut, sizeof(PKT2), PKT2));
         CHECK(uut.get_read_ready() == 0);
@@ -79,10 +95,10 @@ TEST_CASE("ccsds_spp") {
     SECTION("dispatch") {
         log.suppress("TestSppLog");
         // Test packets:       Header                  Len         Data
-        constexpr u8 PKT1[] = {0x10, 0x7B, 0x49, 0x08, 0x00, 0x01, 0xCA, 0xFE};
-        constexpr u8 PKT2[] = {0x10, 0x7B, 0x49, 0x09, 0x00, 0x05, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-        constexpr u8 PKT3[] = {0x10, 0x7C, 0x41, 0x23, 0x00, 0x03, 0xAB, 0xAD, 0xD0, 0x0D};
-        constexpr u8 ECHO[] = {0x00, 0x7C, 0x41, 0x23, 0x00, 0x03, 0xAB, 0xAD, 0xD0, 0x0D};
+        constexpr u8 PKT1[] = {0x10, 0x7B, 0xC9, 0x08, 0x00, 0x01, 0xCA, 0xFE};
+        constexpr u8 PKT2[] = {0x10, 0x7B, 0xC9, 0x09, 0x00, 0x05, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+        constexpr u8 PKT3[] = {0x10, 0x7C, 0xC1, 0x23, 0x00, 0x03, 0xAB, 0xAD, 0xD0, 0x0D};
+        constexpr u8 ECHO[] = {0x00, 0x7C, 0xC1, 0x23, 0x00, 0x03, 0xAB, 0xAD, 0xD0, 0x0D};
         // Create the simulated network stack.
         satcat5::io::PacketBufferHeap rx, tx;
         satcat5::ccsds_spp::Dispatch spp(&rx, &pcap);
@@ -108,10 +124,10 @@ TEST_CASE("ccsds_spp") {
     SECTION("address") {
         satcat5::io::Writeable* wr = 0;
         // Test packets:       Header                  Len         Data
-        constexpr u8 PKT1[] = {0x10, 0xEA, 0x40, 0x00, 0x00, 0x04, 't', 'e', 's', 't', '1'};
-        constexpr u8 PKT2[] = {0x10, 0xEA, 0x40, 0x01, 0x00, 0x04, 't', 'e', 's', 't', '2'};
-        constexpr u8 PKT3[] = {0x10, 0x7C, 0x41, 0x23, 0x00, 0x02, 'c', 'm', 'd'};
-        constexpr u8 PKT4[] = {0x00, 0x7C, 0x41, 0x23, 0x00, 0x04, 'r', 'e', 'p', 'l', 'y'};
+        constexpr u8 PKT1[] = {0x10, 0xEA, 0xC0, 0x00, 0x00, 0x04, 't', 'e', 's', 't', '1'};
+        constexpr u8 PKT2[] = {0x10, 0xEA, 0xC0, 0x01, 0x00, 0x04, 't', 'e', 's', 't', '2'};
+        constexpr u8 PKT3[] = {0x10, 0x7C, 0xC1, 0x23, 0x00, 0x02, 'c', 'm', 'd'};
+        constexpr u8 PKT4[] = {0x00, 0x7C, 0xC1, 0x23, 0x00, 0x04, 'r', 'e', 'p', 'l', 'y'};
         // Create the simulated network stack.
         satcat5::io::PacketBufferHeap rx, tx;
         satcat5::ccsds_spp::Dispatch spp(&rx, &pcap);
@@ -145,5 +161,26 @@ TEST_CASE("ccsds_spp") {
         CHECK(satcat5::test::write(wr, "reply"));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&tx, sizeof(PKT4), PKT4));
+    }
+
+    // Back-to-back test of ReadStream and ToStream.
+    SECTION("stream") {
+        // Create the simulated network stack.
+        satcat5::io::PacketBufferHeap tx, wire, rx;
+        satcat5::ccsds_spp::Dispatch spp_tx(nullptr, &pcap);
+        pcap.set_passthrough(&wire);  // Capture outgoing packets
+        satcat5::ccsds_spp::Dispatch spp_rx(&wire, nullptr);
+        // Instantiate the transmitter and receiver.
+        satcat5::ccsds_spp::BytesToSpp uut_tx(&tx, &spp_tx, 1234, 16);
+        satcat5::ccsds_spp::SppToBytes uut_rx(&spp_rx, &rx, 1234);
+        CHECK(uut_tx.strm());
+        // Transmit some data.
+        CHECK(satcat5::test::write(&tx, "Short message."));
+        CHECK(satcat5::test::write(&tx, "Longer message split into multiple packets."));
+        timer.sim_wait(100);
+        CHECK(satcat5::test::read(&rx, "Short message."));
+        CHECK(satcat5::test::read(&rx, "Longer message s"));
+        CHECK(satcat5::test::read(&rx, "plit into multip"));
+        CHECK(satcat5::test::read(&rx, "le packets."));
     }
 }

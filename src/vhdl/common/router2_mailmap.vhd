@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -155,14 +155,14 @@ signal tx_cpy_data  : cfgbus_word;
 signal tx_cpy_addr  : ram_addr := (others => '0');
 signal tx_cpy_write : std_logic := '0';
 signal tx_cpy_nlast : integer range 0 to 4 := 0;
-signal tx_cpy_last  : std_logic := '0';
+signal tx_cpy_end   : frm_result_t := FRM_RESULT_NULL;
 signal tx_cpy_rem   : len_word := (others => '0');
 signal tx_cpy_busy  : std_logic := '0';
 
 signal tx_vtg_data  : cfgbus_word;
 signal tx_vtg_write : std_logic;
 signal tx_vtg_nlast : integer range 0 to 4;
-signal tx_vtg_last  : std_logic;
+signal tx_vtg_end   : frm_result_t;
 signal tx_vtg_vtag  : vlan_hdr_t := (others => '0');
 
 -- ConfigBus interface.
@@ -342,10 +342,10 @@ begin
         tx_cpy_write <= tx_cpy_busy;
         if (tx_cpy_rem > 4) then
             tx_cpy_nlast <= 0;
-            tx_cpy_last  <= '0';
+            tx_cpy_end   <= FRM_RESULT_NULL;
         else
             tx_cpy_nlast <= to_integer(tx_cpy_rem);
-            tx_cpy_last  <= '1';
+            tx_cpy_end   <= FRM_RESULT_COMMIT;
         end if;
     end if;
 end process;
@@ -363,16 +363,12 @@ gen_vtx1 : if VLAN_ENABLE generate
         in_data     => tx_cpy_data,
         in_write    => tx_cpy_write,
         in_nlast    => tx_cpy_nlast,
-        in_commit   => tx_cpy_last,
-        in_revert   => '0',
-        in_error    => '0',
+        in_result   => tx_cpy_end,
         out_data    => tx_vtg_data,
         out_vtag    => tx_vtg_vtag,
         out_write   => tx_vtg_write,
         out_nlast   => tx_vtg_nlast,
-        out_commit  => tx_vtg_last,
-        out_revert  => open,
-        out_error   => open,
+        out_result  => tx_vtg_end,
         clk         => cfg_cmd.clk,
         reset_p     => cfg_cmd.reset_p);
 end generate;
@@ -381,7 +377,7 @@ gen_vtx0 : if not VLAN_ENABLE generate
     tx_vtg_data  <= tx_cpy_data;
     tx_vtg_write <= tx_cpy_write;
     tx_vtg_nlast <= tx_cpy_nlast;
-    tx_vtg_last  <= tx_cpy_last;
+    tx_vtg_end   <= tx_cpy_end;
     tx_vtg_vtag  <= (others => '0');
 end generate;
 
@@ -399,8 +395,8 @@ u_tx_fifo : entity work.fifo_packet
     in_data         => tx_vtg_data,
     in_nlast        => tx_vtg_nlast,
     in_pkt_meta     => tx_buf_meta,
-    in_last_commit  => tx_vtg_last,
-    in_last_revert  => '0',
+    in_last_commit  => tx_vtg_end.commit,
+    in_last_revert  => tx_vtg_end.revert,
     in_write        => tx_vtg_write,
     in_reset        => tx_reset,
     out_clk         => tx_clk,

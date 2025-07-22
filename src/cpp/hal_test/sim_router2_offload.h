@@ -1,8 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Simulate the router::Offload port's memory-mapped ConfigBus interface.
+// Simulate the router2::Offload port's ConfigBus interface.
 
 #pragma once
 
@@ -11,19 +11,21 @@
 
 namespace satcat5 {
     namespace test {
+        //! Simulate the router2::Offload port's ConfigBus interface.
         class MockOffload
             : public satcat5::test::MockConfigBusMmap
             , satcat5::poll::Always {
         public:
+            //! Create the mock interface and set ConfigBus device address.
             explicit MockOffload(unsigned devaddr);
             ~MockOffload();
 
-            // Link the next hardware port to a destination and source.
+            //! Link the next hardware port to a destination and source.
             void add_port(
                 satcat5::io::Writeable* dst,
                 satcat5::io::Readable* src);
 
-            // Update the reported port-status flags.
+            //! Update the reported port-status flags.
             void port_shdn(u32 mask_shdn);
 
         private:

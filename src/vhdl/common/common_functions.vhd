@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020-2024 The Aerospace Corporation.
+-- Copyright 2020-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -76,6 +76,8 @@ package COMMON_FUNCTIONS is
     -- Return the minimum of the two inputs
     function int_min(a,b: integer) return integer;
     function real_min(a,b: real) return real;
+    -- Return the greatest common divisor of two inputs
+    function int_gcd(a,b: positive) return positive;
     -- Return the least common multiple of two inputs
     function int_lcm(a,b: positive) return positive;
 
@@ -140,6 +142,8 @@ package COMMON_FUNCTIONS is
         b : natural;            -- Base address (often zero)
         w : positive)           -- Width of output
         return unsigned;
+
+    function boolean_to_string(bool: boolean) return string;
 end package;
 
 package body COMMON_FUNCTIONS is
@@ -378,6 +382,21 @@ package body COMMON_FUNCTIONS is
         end if;
     end;
 
+    function int_gcd(a,b: positive) return positive is
+        variable aa : positive := int_max(a, b);
+        variable bb : positive := int_min(a, b);
+        variable mm : natural := aa mod bb;
+    begin
+        -- Euclidean algorithm: gcd(a, b) => gcd(b, a mod b).
+        -- (This function is not intended to be synthesizable.)
+        while (mm > 0) loop
+            aa := bb;
+            bb := mm;
+            mm := aa mod bb;
+        end loop;
+        return bb;
+    end function;
+
     function int_lcm(a,b: positive) return positive is
         -- Set a reasonable initial guess.
         -- (Immediate solution if A is a multiple of B or vice-versa.)
@@ -556,14 +575,16 @@ package body COMMON_FUNCTIONS is
     end;
 
     function slv_to_string(a: std_logic_vector) return string is
-        variable result : string(1 to a'length) := (others => NUL);
-        variable wr_idx : positive := 1;
+        variable result  : string(1 to a'length) := (others => NUL);
+        variable wr_idx  : positive := 1;
+        variable partial : string(1 to a'length) := (others => NUL);
     begin
 -- translate_off
         for n in a'range loop
             -- Value of std_logic'image(x) is three characters: '1', '0', etc.
             -- Select the interesting character, i.e., index 2 of [1, 2, 3].
-            result(wr_idx) := std_logic'image(a(n))(2);
+            partial := std_logic'image(a(n));
+            result(wr_idx) := partial(2);
             wr_idx := wr_idx + 1;   -- Input vector may be "to" or "downto"
         end loop;
 -- translate_on
@@ -624,5 +645,14 @@ package body COMMON_FUNCTIONS is
         variable xu : unsigned(w-1 downto 0) := xb(w+1 downto 2);
     begin
         return xu;
+    end function;
+
+    function boolean_to_string(bool: boolean) return string is
+    begin
+        if (bool) then
+            return "true";
+        else
+            return "false";
+        end if;
     end function;
 end package body;

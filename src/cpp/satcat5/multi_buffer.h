@@ -1,10 +1,10 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Multi-source / multi-sink packet buffer
-//
 //! \file
+//! Multi-source, multi-sink packet buffer.
+//!
 //! \details
 //! The MultiBuffer class implements a multithreaded buffer for packet
 //! data, with multiple source and sink ports that operate concurrently.
@@ -85,7 +85,7 @@ namespace satcat5 {
         //! The `m_user` field is for additional packet metadata; it is not
         //! used by MultiBuffer, MultiReader, or MultiWriter, but may be
         //! used safely by children of those classes as they see fit.
-        //! \copydoc multi_buffer.h
+        //! \see multi_buffer.h, io::MultiReader, io::MultiWriter.
         struct MultiPacket final {
         private:
             //! Linked list pointer used by MultiBuffer::m_rcvd_packets.
@@ -104,30 +104,35 @@ namespace satcat5 {
             // Metadata for user extensions (see comment above).
             u32 m_user[SATCAT5_MBUFF_USER];     //!< Packet metadata
 
+            //! Has this packet been deleted?
+            inline bool is_deleted() const
+                { return m_length && m_chunks.is_empty(); }
+
             //! Peek at the first chunk, up to SATCAT5_MBUFF_CHUNK bytes.
             satcat5::io::ArrayRead peek() const;
 
             //! Copy the packet contents to the specified destination.
-            bool copy_to(satcat5::io::Writeable* wr);
+            bool copy_to(satcat5::io::Writeable* wr) const;
 
             //! Barebones class for reading data from a MultiPacket. This is the
             //! parent for the "MultiReader", which adds queueing, lifecycle,
             //! and memory-management. Multiple concurrent "Reader" objects may
             //! point to each packet.
-            //! \copydoc multi_buffer.h
+            //! \see multi_buffer.h, io::MultiPacket, io::MultiReader.
             class Reader : public satcat5::io::Readable {
             public:
                 //! Create a new Reader object.
-                explicit Reader(satcat5::io::MultiPacket* pkt = 0);
+                explicit Reader(const satcat5::io::MultiPacket* pkt = 0);
 
                 //! Get a pointer to the current packet, if active.
                 inline satcat5::io::MultiPacket* get_packet() const
-                    { return m_read_pkt; }
+                    { return (MultiPacket*)m_read_pkt; }
 
                 //! Reset read state for the designated packet.
-                void read_reset(satcat5::io::MultiPacket* pkt);
+                void read_reset(const satcat5::io::MultiPacket* pkt);
 
                 // Implement the io::Readable API.
+                // (Inherits Doxygen comments from io_writeable.h.)
                 unsigned get_read_ready() const override;
                 bool read_bytes(unsigned nbytes, void* dst) override;
                 bool read_consume(unsigned nbytes) override;
@@ -142,15 +147,48 @@ namespace satcat5 {
                 //! @{
                 unsigned m_read_pos;
                 unsigned m_read_rem;
-                satcat5::io::MultiPacket* m_read_pkt;
+                const satcat5::io::MultiPacket* m_read_pkt;
                 satcat5::io::MultiChunk* m_read_chunk;
+                //! @}
+            };
+
+            //! Barebones class for overwriting contents of a MultiPacket.
+            //! This class performs no memory allocation; it merely replaces
+            //! the in-memory contents of an existing MultiPacket.
+            //! \see multi_buffer.h, io::MultiPacket, io::MultiWriter.
+            class Overwriter : public satcat5::io::Writeable {
+            public:
+                //! Create a new Writer object.
+                explicit Overwriter(satcat5::io::MultiPacket* pkt);
+
+                //! Return total bytes written by this object.
+                inline unsigned write_count() const {return m_write_tot;}
+
+                // Implement the io::Writeable API.
+                // (Inherits Doxygen comments from io_writeable.h.)
+                unsigned get_write_space() const override;
+                void write_bytes(unsigned nbytes, const void* src) override;
+
+            protected:
+                // Implement the io::Writeable API.
+                void write_next(u8 data) override;
+
+            private:
+                //! Current write state.
+                //! @{
+                unsigned m_write_pos;
+                unsigned m_write_rem;
+                unsigned m_write_tot;
+                satcat5::io::MultiChunk* m_write_chunk;
                 //! @}
             };
         };
 
         //! A multi-source, multi-sink packet buffer.
-        //! \copydoc multi_buffer.h
-        class MultiBuffer : satcat5::poll::OnDemand {
+        //! \see multi_buffer.h, io::MultiReader, io::MultiWriter.
+        //! This shared pool of memory is divided into small chunks, then
+        //! temporarily allocated to individual MultiPacket objects.
+        class MultiBuffer : protected satcat5::poll::OnDemand {
         public:
             //! Configure this object and link to the working buffer.
             MultiBuffer(u8* buff, unsigned nbytes);
@@ -165,10 +203,6 @@ namespace satcat5 {
             //! Current value of the packet counter.
             inline u16 get_pcount()
                 { return m_pcount; }
-
-            //! Optional debug interface gets a carbon copy of each packet.
-            void set_debug(satcat5::io::Writeable* debug)
-                { m_debug = debug; }
 
             //! Queue an incoming packet for deferred processing.
             //! Note: This method SHOULD only be called from MultiWriter or its
@@ -203,7 +237,6 @@ namespace satcat5 {
             friend satcat5::io::MultiWriter;
             unsigned m_free_bytes;
             u16 m_pcount;
-            satcat5::io::Writeable* m_debug;
             satcat5::util::List<satcat5::io::MultiChunk> m_free_chunks;
             satcat5::util::List<satcat5::io::MultiReader> m_read_ports;
             satcat5::util::List<satcat5::io::MultiPacket> m_rcvd_packets;
@@ -211,7 +244,7 @@ namespace satcat5 {
         };
 
         //! A port for reading from a MultiBuffer object.
-        //! \copydoc multi_buffer.h
+        //! \see multi_buffer.h, io::MultiPacket, io::MultiWriter.
         class MultiReader
             : public satcat5::io::MultiPacket::Reader
             , public satcat5::poll::Timer
@@ -230,6 +263,13 @@ namespace satcat5 {
             //! children. This method is public only for to allow flexibility in
             //! mutual "friend" inheritance rules.
             virtual bool accept(satcat5::io::MultiPacket* packet);
+
+            //! Discard all queued packets.
+            void flush();
+
+            //! Is this port currently enabled? \see set_port_enable.
+            bool get_port_enable() const
+                { return m_port_enable; }
 
             //! Enable or disable this port.
             //! Disabled ports reject all incoming packets.
@@ -285,7 +325,7 @@ namespace satcat5 {
         };
 
         //! A variant of MultiReader with a simple first-in, first-out queue.
-        //! \copydoc multi_buffer.h
+        //! \see multi_buffer.h, io::MultiReader, io::MultiWriter.
         class MultiReaderSimple : public satcat5::io::MultiReader {
         public:
             //! Create this port and link it to the source buffer.
@@ -314,7 +354,7 @@ namespace satcat5 {
         };
 
         //! A variant of MultiReader that follows priority ordering.
-        //! \copydoc multi_buffer.h
+        //! \see multi_buffer.h, io::MultiReader, io::MultiWriter.
         class MultiReaderPriority : public satcat5::io::MultiReader {
         public:
             //! Create this port and link it to the source buffer.
@@ -351,7 +391,7 @@ namespace satcat5 {
         };
 
         //! A port for writing to a MultiBuffer object.
-        //! \copydoc multi_buffer.h
+        //! \see multi_buffer.h, io::MultiPacket, io::MultiReader.
         class MultiWriter
             : public satcat5::io::Writeable
             , public satcat5::poll::Timer
@@ -367,6 +407,9 @@ namespace satcat5 {
                 { m_write_maxlen = max_bytes; }
 
             //! Set priority of the current packet.
+            //! Call this method after writing data, but before calling
+            //! `write_finalize` or `write_bypass`.  Priority affects readout
+            //! order for recipient(s) using the `MultiReaderPriority` class.
             void set_priority(u16 priority);
 
             //! Update the watchdog timeout. The watchdog is reset each time a
@@ -379,23 +422,37 @@ namespace satcat5 {
             inline unsigned get_write_partial() const {return m_write_len;}
 
             // Implement the io::Writeable API.
-            // TODO: Also implement the "ZCW" API from PacketBuffer?
+            // (Inherits Doxygen comments from io_writeable.h.)
             unsigned get_write_space() const override;
             void write_bytes(unsigned nbytes, const void* src) override;
             void write_abort() override;
             bool write_finalize() override;
+
+            //! Deliver data directly to the designated MultiReader.
+            //!
+            //! The `write_finalize` method delivers the current packet to
+            //! the MultiBuffer, which then decides which port(s) should
+            //! receive that packet. \see MultiBuffer::deliver
+            //!
+            //! This alternative method delivers the packet directly to the
+            //! designated MultiReader, bypassing MultiBuffer delivery logic.
+            bool write_bypass(satcat5::io::MultiReader* dst);
 
         protected:
             //! Timeouts help prevent resource-hogging.
             void timer_event() override;
 
             // Implement the io::Writeable API.
+            // (Inherits Doxygen comments from io_writeable.h.)
             void write_next(u8 data) override;
             void write_overflow() override;
 
             //! Open a new packet or allocate additional buffers.
             //! \returns The number of bytes that can be written.
             unsigned write_prep();
+
+            //! Prepare packet for delivery and reset internal state.
+            satcat5::io::MultiPacket* prepare_pkt();
 
             //! Pointer to the destination buffer.
             satcat5::io::MultiBuffer* const m_dst;

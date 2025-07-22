@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -36,23 +36,23 @@ void ControllerFreeRTOS::irq_handler(Handler* obj) {
     Controller::interrupt_static(obj);
 }
 
-void ControllerFreeRTOS::irq_pause() {
+__attribute__((weak)) void ControllerFreeRTOS::irq_pause() {
     taskDISABLE_INTERRUPTS();
 }
 
-void ControllerFreeRTOS::irq_resume() {
+__attribute__((weak)) void ControllerFreeRTOS::irq_resume() {
     taskENABLE_INTERRUPTS();
 }
 
-void ControllerFreeRTOS::irq_register(Handler* obj) {
+__attribute__((weak)) void ControllerFreeRTOS::irq_register(Handler* obj) {
     // Nothing
 }
 
-void ControllerFreeRTOS::irq_unregister(Handler* obj) {
+__attribute__((weak)) void ControllerFreeRTOS::irq_unregister(Handler* obj) {
     // Nothing
 }
 
-void ControllerFreeRTOS::irq_acknowledge(Handler* obj) {
+__attribute__((weak)) void ControllerFreeRTOS::irq_acknowledge(Handler* obj) {
     // Nothing
 }
 

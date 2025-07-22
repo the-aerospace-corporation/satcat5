@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -93,10 +93,10 @@ constant FCS_ADJUST : boolean := SUPPORT_PTP or SUPPORT_VLAN or not INPUT_HAS_FC
 -- but VLAN tag-removal may result in frames that need to be re-padded.
 function get_min_pad return natural is
 begin
-    if SUPPORT_VLAN and not ALLOW_RUNT then
-        return 64;  -- Padding required in some edge-cases
+    if ALLOW_RUNT or INPUT_HAS_FCS then
+        return 0;   -- Padding is never required.
     else
-        return 0;   -- Padding is never required
+        return 64;  -- Padding required in some edge-cases
     end if;
 end function;
 

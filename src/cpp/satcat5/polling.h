@@ -91,8 +91,8 @@ namespace satcat5 {
         //!
         //! \link polling.h SatCat5 event-loop concepts. \endlink
         //!
-        //! Use this type sparingly, to avoid excessive CPU loading.
-        //! To receive Always callbacks, derive a child class and override "poll_always()".
+        //! Use this type sparingly, to avoid excessive CPU loading. To receive
+        //! Always callbacks, derive a child class and override "poll_always()".
         class Always {
         public:
             //! Child class MUST override this method.
@@ -103,10 +103,16 @@ namespace satcat5 {
             static unsigned count_always();
 
         protected:
-            //! Register this pollable object.
+            //! Registers this pollable object unless `auto_register = false`.
             //! (Only children should create or destroy the base class.)
-            Always();
+            explicit Always(bool auto_register=true);
             ~Always() SATCAT5_OPTIONAL_DTOR;
+
+            //! Register this pollable object, called by the constructor.
+            void poll_register();
+
+            //! Unregister this pollable object, called by the destructor.
+            void poll_unregister();
 
         private:
             friend satcat5::poll::OnDemandHelper;

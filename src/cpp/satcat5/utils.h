@@ -1,11 +1,13 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Miscellaneous mathematical utility functions
-//
-// Trivial functions are defined inline for performance optimization.
-// All others are defined in "utils.cc".
+//!\file
+//! Miscellaneous mathematical utility functions
+//!
+//!\details
+//! Trivial functions are defined inline for performance optimization.
+//! All others are defined in "utils.cc".
 
 #pragma once
 
@@ -14,7 +16,8 @@
 
 namespace satcat5 {
     namespace util {
-        // Set or clear bit masks.
+        //! Set or clear bit masks.
+        //!@{
         inline void set_mask_u8(volatile u8& val, u8 mask)  {val |= mask;}
         inline void clr_mask_u8(volatile u8& val, u8 mask)  {val &= ~mask;}
         inline void set_mask_u8(u8& val, u8 mask)           {val |= mask;}
@@ -27,38 +30,50 @@ namespace satcat5 {
         inline void clr_mask(T& val, T mask)                {val &= ~mask;}
         template<typename T>
         inline void set_mask(T& val, T mask)                {val |= mask;}
+        //!@}
 
+        //! Call `set_mask` or `clr_mask` depending on the third argument.
         template<typename T>
         inline void set_mask_if(T& val, T mask, bool b) {
             if (b) set_mask<T>(val, mask);
             else   clr_mask<T>(val, mask);
         }
 
-        // Return a bit-mask where the N LSBs are set.
+        //! Return a bit-mask where the N LSBs are set.
         template <typename T> inline constexpr T mask_lower(unsigned n) {
             return ((n >= 8*sizeof(T)) ? 0 : (T(1) << n)) - 1;
         }
 
-        // Basic implementation of an std::optional equivalent compatible with
-        // C++11. ONLY for use by basic types with trivial default constructors
-        // and destructors.
-        // https://www.club.cc.cmu.edu/%7Eajo/disseminate/2017-02-15-Optional-From-Scratch.pdf
+        //! An optional field that may be filled or empty.
+        //! Basic implementation of an std::optional equivalent compatible with
+        //! C++11. ONLY for use by basic types with trivial default constructors
+        //! and destructors.
+        //! https://www.club.cc.cmu.edu/%7Eajo/disseminate/2017-02-15-Optional-From-Scratch.pdf
         template <typename T>
         struct optional {
+            //! Create an empty value.
             optional() : val_(), has_val_(false) {}
+            //! Create a filled value.
             optional(const T& t) : val_(t), has_val_(true) {} // NOLINT
+            //! Reset to the empty state.
             inline void reset() { has_val_ = false; }
+            //! Assign a filled value.
             inline optional& operator=(const T& t)
                 { val_ = t; has_val_ = true; return *this; }
+            //! Fetch the inner value.
             inline T value() const { return val_; }
+            //! Fetch the inner value if present, or the specified default.
             inline T value_or(const T& t) const { return has_val_ ? val_ : t; }
+            //! Is this optional field present?
             inline bool has_value() const { return has_val_; }
+            //! Is this optional field present?
             inline explicit operator bool() const { return has_val_; }
         private:
             T val_; bool has_val_;
         };
 
-        // Min and max functions
+        //! Min and max functions
+        //!@{
         inline constexpr u8 min_u8(u8 a, u8 b)
             {return (a < b) ? a : b;}
         inline constexpr u16 min_u16(u16 a, u16 b)
@@ -88,16 +103,20 @@ namespace satcat5 {
             {return (a > b) ? a : b;}
         inline constexpr unsigned max_unsigned(unsigned a, unsigned b)
             {return (a > b) ? a : b;}
+        //!@}
 
+        //! Three-way max function.
         u32 max_u32(u32 a, u32 b, u32 c);
 
-        // For an input x, the "clamp" function limits the output range to +/- y.
-        // i.e., if abs(x) <= y then clamp(x) => x, else clamp(x) => sign(x)*y
+        //! Template "clamp" function.
+        //! For an input x, the "clamp" function limits the output range to +/- y.
+        //! i.e., if abs(x) <= y then clamp(x) => x, else clamp(x) => sign(x)*y
         template <typename T> inline constexpr T clamp(T x, T y) {
             return (x < -y) ? -y : (x > y ? y : x);
         }
 
-        // Absolute value
+        //! Absolute value
+        //!@{
         inline constexpr u8 abs_s8(s8 a)
             {return (u8)((a < 0) ? -a : +a);}
         inline constexpr u16 abs_s16(s16 a)
@@ -106,13 +125,15 @@ namespace satcat5 {
             {return (u32)((a < 0) ? -a : +a);}
         inline constexpr u64 abs_s64(s64 a)
             {return (u64)((a < 0) ? -a : +a);}
+        //!@}
 
-        // Sign function (-x/0/+x -> -1/0/+1)
+        //! Sign function (-x/0/+x -> -1/0/+1)
         template <typename T> inline constexpr T sign(T x) {
             return T((x < 0) ? -1 : (x > 0 ? 1 : 0));
         }
 
-        // Square an input (and double output width)
+        //! Square an input (and double output width)
+        //!@{
         inline u32 square_u16(u16 x) {
             u32 xx = x;
             return (xx * xx);
@@ -121,9 +142,12 @@ namespace satcat5 {
             u32 xx = (x < 0) ? -x : +x;
             return (xx * xx);
         }
+        //!@}
 
-        // Modulo addition: If A and B in range [0..M), return (A+B) % M
-        // (Note: Assumes M <= UINT_MAX/2 for respective word size.)
+        //! Modulo addition function.
+        //! Modulo addition: If A and B in range [0..M), return (A+B) % M
+        //! (Note: Assumes M <= UINT_MAX/2 for respective word size.)
+        //!@{
         inline constexpr u16 modulo_add_u16(u16 sum, u16 m) {
             return (sum >= m) ? (sum - m) : sum;
         }
@@ -136,73 +160,82 @@ namespace satcat5 {
         inline constexpr unsigned modulo_add_uns(unsigned sum, unsigned m) {
             return (sum >= m) ? (sum - m) : sum;
         }
+        //!@}
 
-        // Portability wrapper for platforms with signed division and modulo:
-        //  * Modulo always returns the positive equivalent:
-        //      modulo(-7, 4) = +1
-        //      modulo(-6, 4) = +2
-        //      modulo(-5, 4) = +3
-        //      modulo(-4, 4) =  0
-        //  * Divide always rounds toward -infinity:
-        //      divide(-7, 4) = -2
-        //      divide(-6, 4) = -2
-        //      divide(-5, 4) = -2
-        //      divide(-4, 4) = -1
-        // https://stackoverflow.com/questions/10023440/signed-division-in-c
+        //! Portability wrapper for platforms with signed division and modulo:
+        //!  * Modulo always returns the positive equivalent:
+        //!      modulo(-7, 4) = +1
+        //!      modulo(-6, 4) = +2
+        //!      modulo(-5, 4) = +3
+        //!      modulo(-4, 4) =  0
+        //!  * Divide always rounds toward -infinity:
+        //!      divide(-7, 4) = -2
+        //!      divide(-6, 4) = -2
+        //!      divide(-5, 4) = -2
+        //!      divide(-4, 4) = -1
+        //! https://stackoverflow.com/questions/10023440/signed-division-in-c
+        //!@{
         template <typename T> inline constexpr T divide(T a, T b) {
             return (a % b < 0) ? (a / b - 1) : (a / b);
         }
         template <typename T> inline constexpr T modulo(T a, T b) {
             return (a % b < 0) ? (a % b + b) : (a % b);
         }
+        //!@}
 
-        // Calculate log2(x), rounding up or down.
+        //! Calculate log2(x), rounding up.
         template <typename T> unsigned log2_ceil(T x) {
             unsigned count = 0;
             while (x > 1) { ++count; x = (x+1)/2; }
             return count;
         }
 
+        //! Calculate log2(x), rounding down.
         template <typename T> unsigned log2_floor(T x) {
             unsigned count = 0;
             while (x > 1) { ++count; x /= 2; }
             return count;
         }
 
-        // Round a floating-point value to the nearest integer.
-        // Behavior at the boundary is indeterminate (e.g., 1.5 -> 1 or 2).
-        // Note: The round() in <cmath> isn't always marked as constexpr.
+        //! Round a floating-point value to the nearest integer.
+        //! Behavior at the boundary is indeterminate (e.g., 1.5 -> 1 or 2).
+        //! Note: round() in cmath library isn't always marked as constexpr.
+        //!@{
         template <typename T> inline constexpr s64 round_s64(T x) {
             return static_cast<s64>(x + (T)(x < 0 ? -0.5 : 0.5));
         }
         template <typename T> inline constexpr u64 round_u64(T x) {
             return static_cast<u64>(x + (T)0.5);
         }
+        //!@}
 
-        // Variant of "round_u64" that returns zero if input is out of range.
+        //! Variant of "round_u64" that returns zero if input is out of range.
+        //!@{
         template <typename T> inline constexpr u64 round_s64z(T x) {
             return (T(INT64_MIN) < x && x < T(INT64_MAX)) ? satcat5::util::round_s64(x) : 0;
         }
         template <typename T> inline constexpr u64 round_u64z(T x) {
             return (x < T(UINT64_MAX)) ? satcat5::util::round_u64(x) : 0;
         }
+        //!@}
 
-        // Unsigned add with saturation: min(A + B, C)
-        // If "C" is not specified, default to maximum representable value.
-        // (i.e., UINT32_MAX, UINT64_MAX, etc., equal to 2^N - 1.)
-        // This operation is nontrivial due to handling of integer overflow.
-        // This function is NOT suitable for use with signed integers.
+        //! Unsigned add with saturation: min(A + B, C).
+        //! If "C" is not specified, default to maximum representable value.
+        //! (i.e., UINT32_MAX, UINT64_MAX, etc., equal to 2^N - 1.)
+        //! This operation is nontrivial due to handling of integer overflow.
+        //! This function is NOT suitable for use with signed integers.
         template <typename T>
         inline constexpr T saturate_add(T a, T b, T c = T(-1)) {
             return (a + b < c && a + b >= a) ? (a + b) : (c);
         }
 
-        // Calculate 2^N for very large N, returning a double.
+        //! Calculate 2^N for very large N, returning a double.
         constexpr double pow2d(unsigned n) {
             return (n < 64) ? (double(1ull << n)) : (double(1ull << 63) * pow2d(n-63));
         }
 
-        // Integer division functions with various rounding options:
+        //! Integer division functions with various rounding options:
+        //!@{
         template <typename T> inline constexpr T div_floor(T a, T b)
             {return divide<T>(a, b);}
         template <typename T> inline constexpr T div_round(T a, T b)
@@ -222,14 +255,16 @@ namespace satcat5 {
             {return div_ceil<u32>(a, b);};
         inline constexpr s32 div_ceil_s32 (s32 a, s32 b)
             {return div_ceil<s32>(a, b);};
+        //!@}
 
-        // Check if A is a multiple of B:
+        //! Check if A is a multiple of B:
         bool is_multiple_u32(u32 a, u32 b);
 
-        // Count the number of '1' bits in an integer.
+        //! Count the number of '1' bits in an integer.
         unsigned popcount(u32 x);
 
-        // Reverse the order of bytes in an integer.
+        //! Reverse the order of bytes in an integer.
+        //!@{
         inline constexpr u64 reverse_bytes_u64(u64 num) {
             return ((num & 0xFF00000000000000ull) >> 56)
                  | ((num & 0x00FF000000000000ull) >> 40)
@@ -251,41 +286,52 @@ namespace satcat5 {
         inline constexpr u16 reverse_bytes_u16(u16 num) {
             return ((num & 0xFF00u) >> 8) | ((num & 0x00FFu) << 8);
         }
+        //!@}
 
-        // XOR-reduction of all bits in a word:
+        //! XOR-reduction of all bits in a word:
+        //!@{
         bool xor_reduce_u8(u8 x);
         bool xor_reduce_u16(u16 x);
         bool xor_reduce_u32(u32 x);
         bool xor_reduce_u64(u64 x);
+        //!@}
 
-        // Given X and Y, find the minimum N such that X * 2^N >= Y.
+        //! Given X and Y, find the minimum N such that X * 2^N >= Y.
         unsigned min_2n(u32 x, u32 y);
 
-        // Find integer square root y = floor(sqrt(x))
+        //! Find integer square root y = floor(sqrt(x))
+        //!@{
         u32 sqrt_u64(u64 x);
         u16 sqrt_u32(u32 x);
         u8  sqrt_u16(u16 x);
+        //!@}
 
-        // Extract fields from a big-endian byte array.
+        //! Extract fields from a big-endian byte array.
+        //!@{
         u16 extract_be_u16(const u8* src);
         u32 extract_be_u32(const u8* src);
         u64 extract_be_u64(const u8* src);
+        //!@}
 
-        // Store fields into a big-endian byte array.
+        //! Store fields into a big-endian byte array.
+        //!@{
         void write_be_u16(u8* dst, u16 val);
         void write_be_u32(u8* dst, u32 val);
         void write_be_u64(u8* dst, u64 val);
+        //!@}
 
-        // Swap two values using a temporary variable.
+        //! Swap two values using a temporary variable.
+        //!@{
         template <typename T> void swap_ptr(T* x, T* y) {
             if (x != y) {T z = *x; *x = *y; *y = z;}
         }
         template <typename T> void swap_ref(T& x, T& y) {
             if (x != y) {T z = x; x = y; y = z;}
         }
+        //!@}
 
-        // Templated in-place stable sort for small arrays.
-        // Slower than std::sort(...) but does not require heap allocation.
+        //! Templated in-place stable sort for small arrays.
+        //! Slower than std::sort(...) but does not require heap allocation.
         template <typename T> void sort(T* begin, T* end) {
             // Using selection-sort for simplicity, O(N^2).
             for (T* a = begin ; a+1 != end ; ++a) {
@@ -297,46 +343,52 @@ namespace satcat5 {
             }
         }
 
-        // Simple cross-platform psuedorandom number generator (PRNG).
-        // Generates uniform psuedorandom integer outputs.
+        //! Simple cross-platform psuedorandom number generator (PRNG).
+        //! Generates uniform psuedorandom integer outputs.
         class Prng final {
         public:
+            //! Constructor sets initial PRNG state.
             explicit constexpr Prng(u64 seed = 123456789ull)
                 : m_state(seed) {}
-            u32 next();                     // Range [0..2^32)
-            u32 next(u32 mn, u32 mx);       // Range [mn..mx]
+            u32 next();                     //!< Range [0..2^32)
+            u32 next(u32 mn, u32 mx);       //!< Range [mn..mx]
+            //! Reset to the provided PRNG state.
             inline void seed(u64 seed) {m_state = seed;}
         protected:
             u64 m_state;
         };
 
-        // Global instance of the Prng class, above.
+        //! Global instance of the Prng class.
         extern satcat5::util::Prng prng;
 
-        // A simple class for tracking the record-holder for any unsigned
-        // integer (e.g., elapsed microseconds, buffer size, etc.)
+        //! Running maximum with label tracking.
+        //! A simple class for tracking the record-holder for any unsigned
+        //! integer (e.g., elapsed microseconds, buffer size, etc.).
         class RunningMax {
         public:
             RunningMax();
 
-            // Reset recorded maximum to zero.
+            //! Reset recorded maximum to zero.
             void clear();
 
-            // Update stats if new value exceeds previous record.
+            //! Update stats if new value exceeds previous record.
             void update(const char* lbl, u32 value);
 
             // Parameters for the current record-holder.
-            const char* m_label;    // Human-readable label
-            u32 m_maximum;          // Maximum observed value
+            const char* m_label;    //!< Human-readable label
+            u32 m_maximum;          //!< Maximum observed value
         };
 
-        // Cross-platform determination of native byte-order.
-        // https://stackoverflow.com/questions/2100331/
+        //! Cross-platform determination of native byte-order.
+        //! https://stackoverflow.com/questions/2100331/
+        //! Usage: ```if (HOST_BYTE_ORDER() == SATCAT5_LITTLE_ENDIAN) {...}```
+        //!@{
         enum {SATCAT5_LITTLE_ENDIAN = 0x03020100ul, SATCAT5_BIG_ENDIAN = 0x00010203ul};
         constexpr union {u8 bytes[4]; u32 value;} HOST_ORDER_CANARY = {{0,1,2,3}};
         inline constexpr u32 HOST_BYTE_ORDER() {return HOST_ORDER_CANARY.value;}
+        //!@}
 
-        // In-place byte-for-byte format conversion, aka "type-punning".
+        //! In-place byte-for-byte format conversion, aka "type-punning".
         template<typename T1, typename T2> inline T2 reinterpret(T1 x) {
             static_assert(sizeof(T1) == sizeof(T2), "Type size mismatch");
             // Note: Using "memcpy" for type-punning is preferred safe-ish method.

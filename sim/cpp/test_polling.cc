@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 on-demand polling system (polling.h)
@@ -24,6 +24,12 @@ static void realtime_wait(unsigned msec) {
         poll::service();
     }
 }
+
+// Fake time-reference for testing "suggest_clock".
+struct TestClock : public satcat5::util::TimeRef {
+    TestClock(u64 ticks_per_sec) : TimeRef(ticks_per_sec) {}
+    u32 raw() override {return 0;}  // Not required for test.
+};
 
 TEST_CASE("polling") {
     // Simulation infrastructure.
@@ -89,6 +95,15 @@ TEST_CASE("polling") {
         CHECK(poll::OnDemand::count_ondemand() == 0);
     }
 
+    // Test that "suggest_clock" selects the clock with best resolution.
+    SECTION("timekeeper-suggest") {
+        TestClock a(100000), b(200000);
+        poll::timekeeper.suggest_clock(&a);
+        poll::timekeeper.suggest_clock(&b);
+        satcat5::util::TimeRef* bb = &b;
+        CHECK(poll::timekeeper.get_clock() == bb);
+    }
+
     // Test that timers operate correctly in all basic modes.
     SECTION("timer") {
         // Set up three Timer objects.
@@ -110,7 +125,8 @@ TEST_CASE("polling") {
             poll::timekeeper.request_poll();
         }
         // Confirm expected event counts.
-        CHECK(poll::Timer::count_timer() == 3);
+        // (Three test timers, plus the global datetime::clock.)
+        CHECK(poll::Timer::count_timer() == 4);
         CHECK(a.count() == 1);
         CHECK(b.count() == 3);
         CHECK(c.count() == 2);
@@ -144,11 +160,11 @@ TEST_CASE("polling") {
         CountTimer *a = new CountTimer();
         CountTimer *b = new CountTimer();
         CountTimer *c = new CountTimer();
-        CHECK(poll::Timer::count_timer() == 3);
+        CHECK(poll::Timer::count_timer() == 4);
         delete b;
         delete a;
         delete c;
-        CHECK(poll::Timer::count_timer() == 0);
+        CHECK(poll::Timer::count_timer() == 1);
     }
 
     // Test a few different edge cases for timer overshoot.

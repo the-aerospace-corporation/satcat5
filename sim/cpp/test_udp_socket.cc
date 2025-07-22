@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for UDP dispatch and related blocks
@@ -16,6 +16,8 @@ using satcat5::ip::ADDR_NONE;
 using satcat5::udp::PORT_CFGBUS_CMD;
 using satcat5::udp::PORT_CFGBUS_ACK;
 using satcat5::udp::PORT_NONE;
+
+static const bool VERBOSE = false;
 
 TEST_CASE("UDP-socket") {
     // Simulation infrastructure.
@@ -105,12 +107,14 @@ TEST_CASE("UDP-socket") {
             *a = new satcat5::udp::Socket(&net_controller.m_udp);
             (*a)->connect(IP_PERIPHERAL, MAC_PERIPHERAL, PORT_CFGBUS_CMD);
             if ((*a)->ready_rx() && (*a)->ready_tx()) ++ready_count;
+            if (VERBOSE) printf("Port %u / %u\n", (*a)->dstport().value, (*a)->srcport().value);
         }
         // CHECK at the end to reduce Catch2 verbosity in debug mode.
         CHECK(ready_count == bigvec.size());
         // The next attempt to auto-bind should fail.
         log.suppress("Ports full");         // Suppress warning message...
         uut_controller.connect(IP_PERIPHERAL, MAC_PERIPHERAL, PORT_CFGBUS_CMD);
+        if (VERBOSE) printf("PORT %u / %u\n", uut_controller.dstport().value, uut_controller.srcport().value);
         CHECK_FALSE(uut_controller.ready_rx());
         CHECK(log.contains("Ports full"));  // ...but confirm it was sent.
         // Cleanup.

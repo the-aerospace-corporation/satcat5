@@ -1,28 +1,29 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Dynamic Host Configuration Protocol (DHCP) client and server
-//
-// Dynamic Host Configuration Protocol is used to automatically assign
-// or request IP addresses for hosts on an IPv4 subnet.  DHCP servers
-// maintain a pool of free and assigned addresses; DHCP clients contact
-// the server to request an address.
-//
-// To use the DHCP client:
-//  * Initialize the UDP-dispatch or IP-stack object with ip::ADDR_NONE.
-//  * Create an ip::DhcpClient object linked to the UDP-dispatch object.
-//  * Client will automatically issue a DHCP request after a short delay.
-//
-// To use the DHCP server:
-//  * Initialize the UDP-dispatch or IP-stack object.
-//    The assigned IP-address should be outside the DHCP range.
-//  * Allocate an ip::DhcpPool object (usually DhcpPoolStatic).
-//  * Create an ip::DhcpServer object, providing pointers to the
-//    UDP-dispatch object and the DHCP-pool object.
-//
-// See also: IETF RFC2131: https://www.rfc-editor.org/rfc/rfc2131
-//
+//!\file
+//! Dynamic Host Configuration Protocol (DHCP) client and server
+//!
+//!\details
+//! Dynamic Host Configuration Protocol is used to automatically assign
+//! or request IP addresses for hosts on an IPv4 subnet.  DHCP servers
+//! maintain a pool of free and assigned addresses; DHCP clients contact
+//! the server to request an address.
+//!
+//! To use the DHCP client:
+//!  * Initialize the UDP-dispatch or IP-stack object with ip::ADDR_NONE.
+//!  * Create an ip::DhcpClient object linked to the UDP-dispatch object.
+//!  * Client will automatically issue a DHCP request after a short delay.
+//!
+//! To use the DHCP server:
+//!  * Initialize the UDP-dispatch or IP-stack object.
+//!    The assigned IP-address should be outside the DHCP range.
+//!  * Allocate an ip::DhcpPool object (usually DhcpPoolStatic).
+//!  * Create an ip::DhcpServer object, providing pointers to the
+//!    UDP-dispatch object and the DHCP-pool object.
+//!
+//! See also: IETF RFC2131: https://www.rfc-editor.org/rfc/rfc2131
 
 #pragma once
 
@@ -39,15 +40,16 @@
 
 namespace satcat5 {
     namespace ip {
-        // A unique client-identifier.
+        //! A unique client-identifier. \see DhcpClient
         struct DhcpId {
             u8 id_len;      // Number of bytes in "id"
             u8 type;        // Type code (RFC2132 Section 9.14)
             u8 id[SATCAT5_DHCP_MAX_ID_LEN];
         };
 
-        // Client states match the ones in RFC2131 Figure 5, except that
-        // we've added a few new internal wait states (e.g., ARP queries).
+        //! DHCP protocol state. \see DhcpClient
+        //! Client states match the ones in RFC2131 Figure 5, except that
+        //! we've added a few new internal wait states (e.g., ARP queries).
         enum class DhcpState {
             INIT,       // Initial state
             SELECTING,  // DISCOVER sent, waiting for OFFER
@@ -60,39 +62,40 @@ namespace satcat5 {
             STOPPED,    // Manually halted
         };
 
-        // DHCP Client for leasing an IP address from a server.
+        //! DHCP Client for leasing an IP address from a server.
+        //! \see ip_dhcp.h, DhcpServer
         class DhcpClient final
             : public satcat5::eth::ArpListener
             , public satcat5::net::Protocol
             , public satcat5::poll::Timer
         {
         public:
-            // Attach this DHCP client to a UDP-dispatch object.
+            //! Attach this DHCP client to a UDP-dispatch object.
             DhcpClient(satcat5::udp::Dispatch* iface);
             ~DhcpClient() SATCAT5_OPTIONAL_DTOR;
 
-            // Set a static IP and fetch other parameters from the server.
+            //! Set a static IP and fetch other parameters from the server.
             void inform(const satcat5::ip::Addr& new_addr);
 
-            // Relinquish the currently held lease, if one exists.
-            // Halts automatic requests until renew() is called.
-            // If an address is provided, set the new static IP address.
+            //! Relinquish the currently held lease, if one exists.
+            //! Halts automatic requests until renew() is called.
+            //! If an address is provided, set the new static IP address.
             void release(const satcat5::ip::Addr& new_addr = satcat5::ip::ADDR_NONE);
 
-            // Request extension of current lease if held, otherwise
-            // request a new lease.  Resumes automatic requests.
+            //! Request extension of current lease if held, otherwise
+            //! request a new lease.  Resumes automatic requests.
             void renew();
 
-            // Report current lease state.
+            //! Report current lease state.
             inline satcat5::ip::DhcpState state() const
                 { return m_state; }
 
-            // Report remaining lease time, or zero if none is held.
+            //! Report remaining lease time, or zero if none is held.
             u32 status() const;
 
-            // Set an explicit client identifier (RFC2132 Section 9.14).
-            // This is not normally required, but can help ensure continuity
-            // when switching between network adapters (e.g., wired/wireless).
+            //! Set an explicit client identifier (RFC2132 Section 9.14).
+            //! This is not normally required, but can help ensure continuity
+            //! when switching between network adapters (e.g., wired/wireless).
             inline void set_client_id(const satcat5::ip::DhcpId* id)
                 { m_client_id = id; }
 
@@ -111,52 +114,53 @@ namespace satcat5 {
             // Internal state.
             satcat5::udp::Dispatch* const m_iface;
             const satcat5::ip::DhcpId* m_client_id;
-            satcat5::udp::Address m_server; // Server IP+MAC address
-            satcat5::ip::DhcpState m_state; // Client state
-            satcat5::ip::Addr m_ipaddr;     // Assigned IP address, if any
-            u16 m_seconds;                  // Seconds since start of process
-            u32 m_server_id;                // Server-ID (may not match IP-addr)
-            u32 m_timeout;                  // Time to next action, in seconds
-            u32 m_xid;                      // Client/server transaction-ID
+            satcat5::udp::Address m_server; //!< Server IP+MAC address
+            satcat5::ip::DhcpState m_state; //!< Client state
+            satcat5::ip::Addr m_ipaddr;     //!< Assigned IP address, if any
+            u16 m_seconds;                  //!< Seconds since start of process
+            u32 m_server_id;                //!< Server-ID (may not match IP-addr)
+            u32 m_timeout;                  //!< Time to next action, in seconds
+            u32 m_xid;                      //!< Client/server transaction-ID
         };
 
-        // One address in the pool allocated to a DhcpServer.
+        //! One address in the pool allocated to a DhcpServer.
         struct DhcpAddress {
-            u32 client;                     // Hash of client-ID
-            u32 timeout;                    // Lease expiration time
+            u32 client;                     //!< Hash of client-ID
+            u32 timeout;                    //!< Lease expiration time
         };
 
-        // Generic container for a group of DhcpAddress objects.
-        // Most users should use DhcpPoolStatic, but more complex use cases
-        // such as non-contiguous ranges may need a custom implementation.
+        //! Generic container for a group of DhcpAddress objects.
+        //! Most users should use DhcpPoolStatic, but more complex use cases
+        //! such as non-contiguous ranges may need a custom implementation.
+        //! \see DhcpPoolStatic, DhcpServer
         class DhcpPool {
         public:
-            // Find index associated with the given IP address.
-            // If none is found, return any out-of-bounds index.
-            // Child classes MUST override this method.
+            //! Find index associated with the given IP address.
+            //! If none is found, return any out-of-bounds index.
+            //! Child classes MUST override this method.
             virtual unsigned addr2idx(const satcat5::ip::Addr& addr) const = 0;
 
-            // Fetch IP-address for Nth object in the pool, or
-            // return ip::ADDR_NONE if the index is out of bounds.
-            // Child classes MUST override this method.
+            //! Fetch IP-address for Nth object in the pool.
+            //! Returns ip::ADDR_NONE if the index is out of bounds.
+            //! Child classes MUST override this method.
             virtual satcat5::ip::Addr idx2addr(unsigned idx) const = 0;
 
-            // Fetch metadata for Nth object in the pool, or
-            // return NULL if the index is out of bounds.
-            // Child classes MUST override this method.
+            //! Fetch metadata for Nth object in the pool.or
+            //! Returns NULL if the index is out of bounds.
+            //! Child classes MUST override this method.
             virtual satcat5::ip::DhcpAddress* idx2meta(unsigned idx) = 0;
 
-            // Does this pool contain the designated address?
+            //! Does this pool contain the designated address?
             inline bool contains(const satcat5::ip::Addr& addr)
                 { return idx2addr(addr2idx(addr)).value > 0; }
 
-            // Two-step lookup of metadata from address.
+            //! Two-step lookup of metadata from address.
             inline satcat5::ip::DhcpAddress* addr2meta(const satcat5::ip::Addr& addr)
                 { return idx2meta(addr2idx(addr)); }
         };
 
-        // The simplest possible implementation of DhcpPool, supporting
-        // a contiguous range of IP-addresses from BASE to BASE+SIZE-1.
+        //! The simplest possible implementation of DhcpPool, supporting
+        //! a contiguous range of IP-addresses from BASE to BASE+SIZE-1.
         template <unsigned SIZE> class DhcpPoolStatic final
             : public satcat5::ip::DhcpPool
         {
@@ -177,35 +181,39 @@ namespace satcat5 {
             satcat5::ip::DhcpAddress m_array[SIZE];
         };
 
-        // DHCP Server for managing leases to other clients.
+        //! DHCP Server for managing leases to other clients.
+        //! \see ip_dhcp.h, DhcpClient
         class DhcpServer final
             : public satcat5::net::Protocol
             , public satcat5::poll::Timer
         {
         public:
-            // Attach this DHCP server to a UDP-dispatch object and address pool.
+            //! Attach this DHCP server to a UDP-dispatch object and address pool.
             DhcpServer(
                 satcat5::udp::Dispatch* iface,
                 satcat5::ip::DhcpPool* pool);
             ~DhcpServer() SATCAT5_OPTIONAL_DTOR;
 
-            // Report the number of active or open leases.
+            //! Report the number of active or open leases.
             void count_leases(unsigned& free, unsigned& taken) const;
 
-            // Manually request/reserve an IP address for the next N seconds.
-            // Request a specific address or ADDR_NONE for the first available.
+            //! Manually request/reserve an IP address for the next N seconds.
+            //! Request a specific address or ADDR_NONE for the first available.
             satcat5::ip::Addr request(u32 lease_seconds,
                 const satcat5::ip::Addr& addr = satcat5::ip::ADDR_NONE);
 
-            // Set various optional fields.
+            //! Set various optional client-configuration fields.
+            //! Once set, these will be included in outgoing DHCP responses.
+            //!@{
             inline void set_dns(const satcat5::ip::Addr& addr)
                 { m_dns = addr; }
             inline void set_domain(const char* name)
                 { m_domain = name; }
             inline void set_gateway(const satcat5::ip::Subnet& gateway)
                 { m_gateway = gateway; }
+            //!@}
 
-            // Other controls, mostly used for testing.
+            //! Change the lease timeout. (Mostly used for testing.)
             inline void max_lease(u32 seconds)
                 { m_max_lease = seconds; }
 
@@ -225,17 +233,17 @@ namespace satcat5 {
             satcat5::ip::DhcpPool* const m_pool;
 
             // Current reference time.
-            u32 m_time;
-            u32 m_max_lease;
+            u32 m_time;                     //!< Arbitrary timescale (+1/sec)
+            u32 m_max_lease;                //!< Maximum lease in seconds
 
             // Round-robin indexing into the lease pool.
-            unsigned m_next_lease;          // Next lease request
-            unsigned m_next_timer;          // Next timer event
+            unsigned m_next_lease;          //!< Next lease request
+            unsigned m_next_timer;          //!< Next timer event
 
             // Parameters relayed to new clients.
-            satcat5::ip::Addr m_dns;        // DNS server, if one is available
-            const char* m_domain;           // Domain name (human-readable)
-            satcat5::ip::Subnet m_gateway;  // Default gateway and subnet mask
+            satcat5::ip::Addr m_dns;        //!< DNS server, if one is available
+            const char* m_domain;           //!< Domain name (human-readable)
+            satcat5::ip::Subnet m_gateway;  //!< Default gateway and subnet mask
         };
     }
 }

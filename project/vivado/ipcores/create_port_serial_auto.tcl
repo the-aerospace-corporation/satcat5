@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021-2023 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -33,6 +33,8 @@ ipcore_add_param SPI_MODE long 3 \
     {Default polarity and phase of SPI clock (Mode = 0-3)}
 ipcore_add_param UART_BAUD long 921600 \
     {Default baud rate for UART mode}
+ipcore_add_param RTS_SYMM bool false \
+    {Alternate RTS mode asserts when TX data available}
 ipcore_add_param PULLUP_EN bool true \
     {Enable pullups on all input signals? (Recommended)}
 ipcore_add_param FORCE_SHDN bool false \

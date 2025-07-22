@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022-2024 The Aerospace Corporation.
+-- Copyright 2022-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -87,6 +87,7 @@ entity ptp_adjust is
     cfg_2step   : in  std_logic_vector(PORT_COUNT-1 downto 0);
     frm_pmask   : out std_logic_vector(PORT_COUNT-1 downto 0);
     frm_meta    : out switch_meta_t;
+    frm_psrc    : out integer range 0 to PORT_COUNT-1;
     frm_valid   : out std_logic;    -- AXI flow-control
     frm_ready   : in  std_logic;    -- AXI flow-control
     -- Error strobe for each input port.
@@ -179,17 +180,17 @@ signal mod_mvec     : meta_t := (others => '0');
 signal mod_valid    : std_logic := '0';
 signal mod_ready    : std_logic;
 signal adj_meta     : switch_meta_t;
+signal adj_psrc     : pidx_t;
 
 -- Frame metadata (sync'd to "mod_*")
-constant OUT_META_WIDTH : positive := PORT_COUNT + SWITCH_META_WIDTH;
 signal meta_write   : std_logic := '0';
 signal meta_pmask   : mask_t := (others => '1');
 signal meta_pmsg    : tlvpos_t := TLVPOS_NONE;
 signal meta_pfreq   : tlvpos_t := TLVPOS_NONE;
 signal meta_tstamp  : tstamp_t := TSTAMP_DISABLED;
 signal meta_tfreq   : tfreq_t := TFREQ_DISABLED;
-signal meta_vec_in  : std_logic_vector(OUT_META_WIDTH-1 downto 0);
-signal meta_vec_out : std_logic_vector(OUT_META_WIDTH-1 downto 0);
+signal meta_vec_in  : meta_t;
+signal meta_vec_out : meta_t;
 
 -- For debugging, apply KEEP constraint to certain signals.
 attribute KEEP : string;
@@ -555,12 +556,13 @@ adj_meta.pfreq  <= meta_pfreq;
 adj_meta.tstamp <= meta_tstamp;
 adj_meta.tfreq  <= meta_tfreq;
 adj_meta.vtag   <= vec2meta(mod_mvec).vtag;
+adj_psrc        <= vec2psrc(mod_mvec);
 
 -- FIFO for packet metadata.
-meta_vec_in <= meta_pmask & switch_m2v(adj_meta);
+meta_vec_in <= meta2vec(adj_meta, meta_pmask, adj_psrc);
 
 u_fifo_frm : entity work.fifo_smol_sync
-    generic map(IO_WIDTH => OUT_META_WIDTH)
+    generic map(IO_WIDTH => META_WIDTH)
     port map(
     in_data     => meta_vec_in,
     in_write    => meta_write,
@@ -570,7 +572,8 @@ u_fifo_frm : entity work.fifo_smol_sync
     clk         => clk,
     reset_p     => reset_p);
 
-frm_pmask   <= meta_vec_out(meta_vec_out'left downto SWITCH_META_WIDTH);
-frm_meta    <= switch_v2m(meta_vec_out(SWITCH_META_WIDTH-1 downto 0));
+frm_meta    <= vec2meta(meta_vec_out);
+frm_pmask   <= vec2pdst(meta_vec_out);
+frm_psrc    <= vec2psrc(meta_vec_out);
 
 end ptp_adjust;

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 "Telemetry-Aggregator" system (net_telemetry.h)
@@ -43,20 +43,17 @@ static constexpr u32 KEY_STRING         = 21;
 const char* TEST_STR = "Hello world!";
 
 // Shortcut function for adding a test array of the given type.
-template <class T> void write_array(const TelemetryCbor& cbor, u32 key)
-{
+template <class T> void write_array(TelemetryCbor& cbor, u32 key) {
     const T temp[4] = {0, 1, 2, 3};
     cbor.add_array(key, 4, temp);
 }
-template <class T> void write_array(const TelemetryCbor& cbor, const char* key)
-{
+template <class T> void write_array(TelemetryCbor& cbor, const char* key) {
     const T temp[4] = {0, 1, 2, 3};
     cbor.add_array(key, 4, temp);
 }
 
 // Check QCBOR string against the designated constant.
-bool string_match(const UsefulBufC& x, const char* y)
-{
+bool string_match(const UsefulBufC& x, const char* y) {
     const u8* xptr = (const u8*)x.ptr;
     const u8* yptr = (const u8*)y;
     if (x.len != strlen(y)) return false;
@@ -67,8 +64,7 @@ bool string_match(const UsefulBufC& x, const char* y)
 }
 
 // TelemetrySource with three tiers (0, 1, 2)
-class TestSource : public TelemetrySource
-{
+class TestSource : public TelemetrySource {
 public:
     // Note: All tiers are disabled by default.
     TelemetryTier m_tier0;
@@ -77,6 +73,8 @@ public:
     TelemetryTier m_tier3;
     TelemetryTier m_tier4;
     TelemetryTier m_tier5;
+    TelemetryTier m_tier6;
+    TelemetryTier m_tier7;
 
     explicit TestSource(TelemetryAggregator* tlm)
         : m_tier0(tlm, this, 0)
@@ -85,12 +83,19 @@ public:
         , m_tier3(tlm, this, 3)
         , m_tier4(tlm, this, 4)
         , m_tier5(tlm, this, 5)
+        , m_tier6(tlm, this, 6)
+        , m_tier7(tlm, this, 7)
     {
         // No other initialization required.
     }
 
-    void telem_event(u32 tier_id, const TelemetryCbor& cbor) override
-    {
+    void sub_map(u32 tier_id, TelemetryCbor& cbor) {
+        cbor.open_map(tier_id);         // Key = Tier ID (0-7)
+        telem_event(tier_id, cbor);     // Value = Nested dictionary
+        cbor.close_map();
+    }
+
+    void telem_event(u32 tier_id, TelemetryCbor& cbor) override {
         if (tier_id == 0) {
             // Tier 0 adds the basic numeric types.
             cbor.add_bool(KEY_BOOL,    true);
@@ -147,11 +152,33 @@ public:
             write_array<s64>  (cbor, "KEY_ARRAY_S64");
             write_array<u64>  (cbor, "KEY_ARRAY_U64");
             write_array<float>(cbor, "KEY_ARRAY_FLOAT");
+        } else if (tier_id == 6) {
+            // Nested lists with a few heterogenous items.
+            QCBOREncodeContext* list = cbor.open_list(KEY_ARRAY_U8);
+            REQUIRE(list);
+            QCBOREncode_AddInt64(list, 123);
+            QCBOREncode_AddBool(list, true);
+            QCBOREncode_AddSZString(list, "Test123");
+            cbor.close_list();
+            list = cbor.open_list("KEY_ARRAY_U8");
+            REQUIRE(list);
+            QCBOREncode_AddInt64(list, 234);
+            QCBOREncode_AddBool(list, false);
+            QCBOREncode_AddSZString(list, "Test234");
+            cbor.close_list();
+        } else if (tier_id == 7) {
+            // Nested map-of-maps with all other tiers.
+            sub_map(0, cbor);
+            sub_map(1, cbor);
+            sub_map(2, cbor);
+            sub_map(3, cbor);
+            sub_map(4, cbor);
+            sub_map(5, cbor);
         }
     }
 };
 
-TEST_CASE("net_telemetry") {
+TEST_CASE("net_telemetry_tx") {
     // Simulation infrastructure
     SATCAT5_TEST_START;
     satcat5::test::CrosslinkIp xlink(__FILE__);
@@ -161,8 +188,10 @@ TEST_CASE("net_telemetry") {
     constexpr satcat5::udp::Port    PORT_UDP = {0x4321};
 
     // Client-side telemetry aggregators for each protocol.
-    satcat5::eth::Telemetry tx_eth(&xlink.net0.m_eth, TYPE_ETH);
-    satcat5::udp::Telemetry tx_udp(&xlink.net0.m_udp, PORT_UDP);
+    satcat5::eth::Telemetry tx_eth(&xlink.net0.m_eth);
+    satcat5::udp::Telemetry tx_udp(&xlink.net0.m_udp);
+    tx_eth.connect(satcat5::eth::MACADDR_BROADCAST, TYPE_ETH);
+    tx_udp.connect(satcat5::ip::ADDR_BROADCAST, PORT_UDP);
 
     // Server-side infrastructure records incoming messages.
     satcat5::eth::Socket rx_eth(&xlink.net1.m_eth);
@@ -406,6 +435,47 @@ TEST_CASE("net_telemetry") {
         CHECK(rx_udp.get_read_ready() == 0);
     }
 
+    // Enable and inspect Tier-6 telemetry (lists).
+    SECTION("tier6") {
+        // Enable tier and wait long enough for a single message.
+        TestSource src(&tx_eth);
+        src.m_tier6.set_interval(700);
+        xlink.timer.sim_wait(1000);
+        REQUIRE(rx_eth.get_read_ready() > 0);
+        // Confirm that both expected lists are present.
+        QCBORItem next;
+        satcat5::test::CborParser rcvd(&rx_eth);
+        next = rcvd.get(KEY_ARRAY_U8);
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+        next = rcvd.get("KEY_ARRAY_U8");
+        CHECK(next.uDataType == QCBOR_TYPE_ARRAY);
+    }
+
+    // Enable and inspect Tier-7 telemetry (nested maps).
+    SECTION("tier7") {
+        // Enable tier and wait long enough for a single message.
+        TestSource src(&tx_eth);
+        src.m_tier7.set_interval(700);
+        xlink.timer.sim_wait(1000);
+        REQUIRE(rx_eth.get_read_ready() > 0);
+        // Inspect a few sub-dictionaries in the received message.
+        satcat5::io::CborMapReaderStatic<s64> rd(&rx_eth);
+        satcat5::io::CborMapReader<s64> t0(rd.open_map(0));
+        CHECK(t0.get_int(KEY_INT_S8));
+        CHECK(t0.get_int(KEY_INT_S16));
+        CHECK(t0.get_int(KEY_INT_S32));
+        t0.close_map();
+        satcat5::io::CborMapReader<s64> t1(rd.open_map(1));
+        CHECK(t1.get_bytes(KEY_BYTES));
+        CHECK(t1.get_string(KEY_STRING));
+        t1.close_map();
+        satcat5::io::CborMapReader<const char*> t3(rd.open_map(3));
+        CHECK(t3.get_int("KEY_INT_S8"));
+        CHECK(t3.get_int("KEY_INT_S16"));
+        CHECK(t3.get_int("KEY_INT_S32"));
+        t3.close_map();
+    }
+
     // Timer-phase should be maintained after re-enabling a tier.
     SECTION("re-enable") {
         // Enable tier and wait long enough for a single message.
@@ -477,5 +547,96 @@ TEST_CASE("net_telemetry") {
         CHECK(tx_udp.timer_interval() == 10);
         src.m_tier1.set_interval(1);
         CHECK(tx_udp.timer_interval() == 1);
+    }
+
+    // Test on-demand transmission.
+    SECTION("send-now") {
+        TestSource src(&tx_udp);
+        src.m_tier0.send_now();
+        xlink.timer.sim_wait(1000);
+        satcat5::test::CborParser rcvd(&rx_udp);
+        QCBORItem next = rcvd.get(KEY_INT_U8);
+        CHECK(next.uDataType == QCBOR_TYPE_INT64);
+        CHECK(next.val.int64 == 42);
+    }
+}
+
+TEST_CASE("net_telemetry_rx") {
+    // Simulation infrastructure
+    SATCAT5_TEST_START;
+    satcat5::test::CrosslinkIp xlink(__FILE__);
+    constexpr bool SILENT = true;
+
+    // Configuration constants.
+    constexpr satcat5::eth::MacType TYPE_ETH = {0x4321};
+    constexpr satcat5::udp::Port    PORT_UDP = {0x4321};
+
+    // Client-side telemetry aggregators for each protocol.
+    satcat5::eth::Telemetry tx_eth(&xlink.net0.m_eth);
+    satcat5::udp::Telemetry tx_udp(&xlink.net0.m_udp);
+    tx_eth.connect(xlink.MAC1, TYPE_ETH);
+    tx_udp.connect(xlink.IP1, PORT_UDP);
+    xlink.timer.sim_wait(1000); // Wait for ARP resolution.
+
+    // Units under test are the server-side receivers.
+    satcat5::eth::TelemetryRx rx_eth(&xlink.net1.m_eth, TYPE_ETH);
+    satcat5::udp::TelemetryRx rx_udp(&xlink.net1.m_udp, PORT_UDP);
+
+    // Ethernet transport + Test tier 0 (integer keys).
+    SECTION("eth_int") {
+        if (SILENT) log.suppress("Telemetry =");
+        TestSource src(&tx_eth);
+        satcat5::net::TelemetryLogger filter(&rx_eth, KEY_INT_U8);
+        src.m_tier0.send_now();
+        xlink.timer.sim_wait(1000);
+        CHECK(log.contains("Telemetry = +13 / +42"));
+    }
+
+    // UDP transport + Test tier 3 (string keys).
+    SECTION("udp_str") {
+        if (SILENT) log.suppress("Telemetry =");
+        TestSource src(&tx_udp);
+        satcat5::net::TelemetryLogger filter(&rx_udp, "KEY_INT_U8");
+        src.m_tier3.send_now();
+        xlink.timer.sim_wait(1000);
+        CHECK(log.contains("Telemetry = KEY_INT_U8 / +42"));
+    }
+
+    // Ethernet transport + Test tier 6 (nested lists).
+    SECTION("eth_nested") {
+        if (SILENT) log.suppress("Telemetry =");
+        TestSource src(&tx_eth);
+        satcat5::net::TelemetryLogger filter(&rx_eth, KEY_ARRAY_U8);
+        src.m_tier6.send_now();
+        xlink.timer.sim_wait(1000);
+        CHECK(log.contains("Telemetry = +1 / [Array]"));
+    }
+
+    // UDP transport + Test tier 7 (nested maps).
+    SECTION("udp_nested") {
+        if (SILENT) log.suppress("Telemetry =");
+        TestSource src(&tx_udp);
+        satcat5::net::TelemetryLogger filter(&rx_udp, 2);
+        src.m_tier7.send_now();
+        xlink.timer.sim_wait(1000);
+        CHECK(log.contains("Telemetry = +2 / [Map]"));
+    }
+
+    // Test the loopback system.
+    SECTION("loopback") {
+        if (SILENT) log.suppress("Telemetry =");
+        // Add a transmitter, receiver, and logger to the same device.
+        TestSource src(&tx_udp);
+        satcat5::udp::TelemetryRx rx_aux(&xlink.net0.m_udp, PORT_UDP);
+        satcat5::net::TelemetryLogger filter(&rx_aux, KEY_INT_U8);
+        // Without loopback, the log should remain empty.
+        src.m_tier0.send_now();
+        satcat5::poll::service_all();
+        CHECK(log.empty());
+        // With loopback enabled, the log should respond.
+        satcat5::net::TelemetryLoopback uut(&tx_udp, &rx_aux);
+        src.m_tier0.send_now();
+        satcat5::poll::service_all();
+        CHECK(log.contains("Telemetry = +13 / +42"));
     }
 }

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // CCSDS "Advanced Orbiting Systems" (AOS) Space Data Link Protocol
@@ -11,20 +11,23 @@
 #include <satcat5/ccsds_spp.h>
 
 // Make a valid SPP frame containing a string.
-std::string make_spp(u16 seq, const char* str) {
+static std::string make_spp(u16 seq, satcat5::io::Readable& src) {
     // Create the SPP header.
     satcat5::ccsds_spp::Header hdr;
-    hdr.set(true, 0x123, seq++);
-    u16 len = strlen(str);
-    REQUIRE(len > 0);
+    hdr.set(true, 0x123, seq);
+    REQUIRE(src.get_read_ready() > 0);
     // Write header and contents to a temporary buffer.
     satcat5::io::PacketBufferHeap tmp;
     tmp.write_u32(hdr.value);
-    tmp.write_u16(len - 1);
-    tmp.write_bytes(len, str);
-    tmp.write_finalize();
+    tmp.write_u16(src.get_read_ready() - 1);
+    src.copy_and_finalize(&tmp);
     // Copy the complete SPP into an STL string.
     return satcat5::io::read_str(&tmp);
+}
+
+static std::string make_spp(u16 seq, const char* str) {
+    satcat5::io::ArrayRead rd(strlen(str), str);
+    return make_spp(seq, rd);
 }
 
 TEST_CASE("ccsds_aos") {
@@ -70,6 +73,7 @@ TEST_CASE("ccsds_aos") {
         satcat5::poll::service_all();
         CHECK(satcat5::test::read(&dstb, "Short stream"));
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Pkt")));
+        CHECK(link_dst.frame_count() == 2);
     }
 
     // Longer test with packets split across several transfer frames.
@@ -90,19 +94,21 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::write(&srcp, make_spp(4, "one more")));
         satcat5::poll::service_all();
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
+        CHECK(link_dst.frame_count() == 10);
     }
 
     // Hard-code the expected output from "basic_long".
     // (This also doubles as a test of our CRC calculation.)
+    //  Sync                    Header                              PDU
     constexpr u8 PKT0[] = {
         0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x11, 0x23,
-        0x40, 0x00, 0x00, 0x06, 0x53, 0x65, 0x76, 0x65, 0x72, 0x61, 0x6C, 0x11, 0x88, 0xBB};
+        0xC0, 0x00, 0x00, 0x06, 0x53, 0x65, 0x76, 0x65, 0x72, 0x61, 0x6C, 0x11, 0x22, 0x1A};
     constexpr u8 PKT1[] = {
-        0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x01, 0x40, 0x00, 0x0C, 0x23, 0x40,
-        0x01, 0x00, 0x06, 0x73, 0x68, 0x6F, 0x72, 0x74, 0x65, 0x72, 0x11, 0x23, 0x53, 0x3D};
+        0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x01, 0x40, 0x00, 0x0C, 0x23, 0xC0,
+        0x01, 0x00, 0x06, 0x73, 0x68, 0x6F, 0x72, 0x74, 0x65, 0x72, 0x11, 0x23, 0xE6, 0x9D};
     constexpr u8 PKT2[] = {
-        0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x02, 0x40, 0x00, 0x0B, 0x40, 0x02,
-        0x00, 0x06, 0x70, 0x61, 0x63, 0x6B, 0x65, 0x74, 0x73, 0x11, 0x23, 0x40, 0x0F, 0xA0};
+        0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x02, 0x40, 0x00, 0x0B, 0xC0, 0x02,
+        0x00, 0x06, 0x70, 0x61, 0x63, 0x6B, 0x65, 0x74, 0x73, 0x11, 0x23, 0xC0, 0xC9, 0x56};
     constexpr u8 PKT3[] = {
         0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x03, 0x40, 0x07, 0xFF, 0x03, 0x00,
         0x14, 0x61, 0x6E, 0x64, 0x20, 0x6F, 0x6E, 0x65, 0x20, 0x6C, 0x6F, 0x6E, 0xC1, 0xA2};
@@ -111,7 +117,7 @@ TEST_CASE("ccsds_aos") {
         0x72, 0x20, 0x70, 0x61, 0x63, 0x6B, 0x65, 0x74, 0x07, 0xFF, 0x40, 0x00, 0x0D, 0x1C};
     constexpr u8 PKT5[] = {
         0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x05, 0x40, 0x00, 0x03, 0x00, 0x00,
-        0x00, 0x11, 0x23, 0x40, 0x04, 0x00, 0x07, 0x6F, 0x6E, 0x65, 0x20, 0x6D, 0x16, 0x48};
+        0x00, 0x11, 0x23, 0xC0, 0x04, 0x00, 0x07, 0x6F, 0x6E, 0x65, 0x20, 0x6D, 0xA9, 0xFA};
     constexpr u8 PKT6[] = {
         0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x06, 0x40, 0x00, 0x03, 0x6F, 0x72,
         0x65, 0x07, 0xFF, 0x40, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA1, 0xF5};
@@ -128,6 +134,7 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(2, "packets")));
         CHECK(satcat5::test::read(&dstp, make_spp(3, "and one longer packet")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
+        CHECK(link_dst.error_count() == 1);
     }
 
     SECTION("drop1") {
@@ -141,6 +148,7 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Several")));
         CHECK(satcat5::test::read(&dstp, make_spp(3, "and one longer packet")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
+        CHECK(link_dst.error_count() == 1);
     }
 
     SECTION("drop2") {
@@ -154,6 +162,7 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Several")));
         CHECK(satcat5::test::read(&dstp, make_spp(1, "shorter")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
+        CHECK(link_dst.error_count() == 1);
     }
 
     SECTION("drop3") {
@@ -168,13 +177,29 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(1, "shorter")));
         CHECK(satcat5::test::read(&dstp, make_spp(2, "packets")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
+        CHECK(link_dst.error_count() == 1);
+    }
+
+    // Test a case where consecutive SPP frames fall *exactly*
+    // on the boundary between AOS frames:
+    // DSIZE = 2 byte MPDU header + 6 byte SPP header + SPP data
+    // This test uses DSIZE = 16, so send an 8-byte SPP.
+    SECTION("exact") {
+        REQUIRE(link_src.dsize() == 16);
+        CHECK(satcat5::test::write(&srcp, make_spp(0, "Test1234")));
+        CHECK(satcat5::test::write(&srcp, make_spp(1, "Half")));
+        CHECK(satcat5::test::write(&srcp, make_spp(2, "MoreData")));
+        satcat5::poll::service_all();
+        CHECK(satcat5::test::read(&dstp, make_spp(0, "Test1234")));
+        CHECK(satcat5::test::read(&dstp, make_spp(1, "Half")));
+        CHECK(satcat5::test::read(&dstp, make_spp(2, "MoreData")));
     }
 
     // Test premable synchronziation from an unaligned stream.
     constexpr u8 STRM[] = {
         0x40, 0x00, 0x00, 0x06, 0x53, 0x65, 0x76, 0x65, 0x72, 0x61, 0x6C, 0x11, 0x77, 0x44,
         0x1A, 0xCF, 0xFC, 0x1D, 0x4A, 0xAC, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x11, 0x23,
-        0x40, 0x00, 0x00, 0x02, 0x50, 0x6B, 0x74, 0x07, 0xFF, 0x40, 0x00, 0x00, 0x21, 0xA9};
+        0xC0, 0x00, 0x00, 0x02, 0x50, 0x6B, 0x74, 0x07, 0xFF, 0x40, 0x00, 0x00, 0x8B, 0x08};
 
     SECTION("sync") {
         CHECK(satcat5::test::write(&phy_rx, sizeof(STRM), STRM));

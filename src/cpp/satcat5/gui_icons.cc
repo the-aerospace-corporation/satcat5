@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -127,6 +127,10 @@ constexpr Icon32x32 satcat5::gui::AEROLOGO_ICON32 =
      0x63FFC7E2, 0x63FFC3F6, 0x30000006, 0x3000000C,
      0x1800000C, 0x18000018, 0x0C000030, 0x06000070,
      0x038000E0, 0x01C00380, 0x00781F00, 0x001FFC00};
+
+// A cat's paw or footprint.
+constexpr Icon8x8 satcat5::gui::PAW_ICON8 =
+    {0x00, 0x14, 0x55, 0x41, 0x1C, 0x3E, 0x3E, 0x00};
 
 // The SatCat5 mascot in various sizes.
 constexpr Icon8x8 satcat5::gui::SATCAT5_ICON8 =

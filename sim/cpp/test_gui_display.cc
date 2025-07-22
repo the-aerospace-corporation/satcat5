@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Unit tests for the gui::Display and gui::Canvas API
@@ -13,6 +13,7 @@
 using satcat5::gui::AEROLOGO_ICON16;
 using satcat5::gui::AEROLOGO_ICON32;
 using satcat5::gui::CAT_SIT;
+using satcat5::gui::PAW_ICON8;
 using satcat5::gui::SATCAT5_ICON8;
 using satcat5::gui::SATCAT5_ICON16;
 
@@ -34,6 +35,10 @@ void test_sequence(satcat5::gui::Canvas& uut) {
     CHECK(uut.cursor(0, 40));
     CHECK(uut.draw_icon(CAT_SIT + 0, 1));
     CHECK(uut.draw_icon(CAT_SIT + 1, 1));
+    CHECK(uut.cursor(0, 72));
+    CHECK(uut.draw_icon(&PAW_ICON8, 1));
+    CHECK(uut.cursor(8, 72));
+    CHECK(uut.draw_icon(&PAW_ICON8, 1));
 
     // Draw a horizontal line.
     CHECK(uut.cursor(17, 0));

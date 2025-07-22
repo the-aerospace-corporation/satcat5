@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2021 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -201,7 +201,8 @@ uut_dec : entity work.eth_dec8b10b
     out_err     => dec_err,
     out_data    => dec_data,
     cfg_rcvd    => cfg_rcvd,
-    cfg_word    => cfg_rxdata);
+    cfg_word    => cfg_rxdata,
+    reset_p     => reset_p);
 
 -- Preamble removal.
 u_amble : entity work.eth_preamble_rx
@@ -290,7 +291,7 @@ p_test : process
         wait until rising_edge(clk_125);
 
         -- Wait for decoder unlock.
-        timeout     := integer(round(10000.0 / rate));
+        timeout := integer(round(10000.0 / rate));
         while (dec_lock = '1' and timeout > 0) loop
             wait until rising_edge(clk_125);
             timeout := timeout - 1;
@@ -301,8 +302,8 @@ p_test : process
         wait until rising_edge(clk_125);
 
         -- Wait for decoder lock.
-        timeout     := integer(round(10000.0 / rate));
-        while (cfg_rcvd = '0' and timeout > 0) loop
+        timeout := integer(round(10000.0 / rate));
+        while ((dec_lock = '0' or cfg_rcvd = '0') and timeout > 0) loop
             wait until rising_edge(clk_125);
             timeout := timeout - 1;
         end loop;
@@ -332,7 +333,7 @@ p_test : process
         report "Received packets: " & integer'image(npkt-rempkt) & " of " & integer'image(npkt);
 
         -- Sanity check: Should have received more comma+ than comma-.
-        assert (2*comma_pcount > 3*comma_ncount)
+        assert (3*comma_pcount > 4*comma_ncount)
             report "Expected majority Comma+: " & integer'image(comma_pcount)
                 & " vs. " & integer'image(comma_ncount)
             severity error;

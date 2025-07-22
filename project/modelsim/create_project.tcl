@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021-2024 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -92,8 +92,12 @@ project addfolder common_sw
 project addfile ../../src/vhdl/common/aes_cipher.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/aes_gcm_gf_mult.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/aes_gcm.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/hdlc_decoder.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/hdlc_encoder.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_clock_detect.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_clock_div.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_clock_tolerance.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/io_hdlc.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_i2c_controller.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_i2c_peripheral.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_mdio_readwrite.vhd VHDL common_sw
@@ -126,6 +130,7 @@ project addfile ../../src/vhdl/common/eth_frame_parcrc.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_parcrc2.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_check.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/eth_frame_log.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_vstrip.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_frame_vtag.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/eth_macsec_deframer.vhd VHDL common_sw
@@ -148,8 +153,10 @@ project addfile ../../src/vhdl/common/ptp_counter_sync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_egress.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_ingress.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_wavesynth.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/switch_statistics.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_fifo.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_gpio.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/cfgbus_hdlc.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_host_apb.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_host_axi.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_host_eth.vhd VHDL common_sw
@@ -162,6 +169,7 @@ project addfile ../../src/vhdl/common/cfgbus_led.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_mdio.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_piezo.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_spi_controller.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/cfgbus_switch_stats.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_text_lcd.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_timer.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/cfgbus_to_axilite.vhd VHDL common_sw
@@ -171,9 +179,13 @@ project addfile ../../src/vhdl/common/config_mdio_rom.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_peripherals.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_port_test.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/config_send_status.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/config_timestamp.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/fifo_priority.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_counter.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_igmp_simple.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/mac_log_core.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/mac_log_cfgbus.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/mac_log_uart.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_lookup.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_priority.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/mac_query.vhd VHDL common_sw
@@ -268,6 +280,7 @@ project addfile ../../sim/vhdl/aes_cipher_tb.vhd VHDL test
 project addfile ../../sim/vhdl/aes_gcm_gf_mult_tb.vhd VHDL test
 project addfile ../../sim/vhdl/aes_gcm_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_common_tb.vhd VHDL test
+project addfile ../../sim/vhdl/cfgbus_hdlc_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_host_apb_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_host_axi_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_host_eth_tb.vhd VHDL test
@@ -282,9 +295,11 @@ project addfile ../../sim/vhdl/config_file2rom_tb.vhd VHDL test
 project addfile ../../sim/vhdl/config_mdio_rom_tb.vhd VHDL test
 project addfile ../../sim/vhdl/config_port_test_tb.vhd VHDL test
 project addfile ../../sim/vhdl/config_send_status_tb.vhd VHDL test
+project addfile ../../sim/vhdl/config_timestamp_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_all8b10b_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_adjust_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_check_tb.vhd VHDL test
+project addfile ../../sim/vhdl/eth_frame_log_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_parcrc_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_vstrip_tb.vhd VHDL test
 project addfile ../../sim/vhdl/eth_frame_vtag_tb.vhd VHDL test
@@ -300,7 +315,10 @@ project addfile ../../sim/vhdl/fifo_repack_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_smol_async_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_smol_resize_tb.vhd VHDL test
 project addfile ../../sim/vhdl/fifo_smol_sync_tb.vhd VHDL test
+project addfile ../../sim/vhdl/hdlc_encoder_tb.vhd VHDL test
+project addfile ../../sim/vhdl/io_clock_div_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_error_reporting_tb.vhd VHDL test
+project addfile ../../sim/vhdl/io_hdlc_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_i2c_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_mdio_readwrite_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_spi_tb.vhd VHDL test
@@ -308,6 +326,9 @@ project addfile ../../sim/vhdl/io_text_lcd_tb.vhd VHDL test
 project addfile ../../sim/vhdl/io_uart_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_counter_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_igmp_simple_tb.vhd VHDL test
+project addfile ../../sim/vhdl/mac_log_validate.vhd VHDL test
+project addfile ../../sim/vhdl/mac_log_cfgbus_tb.vhd VHDL test
+project addfile ../../sim/vhdl/mac_log_uart_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_lookup_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_priority_tb.vhd VHDL test
 project addfile ../../sim/vhdl/mac_query_tb.vhd VHDL test

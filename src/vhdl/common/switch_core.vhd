@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -53,14 +53,30 @@
 --      Accept jumbo Ethernet frames? (Size up to 9038 bytes)
 --      This feature requires IBUF_KBYTES and OBUF_KBYTES to be at least 10.
 --  * ALLOW_RUNT (default: false)
+--      Deprecated parameter. Setting this to "true" is the same as setting
+--      both ALLOW_RUNT_IN and ALLOW_RUNT_OUT.
+--  * ALLOW_RUNT_IN (default: false)
 --      Accept runt Ethernet frames? (Size < 64 bytes)
+--      This feature may increase resource usage if DATAPATH_BYTES > 18.
+--  * ALLOW_RUNT_OUT (default: false)
+--      Leave outgoing runt frames as is, or zero-pad to minimum size?
 --      Many 10/100/1000BASE-T PHYs cannot support runt frames, but they can
---      be used with SPI and UART ports.  See "port_adapter.vhd" for an inline
---      adapter that can be used to pad outgoing packets as needed.
+--      be used with SPI and UART ports.  For switches with mixed support,
+--      consider setting ALLOW_RUNT = true and using "port_adapter.vhd" for
+--      an inline adapter that pads outgoing packets for selected ports.
 --  * ALLOW_PRECOMMIT (default: false)
 --      Allow output FIFO cut-through?
 --      This reduces latency by 1-5 microseconds in some cases, but requires
 --      additional slices.  Currently experimental, use at your own risk.
+--  * LOG_CFGBUS (default: false)
+--      Enable packet logging through ConfigBus? (See mac_log_cfgbus)
+--      This feature enables logging of every packet that reaches the switch,
+--      which is resource-intensive, but very useful during initial bringup.
+--  * LOG_UART_BAUD (default: 0)
+--      Enable packet logging through UART? (See mac_log_uart)
+--      This feature enables logging of every packet that reaches the switch,
+--      which is resource-intensive, but very useful during initial bringup.
+--      Zero disables the UART; any positive value sets baud rate in Hz.
 --  * PTP_DOPPLER (default: false)
 --      Enable support for an experimental extension to PTP, which allows
 --      end-to-end measurement of Doppler frequency offsets.
@@ -132,8 +148,12 @@ entity switch_core is
     SUPPORT_VLAN    : boolean := false; -- Support or ignore 802.1q VLAN tags?
     MISS_BCAST      : boolean := true;  -- Broadcast or drop unknown MAC?
     ALLOW_JUMBO     : boolean := false; -- Allow jumbo frames? (Size up to 9038 bytes)
-    ALLOW_RUNT      : boolean := false; -- Allow runt frames? (Size < 64 bytes)
+    ALLOW_RUNT      : boolean := false; -- DEPRECATED. Same as ALLOW_RUNT_IN + ALLOW_RUNT_OUT.
+    ALLOW_RUNT_IN   : boolean := false; -- Allow incoming runt frames? (Size < 64 bytes)
+    ALLOW_RUNT_OUT  : boolean := false; -- Pad outgoing runt frames to minimum size?
     ALLOW_PRECOMMIT : boolean := false; -- Allow output FIFO cut-through?
+    LOG_CFGBUS      : boolean := false; -- Enable packet logging to ConfigBus?
+    LOG_UART_BAUD   : natural := 0;     -- Enable packet logging to UART?
     PTP_DOPPLER     : boolean := false; -- Support for experimental Doppler-PTP?
     PTP_STRICT      : boolean := true;  -- Drop frames with missing timestamps?
     PORT_COUNT      : natural := 0;     -- Total standard Ethernet ports
@@ -167,6 +187,7 @@ entity switch_core is
     -- Configuration interface
     cfg_cmd         : in  cfgbus_cmd := CFGBUS_CMD_NULL;
     cfg_ack         : out cfgbus_ack;   -- Optional ConfigBus interface
+    log_txd         : out std_logic;    -- Optional UART (see LOG_UART_BAUD)
     scrub_req_t     : in  std_logic;    -- Request MAC-lookup scrub
 
     -- System interface.
@@ -181,25 +202,36 @@ constant PORT_TOTAL : natural := PORT_COUNT + PORTX_COUNT;
 subtype word_t is std_logic_vector(8*DATAPATH_BYTES-1 downto 0);
 subtype nlast_t is integer range 0 to DATAPATH_BYTES;
 subtype bit_array is std_logic_vector(PORT_TOTAL-1 downto 0);
+subtype log_array is log_meta_array(PORT_TOTAL-1 downto 0);
 type meta_array is array(PORT_TOTAL-1 downto 0) of switch_meta_t;
 type word_array is array(PORT_TOTAL-1 downto 0) of word_t;
 type nlast_array is array(PORT_TOTAL-1 downto 0) of nlast_t;
 
+-- Expected delay from fifo_priority write to overflow strobe.
+constant OVR_DELAY : positive := 1 + u2i(HBUF_KBYTES > 0);
+
+-- Combine new and legacy ALLOW_RUNT parameters.
+constant RUNT_RX : boolean := ALLOW_RUNT or ALLOW_RUNT_IN;
+constant RUNT_TX : boolean := ALLOW_RUNT or ALLOW_RUNT_OUT;
+
 -- Should we retain or remove the FCS field during ingress?
 -- (No point retaining FCS if packet contents may change.)
-constant STRIP_FCS : boolean := SUPPORT_PTP or SUPPORT_VLAN;
+constant STRIP_FCS : boolean := SUPPORT_PTP or SUPPORT_VLAN or (RUNT_RX and not RUNT_TX);
 
--- Minimum frame size for checking incoming frames.
+-- Activate logging subsystems if either output is enabled.
+constant SUPPORT_LOG : boolean := LOG_CFGBUS or (LOG_UART_BAUD > 0);
+
+-- Minimum frame size for incoming and outgoing frames.
 function get_min_frame return positive is
 begin
-    if ALLOW_RUNT then
+    if RUNT_RX or RUNT_TX then
         return MIN_RUNT_BYTES;
     else
         return MIN_FRAME_BYTES;
     end if;
 end function;
 
--- Maximum frame size for checking incoming frames.
+-- Maximum frame size for incoming and outgoing frames.
 function get_max_frame return positive is
 begin
     if ALLOW_JUMBO then
@@ -228,6 +260,8 @@ signal pktin_last       : bit_array;
 signal pktin_valid      : bit_array;
 signal pktin_ready      : bit_array;
 signal pktin_badfrm     : bit_array;
+signal pktin_log_data   : log_array;
+signal pktin_log_write  : bit_array;
 signal pktin_overflow   : bit_array;
 signal pktin_ptperror   : bit_array;
 signal pktin_rxerror    : bit_array;
@@ -245,6 +279,10 @@ signal sched_select     : integer range 0 to PORT_TOTAL-1;
 signal macerr_dup       : std_logic;
 signal macerr_int       : std_logic;
 signal macerr_tbl       : std_logic;
+signal mac_log_data     : log_meta_t;
+signal mac_log_psrc     : integer range 0 to PORT_COUNT-1;
+signal mac_log_dmask    : std_logic_vector(PORT_COUNT-1 downto 0);
+signal mac_log_write    : std_logic;
 signal scrub_req        : std_logic;
 signal pktout_clk       : bit_array;
 signal pktout_data      : word_t;
@@ -270,7 +308,7 @@ signal err_sw           : switch_error_t := SWITCH_ERROR_NONE;
 signal core_reset_sync  : std_logic;
 
 -- Consolidate ConfigBus replies.
-signal cfg_ack_all      : cfgbus_ack_array(0 to 2) := (others => cfgbus_idle);
+signal cfg_ack_all      : cfgbus_ack_array(0 to 3) := (others => cfgbus_idle);
 signal cfg_ack_rx       : cfgbus_ack_array(0 to PORT_TOTAL-1) := (others => cfgbus_idle);
 signal cfg_ack_tx       : cfgbus_ack_array(0 to PORT_TOTAL-1) := (others => cfgbus_idle);
 
@@ -366,14 +404,16 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         generic map(
         DEV_ADDR        => DEV_ADDR,
         CORE_CLK_HZ     => CORE_CLK_HZ,
+        PORT_COUNT      => PORT_TOTAL,
         PORT_INDEX      => n,
         PTP_DOPPLER     => PTP_DOPPLER,
         STRIP_FCS       => STRIP_FCS,
+        SUPPORT_LOG     => SUPPORT_LOG,
         SUPPORT_PAUSE   => SUPPORT_PAUSE,
         SUPPORT_PTP     => SUPPORT_PTP,
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
-        ALLOW_RUNT      => ALLOW_RUNT,
+        ALLOW_RUNT      => RUNT_RX,
         INPUT_BYTES     => 1,
         OUTPUT_BYTES    => DATAPATH_BYTES,
         IBUF_KBYTES     => IBUF_KBYTES,
@@ -398,6 +438,8 @@ gen_input : for n in PORT_COUNT-1 downto 0 generate
         err_badfrm      => pktin_badfrm(n),
         err_rxmac       => pktin_rxerror(n),
         err_overflow    => pktin_overflow(n),
+        err_log_data    => pktin_log_data(n),
+        err_log_write   => pktin_log_write(n),
         cfg_cmd         => cfg_cmd,
         cfg_ack         => cfg_ack_rx(n),
         core_clk        => core_clk,
@@ -417,14 +459,16 @@ gen_xinput : for n in PORTX_COUNT-1 downto 0 generate
         generic map(
         DEV_ADDR        => DEV_ADDR,
         CORE_CLK_HZ     => CORE_CLK_HZ,
+        PORT_COUNT      => PORT_TOTAL,
         PORT_INDEX      => PORT_COUNT+n,
         PTP_DOPPLER     => PTP_DOPPLER,
         STRIP_FCS       => STRIP_FCS,
+        SUPPORT_LOG     => SUPPORT_LOG,
         SUPPORT_PAUSE   => SUPPORT_PAUSE,
         SUPPORT_PTP     => SUPPORT_PTP,
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
-        ALLOW_RUNT      => ALLOW_RUNT,
+        ALLOW_RUNT      => RUNT_RX,
         INPUT_BYTES     => 8,
         OUTPUT_BYTES    => DATAPATH_BYTES,
         IBUF_KBYTES     => IBUF_KBYTES,
@@ -449,6 +493,8 @@ gen_xinput : for n in PORTX_COUNT-1 downto 0 generate
         err_badfrm      => pktin_badfrm(PORT_COUNT+n),
         err_rxmac       => pktin_rxerror(PORT_COUNT+n),
         err_overflow    => pktin_overflow(PORT_COUNT+n),
+        err_log_data    => pktin_log_data(PORT_COUNT+n),
+        err_log_write   => pktin_log_write(PORT_COUNT+n),
         cfg_cmd         => cfg_cmd,
         cfg_ack         => cfg_ack_rx(PORT_COUNT+n),
         core_clk        => core_clk,
@@ -459,7 +505,8 @@ end generate;
 -- Round-robin scheduler chooses which input is active.
 u_robin : entity work.packet_round_robin
     generic map(
-    INPUT_COUNT     => PORT_TOTAL)
+    INPUT_COUNT     => PORT_TOTAL,
+    MAX_FRM_WORDS   => div_ceil(get_max_frame, DATAPATH_BYTES))
     port map(
     in_last         => pktin_last,
     in_valid        => pktin_valid,
@@ -468,7 +515,8 @@ u_robin : entity work.packet_round_robin
     in_error        => sched_error,
     out_valid       => sched_valid,
     out_ready       => sched_ready,
-    clk             => core_clk);
+    clk             => core_clk,
+    reset_p         => core_reset_sync);
 
 sched_data  <= pktin_data(sched_select);
 sched_meta  <= pktin_meta(sched_select);
@@ -481,11 +529,13 @@ u_mac : entity work.mac_core
     IO_BYTES        => DATAPATH_BYTES,
     PORT_COUNT      => PORT_TOTAL,
     CORE_CLK_HZ     => CORE_CLK_HZ,
-    ALLOW_RUNT      => ALLOW_RUNT,
+    ALLOW_RUNT      => RUNT_RX,
     ALLOW_PRECOMMIT => ALLOW_PRECOMMIT,
     INPUT_HAS_FCS   => not STRIP_FCS,
+    OVR_DELAY       => OVR_DELAY,
     PTP_DOPPLER     => PTP_DOPPLER,
     PTP_STRICT      => PTP_STRICT,
+    SUPPORT_LOG     => SUPPORT_LOG,
     SUPPORT_PTP     => SUPPORT_PTP,
     SUPPORT_VPORT   => SUPPORT_VLAN,
     SUPPORT_VRATE   => SUPPORT_VLAN,
@@ -503,6 +553,10 @@ u_mac : entity work.mac_core
     in_nlast        => sched_nlast,
     in_valid        => sched_valid,
     in_ready        => sched_ready,
+    log_data        => mac_log_data,
+    log_psrc        => mac_log_psrc,
+    log_dmask       => mac_log_dmask,
+    log_write       => mac_log_write,
     out_data        => pktout_data,
     out_meta        => pktout_meta,
     out_nlast       => pktout_nlast,
@@ -510,6 +564,7 @@ u_mac : entity work.mac_core
     out_precommit   => pktout_precommit,
     out_priority    => pktout_hipri,
     out_keep        => pktout_pdst,
+    out_overflow    => pktout_overflow,
     cfg_cmd         => cfg_cmd,
     cfg_ack         => cfg_ack_all(0),
     port_2step      => pktout_2step,
@@ -527,6 +582,60 @@ u_scrub_req : sync_toggle2pulse
     out_strobe  => scrub_req,
     out_clk     => core_clk);
 
+--------------------------- PACKET LOGGING --------------------------
+gen_log_cfg1 : if LOG_CFGBUS generate
+    u_log_cfgbus : entity work.mac_log_cfgbus
+        generic map(
+        DEV_ADDR    => DEV_ADDR,
+        REG_ADDR    => SW_ADDR_LOGGING,
+        CORE_CLK_HZ => CORE_CLK_HZ,
+        PORT_COUNT  => PORT_COUNT)
+        port map(
+        mac_data    => mac_log_data,
+        mac_psrc    => mac_log_psrc,
+        mac_dmask   => mac_log_dmask,
+        mac_write   => mac_log_write,
+        port_data   => pktin_log_data,
+        port_write  => pktin_log_write,
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_ack_all(1),
+        core_clk    => core_clk,
+        reset_p     => core_reset_sync);
+end generate;
+
+gen_log_cfg0 : if not LOG_CFGBUS generate
+    u_placeholder : cfgbus_readonly
+        generic map(
+        DEVADDR     => DEV_ADDR,
+        REGADDR     => SW_ADDR_LOGGING)
+        port map(
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_ack_all(1),
+        reg_val     => (others => '0'));
+end generate;
+
+gen_log_uart1 : if LOG_UART_BAUD > 0 generate
+    u_log_uart : entity work.mac_log_uart
+        generic map(
+        UART_BAUD   => LOG_UART_BAUD,
+        CORE_CLK_HZ => CORE_CLK_HZ,
+        PORT_COUNT  => PORT_COUNT)
+        port map(
+        mac_data    => mac_log_data,
+        mac_psrc    => mac_log_psrc,
+        mac_dmask   => mac_log_dmask,
+        mac_write   => mac_log_write,
+        port_data   => pktin_log_data,
+        port_write  => pktin_log_write,
+        uart_txd    => log_txd,
+        core_clk    => core_clk,
+        reset_p     => core_reset_sync);
+end generate;
+
+gen_log_uart0 : if LOG_UART_BAUD = 0 generate
+    log_txd <= '1'; -- Idle UART
+end generate;
+
 ----------------------------- OUTPUT LOGIC --------------------------
 -- For each 1 Gbps output port...
 gen_output : for n in PORT_COUNT-1 downto 0 generate
@@ -541,7 +650,7 @@ gen_output : for n in PORT_COUNT-1 downto 0 generate
         SUPPORT_PTP     => SUPPORT_PTP,
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
-        ALLOW_RUNT      => ALLOW_RUNT,
+        ALLOW_RUNT      => RUNT_TX,
         INPUT_HAS_FCS   => not STRIP_FCS,
         PTP_DOPPLER     => PTP_DOPPLER,
         PTP_STRICT      => PTP_STRICT,
@@ -592,7 +701,7 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
         SUPPORT_PTP     => SUPPORT_PTP,
         SUPPORT_VLAN    => SUPPORT_VLAN,
         ALLOW_JUMBO     => ALLOW_JUMBO,
-        ALLOW_RUNT      => ALLOW_RUNT,
+        ALLOW_RUNT      => RUNT_TX,
         INPUT_HAS_FCS   => not STRIP_FCS,
         PTP_DOPPLER     => PTP_DOPPLER,
         PTP_STRICT      => PTP_STRICT,
@@ -631,8 +740,8 @@ gen_xoutput : for n in PORTX_COUNT-1 downto 0 generate
 end generate;
 
 -- Consolidate ConfigBus replies.
-cfg_ack_all(1) <= cfgbus_merge(cfg_ack_rx);
-cfg_ack_all(2) <= cfgbus_merge(cfg_ack_tx);
+cfg_ack_all(2) <= cfgbus_merge(cfg_ack_rx);
+cfg_ack_all(3) <= cfgbus_merge(cfg_ack_tx);
 
 p_cfgbus : process(cfg_cmd.clk) is
 begin

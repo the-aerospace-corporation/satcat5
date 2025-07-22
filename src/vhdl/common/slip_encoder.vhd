@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -73,6 +73,8 @@ signal enc_state    : encode_state_t := eof_or_idle(START_TOKEN);
 signal enc_last     : std_logic := '0';
 signal enc_valid    : std_logic := '0';
 
+signal s_out_last   : std_logic := '0';
+
 begin
 
 -- Upstream and downstream flow control
@@ -80,7 +82,7 @@ enc_cken  <= out_ready or not enc_valid;
 in_ready  <= enc_cken and bool2bit(enc_state = NEXT_IDLE);
 out_valid <= enc_valid;
 out_data  <= enc_data;
-out_last  <= enc_last;
+out_last  <= s_out_last;
 
 -- Encoder state machine
 p_enc : process(refclk)
@@ -92,6 +94,7 @@ begin
             enc_state   <= eof_or_idle(START_TOKEN);
             enc_last    <= '0';
             enc_valid   <= '0';
+            s_out_last  <= '0';
         elsif (enc_cken = '1') then
             -- Move to the next encoder state...
             if (enc_state = NEXT_EOF) then
@@ -99,6 +102,7 @@ begin
                 enc_data    <= SLIP_FEND;
                 enc_state   <= NEXT_IDLE;
                 enc_valid   <= '1';
+                s_out_last  <= '1';
             elsif (enc_state = NEXT_ESC_END) then
                 -- Second half of escape sequence.
                 enc_data    <= SLIP_ESC_END;
@@ -133,6 +137,7 @@ begin
                 enc_state   <= eof_or_idle(in_last = '1');
                 enc_last    <= in_last;
                 enc_valid   <= '1';
+                s_out_last  <= '0';
             end if;
         end if;
     end if;

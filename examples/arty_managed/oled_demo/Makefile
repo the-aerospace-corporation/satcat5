@@ -1,4 +1,4 @@
-# Copyright 2023 The Aerospace Corporation.
+# Copyright 2023-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 ### constants
@@ -8,6 +8,7 @@ IGNORE_ERROR := 2>&1 || cd .
 
 ### environment
 ifeq ($(OS),Windows_NT)
+    LIBS=-lWs2_32
     MKDIR=mkdir
     REMOVE=del /q /f
 else
@@ -60,4 +61,7 @@ $(BUILD_DIR)/%.c.o: %.c | $(BUILD_DIR)
 
 # Binary
 %.bin: $(OBJS)
-	$(CXX) $^ -o $@
+	$(CXX) $^ $(LDFLAGS) $(LIBS) -o $@
+
+# Forces rebuild of an object file if an included header is updated
+-include $(OBJS:.o=.d)

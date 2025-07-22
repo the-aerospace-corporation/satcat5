@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2023 The Aerospace Corporation.
+-- Copyright 2023-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -71,6 +71,7 @@ signal out_rtc_uut  : ptp_time_t;
 
 -- High-level test control.
 signal test_offset  : tstamp_t := (others => '0');
+signal test_check   : std_logic := '0';
 signal test_reset   : std_logic := '1';
 
 begin
@@ -113,9 +114,11 @@ uut : entity work.ptp_realsync
     OUT_CLK_HZ  => OUT_CLK_HZ / ACCELERATE)
     port map(
     ref_clk     => ref_clk,
+    ref_reset_p => test_reset,
     ref_tstamp  => ref_tstamp,
     ref_rtc     => ref_rtc,
     out_clk     => out_clk,
+    out_reset_p => test_reset,
     out_tstamp  => out_tstamp,
     out_rtc     => out_rtc_uut);
 
@@ -123,7 +126,7 @@ uut : entity work.ptp_realsync
 p_check : process(out_clk)
 begin
     if rising_edge(out_clk) then
-        if (test_reset = '0') then
+        if (test_check = '1') then
             assert (out_rtc_ref = out_rtc_uut)
                 report "RTC mismatch." severity error;
         end if;
@@ -136,12 +139,15 @@ p_test : process
     begin
         -- Reset initial state with the new offset.
         test_offset <= get_tstamp_sec(offset_sec);
+        test_check  <= '0';
         test_reset  <= '1';
 
         -- Wait for pipeline to flush, then resume checking.
         -- With acceleration, trial length ensures a one-second rollover.
         wait for 1 us;
-        test_reset  <= '0';
+        test_reset <= '0';
+        wait for 1 us;
+        test_check <= '1';
         wait for 122 us;
     end procedure;
 begin

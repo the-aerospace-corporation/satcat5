@@ -1,40 +1,38 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Template class implementing a least-recently-used (LRU) cache
-//
-// The "LruCache" template defines a searchable key-value store with a
-// fixed maximum size.  Querying a given key returns a pointer to the
-// stored key if it exists, or a newly-created entry otherwise.
-// If necessary, the oldest entry is evicted to make room.
-//
-// The requirements for items using these this template are:
-//  * The object MUST declare itself as a friend of satcat5::util::LruCache.
-//    e.g., "friend satcat5::util::LruCache<MyClassName>;"
-//  * The object MUST be a "plain-old-data" class or struct with:
-//      * Member "m_next" as a pointer to the same type of object.
-//      * Member "m_key" as any type implementing operator= and operator==.
-//      * Note: Both "m_next" and "m_key" MUST NOT be declared as const.
-//  * The object MUST initialize the m_next pointer to zero.
-//  * The m_next pointer SHOULD generally be marked as "private".
-//    (The object SHOULD NOT access the pointer except through LruCache.)
-//
-// Internally, the class uses a singly-linked list of key-value pairs.
-// For simplicity, search is performed linearly by checking each entry.
-// The list is maintained in most-recently-used order, overwriting the tail
-// as needed when eviction is required.
-//
 
 #pragma once
 
 namespace satcat5 {
     namespace util {
-        // Template for a least-recently-used (LRU) cache,
-        // using a user-allocated array as the backing store.
+        //! Template class implementing a least-recently-used (LRU) cache.
+        //!
+        //! The "LruCache" template defines a searchable key-value store with a
+        //! fixed maximum size.  Querying a given key returns a pointer to the
+        //! stored key if it exists, or a newly-created entry otherwise.
+        //! If necessary, the oldest entry is evicted to make room.
+        //!
+        //! The requirements for items using these this template are:
+        //!  * The object MUST declare itself as a friend of satcat5::util::LruCache.
+        //!    e.g., "friend satcat5::util::LruCache<MyClassName>;"
+        //!  * The object MUST be a "plain-old-data" class or struct with:
+        //!      * Member "m_next" as a pointer to the same type of object.
+        //!      * Member "m_key" as any type implementing operator= and operator==.
+        //!      * Note: Both "m_next" and "m_key" MUST NOT be declared as const.
+        //!  * The object MUST initialize the m_next pointer to zero.
+        //!  * The m_next pointer SHOULD generally be marked as "private".
+        //!    (The object SHOULD NOT access the pointer except through LruCache.)
+        //!
+        //! Internally, the class uses a singly-linked list of key-value pairs.
+        //! For simplicity, search is performed linearly by checking each entry.
+        //! The list is maintained in most-recently-used order, overwriting the tail
+        //! as needed when eviction is required.
         template <class T> class LruCache {
         public:
-            // Given a backing array, initialize an empty cache.
+            //! Given a backing array, initialize an empty cache.
             LruCache(T* array, unsigned count) : m_free(array), m_list(0) {
                 // Set pointers to create a linked list of free elements.
                 // Everything else is don't-care.
@@ -44,7 +42,7 @@ namespace satcat5 {
                 array[count-1].m_next = 0;
             }
 
-            // Reset this cache to the empty state.
+            //! Reset this cache to the empty state.
             void clear() {
                 while (m_list) {
                     T* item = m_list;
@@ -54,12 +52,12 @@ namespace satcat5 {
                 }
             }
 
-            // Is this an empty list?
+            //! Is this an empty list?
             inline bool is_empty() const {
                 return !m_list;
             }
 
-            // Count the number of stored items.
+            //! Count the number of stored items.
             unsigned len() const {
                 unsigned count = 0;
                 const T* item = m_list;
@@ -70,8 +68,8 @@ namespace satcat5 {
                 return count;
             }
 
-            // Query the cache without modifying its contents.
-            // Returns null pointer if no match is found.
+            //! Query the cache without modifying its contents.
+            //! Returns null pointer if no match is found.
             T* find(const decltype(T::m_key)& key) {
                 T* ptr = m_list;
                 while (ptr && !(ptr->m_key == key)) {
@@ -80,9 +78,9 @@ namespace satcat5 {
                 return ptr;
             }
 
-            // Query the cache, updating the recently-used list.
-            // Returns a new or existing entry matching the given key.
-            // If the cache is full, evicts the oldest entry to make room.
+            //! Query the cache, updating the recently-used list.
+            //! Returns a new or existing entry matching the given key.
+            //! If the cache is full, evicts the oldest entry to make room.
             T* query(const decltype(T::m_key)& key) {
                 // Handling for special cases.
                 if (!m_list) {

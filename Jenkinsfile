@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------------
-// Copyright 2019-2024 The Aerospace Corporation.
+// Copyright 2019-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 // ------------------------------------------------------------------------
 // Jenkinsfile for CI/CD builds of SatCat5.
@@ -160,6 +160,10 @@ pipeline {
                                 reportName: 'Coverage_with_Source',
                                 reportTitles: ''
                             ]
+                        }
+                        dir('./sim/cpp/simulations') {
+                            // Archive PCAP files and other simulation outputs.
+                            archive_zip('cpp_unit_tests.zip')
                         }
                         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                             // Run the tool again, throws error below designated coverage threshold.

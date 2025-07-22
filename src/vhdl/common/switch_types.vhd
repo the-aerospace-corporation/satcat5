@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -29,7 +29,7 @@ package SWITCH_TYPES is
     subtype port_status_t is std_logic_vector(7 downto 0);
     constant STATUS_NULL : port_status_t := (others => '0');
 
-    -- Before and after structures for per-frame metadata.
+    -- Ingress and egress metadata used by the switch and router.
     type switch_meta_t is record
         pmsg    : tlvpos_t;     -- PTP start-of-message offset (0 = N/A)
         pfreq   : tlvpos_t;     -- PTP Doppler TLV offset (0 = N/A)
@@ -45,6 +45,26 @@ package SWITCH_TYPES is
         tfreq   => TFREQ_DISABLED,
         vtag    => VHDR_NONE);
 
+    type switch_meta_array is array(natural range<>) of switch_meta_t;
+
+    -- Metadata used for optional diagnostics. (See "packet_logging".)
+    type log_meta_t is record
+        dst_mac : mac_addr_t;
+        src_mac : mac_addr_t;
+        etype   : mac_type_t;
+        vtag    : vlan_hdr_t;
+        reason  : reason_t;
+    end record;
+
+    constant LOG_META_NULL : log_meta_t := (
+        dst_mac => MAC_ADDR_NONE,
+        src_mac => MAC_ADDR_NONE,
+        etype   => ETYPE_NONE,
+        vtag    => VHDR_NONE,
+        reason  => REASON_KEEP);
+
+    type log_meta_array is array(natural range<>) of log_meta_t;
+
     -- Conversion from metadata to std_logic_vector and back.
     constant SWITCH_META_WIDTH : integer :=
         2*TLVPOS_WIDTH + TSTAMP_WIDTH + TFREQ_WIDTH + VLAN_HDR_WIDTH;
@@ -52,6 +72,13 @@ package SWITCH_TYPES is
 
     function switch_m2v(x: switch_meta_t) return switch_meta_v;
     function switch_v2m(x: switch_meta_v) return switch_meta_t;
+
+    constant LOG_META_WIDTH : integer :=
+        2*MAC_ADDR_WIDTH + MAC_TYPE_WIDTH + VLAN_HDR_WIDTH + 8;
+    subtype log_meta_v is std_logic_vector(LOG_META_WIDTH-1 downto 0);
+
+    function log_m2v(x: log_meta_t) return log_meta_v;
+    function log_v2m(x: log_meta_v) return log_meta_t;
 
     -- Port definition for 1 GbE and below:
     -- For more details, refer to "Custom Ports" in "docs/INTERFACES.md".
@@ -267,7 +294,9 @@ package SWITCH_TYPES is
     --      Ports in this mode enable two-step conversion for PTP messages.
     --  * REGADDR = 16: VLAN rate-control configuration
     --      Refer to "mac_vlan_rate" for details
-    --  * REGADDR = 17 - 511: Reserved
+    --  * REGADDR = 17: Packet logging diagnostics.
+    --      Refer to "mag_log_cfgbus" for details
+    --  * REGADDR = 18 - 511: Reserved
     --  * REGADDR = 512 - 527: Configuration for Port #0
     --      Each port is allocated a segment of sixteen registers.
     --      The lower eight registers in each segment are reserved for use by
@@ -299,6 +328,7 @@ package SWITCH_TYPES is
     constant SW_ADDR_MISS_BCAST     : integer := 14;
     constant SW_ADDR_PTP_2STEP      : integer := 15;
     constant SW_ADDR_VLAN_RATE      : integer := 16;
+    constant SW_ADDR_LOGGING        : integer := 17;
     function SW_ADDR_PORT_BASE(idx : integer) return natural;
 
     -- Define per-port ConfigBus registers relative to SW_ADDR_PORT_BASE:
@@ -313,6 +343,33 @@ package body SWITCH_TYPES is
     function get_rate_word(rate_mbps : positive) return port_rate_t is
     begin
         return std_logic_vector(to_unsigned(rate_mbps, 16));
+    end function;
+
+    function log_m2v(x: log_meta_t) return log_meta_v is
+        -- Concatenate all the fields together.
+        constant result : log_meta_v :=
+            x.dst_mac & x.src_mac & x.etype & x.vtag & x.reason;
+    begin
+        return result;
+    end function;
+
+    function log_v2m(x: log_meta_v) return log_meta_t is
+        variable v : log_meta_v := x;
+        variable result : log_meta_t := LOG_META_NULL;
+    begin
+        -- Pop each field from vector, starting from LSBs.
+        -- (More readable and maintainable than calculating offsets manually.)
+        result.reason   := v(REASON_WIDTH-1 downto 0);
+        v               := shift_right(v, REASON_WIDTH);
+        result.vtag     := v(VLAN_HDR_WIDTH-1 downto 0);
+        v               := shift_right(v, VLAN_HDR_WIDTH);
+        result.etype    := v(MAC_TYPE_WIDTH-1 downto 0);
+        v               := shift_right(v, MAC_TYPE_WIDTH);
+        result.src_mac  := v(MAC_ADDR_WIDTH-1 downto 0);
+        v               := shift_right(v, MAC_ADDR_WIDTH);
+        result.dst_mac  := v(MAC_ADDR_WIDTH-1 downto 0);
+        v               := shift_right(v, MAC_ADDR_WIDTH);
+        return result;
     end function;
 
     function switch_m2v(x: switch_meta_t) return switch_meta_v is

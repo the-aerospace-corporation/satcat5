@@ -1,12 +1,19 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Basic type aliases and prototypes used throughout SatCat5
+//!\file
+//! Basic type aliases and prototypes used throughout SatCat5.
+//!
+//!\details
+//! This file contains aliases and prototypes used throughout SatCat5.
+//! It is a useful almanac for finding classes of interest, as well as
+//! a central point for defining system-wide macros and parameters.
 
 #pragma once
 
 #include <cinttypes>
+#include <climits>
 
 // Allow safe destruction of SatCat5 objects?
 // Many embedded systems never need to delete anything, and disabling this
@@ -52,6 +59,18 @@ namespace satcat5 {
         class Gcm;                  // satcat5/aes_gcm.h
     }
 
+    namespace cbor {
+        struct Logger;              // satcat5/io_cbor.h
+        class CborReader;           // satcat5/io_cbor.h
+        class CborWriter;           // satcat5/io_cbor.h
+        class ListReader;           // satcat5/io_cbor.h
+        class ListWriter;           // satcat5/io_cbor.h
+        template <typename KEYTYPE>
+            class MapReader;        // satcat5/io_cbor.h
+        template <typename KEYTYPE>
+            class MapWriter;        // satcat5/io_cbor.h
+    }
+
     namespace ccsds_aos {           // CCSDS AOS Space Data Link Protocol
         struct Header;              // satcat5/ccsds_aos.h
         class Channel;              // satcat5/ccsds_aos.h
@@ -73,6 +92,7 @@ namespace satcat5 {
         class ConfigBusRemote;      // satcat5/cfgbus_remote.h
         class GpiRegister;          // satcat5/cfgbus_gpio.h
         class GpoRegister;          // satcat5/cfgbus_gpio.h
+        class Hdlc;                 // satcat5/cfgbus_hdlc.h
         class I2c;                  // satcat5/cfgbus_i2c.h
         class I2cEventListener;     // satcat5/cfgbus_i2c.h
         class Interrupt;            // satcat5/cfgbus_interrupt.h
@@ -98,13 +118,26 @@ namespace satcat5 {
     namespace coap {
         struct Code;                // satcat5/coap_constants.h
         class Connection;           // satcat5/coap_connection.h
+        class ConnectionSpp;        // satcat5/coap_connection.h
+        class ConnectionUdp;        // satcat5/coap_connection.h
         class Endpoint;             // satcat5/coap_endpoint.h
         class EndpointSpp;          // satcat5/coap_endpoint.h
         class EndpointSppFwd;       // satcat5/coap_endpoint.h
         class EndpointUdp;          // satcat5/coap_endpoint.h
         class EndpointUdpSimple;    // satcat5/coap_endpoint.h
+        class ManageSpp;            // satcat5/coap_endpoint.h
+        class ManageUdp;            // satcat5/coap_endpoint.h
         class Option;               // satcat5/coap_reader.h
+        class ProxyResource;        // satcat5/coap_proxy.h
+        class ProxyServer;          // satcat5/coap_proxy.h
         class Reader;               // satcat5/coap_reader.h
+        class ReadHeader;           // satcat5/coap_reader.h
+        class ReadSimple;           // satcat5/coap_reader.h
+        class Resource;             // satcat5/coap_resource.h
+        class ResourceServer;       // satcat5/coap_resource.h
+        class SimpleClient;         // satcat5/coap_client.h
+        class SimpleClientSpp;      // satcat5/coap_client.h
+        class SimpleClientUdp;      // satcat5/coap_client.h
         class Writer;               // satcat5/coap_writer.h
     }
 
@@ -125,6 +158,8 @@ namespace satcat5 {
         struct Header;              // satcat5/eth_header.h
         struct MacAddr;             // satcat5/eth_header.h
         struct MacType;             // satcat5/eth_header.h
+        struct PluginPacket;        // satcat5/eth_plugin.h
+        struct SwitchLogMessage;    // satcat5/eth_sw_log.h
         struct VlanRate;            // satcat5/switch_cfg.h
         struct VlanTag;             // satcat5/eth_header.h
         struct VtagPolicy;          // satcat5/switch_cfg.h
@@ -137,6 +172,8 @@ namespace satcat5 {
         class ConfigBus;            // satcat5/cfgbus_remote.h
         class Dispatch;             // satcat5/eth_dispatch.h
         class MacSec;               // satcat5/eth_macsec.h
+        class PluginCore;           // satcat5/eth_plugin.h
+        class PluginPort;           // satcat5/eth_plugin.h
         class Protocol;             // satcat5/eth_protocol.h
         class ProtoArp;             // satcat5/eth_arp.h
         class ProtoConfig;          // satcat5/net_cfgbus.h
@@ -149,11 +186,16 @@ namespace satcat5 {
             class SwitchCache;      // satcat5/eth_sw_cache.h
         class SwitchConfig;         // satcat5/switch_cfg.h
         class SwitchCore;           // satcat5/eth_switch.h
-        class SwitchPlugin;         // satcat5/eth_switch.h
+        class SwitchLogFormatter;   // satcat5/eth_sw_log.h
+        class SwitchLogHardware;    // satcat5/eth_sw_log.h
+        class SwitchLogReader;      // satcat5/eth_sw_log.h
+        class SwitchLogWriter;      // satcat5/eth_sw_log.h
         class SwitchPort;           // satcat5/eth_switch.h
         template <unsigned VMAX>
             class SwitchVlan;       // satcat5/eth_sw_vlan.h
         class Telemetry;            // satcat5/net_telemetry.h
+        class TelemetryRx;          // satcat5/net_telemetry.h
+        class Tpipe;                // satcat5/net_tpipe.h
     }
 
     namespace gui {                 // Graphical user interfaces
@@ -197,7 +239,9 @@ namespace satcat5 {
         class SlipCodecInverse;     // satcat5/codec_slip.h
         class SlipDecoder;          // satcat5/codec_slip.h
         class SlipEncoder;          // satcat5/codec_slip.h
+        class TriMode;              // satcat5/io_trimode.h
         class Writeable;            // satcat5/io_writeable.h
+        class WriteableBroadcast;   // satcat5/io_broadcast.h
         class WriteableRedirect;    // satcat5/io_writeable.h
     }
 
@@ -242,8 +286,15 @@ namespace satcat5 {
         class ProtoConfig;          // satcat5/net_cfgbus.h
         class SocketCore;           // satcat5/net_socket.h
         class TelemetryAggregator;  // satcat5/net_telemetry.h
+        class TelemetryCbor;        // satcat5/net_telemetry.h
+        class TelemetryKey;         // satcat5/net_telemetry.h
+        class TelemetryLogger;      // satcat5/net_telemetry.h
+        class TelemetryRx;          // satcat5/net_telemetry.h
+        class TelemetrySink;        // satcat5/net_telemetry.h
         class TelemetrySource;      // satcat5/net_telemetry.h
         class TelemetryTier;        // satcat5/net_telemetry.h
+        class TelemetryWatcher;     // satcat5/net_telemetry.h
+        class Tpipe;                // satcat5/net_tpipe.h
     }
 
     namespace ntp {                 // Network time protocol (NTP)
@@ -262,6 +313,9 @@ namespace satcat5 {
         class MailAdapter;          // satcat5/port_adapter.h
         class Mailbox;              // satcat5/port_mailbox.h
         class Mailmap;              // satcat5/port_mailmap.h
+        class NullAdapter;          // satcat5/port_adapter.h
+        class RecoveryEgress;       // satcat5/port_recovery.h
+        class RecoveryIngress;      // satcat5/port_recovery.h
         class SerialGeneric;        // satcat5/port_serial.h
         class SerialAuto;           // satcat5/port_serial.h
         class SerialI2cController;  // satcat5/port_serial.h
@@ -270,6 +324,7 @@ namespace satcat5 {
         class SerialSpiPeripheral;  // satcat5/port_serial.h
         class SerialUart;           // satcat5/port_serial.h
         class SlipAdapter;          // satcat5/port_adapter.h
+        class SwitchAdapter;        // satcat5/port_adapter.h
         class VlanAdapter;          // satcat5/port_adapter.h
     }
 
@@ -316,12 +371,17 @@ namespace satcat5 {
         class Table;                // satcat5/router2_table.h
     }
 
+    namespace tcp {                 // TCP networking
+        struct Header;              // satcat5/tcp_core.h
+    }
+
     namespace test {                // Unit test framework
         class TftpClient;           // sim/cpp/test_udp_tftp.cc
         class TftpServer;           // sim/cpp/test_udp_tftp.cc
     }
 
     namespace udp {                 // UDP networking
+        struct Header;              // satcat5/udp_core.h
         class Address;              // satcat5/udp_core.h
         class AeroFtpClient;        // satcat5/net_aeroftp.h
         class ConfigBus;            // satcat5/cfgbus_remote.h
@@ -331,9 +391,11 @@ namespace satcat5 {
         class Socket;               // satcat5/udp_socket.h
         class SocketCore;           // satcat5/udp_socket.h
         class Telemetry;            // satcat5/net_telemetry.h
+        class TelemetryRx;          // satcat5/net_telemetry.h
         class TftpClient;           // satcat5/udp_tftp.h
         class TftpServerCore;       // satcat5/udp_tftp.h
         class TftpServerSimple;     // satcat5/udp_tftp.h
+        class Tpipe;                // satcat5/net_tpipe.h
     }
 
     namespace util {                // Other utilities
