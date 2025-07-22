@@ -1,10 +1,11 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/ccsds_aos.h>
 #include <satcat5/ccsds_spp.h>
+#include <satcat5/log.h>
 #include <satcat5/utils.h>
 
 using satcat5::ccsds_aos::Channel;
@@ -15,8 +16,13 @@ using satcat5::io::ArrayRead;
 using satcat5::io::LimitedRead;
 using satcat5::io::Readable;
 using satcat5::io::Writeable;
+using satcat5::log::DEBUG;
+using satcat5::log::Log;
 using satcat5::net::Type;
 using satcat5::util::min_unsigned;
+
+// Set debugging verbosity (0/1/2)
+#define DEBUG_VERBOSE 0
 
 // Define fields for Dispatch::m_state:
 static constexpr u8 STATE_PRESYNC   = 0x80;     // Pre-packetized input?
@@ -77,23 +83,27 @@ Channel::Channel(
     , m_rx_tmp{}
 {
     m_filter = Type(m_rx_next.id);
-    m_iface->add(this);
+    if (m_iface) m_iface->add(this);
     if (m_src) m_src->set_callback(this);
 }
 
 #if SATCAT5_ALLOW_DELETION
 Channel::~Channel() {
-    m_iface->remove(this);
+    if (m_iface) m_iface->remove(this);
     if (m_src) m_src->set_callback(0);
 }
 #endif
 
 void Channel::desync() {
-    if (m_rx_state != State::RESYNC) {
+    if (DEBUG_VERBOSE > 0)
+        Log(DEBUG, "ccsds_aos::Channel Desync");
+
+    if (m_rx_state != State::RAW) {
         m_rx_state = State::RESYNC;
         m_rx_spp.write_abort();
         m_rx_rem = 0;
         m_dst->write_abort();
+        m_iface->error_incr();
     }
 }
 
@@ -116,7 +126,9 @@ void Channel::frame_rcvd(LimitedRead& src) {
         // Copy valid bytes to the output buffer.
         // (Nothing we can do if we've lost a packet.)
         LimitedRead(&src, pdu_bytes).copy_to(m_dst);
-        m_dst->write_finalize();
+        bool ok = m_dst->write_finalize();
+        if (DEBUG_VERBOSE > 0 && !ok)
+            Log(DEBUG, "ccsds_aos::Channel BPDU-Overflow");
     } else {
         // Packet mode (M_PDU) = Section 4.1.4.2
         unsigned first_spp = unsigned(pdu_hdr & MPDU_MASK);
@@ -139,7 +151,9 @@ void Channel::frame_rcvd(LimitedRead& src) {
             if (m_rx_state == State::DATA) {
                 // Copy data to output until end-of-frame.
                 m_rx_rem -= LimitedRead(&src, maxrd).copy_to(m_dst);
-                if (!m_rx_rem) m_dst->write_finalize();
+                bool ok = m_rx_rem || m_dst->write_finalize();
+                if (DEBUG_VERBOSE > 0 && !ok)
+                    Log(DEBUG, "ccsds_aos::Channel MPDU-Overflow");
             } else {
                 // Skip over idle frames.
                 src.read_consume(maxrd); m_rx_rem -= maxrd;
@@ -190,18 +204,22 @@ void Channel::data_rcvd(Readable* src) {
             satcat5::io::LimitedWrite aos(wr, dmax);
             if (m_tx_irem) m_tx_irem = idle_filler(&aos, MIN_FILLER);
             // Copy SPPs until input is exhausted or PDU is filled.
+            unsigned trailing = 0;
             while (aos.get_write_space() && src->get_read_ready()) {
                 src->copy_to(&aos);
-                if (!src->get_read_ready()) src->read_finalize();
+                trailing = src->get_read_ready();
+                if (!trailing) src->read_finalize();
             }
-            m_tx_busy = (src->get_read_ready() ? 1 : 0);
+            m_tx_busy = (trailing ? 1 : 0);
             // If there's any space left, add filler packet(s) as needed.
             // (If possible, align the pad with the transfer frame boundary.)
             while (aos.get_write_space())
                 m_tx_irem = idle_filler(&aos, aos.get_write_space());
         }
         // End of AOS transfer frame.
-        wr->write_finalize();
+        bool ok = wr->write_finalize();
+        if (DEBUG_VERBOSE > 0 && !ok)
+            Log(DEBUG, "ccsds_aos::Channel Rx Overflow");
     }
 }
 
@@ -308,6 +326,8 @@ void Dispatch::data_rcvd(Readable* src) {
                 rd.read_obj(m_rcvd_hdr);
                 if (m_rcvd_hdr.vcid() != VCID_IDLE)
                     deliver(Type(m_rcvd_hdr.id), &rd, dsize());
+            } else if (DEBUG_VERBOSE > 0) {
+                Log(DEBUG, "ccsds_aos::Dispatch CRC mismatch");
             }
             // Regardless, reset state for the next transfer frame.
             m_sync_state = 0;

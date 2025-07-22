@@ -1,13 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Interface driver for the ConfigBus I2C block
-//
-// This driver is designed for high-throughput, for example writing large
-// blocks of data to I2C-controlled OLED displays.  As such, it has a
-// relatively large transmit queue, to ensure throughput is maintained.
-//
+// Interace driver for "cfgbus_i2c_controller".
 
 #pragma once
 
@@ -30,28 +25,36 @@
 
 namespace satcat5 {
     namespace cfg {
-        // Interace driver for "cfgbus_i2c_controller"
+        //! Interace driver for "cfgbus_i2c_controller".
+        //! This driver is designed for high-throughput, for example writing
+        //! large blocks of data to I2C-controlled OLED displays.  As such,
+        //! it has a relatively large transmit queue, to ensure throughput
+        //! can be maintained without buffer underruns.
         class I2c
             : public satcat5::cfg::I2cGeneric
             , public satcat5::cfg::MultiSerial
         {
         public:
-            // Constructor links to specified control register.
+            //! Constructor links to specified ConfigBus address.
             I2c(satcat5::cfg::ConfigBus* cfg, unsigned devaddr);
 
-            // Configure the I2C controller.
+            //! Configure the I2C controller.
             void configure(
                 unsigned refclk_hz,         // ConfigBus reference clock
                 unsigned baud_hz,           // Desired I2C baud rate
                 bool clock_stretch = true); // Allow clock-stretching?
 
-            // Is the I2C controller currently busy?
+            //! Is the I2C controller currently busy?
             bool busy() override;
 
-            // Add a bus operation to the queue. (Return true if successful.)
+            //! Add a read operation to the queue.
+            //! \returns True if successful.
             bool read(const satcat5::util::I2cAddr& devaddr,
                 u8 regbytes, u32 regaddr, u8 nread,
                 satcat5::cfg::I2cEventListener* callback = 0) override;
+
+            //! Add a write operation to the queue.
+            //! \returns True if successful.
             bool write(const satcat5::util::I2cAddr& devaddr,
                 u8 regbytes, u32 regaddr, u8 nwrite, const u8* data,
                 satcat5::cfg::I2cEventListener* callback = 0) override;

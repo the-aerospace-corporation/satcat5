@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the wide-integer arithmetic class
@@ -421,7 +421,7 @@ TEST_CASE("wide_integer_signed") {
         log.suppress("0x0000");  // Don't echo to screen.
         const int128_t a = make128s(1, 2, 3, 4);
         satcat5::log::Log(satcat5::log::INFO, "Test").write_obj(a);
-        CHECK(log.contains("0x00000001000000020000000300000004"));
+        CHECK(log.contains("0x00000001-00000002-00000003-00000004"));
     }
 
     SECTION("read-write") {
@@ -733,7 +733,7 @@ TEST_CASE("wide_integer_unsigned") {
         log.suppress("0x0000");  // Don't echo to screen.
         const uint128_t a = make128u(1, 2, 3, 4);
         satcat5::log::Log(satcat5::log::INFO, "Test").write_obj(a);
-        CHECK(log.contains("0x00000001000000020000000300000004"));
+        CHECK(log.contains("0x00000001-00000002-00000003-00000004"));
     }
 
     SECTION("read-write") {

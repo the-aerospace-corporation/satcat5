@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -32,6 +32,7 @@ end sync_toggle2pulse;
 
 architecture sync_toggle2pulse of sync_toggle2pulse is
 
+signal s_in_toggle   : std_logic;
 signal in_toggle_d1  : std_logic;
 signal in_toggle_d2  : std_logic;
 signal in_toggle_d3  : std_logic;
@@ -48,11 +49,12 @@ end component;
 
 -- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
 attribute satcat5_cross_clock_dst : boolean;
-attribute satcat5_cross_clock_dst of in_toggle, in_toggle_d1 : signal is true;
+attribute satcat5_cross_clock_dst of s_in_toggle, in_toggle_d1 : signal is true;
 
 begin
 
 reset_n <= not reset_p;
+s_in_toggle <= in_toggle;
 
 -- Sample the async toggle signal.
 -- Two flip-flops in a row to allow metastable inputs to settle.
@@ -60,7 +62,7 @@ reset_n <= not reset_p;
 -- Manually instantiate each flop, to prevent changes during optimization.
 D0_reg : DFN1C0
     port map (
-    D   =>  in_toggle,
+    D   =>  s_in_toggle,
     Q   =>  in_toggle_d1,
     CLK =>  out_clk,
     CLR =>  reset_n);
@@ -125,8 +127,9 @@ end sync_buffer;
 
 architecture sync_buffer of sync_buffer is
 
-signal in_flag_d1   : std_logic;
-signal in_flag_d2   : std_logic;
+signal s_in_flag  : std_logic;
+signal in_flag_d1 : std_logic;
+signal in_flag_d2 : std_logic;
 
 signal reset_n : std_logic;
 component DFN1C0
@@ -139,11 +142,12 @@ end component;
 
 -- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
 attribute satcat5_cross_clock_dst : boolean;
-attribute satcat5_cross_clock_dst of in_flag, in_flag_d1 : signal is true;
+attribute satcat5_cross_clock_dst of s_in_flag, in_flag_d1 : signal is true;
 
 begin
 
 reset_n <= not reset_p;
+s_in_flag <= in_flag;
 
 -- Sample the async toggle signal.
 -- Two flip-flops in a row to allow metastable inputs to settle.
@@ -151,7 +155,7 @@ reset_n <= not reset_p;
 -- Manually instantiate each flop, to prevent changes during optimization.
 D0_reg : DFN1C0
     port map (
-    D   =>  in_flag,
+    D   =>  s_in_flag,
     Q   =>  in_flag_d1,
     CLK =>  out_clk,
     CLR =>  reset_n);
@@ -228,13 +232,12 @@ end;
 
 library IEEE;
 use     IEEE.STD_LOGIC_1164.ALL;
-use     work.common_functions.str_equal;
 use     work.common_primitives.sync_buffer;
 
 entity sync_reset is
     generic(
     HOLD_MIN    : integer := 7;
-    KEEP_ATTR   : string := "true");
+    KEEP_ATTR   : boolean := true);
     port(
     in_reset_p  : in  std_logic;
     out_reset_p : out std_logic;
@@ -243,34 +246,37 @@ end sync_reset;
 
 architecture sync_reset of sync_reset is
 
+signal s_in_reset_p : std_logic;
 signal sync_reset_p : std_logic := '0';
 signal out_reset_i  : std_logic := '1';
 signal countdown    : integer range 0 to HOLD_MIN := HOLD_MIN;
 
 -- Force retention of the reset signal?
 attribute alspreserve : boolean;
-attribute alspreserve of out_reset_i : signal is str_equal(KEEP_ATTR, "true");
+attribute alspreserve of out_reset_i : signal is KEEP_ATTR;
 attribute syn_keep : boolean;
-attribute syn_keep of out_reset_i : signal is str_equal(KEEP_ATTR, "true");
+attribute syn_keep of out_reset_i : signal is KEEP_ATTR;
 
 -- Custom attribute makes it easy to "set_false_path" on cross-clock signals.
 attribute satcat5_cross_clock_dst : boolean;
-attribute satcat5_cross_clock_dst of countdown, in_reset_p, out_reset_i : signal is true;
+attribute satcat5_cross_clock_dst of countdown, s_in_reset_p, out_reset_i : signal is true;
 
 begin
+
+s_in_reset_p <= in_reset_p;
 
 -- Synchronize the reset signal.
 u_sync : sync_buffer
     port map(
-    in_flag     => in_reset_p,
+    in_flag     => s_in_reset_p,
     out_flag    => sync_reset_p,
     out_clk     => out_clk,
     reset_p     => '0');
 
 -- Asynchronous set, synchronous clear after N cycles.
-p_count : process(out_clk, in_reset_p)
+p_count : process(out_clk, s_in_reset_p)
 begin
-    if (in_reset_p = '1') then
+    if (s_in_reset_p = '1') then
         out_reset_i <= '1';
         countdown   <= HOLD_MIN;
     elsif rising_edge(out_clk) then

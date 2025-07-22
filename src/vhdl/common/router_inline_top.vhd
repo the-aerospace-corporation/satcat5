@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020-2024 The Aerospace Corporation.
+-- Copyright 2020-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -110,9 +110,7 @@ signal inraw_write      : std_logic;
 signal inraw_error      : std_logic;
 signal inbuf_data       : byte_t;
 signal inbuf_write      : std_logic;
-signal inbuf_commit     : std_logic;
-signal inbuf_revert     : std_logic;
-signal inbuf_error      : std_logic;
+signal inbuf_result     : frm_result_t;
 
 -- Ingress datapath
 signal ig_inbuf         : axi_stream8;
@@ -217,7 +215,7 @@ u_port_error : sync_pulse2pulse
 
 u_inbuf_crc : sync_pulse2pulse
     port map(
-    in_strobe   => inbuf_error,
+    in_strobe   => inbuf_result.error,
     in_clk      => inraw_clk,
     out_strobe  => drop_ig_crc,
     out_clk     => clk_main,
@@ -274,9 +272,7 @@ u_crc : entity work.eth_frame_check
     in_write        => inraw_write,
     out_data        => inbuf_data,
     out_write       => inbuf_write,
-    out_commit      => inbuf_commit,
-    out_revert      => inbuf_revert,
-    out_error       => inbuf_error,
+    out_result      => inbuf_result,
     clk             => inraw_clk,
     reset_p         => net_rx_data.reset_p);
 
@@ -290,8 +286,8 @@ u_inbuf : entity work.fifo_packet
     port map(
     in_clk          => inraw_clk,
     in_data         => inbuf_data,
-    in_last_commit  => inbuf_commit,
-    in_last_revert  => inbuf_revert,
+    in_last_commit  => inbuf_result.commit,
+    in_last_revert  => inbuf_result.revert,
     in_write        => inbuf_write,
     in_overflow     => open,
     out_clk         => clk_main,

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -15,7 +15,7 @@ bool Dispatch::bound(const Type& type) const
 {
     Protocol* item = m_list.head();
     while (item) {
-        if (item->m_filter.m_value == type.m_value)
+        if (item->m_filter.match(type))
             return true;    // Found a match!
         item = m_list.next(item);
     }

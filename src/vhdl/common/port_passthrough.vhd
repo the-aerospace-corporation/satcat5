@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2022 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -13,6 +13,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.common_primitives.all;
+use     work.eth_frame_common.frm_result_t;
 use     work.switch_types.all;
 
 entity port_passthrough is
@@ -37,8 +38,7 @@ architecture port_passthrough of port_passthrough is
 -- Frame check.
 signal eth_chk_data     : std_logic_vector(7 downto 0);
 signal eth_chk_write    : std_logic;
-signal eth_chk_commit   : std_logic;
-signal eth_chk_revert   : std_logic;
+signal eth_chk_result   : frm_result_t;
 signal eth_chk_error    : std_logic;
 
 -- Input packet error signals
@@ -79,9 +79,7 @@ u_frmchk : entity work.eth_frame_check
     in_write    => port_rx_data.write,
     out_data    => eth_chk_data,
     out_write   => eth_chk_write,
-    out_commit  => eth_chk_commit,
-    out_revert  => eth_chk_revert,
-    out_error   => eth_chk_error,
+    out_result  => eth_chk_result,
     clk         => port_rx_data.clk,
     reset_p     => port_rx_data.reset_p);
 
@@ -109,8 +107,8 @@ u_fifo : entity work.fifo_packet
     port map(
     in_clk          => port_rx_data.clk,
     in_data         => eth_chk_data,
-    in_last_commit  => eth_chk_commit,
-    in_last_revert  => eth_chk_revert,
+    in_last_commit  => eth_chk_result.commit,
+    in_last_revert  => eth_chk_result.revert,
     in_write        => eth_chk_write,
     in_overflow     => open,
     out_clk         => port_tx_ctrl.clk,

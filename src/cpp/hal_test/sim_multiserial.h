@@ -1,16 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Simulated Multi-Serial interface
-//
-// The "SimMultiSerial" class emulates a ConfigBus interface for the
-// "cfgbus_multiserial" block that is used for I2C, SPI, and UART.  It
-// responds to individual register reads and writes to test the control
-// software for each block, and compares the output against expectations.
-//
-// The "read" data is always a simple counter.
-//
+// Simulated MultiSerial controller.
 
 #pragma once
 
@@ -20,32 +12,43 @@
 namespace satcat5 {
     namespace test {
         // Command flags for load_refcmd
-        extern const u8 MST_ERROR;  // Sets error flag
-        extern const u8 MST_READ;   // Triggers read
-        extern const u8 MST_START;  // Clears error flag
+        extern const u8 MST_ERROR;  //!< Sets error flag
+        extern const u8 MST_READ;   //!< Triggers read
+        extern const u8 MST_START;  //!< Clears error flag
 
-        // Emulated "cfgbus_multiserial" block.
+        //! Simulated Multi-Serial controller.
+        //! This class emulates a ConfigBus interface for the multipurpose
+        //! serial-data controller defined in "cfgbus_multiserial", which
+        //! is used for the I2C, SPI, and UART peripherals.
+        //!
+        //! This simulation responds to individual register reads and writes,
+        //! to test the control software for each block.  Outputs can then be
+        //! compared against expectations for unit testing of device drivers.
+        //!
+        //! The "read" data is always a simple counter.
         class MultiSerial : public satcat5::cfg::ConfigBus {
         public:
+            //! Create the simulated MultiSerial device.
+            //! Optionally set the maximum command queue depth.
             explicit MultiSerial(unsigned cmd_max = 32);
 
-            // Load next expected command into queue.
+            //! Load next expected command into queue.
             void load_refcmd(u16 next, u8 flags = 0);
 
-            // Poll event-handlers and advance simulation.
+            //! Poll event-handlers and advance simulation.
             void poll();
 
-            // Did we execute the full command sequence?
+            //! Did we execute the full command sequence?
             bool done() const {return m_cmd_ref.empty();}
 
-            // Last written configuration word (REGADDR = 2).
+            //! Last written configuration word (REGADDR = 2).
             u32 get_cfg() const {return m_config;}
 
-            // Force the BUSY flag to help reach certain edge-cases.
+            //! Force the BUSY flag to help reach certain edge-cases.
             void force_busy(bool busy) {m_busy = busy;}
 
-            // Simulate a delayed reply with of N bytes.
-            // (Prompt replies should set the MST_READ flag.)
+            //! Simulate a delayed reply with of N bytes.
+            //! (Prompt replies should set the MST_READ flag.)
             void reply_rcvd(unsigned count);
 
         protected:

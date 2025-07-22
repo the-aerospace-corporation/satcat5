@@ -1,9 +1,9 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
-//! Software-defined Ethernet switch
+//! Software-defined Ethernet switch.
 //!
 //! \details
 //! This file defines a layer-2 Ethernet switch, using a shared-memory
@@ -15,15 +15,12 @@
 //! the classes defined in "port_adapter.h".
 //!
 //! An extensible plugin system directs packets to the appropriate
-//! destination(s). Provided plugins include basic MAC-address learning
-//! systems (eth_sw_cache.h) and Virtual-LAN functions (eth_sw_vlan.h).
+//! destination(s). \see eth_sw_plugin.h.
 //!
 //! Precision Time Protocol (PTP) is not currently supported.
 
 #pragma once
 
-#include <satcat5/eth_header.h>
-#include <satcat5/ip_core.h>
 #include <satcat5/list.h>
 #include <satcat5/multi_buffer.h>
 #include <satcat5/switch_cfg.h>
@@ -49,76 +46,28 @@ namespace satcat5 {
         constexpr SATCAT5_PMASK_TYPE idx2mask(unsigned idx)
             { return (idx < 65536) ? (SATCAT5_PMASK_TYPE(1) << idx) : 0; }
 
-        //! Define the API for Ethernet switch plugins.
-        //! See examples in "eth_sw_cache.h" and "eth_sw_vlan.h".
-        class SwitchPlugin {
+        //! Maximum number of switch ports, based on SATCAT5_PMASK_TYPE.
+        //! The maximum number of ports is limited by the size of bit-mask
+        //! SATCAT5_PMASK_TYPE (e.g., "u32" = up to 32 ports).
+        constexpr unsigned PMASK_SIZE()
+            { return 8 * sizeof(SATCAT5_PMASK_TYPE); }
+
+        //! Define the API for packet-logging callbacks from eth::SwitchCore.
+        //! This class is the parent for SwitchLogStats and SwitchLogWriter.
+        class SwitchLogHandler {
         public:
-            //! Ephemeral data structure provided to the "query" method.
-            //! (New fields may be added to this structure in future versions.)
-            struct PacketMeta {
-                //! Complete packet contents.
-                satcat5::io::MultiPacket* pkt;
-
-                //! Copy of Ethernet header fields.
-                //! The Ethernet header is present in all valid packets.
-                //! This field is populated from #pkt by the "read_from" method.
-                satcat5::eth::Header hdr;
-
-                //! Copy of IPv4 header fields, if present.
-                //! The IPv4 header is present if hdr.type == ETYPE_IPV4.
-                //! This field is populated from #pkt by the "read_from" method.
-                satcat5::ip::Header ip;
-
-                //! Destination mask sets one bit for each destination port
-                //! eligible to receive a packet. Plugins that affect this
-                //! should bitwise-and (&=) with the previous mask value:
-                //!  Example: Return 0x14 = 2^4 + 2^2 = Send to ports #2 and #4.
-                //!  Example: Return 0xFFFF... = Send to all ports (broadcast).
-                //!  Example: Return 0 = Drop packet (no eligible ports).
-                SATCAT5_PMASK_TYPE dst_mask;
-
-                //! Read metadata from a packet object, populating "hdr" and "ip".
-                //! \returns True if all applicable headers were parsed successfully.
-                bool read_from(satcat5::io::MultiPacket* packet);
-
-                //! Accessors and shortcuts for packet metadata.
-                //! Some packet metadata fields are stored in "pkt->m_user[*]".
-                //! These values are populated by SwitchPort::write_finalize().
-                //!@{
-                inline unsigned length() const
-                    { return pkt->m_length; }
-                inline SATCAT5_PMASK_TYPE src_mask() const
-                    { return idx2mask(src_port()); }
-                inline unsigned src_port() const
-                    { return unsigned(pkt->m_user[0]); }
-                inline satcat5::eth::VtagPolicy port_vcfg() const
-                    { return satcat5::eth::VtagPolicy{pkt->m_user[1]}; }
-                //!@}
-            };
-
-            //! Packet-received callback
-            //!
-            //! The "query" function is called for each incoming packet, passing
-            //! a PacketMeta object that plugins should modify in-place.
+            //! This method is called exactly once for each incoming packet.
             //! The child class MUST override this method.
-            //! Return true to proceed with normal delivery (dst_mask), or false
-            //! to divert the packet for exclusive use by the plugin itself. In
-            //! the latter case, the plugin MUST eventually call free_packet().
-            virtual bool query(PacketMeta& pkt) = 0;
+            virtual void log_packet(const satcat5::eth::SwitchLogMessage& msg) = 0;
 
         protected:
-            //! Associate this plugin object with the designated switch.
-            //! Automatically calls plugin_add() and plugin_remove().
-            explicit SwitchPlugin(satcat5::eth::SwitchCore* sw);
-            ~SwitchPlugin() SATCAT5_OPTIONAL_DTOR;
-
-            //! Pointer to the associated Switch object.
-            satcat5::eth::SwitchCore* const m_switch;
+            //! Constructor is accessible only to children.
+            constexpr SwitchLogHandler() : m_next(nullptr) {}
 
         private:
-            // Linked list for chaining multiple plugins.
+            //! Linked list of other handler objects.
             friend satcat5::util::ListCore;
-            satcat5::eth::SwitchPlugin* m_next;
+            satcat5::eth::SwitchLogHandler* m_next;
         };
 
         //! A shared-memory Ethernet switch based on the MultiBuffer class.
@@ -139,44 +88,45 @@ namespace satcat5 {
             //! Configure this object and link to the provided working buffer.
             SwitchCore(u8* buff, unsigned nbytes);
 
-            //! Plugin management
-            //! The switch maintains a linked list of regstered SwitchPlugin
-            //! objects.  For each incoming packet, the switch calls query(...)
-            //! on each registered plugin.  These methods are automatically
-            //! called by the SwitchPlugin constructor and destructor.
-            //!@{
-            inline void plugin_add(satcat5::eth::SwitchPlugin* plugin)
-                { m_plugins.add(plugin); }
-            inline void plugin_remove(satcat5::eth::SwitchPlugin* plugin)
-                { m_plugins.remove(plugin); }
-            //!@}
-
-            //! Port management: The maximum number of ports is limited by
-            //! the size of SATCAT5_PMASK_TYPE (e.g., "u32" = up to 32 ports).
-            //! Most SwitchPort objects are one-to-one, but some represent
-            //! multiple; call "next_port_mask()" once for each logical port.
-            //!@{
+            //! Fetch a SwitchPort object by port-index.
+            //! Ports are numbered in the order they are created. \see port_add.
+            //! The maximum number of ports is given by eth::PMASK_SIZE.
             inline satcat5::eth::SwitchPort* get_port(unsigned idx)
                 { return m_ports.get_index(idx); }
+
+            //! Get next available bit-mask for new SwitchPort objects.
+            //! Most SwitchPort objects are one-to-one, but some represent
+            //! multiple; call "next_port_mask()" once for each logical port.
+            SATCAT5_PMASK_TYPE next_port_mask();
+
+            //! Get the number of attached ports.
             inline u32 port_count() const
                 { return m_ports.len(); }
-            SATCAT5_PMASK_TYPE next_port_mask();
-            void port_add(satcat5::eth::SwitchPort* port);
-            void port_remove(satcat5::eth::SwitchPort* port);
-            void port_remove(const SATCAT5_PMASK_TYPE& mask);
-            //!@}
+
+            //! Optional debug interface gets a carbon copy of each packet.
+            inline void set_debug(satcat5::io::Writeable* debug)
+                { m_debug = debug; }
+
+            //! Optional logging interface records a summary of every packet.
+            //! Function and formatting are the same as "mac_log_core.vhd".
+            inline void add_log(satcat5::eth::SwitchLogHandler* log)
+                { m_pktlogs.add(log); }
+            inline void remove_log(satcat5::eth::SwitchLogHandler* log)
+                { m_pktlogs.remove(log); }
 
             //! Enable or disable "promiscuous" flag on the specified port index.
             //! For as long as the flag is set, those port(s) will receive ALL
             //! switch traffic regardless of the destination address, etc.
             void set_promiscuous(unsigned port_idx, bool enable);
             //! Return a bit-mask identifying all "promiscuous" ports.
-            inline SATCAT5_PMASK_TYPE get_promiscuous_mask() const {return m_prom_mask;}
+            inline SATCAT5_PMASK_TYPE get_promiscuous_mask() const
+                { return m_prom_mask; }
 
             //! Configure EtherType filter for traffic reporting. (0 = Any type)
             void set_traffic_filter(u16 etype = 0);
             //! Return the current filter configuration. (0 = Any type)
-            inline u16 get_traffic_filter() const {return m_stats_filter;}
+            inline u16 get_traffic_filter() const
+                { return m_stats_filter; }
 
             //! Query traffic statistics
             //! Count received frames that match the current traffic filter,
@@ -184,20 +134,52 @@ namespace satcat5 {
             //! \returns the number of matching frames.
             u32 get_traffic_count();
 
+            //! Carbon-copy a packet to the debug port, if it is enabled.
+            //! Reserved for use by SwitchCore, SwitchPort, or their children.
+            void debug_if(const satcat5::eth::PluginPacket& pkt, unsigned mask) const;
+
+            //! If logging is enabled, record the outcome for this packet.
+            void debug_log(
+                const satcat5::io::MultiPacket* pkt,
+                u8 reason, SATCAT5_PMASK_TYPE dst = 0) const;
+
         protected:
-            // Override the MultiBuffer::deliver() method.
+            //! Override the MultiBuffer::deliver() method.
             unsigned deliver(satcat5::io::MultiPacket* packet) override;
 
-            // Internal event-handlers called from deliver(...).
-            void process_stats(const satcat5::eth::SwitchPlugin::PacketMeta& meta);
-            bool process_plugins(satcat5::eth::SwitchPlugin::PacketMeta& meta);
-            unsigned deliver_switch(const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+            //! Internal event-handlers called from deliver(...).
+            //!@{
+            void process_stats(const satcat5::eth::PluginPacket& pkt);
+            satcat5::util::optional<unsigned> process_plugins(satcat5::eth::PluginPacket& pkt);
+            satcat5::util::optional<unsigned> pkt_has_dropped(satcat5::eth::PluginPacket& pkt);
+            unsigned deliver_switch(const satcat5::eth::PluginPacket& pkt);
+            //!@}
 
-            // Linked list of attached plugins and Ethernet ports.
-            satcat5::util::List<satcat5::eth::SwitchPlugin> m_plugins;
+            //! Plugin management for use by eth::PluginCore constructor.
+            //! For each incoming packet, call each plugin's query(...) method.
+            //!@{
+            friend satcat5::eth::PluginCore;
+            void plugin_add(satcat5::eth::PluginCore* plugin);
+            void plugin_remove(satcat5::eth::PluginCore* plugin);
+            //!@}
+
+            //! Port management methods used by eth::SwitchPort constructor.
+            //!@{
+            friend satcat5::eth::SwitchPort;
+            void port_add(satcat5::eth::SwitchPort* port);
+            void port_remove(satcat5::eth::SwitchPort* port);
+            void port_remove(const SATCAT5_PMASK_TYPE& mask);
+            //!@}
+
+            //! Linked list of attached plugins.
+            satcat5::util::List<satcat5::eth::PluginCore> m_plugins;
+
+            //! Linked list of attached Ethernet ports.
             satcat5::util::List<satcat5::eth::SwitchPort> m_ports;
 
             // Other configuration variables.
+            satcat5::io::Writeable* m_debug;
+            satcat5::util::List<satcat5::eth::SwitchLogHandler> m_pktlogs;
             SATCAT5_PMASK_TYPE m_free_pmask;
             SATCAT5_PMASK_TYPE m_prom_mask;
             u16 m_stats_filter;
@@ -219,38 +201,120 @@ namespace satcat5 {
         //! This class cannot be used directly; child objects define how the
         //! port behavior and how it attaches to the outside world.
         //!
-        //! The object itself defines the io::Writeable interface for data
-        //! entering the switch.  Data leaving the switch is accessed through
-        //! the io::Readable interface of member variable "m_egress".
+        //! Ingress data (i.e., data entering the port on its way to the
+        //! SwitchCore) is written directly to the SwitchPort object.
+        //! The SwitchPort automatically handles PluginPort egress events.
         //!
-        //! See "port_adapter.h" for several commonly-used variants.
-        class SwitchPort : public satcat5::io::MultiWriter {
+        //! Egress data (i.e., data leaving the SwitchCore) and associated
+        //! plugin events are typically handled by the SwitchPort itself, by
+        //! providing an io::Writeable to the constructor where processed
+        //! egress data should be copied. If the child object prefers to take
+        //! both responsibilities, it may instead provide a null pointer. In
+        //! the latter case, the child reads directly from `m_egress`.
+        //!
+        //! Formatting for the ingress and egress streams is as follows:
+        //!  * The child or its upstream processing MUST verify the FCS of
+        //!    each incoming Ethernet frame before calling write_finalize().
+        //!    (i.e., This function may be performed in software or HDL.)
+        //!  * The ingress data stream MUST NOT include preambles or FCS.
+        //!  * The ingress data SHOULD retain VLAN headers if applicable.
+        //!  * The ingress data SHALL be written to this parent object.
+        //!  * The egress data stream MAY include VLAN headers.
+        //!  * The child SHOULD add, remove, or reformat VLAN tags as needed.
+        //!    \see eth::SwitchVlanEgress, port::VlanAdapter for examples.
+        //!  * The child or its downstream processing MUST recalculate and
+        //!    append an FCS to each outgoing frame.
+        //!    (i.e., This function may be performed in software or HDL.)
+        //!
+        //! For a complete example, \see port::MailAdapter, port::SlipAdapter.
+        class SwitchPort
+            : public satcat5::io::EventListener
+            , public satcat5::io::MultiWriter
+        {
         public:
-            // Accept delivery of a given packet?
+            //! Accept delivery of a given packet?
             bool accept(SATCAT5_PMASK_TYPE dst_mask, satcat5::io::MultiPacket* packet);
 
-            // Miscellaneous accessors.
+            //! Plugin management.
+            //! The switch maintains a linked list of regstered PluginCore
+            //! objects.  For each incoming packet, the switch calls query(...)
+            //! on each registered plugin.  These methods are automatically
+            //! called by the PluginCore constructor and destructor.
+            //!@{
+            void plugin_add(satcat5::eth::PluginPort* plugin);
+            void plugin_remove(satcat5::eth::PluginPort* plugin);
+            //!@}
+
+            //! Issue notifications to all attached plugins.
+            //!@{
+            void plugin_ingress(satcat5::eth::PluginPacket& pkt);
+            void plugin_egress(satcat5::eth::PluginPacket& pkt);
+            //!@}
+
+            //! Internal consistency check, mainly used for unit testing.
             inline bool consistency() const
                 { return m_egress.consistency(); }
+
+            //! Source for data leaving the switch through this port.
+            inline satcat5::io::MultiReaderPriority* get_egress()
+                { return &m_egress; }
+
+            //! Pointer to the parent SwitchCore object.
+            inline satcat5::eth::SwitchCore* get_switch()
+                { return m_switch; }
+
+            //! Enable or disable this port, pausing data-flow.
+            inline void port_enable(bool enable)
+                { m_egress.set_port_enable(enable); }
+
+            //! Is this port currently enabled?
+            inline bool port_enabled() const
+                { return m_egress.get_port_enable(); }
+
+            //! Discard all pending ingress and egress data.
+            inline void port_flush()
+                { write_abort(); m_egress.flush(); }
+
+            //! Port number for attachment to the parent SwitchCore.
+            //! Note: Does not apply to multi-port API, \see router2::Offload.
             inline unsigned port_index() const
                 { return m_port_index; }
+
+            //! Bit-mask for all port(s) associated with this interface.
             inline SATCAT5_PMASK_TYPE port_mask() const
                 { return m_port_mask; }
+
+            //! Set egress data callback, mainly used for unit testing.
+            inline void set_callback(satcat5::io::EventListener* cb)
+                { m_egress.set_callback(cb); }
+
+            //! Return this port's VLAN configuration.
             inline satcat5::eth::VtagPolicy vlan_config() const
                 { return m_vlan_cfg; }
+
+            //! Set this port's VLAN configuration.
             inline void vlan_config(const VtagPolicy& cfg)
                 { m_vlan_cfg = cfg; }
 
-            // Override write_finalize() to store metadata.
-            // Children with multiple logical ports MUST override this method
-            //  to indicate the correct specific source port index.
+            //! Override write_abort() to allow additional error handling.
+            //! For example, logging of dropped packets. \see `eth_sw_log.h`.
+            void write_abort() override;
+
+            //! Override write_finalize() to store metadata.
+            //! Children with multiple logical ports MUST override this method
+            //!  to indicate the correct specific source port index.
             bool write_finalize() override;
 
         protected:
             //! Link this port to the designated switch.
             //! Implement a child object to use this class.
-            explicit SwitchPort(satcat5::eth::SwitchCore* sw);
+            explicit SwitchPort(
+                satcat5::eth::SwitchCore* sw,
+                satcat5::io::Writeable* dst);
             ~SwitchPort() SATCAT5_OPTIONAL_DTOR;
+
+            // Override for EventListener callback.
+            void data_rcvd(satcat5::io::Readable* src) override;
 
             //! Pointer to the associated switch.
             satcat5::eth::SwitchCore* const m_switch;
@@ -268,21 +332,13 @@ namespace satcat5 {
             satcat5::eth::VtagPolicy m_vlan_cfg;
             // TODO: Support for PAUSE commands?
 
-            //! Access data leaving the switch through this port.
-            //! The child class ensures the following:
-            //!  * The child or its upstream processing MUST verify the FCS of
-            //!    each incoming Ethernet frame before calling write_finalize().
-            //!    (i.e., This function may be performed in software or HDL.)
-            //!  * The ingress data stream MUST NOT include preambles or FCS.
-            //!  * The ingress data SHOULD retain VLAN headers if applicable.
-            //!  * The ingress data SHALL be written to this parent object.
-            //!  * The egress data stream MAY include VLAN headers.
-            //!    The child SHOULD add, remove, or reformat VLAN tags as needed.
-            //!  * The egress data SHALL be read from the "m_egress" object.
-            //!  * The child or its downstream processing MUST recalculate and
-            //!    append an FCS to each outgoing frame.
-            //!    (i.e., This function may be performed in software or HDL.)
-            satcat5::io::MultiReaderPriority m_egress;
+            // Egress pipeline.
+            satcat5::io::MultiReaderPriority m_egress;  //!< Egress data source.
+            satcat5::io::Writeable* const m_eg_dst;     //!< Egress destination.
+            bool m_eg_hdr;                              //!< Frame header copied?
+
+            //! Linked list of attached plugins.
+            satcat5::util::List<satcat5::eth::PluginPort> m_plugins;
 
         private:
             // Linked list of other SwitchPort objects.

@@ -1,11 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// This file defines a text-rendering utility for the SSD1306 OLED display,
-// which is controlled over I2C.  It accepts most regular ASCII characters,
-// with anything else rendered as an empty space.
-//
+// Text rendering for the SSD1306 OLED display.
 
 #pragma once
 
@@ -15,17 +12,20 @@
 namespace satcat5 {
     namespace device {
         namespace i2c {
-            class Ssd1306 : public satcat5::poll::Timer
-            {
+            //! Text rendering for the SSD1306 OLED display.
+            //! This class defines a text-rendering utility for the SSD1306 OLED
+            //! display, which is controlled over I2C.  It accepts most regular
+            //! ASCII characters, with anything else rendered as an empty space.
+            class Ssd1306 : public satcat5::poll::Timer {
             public:
-                // Constructor links to the specified I2C bus.
+                //! Constructor links to the specified I2C bus.
                 explicit Ssd1306(satcat5::cfg::I2cGeneric* i2c);
 
-                // Reset display and set initial configuration.
+                //! Reset display and set initial configuration.
                 void reset();
 
-                // Display a null-terminated message string.
-                // Returns true if successful, false if already busy.
+                //! Display a null-terminated message string.
+                //! Returns true if successful, false if already busy.
                 bool display(const char* text);
 
             protected:

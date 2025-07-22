@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -22,8 +22,8 @@ use     work.eth_frame_common.byte_t;
 
 entity hdlc_encoder_tb_helper is
     generic(
-    BLOCK_BYTES : integer;
-    USE_ADDRESS : boolean);
+    FRAME_BYTES : natural;  -- Number of bytes in frame excluding flags/FCS
+    MSB_FIRST   : boolean); -- true for MSb first; false for LSb first
     port(
     test_done   : out std_logic);
 end hdlc_encoder_tb_helper;
@@ -31,21 +31,20 @@ end hdlc_encoder_tb_helper;
 architecture helper of hdlc_encoder_tb_helper is
 
 signal in_data      : byte_t := (others => '0');
-signal in_last      : std_logic := '0';
 signal in_valid     : std_logic := '0';
+signal in_last      : std_logic := '0';
 signal in_ready     : std_logic;
 
 signal enc_data     : std_logic;
 signal enc_valid    : std_logic;
-signal enc_ready    : std_logic;
+signal enc_last     : std_logic;
+signal enc_ready    : std_logic := '0';
 
 signal dec_write    : std_logic;
 
 signal out_data     : byte_t;
 signal out_write    : std_logic;
 signal out_last     : std_logic;
-signal out_error    : std_logic;
-signal out_addr     : byte_t;
 
 signal clk          : std_logic := '0';
 signal reset_p      : std_logic := '1';
@@ -56,8 +55,6 @@ signal ref_last     : std_logic := '0';
 signal rate_in      : real := 0.0;
 signal rate_enc     : real := 0.0;
 
-signal byte_count   : integer := 0;
-
 signal test_done_i  : std_logic := '0';
 
 begin
@@ -65,30 +62,17 @@ begin
 -- Clock gen
 clk <= not clk after 5 ns; -- 1/(2*5 ns) = 100 MHz
 
-p_count : process(clk, out_write)
-begin
-    if rising_edge(clk) and (reset_p = '1') then
-        byte_count <= 0;
-    elsif rising_edge(out_write) then
-        if (byte_count = BLOCK_BYTES) then
-            byte_count <= 1;
-        else
-            byte_count <= byte_count + 1;
-        end if;
-    end if;
-end process;
-
 -- Randomized input and reference data streams.
 p_src : process(clk)
-    constant RATE_EOF : real := 0.02;
+    constant RATE_EOF  : real := 0.02;
 
     variable seed1a, seed1b : positive := 1234;
     variable seed2a, seed2b : positive := 5678;
     variable rand : real := 0.0;
 
-    variable temp_data : byte_t := (others => '0');
-    variable temp_last : std_logic := '0';
-    variable first : std_logic := '1';
+    variable in_byte_count  : integer   := 0;
+    variable ref_byte_count : integer   := 0;
+    variable temp_last      : std_logic := '0';
 
     function float2byte(constant x: real) return byte_t is
         variable result : byte_t := std_logic_vector(
@@ -102,61 +86,77 @@ begin
         if (reset_p = '1') then
             in_data <= (others => '0');
             in_last <= '0';
+            in_byte_count := 0;
         elsif (in_valid = '1') and (in_ready = '1') then
-            uniform(seed1a, seed2a, rand);
-            in_last <= bool2bit(rand < RATE_EOF);
-            uniform(seed1a, seed2a, rand);
-            in_data <= float2byte(rand);
+            if (in_last = '1') then
+                in_byte_count := 0;
+            else
+                in_byte_count := in_byte_count + 1;
+            end if;
+
+            if (FRAME_BYTES = 0) then
+                uniform(seed1a, seed2a, rand);
+                in_data <= float2byte(rand);
+                uniform(seed1a, seed2a, rand);
+                in_last <= bool2bit(rand < RATE_EOF);
+            else
+                if (in_byte_count = (FRAME_BYTES-1)) then
+                    uniform(seed1a, seed2a, rand);
+                    in_data <= float2byte(rand);
+                    in_last <= '1';
+                else
+                    uniform(seed1a, seed2a, rand);
+                    in_data <= float2byte(rand);
+                    uniform(seed1a, seed2a, rand);
+                    in_last <= bool2bit(rand < RATE_EOF);
+                end if;
+            end if;
         end if;
 
         if (reset_p = '1') then
-            ref_data   <= (others => '0');
-            ref_last   <= '0';
-            first      := '1';
+            ref_data <= (others => '0');
+            ref_last <= '0';
+            ref_byte_count := 0;
+            temp_last := '0';
         elsif (out_write = '1') then
-            if (first = '1') then
-                first := '0';
-                uniform(seed1b, seed2b, rand);
-                temp_last := bool2bit(rand < RATE_EOF);
-                uniform(seed1b, seed2b, rand);
-                temp_data := float2byte(rand);
+            if (ref_last = '1') then
+                ref_byte_count := 0;
+            else
+                ref_byte_count := ref_byte_count + 1;
             end if;
 
-            -- Fill ref data and last, accounting for any padding
-            if (BLOCK_BYTES > 0) then
-                if (byte_count = BLOCK_BYTES-1) then
-                    ref_data <= temp_data;
-                    ref_last <= '1';
-
-                    uniform(seed1b, seed2b, rand);
-                    temp_last := bool2bit(rand < RATE_EOF);
-
-                    uniform(seed1b, seed2b, rand);
-                    temp_data := float2byte(rand);
-                elsif (temp_last = '1') then
-                    ref_data <= temp_data;
-                    ref_last <= '0';
-
-                    temp_data := (others => '0');
-                else
-                    ref_data <= temp_data;
-                    ref_last <= temp_last;
-
-                    uniform(seed1b, seed2b, rand);
-                    temp_last := bool2bit(rand < RATE_EOF);
-
-                    uniform(seed1b, seed2b, rand);
-                    temp_data := float2byte(rand);
-                end if;
+            if (FRAME_BYTES = 0) then
+                uniform(seed1b, seed2b, rand);
+                ref_data <= float2byte(rand);
+                uniform(seed1b, seed2b, rand);
+                ref_last <= bool2bit(rand < RATE_EOF);
             else
-                ref_data <= temp_data;
-                ref_last <= temp_last;
+                if (temp_last = '1') then
+                    ref_data <= (others => '0');
+                    if (ref_byte_count = (FRAME_BYTES-1)) then
+                        ref_last  <= '1';
+                        temp_last := '0';
+                    else
+                        ref_last <= '0';
+                    end if;
+                elsif (ref_byte_count = (FRAME_BYTES-1)) then
+                    uniform(seed1b, seed2b, rand);
+                    ref_data <= float2byte(rand);
+                    ref_last <= '1';
+                else
+                    uniform(seed1b, seed2b, rand);
+                    ref_data <= float2byte(rand);
+                    uniform(seed1b, seed2b, rand);
+                    ref_last <= bool2bit(rand < RATE_EOF);
 
-                uniform(seed1b, seed2b, rand);
-                temp_last := bool2bit(rand < RATE_EOF);
-
-                uniform(seed1b, seed2b, rand);
-                temp_data := float2byte(rand);
+                    if (rand < RATE_EOF) and
+                            (ref_byte_count < FRAME_BYTES) then
+                        temp_last := '1';
+                        ref_last  <= '0';
+                    else
+                        temp_last := '0';
+                    end if;
+                end if;
             end if;
         end if;
     end if;
@@ -185,15 +185,16 @@ end process;
 
 uut_enc : entity work.hdlc_encoder
     generic map(
-    USE_ADDRESS => USE_ADDRESS,
-    BLOCK_BYTES  => BLOCK_BYTES)
+    FRAME_BYTES => FRAME_BYTES,
+    MSB_FIRST   => MSB_FIRST)
     port map(
     in_data   => in_data,
-    in_last   => in_last,
     in_valid  => in_valid,
+    in_last   => in_last,
     in_ready  => in_ready,
     out_data  => enc_data,
     out_valid => enc_valid,
+    out_last  => enc_last,
     out_ready => enc_ready,
     clk       => clk,
     reset_p   => reset_p);
@@ -202,15 +203,14 @@ dec_write <= enc_valid and enc_ready;
 
 uut_dec : entity work.hdlc_decoder
     generic map(
-    USE_ADDRESS => USE_ADDRESS)
+    BUFFER_KBYTES => 1,
+    MSB_FIRST     => MSB_FIRST)
     port map(
     in_data   => enc_data,
     in_write  => dec_write,
     out_data  => out_data,
     out_write => out_write,
     out_last  => out_last,
-    out_error => out_error,
-    out_addr  => out_addr,
     clk       => clk,
     reset_p   => reset_p);
 
@@ -222,8 +222,6 @@ begin
             assert (out_data = ref_data) report "DATA mismatch" severity error;
             assert (out_last = ref_last) report "LAST mismatch" severity error;
         end if;
-        assert (out_error = '0')
-            report "Unexpected decoder error" severity error;
     end if;
 end process;
 
@@ -268,19 +266,23 @@ begin
 
 -- Instantiate each configuration under test:
 uut0 : entity work.hdlc_encoder_tb_helper
-    generic map(BLOCK_BYTES => -1, USE_ADDRESS => false)
+    generic map(
+    FRAME_BYTES => 0, MSB_FIRST => false)
     port map(test_done => test_done(0));
 
 uut1 : entity work.hdlc_encoder_tb_helper
-    generic map(BLOCK_BYTES => 5, USE_ADDRESS => false)
+    generic map(
+    FRAME_BYTES => 0, MSB_FIRST => true)
     port map(test_done => test_done(1));
 
 uut2 : entity work.hdlc_encoder_tb_helper
-    generic map(BLOCK_BYTES => 0, USE_ADDRESS => true)
+    generic map(
+    FRAME_BYTES => 5, MSB_FIRST => false)
     port map(test_done => test_done(2));
 
 uut3 : entity work.hdlc_encoder_tb_helper
-    generic map(BLOCK_BYTES => 5, USE_ADDRESS => true)
+    generic map(
+    FRAME_BYTES => 10, MSB_FIRST => true)
     port map(test_done => test_done(3));
 
 p_done : process(test_done)

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the Internet Control Message Protocol (ICMP)
@@ -18,8 +18,7 @@ using satcat5::eth::VTAG_NONE;
 // Mock IP sub-protocol that always triggers an ICMP error.
 static const u8 PROTO_FAKE = 0xFF;
 
-class FakeProto : public satcat5::net::Protocol
-{
+class FakeProto : public satcat5::net::Protocol {
 public:
     explicit FakeProto(satcat5::ip::Dispatch* iface)
         : satcat5::net::Protocol(satcat5::net::Type(PROTO_FAKE))
@@ -68,6 +67,9 @@ TEST_CASE("ICMP") {
     auto MAC_PERIPHERAL(xlink.MAC1);            // Peripheral MAC addr (eth1)
     auto IP_CONTROLLER(xlink.IP0);              // Controller IP addr (eth0)
     auto IP_PERIPHERAL(xlink.IP1);              // Peripheral IP addr (eth1)
+
+    // Disable log timeouts for most tests.
+    ip_controller.m_icmp.set_log_cooldown(0);
 
     // Specialized test infrastructure
     FakeProto fake_controller(&xlink.net0.m_ip);
@@ -133,6 +135,23 @@ TEST_CASE("ICMP") {
         // Deliver the frame and it should be dropped silently.
         satcat5::poll::service_all();
         CHECK(log.empty());
+    }
+
+    // Test handling of the logging rate-limiter.
+    SECTION("log-limit") {
+        ip_controller.m_icmp.set_log_cooldown(100);
+        log.suppress("Destination host unreachable");
+        log.suppress("Destination port unreachable");
+        // Trigger the first ICMP error.
+        fake_controller.request(IP_PERIPHERAL,
+            satcat5::ip::ICMP_UNREACHABLE_HOST);
+        satcat5::poll::service_all();
+        CHECK(log.contains("Destination host unreachable"));
+        // A 2nd error within the rate-limit should be ignored.
+        fake_controller.request(IP_PERIPHERAL,
+            satcat5::ip::ICMP_UNREACHABLE_PORT);
+        satcat5::poll::service_all();
+        CHECK_FALSE(log.contains("Destination port unreachable"));
     }
 
     // Test ICMP message-sending and error-handling:

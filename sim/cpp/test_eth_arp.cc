@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test the Address Resolution Protocol handler
@@ -120,6 +120,11 @@ TEST_CASE("ethernet-arp") {
         CHECK(TEST_READ(REF_ANNOUNCE));
     }
 
+    SECTION("bad-request") {
+        // Requests for an invalid IP address should be ignored.
+        CHECK_FALSE(uut.send_query(satcat5::ip::ADDR_NONE));
+    }
+
     SECTION("ipchange") {
         // Once IP is changed, Query2 expects a response.
         uut.set_ipaddr(IP_ALT);
@@ -139,7 +144,7 @@ TEST_CASE("ethernet-arp") {
         CHECK(TEST_READ(REF_REPLY2));
     }
 
-    SECTION("runtpkt") {
+    SECTION("runt-pkt") {
         // Send a few runt packets, all should be ignored.
         logger.disable();                   // Suppress error messages
         CHECK(write(&tx, 13, REF_QUERY1));  // Incomplete Eth header

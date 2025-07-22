@@ -161,7 +161,7 @@ ip::Stack ip_stack(LOCAL_MAC, LOCAL_IP, &eth_port, &eth_port, &timer);
     satcat5::gui::LogToDisplay tft_log(&tft_canvas,
         tft_lcd.DARK_THEME, VIEW_START, VIEW_ROWS);
 
-	// GUI setup and animations.
+    // GUI setup and animations.
     class GuiTimer : satcat5::poll::Timer {
     public:
         GuiTimer() : m_anim(0), m_frame(0) {

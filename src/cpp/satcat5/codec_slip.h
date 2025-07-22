@@ -1,19 +1,24 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Inline SLIP encoder and decoder objects
-//
-// The inline SLIP encoder implements the Writeable interface, encodes each
-// incoming byte, and writes the result to a different Writeable object with
-// escape characters and inter-frame tokens.
-//
-// The inline SLIP decoder does the inverse, accepting an SLIP stream one byte
-// at a time through the Writeable interface, and forwarding the decoded result
-// to a different Writeable object.  (Often a PacketBuffer.)
-//
-// See also: IETF RFC-1055: "Serial Line Internet Protocol"
-//      https://tools.ietf.org/html/rfc1055
+//!\file
+//! Inline SLIP encoder and decoder objects.
+//!
+//!\details
+//! The inline `SlipEncoder` implements the Writeable interface, encodes each
+//! incoming byte, and writes the result to a different Writeable object with
+//! escape characters and inter-frame tokens.
+//!
+//! The inline `SlipDecoder` does the inverse, accepting an SLIP stream one byte
+//! at a time through the Writeable interface, and forwarding the decoded result
+//! to a different Writeable object.  (Often a PacketBuffer.)
+//!
+//! In both cases, the input uses the `io::Writeable` API.  To attach either
+//! input to an `io::Readable` interface, use `io::BufferedCopy`.
+//!
+//! See also: IETF RFC-1055: "Serial Line Internet Protocol"
+//!      https://tools.ietf.org/html/rfc1055
 
 #pragma once
 
@@ -33,11 +38,10 @@
 
 namespace satcat5 {
     namespace io {
-        // Inline SLIP encoder
-        class SlipEncoder : public satcat5::io::Writeable
-        {
+        //! Inline SLIP encoder. \see codec_slip.h.
+        class SlipEncoder : public satcat5::io::Writeable {
         public:
-            // Permanently link this encoder to an output object.
+            //! Permanently link this encoder to an output object.
             explicit SlipEncoder(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
@@ -54,11 +58,10 @@ namespace satcat5 {
             bool m_overflow;
         };
 
-        // Inline SLIP decoder
-        class SlipDecoder : public satcat5::io::Writeable
-        {
+        //! Inline SLIP decoder. \see codec_slip.h.
+        class SlipDecoder : public satcat5::io::Writeable {
         public:
-            // Permanently link this encoder to an output object.
+            //! Permanently link this encoder to an output object.
             explicit SlipDecoder(satcat5::io::Writeable* dst);
 
             // Implement required API from Writeable:
@@ -75,48 +78,53 @@ namespace satcat5 {
             satcat5::io::SlipDecoder::State m_state;    // Decoder state
         };
 
-        // Buffered SLIP encoder / decoder pair.
-        // (Suitable for connecting to UART or similar.)
+        //! Buffered SLIP encoder / decoder pair.
+        //! Suitable for connecting to UART or similar.
+        //!
+        //! Tx path: Write (*this) -> SLIP encode (parent) -> Write (*dst)
+        //!
+        //! Rx path: Read (*src) -> SLIP decode -> Buffer -> Read (*this)
         class SlipCodec
             : public satcat5::io::SlipEncoder
             , public satcat5::io::ReadableRedirect
         {
         public:
-            // Constructor links to specified source and destination.
-            // (Which are often the same BufferedIO object.)
+            //! Constructor links to specified source and destination.
+            //! In many cases, `dst` and `src` are the same BufferedIO object.
             SlipCodec(
                 satcat5::io::Writeable* dst,
                 satcat5::io::Readable* src);
 
         protected:
-            // Tx path: Write (*this) -> SLIP encode (parent) -> Write (*dst)
-            // Rx path: Read (*src) -> SLIP decode -> Buffer -> Read (*this)
-            satcat5::io::PacketBuffer m_buff;       // Decoder writes to buffer
-            satcat5::io::SlipDecoder m_decode;      // Decoder object
-            satcat5::io::BufferedCopy m_copy;       // Push/pull adapter
-            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    // Working buffer for m_rx
+            satcat5::io::PacketBuffer m_buff;       //!< Decoder writes to buffer
+            satcat5::io::SlipDecoder m_decode;      //!< Decoder object
+            satcat5::io::BufferedCopy m_copy;       //!< Push/pull adapter
+            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    //!< Working buffer for m_rx
         };
 
-        // Buffered SLIP encoder / decoder pair with opposite polarity.
-        // (Suitable for use in unit testing and verification.)
+        //! Buffered SLIP encoder / decoder pair with opposite polarity.
+        //! Suitable for use in unit testing and verification.
+        //! This configuration is not typically useful in deployed hardware.
+        //!
+        //! Rx path: Write (*this) -> SLIP decode (parent) -> Write (*dst)
+        //!
+        //! Tx path: Read (*src) -> SLIP encode -> Buffer -> Read (*this)
         class SlipCodecInverse
             : public satcat5::io::SlipDecoder
             , public satcat5::io::ReadableRedirect
         {
         public:
-            // Constructor links to specified source and destination.
-            // (Which are often the same BufferedIO object.)
+            //! Constructor links to specified source and destination.
+            //! In many cases, `dst` and `src` are the same BufferedIO object.
             SlipCodecInverse(
                 satcat5::io::Writeable* dst,
                 satcat5::io::Readable* src);
 
         protected:
-            // Rx path: Write (*this) -> SLIP decode (parent) -> Write (*dst)
-            // Tx path: Read (*src) -> SLIP encode -> Buffer -> Read (*this)
-            satcat5::io::PacketBuffer m_buff;       // Encoder writes to buffer
-            satcat5::io::SlipEncoder m_encode;      // Encoder object
-            satcat5::io::BufferedCopy m_copy;       // Push/pull adapter
-            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    // Working buffer for m_rx
+            satcat5::io::PacketBuffer m_buff;       //!< Encoder writes to buffer
+            satcat5::io::SlipEncoder m_encode;      //!< Encoder object
+            satcat5::io::BufferedCopy m_copy;       //!< Push/pull adapter
+            u8 m_rawbuff[SATCAT5_SLIP_BUFFSIZE];    //!< Working buffer for m_rx
         };
     }
 }

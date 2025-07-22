@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -55,18 +55,25 @@ architecture mac_counter of mac_counter is
 constant ETYPE_ANY : mac_type_t := (others => '0');
 subtype count_t is unsigned(23 downto 0);
 
+-- Packet-matching state machine.
 signal pkt_etype    : mac_type_t := (others => '0');
 signal pkt_rdy      : std_logic := '0';
-signal pkt_match    : std_logic;
+signal pkt_match    : std_logic := '0';
 signal pkt_incr     : count_t;
 
+-- ConfigBus interface.
 signal cfg_word     : cfgbus_word;
 signal cfg_etype    : mac_type_t;
 signal cfg_write    : std_logic;
 
+-- Counter state machine.
 signal ctr_word     : cfgbus_word;
 signal ctr_reg      : count_t := (others => '0');
 signal ctr_temp     : count_t := (others => '0');
+
+-- For debugging, apply KEEP constraint to certain signals.
+attribute KEEP : string;
+attribute KEEP of pkt_match : signal is "true";
 
 begin
 
@@ -88,18 +95,22 @@ begin
 end process;
 
 -- EtherType filter and packet counter.
-pkt_match <= pkt_rdy and bool2bit(cfg_etype = ETYPE_ANY or cfg_etype = pkt_etype);
-pkt_incr  <= (0 => pkt_match, others => '0');
+pkt_incr <= (0 => pkt_match, others => '0');
 
 p_filter : process(clk)
 begin
     if rising_edge(clk) then
+        -- Pipeline stage 2: Counter with latch for CPU.
         if (cfg_write = '1') then
             ctr_reg  <= ctr_temp;
             ctr_temp <= pkt_incr;
-        elsif (pkt_rdy = '1') then
+        else
             ctr_temp <= ctr_temp + pkt_incr;
         end if;
+
+        -- Pipeline stage 1: Identify matching packets.
+        -- Note: Useful ILA trigger for finding packets of a particular type.
+        pkt_match <= pkt_rdy and bool2bit(cfg_etype = ETYPE_ANY or cfg_etype = pkt_etype);
     end if;
 end process;
 

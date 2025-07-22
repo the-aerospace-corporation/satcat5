@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -82,7 +82,8 @@ u_dev_spi : entity work.io_spi_peripheral
     rx_write    => dev_rx_write,
     cfg_mode    => 3,
     cfg_gdly    => (others => '0'),
-    refclk      => cfg_cmd.clk);
+    refclk      => cfg_cmd.clk,
+    reset_p     => cfg_cmd.reset_p);
 
 u_fifo : entity work.cfgbus_fifo
     generic map(

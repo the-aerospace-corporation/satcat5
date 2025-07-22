@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -81,7 +81,8 @@ entity fifo_packet is
     in_write        : in  std_logic;
     in_reset        : out std_logic;        -- Syncronized copy of reset_p
     in_overflow     : out std_logic;        -- Overflow strobe (in_clk)
-    in_hfull        : out std_logic;        -- Approximate half-full indicator
+    in_hfull        : out std_logic;        -- Approximate 1/2-full indicator
+    in_qfull        : out std_logic;        -- Approximate 3/4-full indicator
     in_pct_full     : out unsigned(7 downto 0);
 
     -- Output port uses AXI-style flow control.
@@ -94,7 +95,8 @@ entity fifo_packet is
     out_ready       : in  std_logic;
     out_reset       : out std_logic;        -- Synchronized copy of reset_p
     out_overflow    : out std_logic;        -- Overflow strobe (out_clk)
-    out_hfull       : out std_logic;        -- Approximate half-full indicator
+    out_hfull       : out std_logic;        -- Approximate 1/2-full indicator
+    out_qfull       : out std_logic;        -- Approximate 3/4-full indicator
     out_pause       : in  std_logic := '0'; -- Optional: Don't start next packet
 
     -- Global asynchronous reset.
@@ -141,6 +143,7 @@ signal wdog_reset   : std_logic := '0'; -- Flag in output clock
 
 -- State synchronized to main input.
 signal half_full    : std_logic := '0';
+signal qtr3_full    : std_logic := '0';
 signal pct_full     : unsigned(7 downto 0) := (others => '0');
 signal free_words   : words_i := FIFO_DEPTH;
 signal new_words    : words_i := 1;
@@ -212,6 +215,7 @@ u_reset_out : sync_reset
 in_reset    <= reset_i;
 in_overflow <= wr_ovrflow;
 in_hfull    <= half_full;
+in_qfull    <= qtr3_full;
 in_pct_full <= pct_full;
 
 u_overflow : sync_pulse2pulse
@@ -225,6 +229,12 @@ u_hfull : sync_buffer
     port map(
     in_flag     => half_full,
     out_flag    => out_hfull,
+    out_clk     => out_clk);
+
+u_qfull : sync_buffer
+    port map(
+    in_flag     => qtr3_full,
+    out_flag    => out_qfull,
     out_clk     => out_clk);
 
 -- Optional watchdog timer for undeliverable packets.
@@ -329,6 +339,7 @@ begin
 
         -- Optional half-full indicator is not used internally.
         half_full <= bool2bit(free_words < FIFO_DEPTH/2) and not reset_i;
+        qtr3_full <= bool2bit(free_words < (3*FIFO_DEPTH)/4) and not reset_i;
 
         -- Optional "percent-full" indicator is not used internally.
         -- (Output is an 8-bit fractional scale: 0 = Empty, 255 = Full.)

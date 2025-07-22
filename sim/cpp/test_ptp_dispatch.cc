@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for "ptp::dispatch"
@@ -23,17 +23,16 @@ TEST_CASE("ptp_dispatch") {
     Dispatch dispatch(&xlink.eth0, &xlink.net0.m_ip);
     xlink.eth0.ptp_callback(&dispatch);
     xlink.net0.m_ip.set_ident(0);
-    const unsigned L2_HEADER_LENGTH = 14;
-    const unsigned L3_HEADER_LENGTH = 42;
 
     SECTION("DispatchTo::BROADCAST_L2") {
         satcat5::io::Writeable* writeable = dispatch.ptp_send(
             DispatchTo::BROADCAST_L2, 0, satcat5::ptp::Header::TYPE_ANNOUNCE);
         CHECK(writeable->write_finalize());
 
-        const u8 REF_RX[] = {
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xde,
-            0xad, 0xbe, 0xef, 0x11, 0x11, 0x88, 0xf7 };
+        // Note: Short Ethernet frames are zero-padded to 60 bytes.
+        const u8 REF_RX[60] = {
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xde, 0xad,
+            0xbe, 0xef, 0x11, 0x11, 0x88, 0xf7 };
         CHECK(satcat5::test::read(&xlink.eth1, sizeof(REF_RX), REF_RX));
     }
 
@@ -42,7 +41,7 @@ TEST_CASE("ptp_dispatch") {
             DispatchTo::BROADCAST_L3, 0, satcat5::ptp::Header::TYPE_ANNOUNCE);
         CHECK(writeable->write_finalize());
 
-        const u8 REF_RX[] = {
+        const u8 REF_RX[60] = {
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xde, 0xad,
             0xbe, 0xef, 0x11, 0x11, 0x08, 0x00, 0x45, 0x00,
             0x00, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x80, 0x11,
@@ -72,19 +71,19 @@ TEST_CASE("ptp_dispatch") {
 
         // Reply to the sender and save their address for later.
         satcat5::io::Writeable* writeable_reply = dispatch.ptp_send(
-            DispatchTo::REPLY, L2_HEADER_LENGTH, satcat5::ptp::Header::TYPE_SYNC);
+            DispatchTo::REPLY, 0, satcat5::ptp::Header::TYPE_SYNC);
         CHECK(writeable_reply->write_finalize());
         dispatch.store_reply_addr();
 
         // Check the response matches expected bytes exactly.
-        const u8 REF_RX[L2_HEADER_LENGTH] = {
+        const u8 REF_RX[60] = {
             0x00, 0x80, 0x63, 0x00, 0x09, 0xba, 0xde, 0xad,
             0xbe, 0xef, 0x11, 0x11, 0x88, 0xf7 };
         CHECK(satcat5::test::read(&xlink.eth1, sizeof(REF_RX), REF_RX));
 
         // Send a message to the stored reply address.
         satcat5::io::Writeable* writeable_stored = dispatch.ptp_send(
-            DispatchTo::STORED, L2_HEADER_LENGTH, satcat5::ptp::Header::TYPE_ANNOUNCE);
+            DispatchTo::STORED, 0, satcat5::ptp::Header::TYPE_ANNOUNCE);
         CHECK(writeable_stored->write_finalize());
 
         // Check the response matches expected bytes exactly.
@@ -120,7 +119,7 @@ TEST_CASE("ptp_dispatch") {
         dispatch.store_reply_addr();
 
         // Check the response matches expected bytes exactly.
-        const u8 REF_RX1[L3_HEADER_LENGTH] = {
+        const u8 REF_RX1[60] = {
             0x00, 0x80, 0x63, 0x00, 0x09, 0xba, 0xde, 0xad,
             0xbe, 0xef, 0x11, 0x11, 0x08, 0x00, 0x45, 0x00,
             0x00, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x80, 0x11,
@@ -135,7 +134,7 @@ TEST_CASE("ptp_dispatch") {
         CHECK(writeable_stored->write_finalize());
 
         // Check the response matches expected bytes exactly.
-        const u8 REF_RX2[L3_HEADER_LENGTH] = {
+        const u8 REF_RX2[60] = {
             0x00, 0x80, 0x63, 0x00, 0x09, 0xba, 0xde, 0xad,
             0xbe, 0xef, 0x11, 0x11, 0x08, 0x00, 0x45, 0x00,
             0x00, 0x1c, 0x00, 0x01, 0x00, 0x00, 0x80, 0x11,

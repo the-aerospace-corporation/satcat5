@@ -1,20 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Protocol handler and dispatch unit for Internet Protocol v4 (IPv4)
-//
-// The IP dispatch subsystem must be attached to an Ethernet interface,
-// accepting all incoming traffic with EtherType 0x0800 (IPv4).  Incoming
-// packets are checked for validity and then sorted by IP protocol number
-// (i.e., ICMP, UDP, TCP, etc.).
-//
-// The system includes static routing tables for next-hop routing,
-// inheriting all functionality from the ip::Table class.
-//
-// For an all-in-one container with ip::Dispatch and other components
-// required for UDP communications, use ip::Stack (ip_stack.h).
-//
 
 #pragma once
 
@@ -28,26 +16,40 @@
 
 namespace satcat5 {
     namespace ip {
-        // Implemention of "net::Dispatch" for IPv4 frames.
+        //! Protocol handler and dispatch unit for Internet Protocol v4 (IPv4).
+        //! This class implements the "net::Dispatch" API for IPv4 frames.
+        //!
+        //! The IP dispatch subsystem must be attached to an Ethernet interface,
+        //! accepting all incoming traffic with EtherType 0x0800 (IPv4).  Incoming
+        //! packets are checked for validity and then sorted by IP protocol number
+        //! (i.e., ICMP, UDP, TCP, etc.).
+        //!
+        //! The system includes static routing tables for next-hop routing,
+        //! inheriting all functionality from the ip::Table class.
+        //!
+        //! For an all-in-one container with ip::Dispatch and other components
+        //! required for UDP communications, use ip::Stack.
         class Dispatch final
             : public satcat5::eth::ArpListener
             , public satcat5::net::Protocol
             , public satcat5::net::Dispatch
         {
         public:
-            // Constructor requires the local address (may be ADDR_NONE),
-            // an Ethernet interface, and a time reference.  The address
-            // may be changed later if desired.
+            //! Link this object to an Ethernet interface.
+            //! Constructor requires the local address (may be ADDR_NONE),
+            //! an Ethernet interface, and a time reference.  The address
+            //! may be changed later if desired.
             Dispatch(
                 const satcat5::ip::Addr& addr,
                 satcat5::eth::Dispatch* iface,
                 satcat5::ip::Table* route);
             ~Dispatch() SATCAT5_OPTIONAL_DTOR;
 
-            // Get Writeable object for deferred write of IPv4 frame header.
-            // Variants for reply (required) or a specific address (optional).
+            //! Get Writeable object for reply to the last received datagram.
             satcat5::io::Writeable* open_reply(
                 const satcat5::net::Type& type, unsigned len) override;
+
+            //! Get Writeable object for sending to a specific IP/MAC address.
             satcat5::io::Writeable* open_write(
                 const satcat5::eth::MacAddr& mac,   // Destination MAC
                 const satcat5::eth::VlanTag& vtag,  // VLAN information
@@ -55,16 +57,17 @@ namespace satcat5 {
                 u8 protocol,                        // Protocol (UDP/TCP/etc)
                 unsigned len);                      // Length after IP header
 
-            // Set the local IP-address.
+            //! Set the local IP-address.
             void set_addr(const satcat5::ip::Addr& addr);
 
-            // Create a basic IPv4 header with the specified information.
+            //! Create a basic IPv4 header with the specified information.
             satcat5::ip::Header next_header(
                 u8 protocol,                    // Packet type (ICMP/UDP/etc)
                 const satcat5::ip::Addr& dst,   // Destination IP address
                 unsigned inner_bytes);          // Length of contained packet
 
-            // Routing table configuration (see ip_table.h)
+            //! Routing table shortcuts. \see ip_table.h
+            //!@{
             inline void route_clear(bool lockdown = true)
                 { m_route->route_clear(lockdown); }
             inline bool route_cache(
@@ -93,10 +96,13 @@ namespace satcat5 {
             inline satcat5::ip::Route route_lookup(
                 const satcat5::ip::Addr& dstaddr) const
                 { return m_route->route_lookup(dstaddr); }
+            //!@}
 
             // Other accessors:
             inline satcat5::eth::ProtoArp* arp()
                 { return &m_arp; }
+            inline satcat5::ip::ProtoIcmp* icmp()
+                { return &m_icmp; }
             inline satcat5::eth::Dispatch* iface() const
                 { return m_iface; }
             inline satcat5::ip::Addr ipaddr() const
@@ -120,14 +126,14 @@ namespace satcat5 {
             inline satcat5::ip::Table* table()
                 { return m_route; }
 
-            // For testing purposes only, reset the "ident" field.
-            // (This is unsafe, but simplifies certain unit tests.)
+            //! For testing purposes only, reset the "ident" field.
+            //! (This is unsafe, but simplifies certain unit tests.)
             inline void set_ident(u16 ident)
                 { m_ident = ident; }
 
             // ARP and ICMP handlers for this interface.
-            satcat5::eth::ProtoArp m_arp;
-            satcat5::ip::ProtoIcmp m_icmp;
+            satcat5::eth::ProtoArp m_arp;   //!< DEPRECATED \see arp()
+            satcat5::ip::ProtoIcmp m_icmp;  //!< DEPRECATED \see icmp()
 
         protected:
             // Event handler for the ARP cache.

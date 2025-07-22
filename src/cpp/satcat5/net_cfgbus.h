@@ -1,10 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-//! \file
-//! Handler for ConfigBus network commands
-//!
+// Handler for ConfigBus network commands
 
 #pragma once
 
@@ -12,12 +10,15 @@
 
 namespace satcat5 {
     namespace net {
+        //! Handler for ConfigBus network commands.
         //! This protocol allows a local ConfigBus to be commanded remotely
         //! over Ethernet or UDP, depending on how it is instantiated.
         //!
-        //! It is equivalent to the one in cfgbus_host_eth.vhd, but implemented in
-        //! software.  This can be used to implement mixed local/remote control,
-        //! provide diagnostics, etc.
+        //! This server is equivalent to the ConfigBus host defined in
+        //! "cfgbus_host_eth.vhd", but this server implemented in software.
+        //! This can be used to implement mixed local/remote control, provide
+        //! diagnostics, etc.  The local ConfigBus can be shared between local
+        //! and remote operation.
         //!
         //! The driver only supports memory-mapped local ConfigBus (i.e., an
         //! instance of the cfg::ConfigBusMmap class). Support for masked writes

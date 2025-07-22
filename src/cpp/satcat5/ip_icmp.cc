@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -100,6 +100,7 @@ static inline const char* code2msg(u16 code) {
 ProtoIcmp::ProtoIcmp(ip::Dispatch* iface)
     : satcat5::net::Protocol(TYPE_ICMP)
     , m_iface(iface)
+    , m_wait_msec(500)
 {
     m_iface->add(this);
 }
@@ -250,11 +251,17 @@ void ProtoIcmp::frame_rcvd(satcat5::io::LimitedRead& src)
         // Open a stream and send the timestamp-reply message.
         satcat5::io::Writeable* wr = m_iface->open_reply(TYPE_ICMP, 2*TIME_WORDS);
         write_icmp(wr, TIME_WORDS, buff);
-    } else {
+    } else if (timer_remaining() == 0) {
         // Log the error message, if any (varying verbosity options)
         const char* msg = code2msg(code);
         if (msg) {log::Log(log::WARNING, msg).write(src_ip);}
+        // Set rate-limiting timer before logging another message?
+        if (m_wait_msec) timer_once(m_wait_msec);
     }
+}
+
+void ProtoIcmp::timer_event() {
+    // No action required.
 }
 
 bool ProtoIcmp::write_icmp(

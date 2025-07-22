@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -14,6 +14,7 @@
 #endif
 
 using satcat5::io::ArrayRead;
+using satcat5::io::CopyMode;
 using satcat5::io::EventListener;
 using satcat5::io::LimitedRead;
 using satcat5::io::Readable;
@@ -230,11 +231,24 @@ unsigned Readable::copy_to(Writeable* dst) {
     return total;
 }
 
-bool Readable::copy_and_finalize(Writeable* dst) {
-    // End-of-frame if we copy at least one byte and source is now exhausted.
-    bool done = copy_to(dst) && !get_read_ready();
-    if (done) read_finalize();
-    return done && dst->write_finalize();
+bool Readable::copy_and_finalize(Writeable* dst, CopyMode mode) {
+    // Copy as much data as possible from the source.
+    unsigned count = copy_to(dst);
+    // Mode determines when to call read_finalize() and write_finalize().
+    bool rdf = false, wrf = false;
+    if (mode == CopyMode::STREAM) {
+        rdf = false;
+        wrf = (count > 0);
+    } else if (mode == CopyMode::PACKET) {
+        rdf = (count > 0) && !get_read_ready();
+        wrf = (count > 0) && !get_read_ready();
+    } else if (mode == CopyMode::ALWAYS) {
+        rdf = !get_read_ready();
+        wrf = true;
+    }
+    // Apply selected policy.
+    if (rdf) read_finalize();
+    return wrf && dst->write_finalize();
 }
 
 void Readable::read_notify() {
@@ -261,7 +275,7 @@ unsigned ArrayRead::get_read_ready() const {
 }
 
 void ArrayRead::read_reset(unsigned len) {
-    m_len = len;
+    m_len = m_src ? len : 0;
     m_rdidx = 0;
 }
 

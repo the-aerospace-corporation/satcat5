@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -82,11 +82,11 @@ void Time::write_to(satcat5::io::Writeable* dst) const {
 
 void Time::log_to(satcat5::log::LogBuffer& wr) const {
     wr.wr_str(" = 0x");
-    wr.wr_hex((u32)(m_secs >> 32), 4);          // MSBs of seconds
-    wr.wr_hex((u32)(m_secs >>  0), 8);          // LSBs of seconds
+    wr.wr_h32((u32)(m_secs >> 32), 4);          // MSBs of seconds
+    wr.wr_h32((u32)(m_secs >>  0), 8);          // LSBs of seconds
     wr.wr_str(".");
-    wr.wr_hex((u32)(m_subns >> 32), 4);         // MSBs of subns
-    wr.wr_hex((u32)(m_subns >>  0), 8);         // LSBs of subns
+    wr.wr_h32((u32)(m_subns >> 32), 4);         // MSBs of subns
+    wr.wr_h32((u32)(m_subns >>  0), 8);         // LSBs of subns
 }
 
 // Offset (in milliseconds) from the PTP epoch (TAI @ 1970 Jan 1)

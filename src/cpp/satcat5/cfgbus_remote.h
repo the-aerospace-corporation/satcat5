@@ -1,23 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Controller for a remote ConfigBus, connected over network
-//
-// The file implements a ConfigBus wrapper that is connected over LAN/WAN.
-// Write and read operations send a command packet to the designated address
-// and wait for a response.  The protocol is the client-side counterpart to
-// the server implemented in "cfgbus_host_eth.vhd" or "net_cfgbus.h".
-//
-// Implementations are provided for raw-Ethernet and UDP networks.
-//
-// Reads are always blocking; writes may block depending on the flow-control
-// mode.  Blocking operations call poll::service() in a loop to ensure that
-// replies are processed and delivered.  The timeout is adjustable with a
-// default of 50 msec, which is adequate on any reasonable LAN.
-//
-// Refer to cfgbus_host_eth.vhd for details of the packet format.
-//
 
 #pragma once
 
@@ -29,38 +14,60 @@
 
 namespace satcat5 {
     namespace cfg {
+        //! Controller for a remote ConfigBus, connected over network.
+        //!
+        //! The file implements a ConfigBus wrapper that is connected over
+        //! LAN/WAN. Write and read operations send a command packet to the
+        //! designated address and wait for a response.  The protocol is the
+        //! client-side counterpart to the ConfigBus host servers implemented
+        //! in gateware (cfgbus_host_eth.vhd) or software (net::ProtoConfig).
+        //!
+        //! Implementations are provided for raw-Ethernet and UDP networks.
+        //! \see eth::ConfigBus, udp::ConfigBus.
+        //!
+        //! Reads are always blocking; writes may block depending on the
+        //! flow-control mode.  Blocking operations call poll::service() in a
+        //! loop to ensure that replies are processed and delivered.  The
+        //! default timeout of 50 msec is suitable for LAN use, but should
+        //! be increased if connecting over a large or congested network.
+        //!
+        //! Refer to cfgbus_host_eth.vhd for details of the packet format.
         class ConfigBusRemote
             : public satcat5::cfg::ConfigBus
             , public satcat5::net::Protocol
             , public satcat5::poll::Timer
         {
         public:
-            // Basic read and write operations (ConfigBus API).
+            //! Basic read and write operations (ConfigBus API).
+            //!@{
             satcat5::cfg::IoStatus read(unsigned regaddr, u32& rdval) override;
             satcat5::cfg::IoStatus write(unsigned regaddr, u32 wrval) override;
+            //!@}
 
-            // Bulk read and write operations.
-            // "Array" indicates auto-increment mode (regaddr, regaddr+1, ...)
-            // "Repeat" indicates no-increment mode (same register N times)
+            //! Bulk read from consecutive registers.
             satcat5::cfg::IoStatus read_array(
                 unsigned regaddr, unsigned count, u32* result) override;
+            //! Repeated read from the same register.
             satcat5::cfg::IoStatus read_repeat(
                 unsigned regaddr, unsigned count, u32* result) override;
+            //! Bulk write to consecutive registers.
             satcat5::cfg::IoStatus write_array(
                 unsigned regaddr, unsigned count, const u32* data) override;
+            //! Repeated write to the same register.
             satcat5::cfg::IoStatus write_repeat(
                 unsigned regaddr, unsigned count, const u32* data) override;
 
-            // Adjust read/write timeout (0 = Non-blocking)
+            //! Adjust read timeout (0 = Non-blocking).
             void set_timeout_rd(unsigned usec) {m_timeout_rd = usec;}
+            //! Adjust write timeout (0 = Non-blocking).
             void set_timeout_wr(unsigned usec) {m_timeout_wr = usec;}
 
-            // Adjust polling rate for interrupt status (0 = None).
+            //! Adjust polling rate for interrupt status (0 = None).
             void set_irq_polling(unsigned msec) {timer_every(msec);}
 
         protected:
-            // Create a link to the designated remote address, with commands
-            // and replies routed through the designated Dispatcher object.
+            //! Create a link to the designated remote address, with commands
+            //! and replies routed through the designated Dispatcher object.
             ConfigBusRemote(
                 satcat5::net::Address* dst,             // Remote iface + address
                 const satcat5::net::Type& ack);         // Ack type parameter
@@ -72,20 +79,20 @@ namespace satcat5 {
             // Callback for timer events.
             void timer_event() override;
 
-            // Send, then wait if requested.
+            //! Send, then wait if requested.
             satcat5::cfg::IoStatus send_and_wait(
                 u8 opcode, unsigned addr,
                 unsigned len, const u32* ptr, unsigned timeout);
 
-            // Send the specified opcode.
+            //! Send the specified opcode.
             bool send_command(
                 u8 opcode, unsigned addr,
                 unsigned len, const u32* ptr);
 
-            // Busywait until response is received.
+            //! Busywait until response is received.
             satcat5::cfg::IoStatus wait_response(unsigned timeout);
 
-            // MAC address for the remote interface.
+            //! MAC address for the remote interface.
             satcat5::net::Address* const m_dst;
 
             // Timer for measuring timeouts.
@@ -102,8 +109,8 @@ namespace satcat5 {
         };
     }
 
-    // Wrappers for commonly used network interfaces:
     namespace eth {
+        // Remote ConfigBus operation over Ethernet.
         class ConfigBus final
             : protected satcat5::eth::AddressContainer
             , public satcat5::cfg::ConfigBusRemote
@@ -119,6 +126,7 @@ namespace satcat5 {
     }
 
     namespace udp {
+        // Remote ConfigBus operation over UDP.
         class ConfigBus final
             : protected satcat5::udp::AddressContainer
             , public satcat5::cfg::ConfigBusRemote

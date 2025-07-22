@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -76,7 +76,7 @@ gen_src : for n in in_valid'range generate
 
             -- If we are between packets, random chance of starting a new one.
             uniform(seed1, seed2, rand);
-            if (reset_p = '0' and rem_len = 0 and rand > in_rate) then
+            if (reset_p = '0' and rem_len = 0 and rand < in_rate) then
                 uniform(seed1, seed2, rand);
                 rem_len := 1 + integer(floor(rand * 10.0));
             end if;
@@ -129,7 +129,8 @@ uut : entity work.packet_round_robin
     out_last        => out_last,
     out_valid       => out_valid,
     out_ready       => out_ready,
-    clk             => clk_100);
+    clk             => clk_100,
+    reset_p         => reset_p);
 
 -- Output flow-control randomization and packet counting.
 p_flow : process(clk_100)

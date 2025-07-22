@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -187,7 +187,10 @@ namespace satcat5 {
         //! The simplest and most direct implementation of the ConfigBus API.
         //! Reads and writes map directly to addresses in physical memory.
         //! This class also serves as a hardware interrupt handler for the
-        //! shared ConfigBus interrupt.  (See interrupts.h)
+        //! shared ConfigBus interrupt.  \see interrupts.h.
+        //!
+        //! For interrupts from specific peripherals, \see cfg::Interrupt.
+        //!
         //! Some peripherals, such as port::MailMap, can only function when
         //! attached through a cfg::ConfigBusMmap interface.
         class ConfigBusMmap

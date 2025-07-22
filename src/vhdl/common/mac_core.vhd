@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -57,8 +57,10 @@ entity mac_core is
     ALLOW_RUNT      : boolean;          -- Allow undersize frames?
     ALLOW_PRECOMMIT : boolean;          -- Allow output FIFO cut-through?
     INPUT_HAS_FCS   : boolean;          -- Does input stream include FCS field?
+    OVR_DELAY       : positive;         -- Delay from out_write to out_overflow
     PTP_DOPPLER     : boolean;          -- Enable Doppler-TLV tags?
     PTP_STRICT      : boolean;          -- Drop frames with missing timestamps?
+    SUPPORT_LOG     : boolean;          -- Support packet logging diagnostics?
     SUPPORT_PTP     : boolean;          -- Support Precision Time Protocol?
     SUPPORT_VPORT   : boolean;          -- Support virtual-LAN port control?
     SUPPORT_VRATE   : boolean;          -- Support virtual-LAN rate control?
@@ -76,6 +78,12 @@ entity mac_core is
     in_valid        : in  std_logic;
     in_ready        : out std_logic;
 
+    -- Optional packet logging metadata.
+    log_data        : out log_meta_t;
+    log_psrc        : out integer range 0 to PORT_COUNT-1;
+    log_dmask       : out std_logic_vector(PORT_COUNT-1 downto 0);
+    log_write       : out std_logic;
+
     -- Main output, with end-of-frame strobes for each port.
     out_data        : out std_logic_vector(8*IO_BYTES-1 downto 0);
     out_meta        : out switch_meta_t;
@@ -84,6 +92,7 @@ entity mac_core is
     out_precommit   : out std_logic;
     out_priority    : out std_logic;
     out_keep        : out std_logic_vector(PORT_COUNT-1 downto 0);
+    out_overflow    : in  std_logic_vector(PORT_COUNT-1 downto 0);
 
     -- Configuration interface
     cfg_cmd         : in  cfgbus_cmd := CFGBUS_CMD_NULL;
@@ -106,6 +115,8 @@ architecture mac_core of mac_core is
 subtype data_word is std_logic_vector(8*IO_BYTES-1 downto 0);
 subtype port_mask is std_logic_vector(PORT_COUNT-1 downto 0);
 subtype port_idx_t is integer range 0 to PORT_COUNT-1;
+constant CFGBUS_ENABLE : boolean := (DEV_ADDR > CFGBUS_ADDR_NONE);
+constant MASK_NONE  : port_mask := (others => '0');
 
 -- Main datapath
 signal ptp_psrc     : port_idx_t := 0;
@@ -113,6 +124,7 @@ signal ptp_data     : data_word := (others => '0');
 signal ptp_meta     : switch_meta_t := SWITCH_META_NULL;
 signal ptp_nlast    : integer range 0 to IO_BYTES := IO_BYTES;
 signal ptp_write    : std_logic := '0';
+
 signal buf_psrc     : port_idx_t := 0;
 signal buf_data     : data_word := (others => '0');
 signal buf_meta     : switch_meta_t := SWITCH_META_NULL;
@@ -120,8 +132,17 @@ signal buf_nlast    : integer range 0 to IO_BYTES := IO_BYTES;
 signal buf_last     : std_logic := '0';
 signal buf_write    : std_logic := '0';
 signal buf_wcount   : mac_bcount_t := 0;
+
+signal dly_data     : std_logic_vector(8*IO_BYTES-1 downto 0);
+signal dly_meta     : switch_meta_t;
+signal dly_psrc     : port_idx_t := 0;
 signal dly_nlast    : integer range 0 to IO_BYTES;
 signal dly_write    : std_logic;
+signal dly_keep     : port_mask;
+signal dly_result   : frm_result_t;
+
+signal ovr_dmask    : port_mask := (others => '0');
+signal ovr_strobe   : std_logic := '0';
 signal packet_done  : std_logic;
 
 -- MAC-address lookup
@@ -179,7 +200,7 @@ signal cfg_acks     : cfgbus_ack_array(0 to 12) := (others => cfgbus_idle);
 begin
 
 -- General-purpose ConfigBus registers:
-gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
+gen_cfgbus : if (CFGBUS_ENABLE) generate
     -- Read-only configuration reporting.
     -- See "switch_types" for complete register map.
     u_portcount : cfgbus_readonly
@@ -273,7 +294,7 @@ gen_cfgbus : if (DEV_ADDR > CFGBUS_ADDR_NONE) generate
 end generate;
 
 -- Optional: Manual read/write of the MAC-address table?
-gen_query : if (DEV_ADDR > CFGBUS_ADDR_NONE and MAC_TABLE_EDIT) generate
+gen_query : if (CFGBUS_ENABLE and MAC_TABLE_EDIT) generate
     u_query : entity work.mac_query
         generic map(
         DEV_ADDR    => DEV_ADDR,
@@ -297,7 +318,7 @@ gen_query : if (DEV_ADDR > CFGBUS_ADDR_NONE and MAC_TABLE_EDIT) generate
 end generate;
 
 -- Optional: Two-step register for PTP format conversion.
-gen_2step : if (DEV_ADDR > CFGBUS_ADDR_NONE and SUPPORT_PTP and PTP_MIXED_STEP) generate
+gen_2step : if (CFGBUS_ENABLE and SUPPORT_PTP and PTP_MIXED_STEP) generate
     u_register : cfgbus_register
         generic map(
         DEVADDR     => DEV_ADDR,
@@ -353,6 +374,7 @@ gen_ptp0 : if not SUPPORT_PTP generate
     ptp_nlast   <= in_nlast;
     ptp_write   <= in_valid;
     in_ready    <= '1';
+    error_ptp   <= (others => '0');
 end generate;
 
 -- Buffer incoming data for better routing and timing.
@@ -384,31 +406,46 @@ end process;
 u_delay : entity work.packet_delay
     generic map(
     IO_BYTES    => IO_BYTES,
-    DELAY_COUNT => 15)
+    DELAY_COUNT => 15,
+    PORT_COUNT  => PORT_COUNT)
     port map(
     in_data     => buf_data,
+    in_psrc     => buf_psrc,
     in_nlast    => buf_nlast,
     in_write    => buf_write,
-    out_data    => out_data,
+    out_data    => dly_data,
+    out_psrc    => dly_psrc,
     out_nlast   => dly_nlast,
     out_write   => dly_write,
     io_clk      => clk,
     reset_p     => reset_p);
 
+-- Packet metadata fields from individual FIFOs.
+dly_meta.pmsg   <= ptpf_meta.pmsg;
+dly_meta.pfreq  <= ptpf_meta.pfreq;
+dly_meta.tstamp <= ptpf_meta.tstamp;
+dly_meta.tfreq  <= ptpf_meta.tfreq;
+dly_meta.vtag   <= vport_vtag;
+
 -- Final "KEEP" flag is the bitwise-AND of all port masks.
-out_meta.pmsg   <= ptpf_meta.pmsg;
-out_meta.pfreq  <= ptpf_meta.pfreq;
-out_meta.tstamp <= ptpf_meta.tstamp;
-out_meta.tfreq  <= ptpf_meta.tfreq;
-out_meta.vtag   <= vport_vtag;
-out_write       <= dly_write;
-out_nlast       <= dly_nlast;
+dly_keep        <= lookup_mask and igmp_mask and ptpf_mask
+               and vport_mask and vrate_mask;
 out_precommit   <= bool2bit(ALLOW_PRECOMMIT)
                and lookup_valid and igmp_valid and epri_valid
                and ptpf_valid and vport_valid and vrate_valid;
+dly_result      <= frm_result_silent(DROP_MCTRL)    when (lookup_mask = MASK_NONE)
+              else frm_result_error(DROP_PTPERR)    when (ptpf_mask = MASK_NONE)
+              else frm_result_error(DROP_VLAN)      when (vport_mask = MASK_NONE)
+              else frm_result_silent(DROP_VRATE)    when (vrate_mask = MASK_NONE)
+              else frm_result_ok;
+
+-- Drive top-level outputs.
+out_data        <= dly_data;
+out_meta        <= dly_meta;
+out_write       <= dly_write;
+out_nlast       <= dly_nlast;
+out_keep        <= dly_keep;
 out_priority    <= (epri_hipri or vport_hipri) and vrate_allow;
-out_keep        <= lookup_mask and igmp_mask and ptpf_mask
-               and vport_mask and vrate_mask;
 error_other     <= igmp_error or epri_error;
 packet_done     <= dly_write and bool2bit(dly_nlast > 0);
 port_2step      <= cfg_stpmask;
@@ -475,8 +512,7 @@ gen_igmp : if (IGMP_TIMEOUT > 0) generate
 end generate;
 
 -- Packet-priority lookup by EtherType (optional)
-gen_priority : if (DEV_ADDR > CFGBUS_ADDR_NONE
-               and PRI_TABLE_SIZE > 0) generate
+gen_priority : if (CFGBUS_ENABLE and PRI_TABLE_SIZE > 0) generate
     u_priority : entity work.mac_priority
         generic map(
         DEVADDR     => DEV_ADDR,
@@ -542,6 +578,43 @@ gen_vrate : if SUPPORT_VRATE generate
         cfg_ack     => cfg_acks(12),
         clk         => clk,
         reset_p     => reset_p);
+end generate;
+
+-- Optional diagnostic logging.
+gen_log1 : if SUPPORT_LOG generate
+    -- Log as overflow if ALL applicable outputs drop the packet.
+    ovr_strobe <= bool2bit(out_overflow = ovr_dmask);
+
+    u_log : entity work.eth_frame_log
+        generic map(
+        INPUT_BYTES => IO_BYTES,
+        FILTER_MODE => false,   -- Log all packets
+        OUT_BUFFER  => false,   -- Unbuffered OK
+        OVR_DELAY   => OVR_DELAY,
+        PORT_COUNT  => PORT_COUNT)
+        port map(
+        in_data     => dly_data,
+        in_dmask    => dly_keep,
+        in_meta     => dly_meta,
+        in_psrc     => dly_psrc,
+        in_nlast    => dly_nlast,
+        in_result   => dly_result,
+        in_write    => dly_write,
+        ovr_dmask   => ovr_dmask,
+        ovr_strobe  => ovr_strobe,
+        out_data    => log_data,
+        out_dmask   => log_dmask,
+        out_psrc    => log_psrc,
+        out_strobe  => log_write,
+        clk         => clk,
+        reset_p     => reset_p);
+end generate;
+
+gen_log0 : if not SUPPORT_LOG generate
+    log_data    <= LOG_META_NULL;
+    log_psrc    <= 0;
+    log_dmask   <= (others => '0');
+    log_write   <= '0';
 end generate;
 
 -- Combine ConfigBus replies.

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // UDP Dispatcher sorts incoming messages by port index
@@ -11,21 +11,26 @@
 
 namespace satcat5 {
     namespace udp {
-        // Implementation of "net::Dispatch" for UDP datagrams,
-        // which accepts incoming packets from IP-dispatch.
+        //! Dispatcher sorts incoming UDP messages by port index.
+        //! Implementation of "net::Dispatch" for UDP datagrams,
+        //! which accepts incoming packets from IP-dispatch.
         class Dispatch final
             : public satcat5::net::Protocol
             , public satcat5::net::Dispatch
         {
         public:
+            //! Attach this protocol handler to the parent interface.
             Dispatch(satcat5::ip::Dispatch* iface);
             ~Dispatch() SATCAT5_OPTIONAL_DTOR;
 
-            // Get Writeable object for deferred write of IPv4 frame header.
-            // Variants for reply (required) and any address (optional)
-            // Note: Argument "type" is ignored for UDP replies.
+            //! Reply to the sender of the most recent received message.
+            //! Gets Writeable object for deferred write of IPv4 frame header.
+            //! Note: Argument "type" is ignored for UDP replies.
             satcat5::io::Writeable* open_reply(
                 const satcat5::net::Type& type, unsigned nbytes) override;
+
+            //! Send a datagram to the designated UDP address and port.
+            //! Gets Writeable object for deferred write of IPv4 frame header.
             satcat5::io::Writeable* open_write(
                 satcat5::ip::Address& addr,         // Destination IP+MAC
                 const satcat5::udp::Port& src,      // Source port
@@ -54,7 +59,7 @@ namespace satcat5 {
             inline satcat5::udp::Port reply_dst() const
                 {return m_reply_dst;}
 
-            // Get the next unclaimed dynamically-allocated port index.
+            //! Get the next unclaimed dynamically-allocated port index.
             satcat5::udp::Port next_free_port();
 
         protected:

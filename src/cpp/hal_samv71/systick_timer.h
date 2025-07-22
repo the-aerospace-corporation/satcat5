@@ -1,13 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-//
-// This class uses configures and uses th SysTick Timer on the SAMV71 to
-// track elapsed time for SatCat. At instantiation, it uses the CPU
-// frequency and desired tick rate to configure the interrupt. It will
-// will increment member when the interrupt is triggered, and SatCat
-// can poll this value to find elapsed time.
+// Microchip SAM V71 implementation of the "TimeRef" API.
 
 #pragma once
 
@@ -17,19 +12,26 @@
 
 namespace satcat5 {
     namespace sam {
+        //! Microchip SAM V71 implementation of the "TimeRef" API.
+        //! This class uses configures and uses the SysTick Timer on the SAMV71 to
+        //! track elapsed time for SatCat. At instantiation, it uses the CPU
+        //! frequency and desired tick rate to configure the interrupt. It will
+        //! will increment member when the interrupt is triggered, and SatCat
+        //! can poll this value to find elapsed time.
         class SysTickTimer
             : public satcat5::util::TimeRef
             , public satcat5::sam::HandlerSAMV71 {
         public:
-            // Constructor.
+            //! Constructor requires the CPU frequency and timer tick-rate.
             SysTickTimer(
                 const u32 cpu_freq_hz,
                 const u32 tick_rate_hz);
 
-            // Get Tick Count
+            //! Get raw tick-count, \see TimeRef.
             u32 raw() override;
 
-            // Timer Callback
+            //! Set callback for timer events.
+            //! (This is usually poll::timekeeper.)
             void timer_callback(satcat5::poll::OnDemand* callback);
 
         protected:
@@ -47,5 +49,3 @@ namespace satcat5 {
         };
     }  // namespace sam
 }  // namespace satcat5
-
-//////////////////////////////////////////////////////////////////////////

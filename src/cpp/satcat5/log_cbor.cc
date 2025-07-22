@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -32,21 +32,18 @@ FromCbor::FromCbor(
 }
 
 #if SATCAT5_ALLOW_DELETION
-FromCbor::~FromCbor()
-{
+FromCbor::~FromCbor() {
     // Unregister our incoming message handler.
     m_src->remove(this);
 }
 #endif
 
-inline bool int_or_null(const QCBORItem& item)
-{
+inline bool int_or_null(const QCBORItem& item) {
     return item.uDataType == QCBOR_TYPE_NULL
         || item.uDataType == QCBOR_TYPE_INT64;
 }
 
-void FromCbor::frame_rcvd(satcat5::io::LimitedRead& src)
-{
+void FromCbor::frame_rcvd(satcat5::io::LimitedRead& src) {
     // Working buffer and QCBOR decoder state.
     u8 buff[SATCAT5_QCBOR_BUFFER];
     QCBORDecodeContext cbor;
@@ -76,25 +73,29 @@ void FromCbor::frame_rcvd(satcat5::io::LimitedRead& src)
     errcode = QCBORDecode_GetNext(&cbor, &item);    // Priority code
     if (errcode || item.uDataType != QCBOR_TYPE_INT64) return;
     errcode = QCBOR_Int64ToInt8(item.val.int64, &priority);
-    if (errcode) return;
-    if (priority < m_min_priority) return;  // Ignore if priority is below minimum level
+    // Ignore messages with priority below minimum level.
+    if (errcode || priority < m_min_priority) return;
     errcode = QCBORDecode_GetNext(&cbor, &item);    // Message string
     if (errcode || item.uDataType != QCBOR_TYPE_TEXT_STRING) return;
 
-    // Success! Relay message contents to the local log.
-    // Note: String is NOT null-terminated, so length is required.
-    satcat5::log::Log(priority, item.val.string.ptr, item.val.string.len);
+    // Success! Call the log_event handler.
+    log_event(priority, item.val.string.len, (const char*)item.val.string.ptr);
 }
 
-ToCbor::ToCbor(satcat5::datetime::Clock* clk, satcat5::net::Address* dst)
-    : m_clk(clk), m_dst(dst)
+void FromCbor::log_event(s8 priority, unsigned nbytes, const char* msg) {
+    // Built-in default handler creates a local log::Log message object.
+    satcat5::log::Log(priority, msg, nbytes);
+}
+
+ToCbor::ToCbor(satcat5::net::Address* dst)
+    : m_dst(dst)
 {
     // Nothing else to initialize.
 }
 
-void ToCbor::log_event(s8 priority, unsigned nbytes, const char* msg)
-{
-    if (priority < m_min_priority) return;  // Ignore if priority is below minimum level
+void ToCbor::log_event(s8 priority, unsigned nbytes, const char* msg) {
+    // Ignore messages with priority below minimum level
+    if (priority < m_min_priority) return;
 
     // Before we do any work, check if the destination address is set.
     if (!m_dst->ready()) return;
@@ -107,12 +108,8 @@ void ToCbor::log_event(s8 priority, unsigned nbytes, const char* msg)
     QCBOREncode_Init(&cbor, UsefulBuf_FROM_BYTE_ARRAY(buff));
     QCBOREncode_OpenArray(&cbor);
     QCBOREncode_AddNULL(&cbor);                     // Payload type
-    if (m_clk) {                                    // Timestamp
-        auto now = satcat5::datetime::to_gps(m_clk->now());
-        QCBOREncode_AddInt64(&cbor, now.tow);
-    } else {
-        QCBOREncode_AddInt64(&cbor, -1);
-    }
+    auto now = satcat5::datetime::clock.gps();      // Timestamp
+    QCBOREncode_AddInt64(&cbor, now.tow);
     QCBOREncode_AddInt64(&cbor, priority);          // Priority
     QCBOREncode_AddText(&cbor, {msg, nbytes});      // Message
     QCBOREncode_CloseArray(&cbor);
@@ -135,11 +132,10 @@ satcat5::eth::LogFromCbor::LogFromCbor(
 }
 
 satcat5::eth::LogToCbor::LogToCbor(
-        satcat5::datetime::Clock* clk,
         satcat5::eth::Dispatch* eth,
         const satcat5::eth::MacType& typ)
     : satcat5::eth::AddressContainer(eth)
-    , satcat5::log::ToCbor(clk, &m_addr)
+    , satcat5::log::ToCbor(&m_addr)
 {
     // Default to broadcast mode.
     connect(satcat5::eth::MACADDR_BROADCAST, typ);
@@ -154,11 +150,10 @@ satcat5::udp::LogFromCbor::LogFromCbor(
 }
 
 satcat5::udp::LogToCbor::LogToCbor(
-        satcat5::datetime::Clock* clk,
         satcat5::udp::Dispatch* udp,
         const satcat5::udp::Port& dstport)
     : satcat5::udp::AddressContainer(udp)
-    , satcat5::log::ToCbor(clk, &m_addr)
+    , satcat5::log::ToCbor(&m_addr)
 {
     // Default to broadcast mode.
     connect(satcat5::ip::ADDR_BROADCAST, dstport);

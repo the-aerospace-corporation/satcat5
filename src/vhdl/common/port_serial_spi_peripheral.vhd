@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -48,6 +48,7 @@ use     ieee.numeric_std.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
 use     work.common_primitives.sync_reset;
+use     work.common_primitives.PREFER_SPI_SYNC;
 use     work.eth_frame_common.all;
 use     work.ptp_types.all;
 use     work.switch_types.all;
@@ -58,7 +59,7 @@ entity port_serial_spi_peripheral is
     CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
     SPI_GDLY    : natural := 1;     -- SPI glitch-detection threshold
     SPI_MODE    : natural := 3;     -- SPI clock phase & polarity
-    SYNC_MODE   : boolean := false; -- Disable both sync and async process on sclk?
+    SYNC_MODE   : boolean := PREFER_SPI_SYNC; -- Disable both sync and async process on sclk?
     TIMEOUT_SEC : positive := 15;   -- Activity timeout, in seconds
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
@@ -194,7 +195,8 @@ u_spi : entity work.io_spi_peripheral
     rx_write    => dec_write,
     cfg_mode    => cfg_mode,
     cfg_gdly    => cfg_gdly,
-    refclk      => refclk);
+    refclk      => refclk,
+    reset_p     => reset_sync);
 
 -- Detect inactive ports and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)

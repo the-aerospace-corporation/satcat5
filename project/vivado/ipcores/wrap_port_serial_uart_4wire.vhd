@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -21,7 +21,8 @@ entity wrap_port_serial_uart_4wire is
     CFG_ENABLE      : boolean;      -- Enable switch configuration?
     CFG_DEV_ADDR    : integer;      -- ConfigBus device address
     CLKREF_HZ       : integer;      -- Reference clock rate (Hz)
-    BAUD_HZ         : integer);     -- Input and output rate (bps)
+    BAUD_HZ         : integer;      -- Input and output rate (bps)
+    RTS_SYMM        : boolean);     -- Alt. RTS mode: assert when TX data avail
     port (
     -- External 4-wire interface.
     txd         : out std_logic;    -- Data from switch to user
@@ -122,7 +123,8 @@ u_wrap : entity work.port_serial_uart_4wire
     generic map(
     DEVADDR     => cfgbus_devaddr_if(CFG_DEV_ADDR, CFG_ENABLE),
     CLKREF_HZ   => CLKREF_HZ,
-    BAUD_HZ     => BAUD_HZ)
+    BAUD_HZ     => BAUD_HZ,
+    RTS_SYMM    => RTS_SYMM)
     port map(
     uart_txd    => txd,
     uart_rxd    => rxd,

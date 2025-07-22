@@ -41,10 +41,10 @@ extern "C"
 #include <hal_freertos/tick_timer.h>
 
 // SatCat HAL
-const unsigned satcat5_stack_size = 8 * 1024; // 8KB
+const unsigned STACK_SIZE = 8 * 1024; // 8KB
 satcat5::freertos::ControllerFreeRTOS irq_controller;
 satcat5::freertos::TickTimer tick_timer;
-satcat5::freertos::StaticTask<satcat5_stack_size> satcat5_task(
+satcat5::freertos::SatCatTask<STACK_SIZE, tskIDLE_PRIORITY+1> satcat5_task(
     &irq_controller, &tick_timer);
 
 // main()
@@ -59,3 +59,17 @@ int main(void)
     return 0;
 }
 ```
+
+# Copyright Notice
+
+Copyright 2025 The Aerospace Corporation.
+
+This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
+
+You may redistribute and modify SatCat5 and make products using it under
+the weakly reciprocal variant of the CERN Open Hardware License, version 2
+or (at your option) any later weakly reciprocal version.
+
+SatCat5 is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+OF MERCHANTABILITY, SATISFACTORY QUALITY, AND FITNESS FOR A PARTICULAR
+PURPOSE. Please see (https://cern.ch/cern-ohl) for applicable conditions.

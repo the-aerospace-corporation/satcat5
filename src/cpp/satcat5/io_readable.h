@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -17,6 +17,24 @@
 
 namespace satcat5 {
     namespace io {
+        //! Specify read and write behavior for Readable::copy_and_finalize().
+        //! These options affect when `read_finalize()` and `write_finalize()`
+        //! are called by the Readable::copy_and_finalize() method.
+        enum class CopyMode {
+            //! STREAM mode is used for non-packetized data.
+            //! * read_finalize:  Never.
+            //! * write_finalize: When data is copied.
+            STREAM,
+            //! PACKET mode (default) preserves packet boundaries.
+            //! * read_finalize:  When data is copied and source is depleted.
+            //! * write_finalize: When data is copied and source is depleted.
+            PACKET,
+            //! ALWAYS mode ensures write_finalize is always called.
+            //! * read_finalize:  When the source is depleted.
+            //! * write_finalize: Every time `copy_and_finalize` is called.
+            ALWAYS,
+        };
+
         //! Event-handler interface for newly received data.
         //! (i.e., The callback notification for the `Readable` interface.)
         //! Note: EventListeners that call `set_callback(this)` in their
@@ -122,15 +140,33 @@ namespace satcat5 {
             template <class T> inline bool read_obj(T& t)
                 {return t.read_from(this);}
 
-            //! Copy stream contents to a Writeable object, up to end-of-frame
-            //! or buffer limit.
+            //! Copy data to a Writeable object, without finalizing.
+            //! Copy the contents of this Readable to a Writeable object,
+            //! stopping at end-of-input, end-of-frame, or the capacity of
+            //! the destination buffer (whichever comes first).
+            //! This method does not call `read_finalize` or `write_finalize()`.
+            //! To automatically make finalize calls, \see copy_and_finalize.
             //! \returns The number of bytes copied.
             unsigned copy_to(satcat5::io::Writeable* dst);
 
-            //! As copy_to (see above), but also calls read_finalize() and
-            //! write_finalize() if the operation copies all available data.
+            //! Copy data to a Writeable object, then finalize.
+            //! As `copy_to()`, but also calls `read_finalize()` and/or
+            //! `write_finalize()` depending on the input/output mode.
+            //!
+            //! In packet mode (the default), call both `read_finalize()` and
+            //! `write_finalize()` if the operation copies all available data.
+            //! Use this mode whenever the input is packetized.
+            //!
+            //! In byte-stream mode, call `write_finalize()` if the operation
+            //! copies any data, but never call `read_finalize()`.  Use this
+            //! mode for inputs that do not delimit packet boundaries.
+            //!
+            //! \param dst The destination object.
+            //! \param strm Select packet mode or stream mode.
             //! \returns True if the output was finalized successfully.
-            bool copy_and_finalize(satcat5::io::Writeable* dst);
+            bool copy_and_finalize(
+                satcat5::io::Writeable* dst,
+                satcat5::io::CopyMode mode = CopyMode::PACKET);
 
         protected:
             friend satcat5::io::LimitedRead;
@@ -177,9 +213,18 @@ namespace satcat5 {
                 : m_src((const u8*)src), m_len(len), m_rdidx(0) {}
             //!@}
 
+            //! Create an empty ArrayRead object, empty constructor supports
+            //! usage with util::optional.
+            constexpr ArrayRead()
+                : m_src(nullptr), m_len(0), m_rdidx(0) {}
+
             // Implement the public Readable API.
             unsigned get_read_ready() const override;
             void read_finalize() override;
+
+            //! Read-only access to the working buffer.
+            const u8* buffer() const
+                { return m_src; }
 
             //! Reset read position to the start of the backing array,
             //! and set the readable length to the specified value.

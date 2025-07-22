@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021-2024 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -24,6 +24,7 @@ ipcore_add_clock core_clk {}
 ipcore_add_reset reset_p ACTIVE_HIGH
 ipcore_add_gpio scrub_req_t
 ipcore_add_gpio errvec_t
+ipcore_add_gpio log_txd
 ipcore_add_cfgopt Cfg cfg
 
 # Set parameters
@@ -39,6 +40,10 @@ ipcore_add_param STATS_DEVADDR devaddr 1 \
     {ConfigBus device address for statistics module}
 ipcore_add_param CORE_CLK_HZ long 200000000 \
     {Frequency of "core_clk" signal (Hz)}
+ipcore_add_param LOG_CFGBUS bool false \
+    {Enable packet-logging through ConfigBus. Resource-intensive.}
+ipcore_add_param LOG_UART_BAUD long 0 \
+    {Enable packet-logging through UART and set baud rate (Hz). Resource-intensive.}
 ipcore_add_param SUPPORT_PAUSE bool true \
     {Include support for IEEE 802.3x "pause" frames? (Recommended)}
 ipcore_add_param SUPPORT_PTP bool false \
@@ -50,7 +55,11 @@ ipcore_add_param MISS_BCAST bool true \
 ipcore_add_param ALLOW_JUMBO bool false \
     {Allow Ethernet frames with a length longer than 1522 bytes? (Total including FCS)}
 ipcore_add_param ALLOW_RUNT bool false \
-    {Allow Ethernet frames witha  length shorter than 64 bytes? (Total including FCS)}
+    {Deprecated. Same as ALLOW_RUNT_IN + ALLOW_RUNT_OUT.}
+ipcore_add_param ALLOW_RUNT_IN bool false \
+    {Allow incoming Ethernet frames with a length shorter than 64 bytes? (Total including FCS)}
+ipcore_add_param ALLOW_RUNT_OUT bool false \
+    {If false, zero-pad outgoing Ethernet frames to a minimum length of 64 bytes? (Total including FCS)}
 ipcore_add_param ALLOW_PRECOMMIT bool false \
     {Allow output FIFO cut-through? (Slightly reduced latency)}
 ipcore_add_param IBUF_KBYTES long 2 \
@@ -86,6 +95,7 @@ set_property value_validation_range_maximum $PORTX_COUNT_MAX $xcount
 
 # Enable ports and parameters depending on configuration.
 set_property enablement_dependency {$CFG_ENABLE || $STATS_ENABLE} [ipx::get_bus_interfaces Cfg -of_objects $ip]
+set_property enablement_dependency {$LOG_UART_BAUD > 0} [ipx::get_ports log_txd -of_objects $ip]
 set_property enablement_tcl_expr {$STATS_ENABLE} [ipx::get_user_parameters STATS_DEVADDR -of_objects $ip]
 set_property enablement_tcl_expr {$SUPPORT_PTP} [ipx::get_user_parameters PTP_DOPPLER -of_objects $ip]
 set_property enablement_tcl_expr {$SUPPORT_PTP} [ipx::get_user_parameters PTP_MIXED_STEP -of_objects $ip]

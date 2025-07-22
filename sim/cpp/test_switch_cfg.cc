@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for configuring managed Ethernet switches
@@ -27,6 +27,7 @@ static const unsigned REG_MAC_CTRL  = 13;   // MAC-table queries (read-write)
 static const unsigned REG_MISSFLAG  = 14;   // Miss-as-broadcast port mask (read-write)
 static const unsigned REG_PTP_2STEP = 15;   // PTP "twoStep" mode flag (read-write)
 static const unsigned REG_VLAN_RATE = 16;   // VLAN rate-control configuration (write-only)
+static const unsigned REG_LOGGING   = 17;   // Packet-logging output (read-only)
 static unsigned REG_PORT(unsigned idx)      {return 512 + 16*idx;}
 static unsigned REG_PTP_RX(unsigned idx)    {return REG_PORT(idx) + 8;}
 static unsigned REG_PTP_TX(unsigned idx)    {return REG_PORT(idx) + 9;}
@@ -64,6 +65,7 @@ TEST_CASE("switch_cfg") {
     regs[REG_MISSFLAG].read_default_echo();         // Miss-as-broadcast port mask
     regs[REG_PTP_2STEP].read_default_echo();        // PTP twoStep = echo
     regs[REG_VLAN_RATE].read_default(16);           // Rate-limiter ACCUM_WIDTH
+    regs[REG_LOGGING].read_default(1234);           // Logging register (placeholder)
 
     for (unsigned a = 0 ; a < PORT_COUNT ; ++a) {
         regs[REG_PTP_RX(a)].read_default_echo();    // PTP time offset (Rx)
@@ -168,6 +170,11 @@ TEST_CASE("switch_cfg") {
         log.suppress("Test");                           // Suppress test message
         uut.log_info("Test");
         CHECK(log.contains("Test"));
+    }
+
+    SECTION("log_register") {
+        auto reg = uut.get_log_register();
+        CHECK(u32(*reg) == 1234);
     }
 
     SECTION("port_count") {

@@ -1,17 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Internal "MailMap" Ethernet port
-//
-// This class interfaces with "port_axi_mailmap" through ConfigBus.
-// It can be used to send and receive Ethernet frames.
-//
-// Unlike the byte-at-a-time MailBox interface, the MailMap makes the
-// entire transmit/receive buffer available for direct access, as if they
-// were a regular array.  For now, this remains accessible through the
-// Writeable and Readable interfaces.
-//
+// Driver for the internal "MailMap" Ethernet port.
 
 #pragma once
 
@@ -25,7 +16,18 @@
 
 namespace satcat5 {
     namespace port {
-        // Standard driver.
+        //! Driver for the internal "MailMap" Ethernet port.
+        //! This class interfaces with "port_axi_mailmap" through ConfigBus.
+        //! It can be used to send and receive Ethernet frames.
+        //!
+        //! Unlike the byte-at-a-time MailBox interface, the MailMap makes the
+        //! entire transmit/receive buffer available for direct access, as if
+        //! they were a regular array.  For now, this remains accessible through
+        //! Writeable and Readable interfaces.
+        //!
+        //! If PTP features are enabled on the gateware side, then this driver
+        //! supports the ptp::Interface API for precision packet timestamps.
+        //! (This requires CFG_CLK_HZ and VCONFIG to be set in the HDL.)
         class Mailmap
             : public satcat5::io::Readable
             , public satcat5::io::Writeable
@@ -33,7 +35,7 @@ namespace satcat5 {
             , protected satcat5::cfg::Interrupt
         {
         public:
-            // Constructor
+            //! Constructor links this driver to a ConfigBus address.
             Mailmap(satcat5::cfg::ConfigBusMmap* cfg, unsigned devaddr);
 
             // Writeable / Readable API
@@ -54,8 +56,8 @@ namespace satcat5 {
             satcat5::io::Writeable* ptp_tx_write() override;
             satcat5::io::Readable* ptp_rx_read() override;
 
-            // Control register for creating a cfg::PtpRealtime object.
-            // (Requires CFG_CLK_HZ and VCONFIG to be set in the HDL.)
+            //! Control register for creating a cfg::PtpRealtime object.
+            //! (Requires CFG_CLK_HZ and VCONFIG to be set in the HDL.)
             inline satcat5::cfg::Register ptp_clock_reg() const
                 { return m_clock_reg; }
 
@@ -92,11 +94,13 @@ namespace satcat5 {
             unsigned m_rdovr;   // Receive buffer underflow?
         };
 
-        // Alternate driver using word-aligned access only.
-        // (Sometimes required for diagnostics or interface workarounds.)
+        //! Alternate MailMap driver using word-aligned access only.
+        //! This driver is less efficient than the normal port::MailMap driver,
+        //! but it forces all ConfigBus reads and writes to be word-aligned.
+        //! This is sometimes required for diagnostics or interface workarounds.
         class MailmapAligned : public satcat5::port::Mailmap {
         public:
-            // Constructor
+            //! Constructor links this driver to a ConfigBus address.
             MailmapAligned(satcat5::cfg::ConfigBusMmap* cfg, unsigned devaddr);
 
             // Override behavior of specific API methods.

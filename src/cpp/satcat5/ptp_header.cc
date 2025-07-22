@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -13,11 +13,11 @@ using satcat5::ptp::ClockInfo;
 void PortId::log_to(satcat5::log::LogBuffer& wr) const
 {
     wr.wr_str("0x");
-    wr.wr_hex(u32(clock_id >> 32), 8);
+    wr.wr_h32(u32(clock_id >> 32), 8);
     wr.wr_str("-");
-    wr.wr_hex(u32(clock_id >>  0), 8);
+    wr.wr_h32(u32(clock_id >>  0), 8);
     wr.wr_str("-");
-    wr.wr_hex(port_num, 4);
+    wr.wr_h32(port_num, 4);
 }
 
 bool PortId::read_from(satcat5::io::Readable* rd)
@@ -58,18 +58,18 @@ unsigned Header::msglen() const
 
 void Header::log_to(satcat5::log::LogBuffer& wr) const
 {
-    wr.wr_str("\n  MsgType: 0x");   wr.wr_hex(type, 1);
-    wr.wr_str("\n  Version: ");     wr.wr_dec(version);
-    wr.wr_str("\n  Length:  ");     wr.wr_dec(length);
-    wr.wr_str("\n  Domain:  ");     wr.wr_dec(domain);
-    wr.wr_str("\n  SdoID:   0x");   wr.wr_hex(sdo_id, 4);
-    wr.wr_str("\n  Flags:   0x");   wr.wr_hex(flags, 4);
-    wr.wr_str("\n  CorrFld: ");     wr.wr_d64(correction);
-    wr.wr_str("\n  Subtype: 0x");   wr.wr_hex(subtype, 8);
-    wr.wr_str("\n  SrcPort: ");     src_port.log_to(wr);
-    wr.wr_str("\n  SeqID:   0x");   wr.wr_hex(seq_id, 4);
-    wr.wr_str("\n  Control: 0x");   wr.wr_hex(control, 2);
-    wr.wr_str("\n  Intrval: 0x");   wr.wr_hex(log_interval, 2);
+    wr.wr_str("\r\n  MsgType: 0x");     wr.wr_h32(type, 1);
+    wr.wr_str("\r\n  Version: ");       wr.wr_d32(version);
+    wr.wr_str("\r\n  Length:  ");       wr.wr_d32(length);
+    wr.wr_str("\r\n  Domain:  ");       wr.wr_d32(domain);
+    wr.wr_str("\r\n  SdoID:   0x");     wr.wr_h32(sdo_id, 4);
+    wr.wr_str("\r\n  Flags:   0x");     wr.wr_h32(flags, 4);
+    wr.wr_str("\r\n  CorrFld: ");       wr.wr_d64(correction);
+    wr.wr_str("\r\n  Subtype: 0x");     wr.wr_h32(subtype, 8);
+    wr.wr_str("\r\n  SrcPort: ");       src_port.log_to(wr);
+    wr.wr_str("\r\n  SeqID:   0x");     wr.wr_h32(seq_id, 4);
+    wr.wr_str("\r\n  Control: 0x");     wr.wr_h32(control, 2);
+    wr.wr_str("\r\n  Intrval: 0x");     wr.wr_h32(log_interval, 2);
 }
 
 bool Header::read_from(satcat5::io::Readable* rd)

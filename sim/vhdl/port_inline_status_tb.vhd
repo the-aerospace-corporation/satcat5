@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2020-2024 The Aerospace Corporation.
+-- Copyright 2020-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -67,12 +67,12 @@ signal net_tx_ctrl      : port_tx_m2s;
 signal net_tx_write     : std_logic;
 signal out_eg_data      : byte_t;
 signal out_eg_write     : std_logic;
-signal out_eg_commit    : std_logic;
-signal out_eg_revert    : std_logic;
+signal out_eg_result    : frm_result_t;
+signal out_eg_eof       : std_logic;
 signal out_ig_data      : byte_t;
 signal out_ig_write     : std_logic;
-signal out_ig_commit    : std_logic;
-signal out_ig_revert    : std_logic;
+signal out_ig_result    : frm_result_t;
+signal out_ig_eof       : std_logic;
 
 -- Overall test control
 signal test_rate_in     : real := 0.0;
@@ -178,8 +178,7 @@ u_fcs_eg : entity work.eth_frame_check
     in_write    => net_tx_write,
     out_data    => out_eg_data,
     out_write   => out_eg_write,
-    out_commit  => out_eg_commit,
-    out_revert  => out_eg_revert,
+    out_result  => out_eg_result,
     clk         => net_tx_ctrl.clk,
     reset_p     => net_tx_ctrl.reset_p);
 
@@ -193,27 +192,29 @@ u_fcs_ig : entity work.eth_frame_check
     in_write    => lcl_rx_data.write,
     out_data    => out_ig_data,
     out_write   => out_ig_write,
-    out_commit  => out_ig_commit,
-    out_revert  => out_ig_revert,
+    out_result  => out_ig_result,
     clk         => lcl_rx_data.clk,
     reset_p     => lcl_rx_data.reset_p);
 
 -- Count the number of valid packets of each type.
 -- (Byte-for-byte checks already covered at the unit level.)
+out_eg_eof <= out_eg_result.commit or out_eg_result.revert;
+out_ig_eof <= out_ig_result.commit or out_ig_result.revert;
+
 p_count_eg : process(net_tx_ctrl.clk)
     variable bcount : integer := 0;
     variable is_pri, is_aux : boolean := false;
 begin
     if rising_edge(net_tx_ctrl.clk) then
         -- Check for error strobes.
-        assert (out_eg_revert = '0') report "EG-FCS error" severity error;
+        assert (out_eg_result.revert = '0') report "EG-FCS error" severity error;
         assert (lcl_tx_ctrl.txerr = '0') report "EG-PHY error" severity error;
 
         -- Count packets of each type.
         if (test_count_rst = '1') then
             eg_count_pri <= 0;
             eg_count_aux <= 0;
-        elsif (out_eg_write = '1' and (out_eg_commit = '1' or out_eg_revert = '1')) then
+        elsif (out_eg_write = '1' and out_eg_eof = '1') then
             eg_count_pri <= eg_count_pri + b2i(is_pri);
             eg_count_aux <= eg_count_aux + b2i(is_aux);
         end if;
@@ -226,13 +227,11 @@ begin
 
         -- Update per-packet byte count.
         if (reset_p = '1') then
-            bcount := 0;                -- Global reset
+            bcount := 0;            -- Global reset
+        elsif (out_eg_write = '1' and out_eg_eof = '1') then
+            bcount := 0;            -- End of frame
         elsif (out_eg_write = '1') then
-            if (out_eg_commit = '1' or out_eg_revert = '1') then
-                bcount := 0;            -- End of frame
-            else
-                bcount := bcount + 1;   -- Next data byte
-            end if;
+            bcount := bcount + 1;   -- Next data byte
         end if;
     end if;
 end process;
@@ -243,14 +242,14 @@ p_count_ig : process(lcl_rx_data.clk)
 begin
     if rising_edge(lcl_rx_data.clk) then
         -- Check for error strobes.
-        assert (out_ig_revert = '0') report "IG-FCS error" severity error;
+        assert (out_ig_result.revert = '0') report "IG-FCS error" severity error;
         assert (lcl_rx_data.rxerr = '0') report "IG-PHY error" severity error;
 
         -- Count packets of each type.
         if (test_count_rst = '1') then
             ig_count_pri <= 0;
             ig_count_aux <= 0;
-        elsif (out_ig_write = '1' and (out_ig_commit = '1' or out_ig_revert = '1')) then
+        elsif (out_ig_write = '1' and out_ig_eof = '1') then
             ig_count_pri <= ig_count_pri + b2i(is_pri);
             ig_count_aux <= ig_count_aux + b2i(is_aux);
         end if;
@@ -263,13 +262,11 @@ begin
 
         -- Update per-packet byte count.
         if (reset_p = '1') then
-            bcount := 0;                -- Global reset
+            bcount := 0;            -- Global reset
+        elsif (out_ig_write = '1' and out_ig_eof = '1') then
+            bcount := 0;            -- End of frame
         elsif (out_ig_write = '1') then
-            if (out_ig_commit = '1' or out_ig_revert = '1') then
-                bcount := 0;            -- End of frame
-            else
-                bcount := bcount + 1;   -- Next data byte
-            end if;
+            bcount := bcount + 1;   -- Next data byte
         end if;
     end if;
 end process;

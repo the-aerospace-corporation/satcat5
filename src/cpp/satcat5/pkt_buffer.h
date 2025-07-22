@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Multipurpose circular buffer
@@ -9,6 +9,11 @@
 
 #include <satcat5/io_core.h>
 #include <satcat5/types.h>
+
+// Default size is large enough for one full-size Ethernet frame + metadata.
+#ifndef SATCAT5_DEFAULT_PKTBUFF
+#define SATCAT5_DEFAULT_PKTBUFF     1600    // Buffer size in bytes
+#endif
 
 namespace satcat5 {
     namespace io {
@@ -40,6 +45,11 @@ namespace satcat5 {
         //!      PacketBuffer pkt_buffer(raw_buffer, sizeof(raw_buffer), 16);
         //! ```
         //!
+        //! \see StreamBufferStatic, PacketBufferStatic for simplified
+        //! wrappers with a built-in, statically-allocated working buffer.
+        //! \see StreamBufferHeap, PacketBufferHeap for wrappers with a
+        //! heap-allocated working buffer, if your system has a heap.
+        //!
         //! io::Writeable methods are used as normal to construct a packet field
         //! by field. The packet is committed to the buffer during the call to
         //! write_finalize().  In the event of an overflow in the middle of this
@@ -55,7 +65,19 @@ namespace satcat5 {
         public:
             //! Configure this object and link to the underlying working memory.
             //! Note: If max_pkt = 0, then packet boundaries are ignored.
-            PacketBuffer(u8* buff, unsigned nbytes, unsigned max_pkt=0);
+            constexpr PacketBuffer(void* buff, unsigned nbytes, unsigned max_pkt=0)
+                : m_buff(static_cast<u8*>(buff) + 2*max_pkt)
+                , m_buff_size(nbytes - 2*max_pkt)
+                , m_buff_rdidx(0)
+                , m_buff_rdcount(0)
+                , m_pkt_lbuff(static_cast<u16*>(buff))
+                , m_pkt_maxct(max_pkt)
+                , m_pkt_rdidx(0)
+                , m_next_wrpos(0)
+                , m_next_wrlen(0)
+                , m_shared_rdavail(0)
+                , m_shared_pktcount(0)
+                {} // No further initialization required
 
             //! Reset buffer contents.
             void clear();
@@ -142,6 +164,54 @@ namespace satcat5 {
             volatile unsigned m_shared_rdavail;
             volatile unsigned m_shared_pktcount;
             //! @}
+        };
+
+        //! Packet buffer with statically-allocated working memory.
+        //!
+        //! This PacketBuffer wrapper retains packet boundaries using
+        //! write_finalize(). Calling read_finalize() will discard any
+        //! remaining bytes in the current packet, then advance to the
+        //! next packet for subsequent reads.  The maximum number of
+        //! queued packets is set by the constructor, defaulting to 32.
+        //!
+        //! The working buffer is statically allocated. For a heap-allocated
+        //! equivalent, \see PacketBufferHeap (if your system has a heap).
+        //!
+        //! Optional template parameter specifies buffer size.  If user does
+        //! not specify a size, use SATCAT5_DEFAULT_PKTBUFF = 1600 bytes.
+        template<unsigned SIZE = SATCAT5_DEFAULT_PKTBUFF>
+        class PacketBufferStatic final : public satcat5::io::PacketBuffer {
+        public:
+            //! Link the parent object to the statically allocated buffer.
+            //! Note: PacketBufferStatic(0) is the same as StreamBufferStatic.
+            explicit PacketBufferStatic(unsigned max_pkt = 32)
+                : PacketBuffer(m_raw, SIZE, max_pkt), m_raw{} {}
+        private:
+            u8 m_raw[SIZE];
+        };
+
+        //! Stream buffer with statically-allocated working memory.
+        //!
+        //! This PacketBuffer wrapper does NOT retain packet boundaries;
+        //! bytes are written and read as a single contiguous stream.
+        //! Calls to write_finalize() are used for staging only, to minimize
+        //! thread-synchronization overhead.  When reading, data is consumed
+        //! without regard for packet boundaries.  Calls to read_finalize()
+        //! will discard all queued bytes and are never required.
+        //!
+        //! The working buffer is statically allocated. For a heap-allocated
+        //! equivalent, \see StreamBufferHeap (if your system has a heap).
+        //!
+        //! Optional template parameter specifies buffer size.  If user does
+        //! not specify a size, use SATCAT5_DEFAULT_PKTBUFF = 1600 bytes.
+        template<unsigned SIZE = SATCAT5_DEFAULT_PKTBUFF>
+        class StreamBufferStatic final : public satcat5::io::PacketBuffer {
+        public:
+            //! Link the parent object to the statically allocated buffer.
+            StreamBufferStatic()
+                : PacketBuffer(m_raw, SIZE, 0), m_raw{} {}
+        private:
+            u8 m_raw[SIZE];
         };
     }
 }

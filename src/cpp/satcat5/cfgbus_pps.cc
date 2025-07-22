@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -11,23 +11,30 @@ using satcat5::cfg::PpsInput;
 using satcat5::cfg::PpsOutput;
 using satcat5::cfg::Register;
 
-PpsInput::PpsInput(Register reg, bool rising)
+PpsInput::PpsInput(Register reg, PpsInput::Edge mode)
     : m_reg(reg)
     , m_callback(0)
     , m_offset(0)
+    , m_period(0)
 {
-    reset(rising);
+    reset(mode);
     timer_every(50);
 }
 
-void PpsInput::reset(bool rising) {
-    *m_reg = rising ? 1 : 0;
+void PpsInput::reset(PpsInput::Edge mode) {
+    // Set the configuration register.
+    *m_reg = u32(mode);
+
+    // One-second or half-second interval?
+    m_period = satcat5::ptp::SUBNS_PER_SEC;
+    if (mode == Edge::BOTH) m_period /= 2;
 }
 
 bool PpsInput::read_pulse() {
     // Bit-masks used for the FIFO register.
     constexpr u32 REG_LAST  = (1u << 31);
     constexpr u32 REG_VALID = (1u << 30);
+    // TODO: constexpr u32 REG_RISE  = (1u << 24);
     constexpr u32 REG_DATA  = (1u << 24) - 1;
 
     // Any data available?
@@ -51,9 +58,11 @@ bool PpsInput::read_pulse() {
             // After subtraction, range is now -0.5 to +1.5 seconds.
             s64 phase = s64(subns) - m_offset;
 
-            // Normalize to the nearest second (i.e., +/- 500 msec).
-            constexpr s64 HALF = satcat5::ptp::SUBNS_PER_SEC / 2;
-            while (phase > HALF) phase -= satcat5::ptp::SUBNS_PER_SEC;
+            // Normalize to the nearest half-period, depending on mode.
+            // (i.e., 0 to 999 msec remaps to +/-500 or +/-250 msec.)
+            // TODO: In both-edges mode, use polarity bit REG_RISE to prevent
+            //  false-lock at a 500 millisecond offset from the intended phase.
+            while (phase > m_period/2) phase -= m_period;
 
             // If a callback exists, notify it.
             // Timestamp of +0.1 sec means our local clock is running fast,

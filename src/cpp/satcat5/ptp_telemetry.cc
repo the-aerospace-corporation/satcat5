@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -32,10 +32,10 @@ void Logger::ptp_ready(const satcat5::ptp::Measurement& data)
     s64 sub = data.offset_from_master().delta_subns();
 
     satcat5::log::Log msg(satcat5::log::INFO, "PtpClient status:");
-    msg.write("\n  meanPathDelay(ns)").write10(mpd);
-    msg.write("\n  offsetFromMaster(ns)").write10(ofm);
-    msg.write("\n  offsetFromMaster(subns)").write10(sub);
-    if (m_track) msg.write("\n  tuningOffset(arb)").write10(m_track->get_rate());
+    msg.write("\r\n  meanPathDelay(ns)").write10(mpd);
+    msg.write("\r\n  offsetFromMaster(ns)").write10(ofm);
+    msg.write("\r\n  offsetFromMaster(subns)").write10(sub);
+    if (m_track) msg.write("\r\n  tuningOffset(arb)").write10(m_track->get_rate());
 }
 
 Telemetry::Telemetry(

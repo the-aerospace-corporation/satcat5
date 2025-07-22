@@ -1,17 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Device driver for the NXP SC18IS602B I2C-to-SPI bridge
-//
-// The SC18IS602B is an SPI master that is controlled through an I2C bus,
-// allowing indirect control of downstream SPI peripherals.  This driver
-// concerts each SPI transaction into a series of I2C commands.
-//
-// Note: One SPI transaction at a time; no queueing is provided.
-//
-// Reference: https://www.nxp.com/docs/en/data-sheet/SC18IS602B.pdf
-//
+// Device driver for the NXP SC18IS602B I2C-to-SPI bridge.
 
 #pragma once
 
@@ -21,26 +12,38 @@
 namespace satcat5 {
     namespace device {
         namespace i2c {
+            //! Device driver for the NXP SC18IS602B I2C-to-SPI bridge.
+            //! The SC18IS602B is an SPI master that is controlled through an I2C bus,
+            //! allowing indirect control of downstream SPI peripherals.  This driver
+            //! concerts each SPI transaction into a series of I2C commands.
+            //!
+            //! Note: One SPI transaction at a time; no queueing is provided.
+            //!
+            //! Reference: https://www.nxp.com/docs/en/data-sheet/SC18IS602B.pdf
             class Sc18is602
                 : public satcat5::cfg::I2cEventListener
                 , public satcat5::cfg::SpiGeneric
             {
             public:
-                // Constructor links to specified control register.
+                //! Constructor links to specified control register.
                 Sc18is602(
                     satcat5::cfg::I2cGeneric* i2c,          // Parent interface
                     const satcat5::util::I2cAddr& devaddr); // Device address
 
-                // Configure the SPI mode (0/1/2/3 sets CPOL, CPHA)
+                //! Configure the SPI mode (0/1/2/3 sets CPOL, CPHA)
                 bool configure(unsigned spi_mode);
 
-                // Is the SPI controller currently busy?
+                //! Is the SPI controller currently busy?
                 bool busy() override;
 
-                // Queue an SPI bus transaction. (Return true if successful.)
+                //! Queue a read-and-write SPI bus transaction.
+                //! Write N bytes and concurrently read N bytes.
                 bool exchange(
                     u8 devidx, const u8* wrdata, u8 rwbytes,
                     satcat5::cfg::SpiEventListener* callback = 0) override;
+
+                //! Queue a write-then-read SPI bus transaction.
+                //! Write N bytes and then read M bytes.
                 bool query(
                     u8 devidx, const u8* wrdata, u8 wrbytes, u8 rdbytes,
                     satcat5::cfg::SpiEventListener* callback = 0) override;

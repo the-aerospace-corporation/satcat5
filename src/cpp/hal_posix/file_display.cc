@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -46,13 +46,13 @@ bool FileDisplay::draw(const Cursor& cursor, const DrawCmd& cmd) {
     if (cursor.c + cmd.width() > width()) return true;
 
     // Calculate the number of bytes per row.
-    u16 row_len = width() + sizeof(DATA_NEWLINE);
+    u32 row_len = u32(width()) + sizeof(DATA_NEWLINE);
 
     // Draw/overwrite each "pixel" affected by this command.
     for (u16 r = 0 ; r < cmd.height() ; ++r) {
         // At the start of each row, seek to the write position.
-        u16 rr = (r + cursor.r) % height();
-        u16 posn = row_len * rr + cursor.c;
+        u32 rr = (r + cursor.r) % u32(height());
+        u32 posn = row_len * rr + u32(cursor.c);
         fseek(m_file, posn, SEEK_SET);
         // Write one character for each column.
         for (u16 c = 0 ; c < cmd.width() ; ++c) {

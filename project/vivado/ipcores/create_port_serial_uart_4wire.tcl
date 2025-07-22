@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2021-2023 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -34,6 +34,8 @@ ipcore_add_param CLKREF_HZ long 100000000 \
     {Frequency of "refclk" signal (Hz)}
 ipcore_add_param BAUD_HZ long 921600 \
     {Default UART baud rate (Hz)}
+ipcore_add_param RTS_SYMM bool false \
+    {Alternate RTS mode asserts when TX data available}
 
 # Package the IP-core.
 ipcore_finished

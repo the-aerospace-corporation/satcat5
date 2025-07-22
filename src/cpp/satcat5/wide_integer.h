@@ -1,35 +1,40 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Wide-integer arithmetic
-//
-// Since the C++0x11 standard does not define integer types wider than
-// 64 bits (i.e., uint64_t), we need to get creative.  This file defines
-// a templated struct that behaves like a very wide integer, signed or
-// unsigned, including the same modulo-arithmetic guarantees.  These are
-// effectively fixed-width BigInteger analogues.  Shorthand is provided
-// for commonly-used sizes (e.g., int128_t, uint128_t, uint256_t).
+//!\file
+//! Wide-integer arithmetic
+//!
+//!\details
+//! Since the C++0x11 standard does not define integer types wider than
+//! 64 bits (i.e., uint64_t), we need to get creative.  This file defines
+//! a templated struct that behaves like a very wide integer, signed or
+//! unsigned, including the same modulo-arithmetic guarantees.  These are
+//! effectively fixed-width BigInteger analogues.  Shorthand is provided
+//! for commonly-used sizes (e.g., int128_t, uint128_t, uint256_t).
+//!
+//! \see util::WideSigned, util::WideUnsigned
 
 #pragma once
 
-#include <climits>
 #include <satcat5/io_core.h>
 #include <satcat5/log.h>
 #include <satcat5/types.h>
 
 namespace satcat5 {
     namespace util {
-        // Define the parent template for shared signed and unsigned functions.
-        // This is not used directly; instead use WideSigned or WideUnsigned.
-        // The "W" parameter the is number of 32-bit subunits.
+        //! Wide-integer parent class. \see wide_integer.h.
+        //! Define the parent template for shared signed and unsigned functions.
+        //! This class should not used directly; instead use WideSigned or
+        //! WideUnsigned. The "W" parameter the is number of 32-bit subunits.
         template <unsigned W> struct WideInteger {
         public:
-            // Underlying data vector, LSW-first.
+            //! Underlying data vector, LSW-first.
             u32 m_data[W];
 
-            // Implicit size-converting copy constructors must know
-            // if the input is signed or unsigned to proceed.
+            //! Implicit size-converting copy constructors must know
+            //! if the input is signed or unsigned to proceed.
+            //!@{
             template <unsigned W2>
             WideInteger(const satcat5::util::WideSigned<W2>& rhs) // NOLINT
                 { copy_from<W2>(rhs, rhs.sign_extend()); }
@@ -37,12 +42,14 @@ namespace satcat5 {
             template <unsigned W2>
             WideInteger(const satcat5::util::WideUnsigned<W2>& rhs) // NOLINT
                 { copy_from<W2>(rhs, 0); }
+            //!@}
 
-            // Total width in bits or in words.
+            //! Total width in bits.
             inline unsigned width_bits() const { return 32 * W; }
+            //! Total width in 32-bit words.
             inline unsigned width_words() const { return W; }
 
-            // Index of most significant '1' bit.
+            //! Index of most significant '1' bit.
             unsigned msb() const {
                 for (unsigned w = W-1 ; w < UINT_MAX ; --w) {
                     if (m_data[w] == 0) continue;
@@ -53,11 +60,12 @@ namespace satcat5 {
                 return 0;
             }
 
-            // Extend most significant word with either "0" or "FFFF...".
+            //! Extend most significant word with either "0" or "FFFF...".
             inline constexpr u32 sign_extend() const
                 { return sign_extend(s32(m_data[W-1])); }
 
-            // Increment/decrement.
+            //! Increment/decrement.
+            //!@{
             WideInteger<W>& operator++() {     // ++myint
                 if (W > 0) ++m_data[0];
                 for (unsigned a = 0 ; a+1 < W ; ++a) {
@@ -80,8 +88,11 @@ namespace satcat5 {
             WideInteger<W> operator--(int) {  // myint--
                 WideInteger<W> tmp(*this); operator--(); return tmp;
             }
+            //!@}
 
-            // Equality comparison only; others require signed/unsigned specialization.
+            //! Equality comparison only.
+            //! Greater-than and less-than require signed/unsigned specialization.
+            //!@{
             bool operator==(const WideInteger<W>& rhs) const {
                 unsigned match = 0;
                 for (unsigned a = 0 ; a < W ; ++a) {
@@ -93,8 +104,10 @@ namespace satcat5 {
             inline bool operator!=(const WideInteger<W>& rhs) const {
                 return !operator==(rhs);
             }
+            //!@}
 
-            // Conversion to other basic types.
+            //! Conversion to other basic types.
+            //!@{
             explicit operator bool() const {
                 u32 any = 0;
                 for (unsigned a = 0 ; a < W ; ++a) {
@@ -115,15 +128,18 @@ namespace satcat5 {
                 return u64((W > 1) ? m_data[1] : 0) << 32
                      | u64((W > 0) ? m_data[0] : 0);
             }
+            //!@}
 
-            // Binary and human-readable I/O methods.
+            //! Human-readable logging in hexadecimal format.
             void log_to(satcat5::log::LogBuffer& obj) const {
                 obj.wr_str(" = 0x");
                 for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
-                    obj.wr_hex(m_data[a], 8);
+                    obj.wr_h32(m_data[a]);
+                    if (a) obj.wr_str("-");
                 }
             }
 
+            //! Read binary data from a given source.
             bool read_from(satcat5::io::Readable* rd) {
                 if (rd->get_read_ready() >= 4*W) {
                     for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
@@ -135,6 +151,7 @@ namespace satcat5 {
                 }
             }
 
+            //! Write binary data from a given sink.
             void write_to(satcat5::io::Writeable* wr) const {
                 for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
                     wr->write_u32(m_data[a]);
@@ -145,8 +162,9 @@ namespace satcat5 {
             friend satcat5::util::WideSigned<W>;
             friend satcat5::util::WideUnsigned<W>;
 
-            // Constructors are private to force use of child classes.
-            // Note: Nested templates are used to allow size conversion.
+            //! Constructors are private to force use of child classes.
+            //! \see wide_integer.h, util::WideSigned, util::WideUnsigned.
+            //! Note: Nested templates are used to allow size conversion.
             WideInteger() = default;
             constexpr explicit WideInteger(u32 rhs)
                 : m_data{u32(rhs)} {}
@@ -313,12 +331,13 @@ namespace satcat5 {
             }
         };
 
-        // Template for signed integers.
+        //! Template for signed integers. \see wide_integer.h.
         template <unsigned W> struct WideSigned final
             : public satcat5::util::WideInteger<W>
         {
         public:
-            // Forward selected constructors.
+            //! Constructors for various input formats.
+            //!@{
             constexpr WideSigned()
                 : satcat5::util::WideInteger<W>() {}
             constexpr explicit WideSigned(u32 rhs)
@@ -335,24 +354,28 @@ namespace satcat5 {
                 { this->copy_from(rhs, 0); }
             WideSigned<W>& operator=(const WideInteger<W>& rhs)
                 { this->copy_from(rhs, 0); return *this; }
+            //!@}
 
-            // Signed operations.
+            //! Is this integer negative, i.e., x < 0?
             bool is_negative() const {
                 return this->m_data[W-1] >= 0x80000000u;
             }
 
+            //! Absolute value.
             satcat5::util::WideSigned<W> abs() const {
                 return is_negative() ? -(*this) : (*this);
             }
 
+            //! Clamp input to +/- limit_pos.
             void clamp(const WideSigned<W>& limit_pos) {
                 const WideSigned<W> limit_neg(-limit_pos);
                 if (*this > limit_pos) *this = limit_pos;
                 if (*this < limit_neg) *this = limit_neg;
             }
 
-            // Most arithmetic operations are thin wrappers.
-            // Returned type always matches the first argument.
+            //! Common arithmetic operators.
+            //! Returned type always matches the first argument.
+            //!@{
             WideSigned<W> operator-() const
                 { WideSigned<W> tmp(~(*this)); ++tmp; return tmp; }
             inline WideSigned<W> operator+(const WideInteger<W>& rhs) const
@@ -397,8 +420,9 @@ namespace satcat5 {
                 { WideInteger<W> tmp(*this); tmp.bitwise_and(rhs); return tmp; }
             inline WideSigned<W> operator^(const WideInteger<W>& rhs) const
                 { WideInteger<W> tmp(*this); tmp.bitwise_xor(rhs); return tmp; }
+            //!@}
 
-            // Combined divide + modulo function.
+            //! Combined divide + modulo function.
             void divmod(const WideSigned<W>& rhs,
                 WideSigned<W>& div, WideSigned<W>& mod) const
             {
@@ -412,6 +436,7 @@ namespace satcat5 {
                 mod = is_negative() ? -umod : umod;
             }
 
+            //! Divide and round toward zero.
             WideSigned<W> div_round(const WideSigned<W>& rhs) const {
                 // Unsigned division on the absolute value of each input.
                 satcat5::util::WideUnsigned<W> unum(this->abs());
@@ -421,7 +446,8 @@ namespace satcat5 {
                 return (is_negative() == rhs.is_negative()) ? udiv : -udiv;
             }
 
-            // Comparison operators.
+            //! Comparison operators.
+            //!@{
             bool operator<(const WideSigned<W>& rhs) const {
                 if (W == 0) return false;
                 // Compare the most significant word as a signed integer.
@@ -452,14 +478,16 @@ namespace satcat5 {
             inline bool operator>=(const WideSigned<W>& rhs) const {
                 return !operator<(rhs);
             }
+            //!@}
         };
 
-        // Template for unsigned integers.
+        //! Template for unsigned integers. \see wide_integer.h.
         template <unsigned W> struct WideUnsigned final
             : public satcat5::util::WideInteger<W>
         {
         public:
-            // Forward selected constructors.
+            //! Constructors for various input formats.
+            //!@{
             constexpr WideUnsigned()
                 : satcat5::util::WideInteger<W>() {}
             constexpr explicit WideUnsigned<W>(u32 rhs)
@@ -472,9 +500,10 @@ namespace satcat5 {
                 { this->copy_from(rhs, 0); }
             WideUnsigned<W>& operator=(const WideInteger<W>& rhs)
                 { this->copy_from(rhs, 0); return *this; }
+            //!@}
 
-            // Most arithmetic operations are thin wrappers.
-            // Returned type always matches the first argument.
+            //! Common arithmetic operators.
+            //! Returned type always matches the first argument.
             WideUnsigned<W> operator-() const
                 { WideUnsigned<W> tmp(~(*this)); ++tmp; return tmp; }
             inline WideUnsigned<W> operator+(const WideInteger<W>& rhs) const
@@ -522,7 +551,7 @@ namespace satcat5 {
             inline WideUnsigned<W> div_round(const WideUnsigned<W>& rhs) const
                 { return (*this + (rhs >> 1)) / rhs; }
 
-            // Combined divide + modulo function.
+            //! Combined divide + modulo function.
             void divmod(const WideUnsigned<W>& rhs,
                 WideUnsigned<W>& div, WideUnsigned<W>& mod) const
             {
@@ -545,7 +574,8 @@ namespace satcat5 {
                 }
             }
 
-            // Comparison operators.
+            //! Comparison operators.
+            //!@{
             bool operator<(const WideUnsigned<W>& rhs) const {
                 for (unsigned a = W-1 ; a < UINT_MAX ; --a) {
                     if (this->m_data[a] < rhs.m_data[a]) return true;
@@ -566,17 +596,21 @@ namespace satcat5 {
             inline bool operator>=(const WideUnsigned<W>& rhs) const {
                 return !operator<(rhs);
             }
+            //!@}
         };
 
-        // Shorthand for commonly used sizes.
+        //! Shorthand for commonly used sizes.
+        //!@{
         typedef satcat5::util::WideSigned<4> int128_t;
         typedef satcat5::util::WideSigned<8> int256_t;
         typedef satcat5::util::WideSigned<16> int512_t;
         typedef satcat5::util::WideUnsigned<4> uint128_t;
         typedef satcat5::util::WideUnsigned<8> uint256_t;
         typedef satcat5::util::WideUnsigned<16> uint512_t;
+        //!@}
 
-        // Shorthand for commonly used constants.
+        //! Shorthand for commonly used constants.
+        //!@{
         constexpr satcat5::util::int128_t INT128_ZERO(u32(0));
         constexpr satcat5::util::int256_t INT256_ZERO(u32(0));
         constexpr satcat5::util::int512_t INT512_ZERO(u32(0));
@@ -589,5 +623,6 @@ namespace satcat5 {
         constexpr satcat5::util::uint128_t UINT128_ONE(u32(1));
         constexpr satcat5::util::uint256_t UINT256_ONE(u32(1));
         constexpr satcat5::util::uint512_t UINT512_ONE(u32(1));
+        //!@}
     }
 }

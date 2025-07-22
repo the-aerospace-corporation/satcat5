@@ -1,10 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-//
 // TFTP client and server implementation using FileReader and FileWriter
-//
 
 #pragma once
 
@@ -14,32 +12,36 @@
 
 namespace satcat5 {
     namespace udp {
-        // A client makes request(s) to a remote server.
+        //! A TFTP client that makes request(s) to a remote server.
+        //! File I/O is provided through FileReader and FileWriter.
         class TftpClientPosix
         {
         public:
+            //! Attach this TFTP client to a network interface.
             explicit TftpClientPosix(satcat5::udp::Dispatch* iface);
             virtual ~TftpClientPosix();
 
-            // Download a file from server to a Writeable stream.
+            //! Download a file from server to a Writeable stream.
             void begin_download(
                 const satcat5::ip::Addr& server,
                 const char* filename_local,
                 const char* filename_remote);
 
-            // Upload data from a Readable stream to the server.
+            //! Upload data from a Readable stream to the server.
             void begin_upload(
                 const satcat5::ip::Addr& server,
                 const char* filename_local,
                 const char* filename_remote);
 
-            // Accessors for the transfer status.
+            //! Accessors for the transfer status.
+            //!@{
             inline bool active() const
                 {return m_tftp.active();}
             inline u32 progress_blocks() const
                 {return m_tftp.progress_blocks();}
             inline u32 progress_bytes() const
                 {return m_tftp.progress_bytes();}
+            //!@}
 
         protected:
             // Interface objects.
@@ -48,18 +50,20 @@ namespace satcat5 {
             satcat5::udp::TftpClient m_tftp;
         };
 
-        // A server handles requests from remote clients.
-        // For safety reasons, file operations are limited to the
-        // designated working folder.  Use "/" at your own risk.
+        //! A TFTP server handles requests from remote clients.
+        //! File I/O is provided through FileReader and FileWriter.
+        //! For safety reasons, file operations are limited to the
+        //! designated working folder.  Use "/" at your own risk.
         class TftpServerPosix : public satcat5::udp::TftpServerCore {
         public:
+            //! Attach this TFTP server to a network interface.
             TftpServerPosix(
                 satcat5::udp::Dispatch* iface,
                 const char* work_folder);
             virtual ~TftpServerPosix();
 
         protected:
-            // Check a user-supplied path is safe to use.
+            //! Check if a user-supplied path is safe to use.
             std::string check_path(const char* filename);
 
             // Required overrides from TftpServer.

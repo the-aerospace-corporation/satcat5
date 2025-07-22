@@ -28,15 +28,64 @@ package body common_primitives is
     constant PREFER_FIFO_SREG    : boolean := false;
     constant PREFER_SPI_SYNC     : boolean := false;
 
-    -- TODO: Add support for Vernier clock generator on this platform.
+    type vernier_pll_params_t is record
+        REF_CLK : natural;
+        REFDIV0 : real;
+        FBDIV0  : real;
+        OUTDIV0 : real;
+        REFDIV1 : real;
+        FBDIV1  : real;
+        OUTDIV1 : real;
+    end record;
+
+    -- Predefined list of supported configurations.
+    -- See "sim/python/ccc_cfg.py"
+    -- NOTE: as of 3/21 only the 50MHz configuration has been tested in hardware
+    constant VERNIER_PARAM_ENTRIES : integer := 8;
+    type vernier_pll_params_array is array (VERNIER_PARAM_ENTRIES-1 downto 0) of vernier_pll_params_t;
+    constant VERNIER_PLL_PARAMS : vernier_pll_params_array := (
+        (20_000_000,     16.0, 15.0, 11.0, 20.0, 19.0, 11.0),
+        (25_000_000,     18.0, 14.0, 11.0, 24.0, 19.0, 11.0),
+        (50_000_000,     29.0, 12.0, 10.0, 44.0, 18.0, 10.0),
+        (54_000_000,     45.0, 16.0, 11.0, 50.0, 18.0, 11.0),
+        (100_000_000,    61.0, 12.0, 11.0, 62.0, 12.0, 11.0),
+        (125_000_000,    62.0, 12.0,  9.0, 63.0, 12.0,  9.0),
+        (156_250_000,    62.0, 12.0,  7.0, 63.0, 12.0,  7.0),
+        (200_000_000,    56.0, 12.0,  5.0, 61.0, 13.0,  5.0) );
+
+    -- Given reference frequency, determine the "best" Vernier configuration.
+    -- (See also: "polarfire_vernier.vhd")
     function create_vernier_config(
         input_hz    : natural;
         sync_tau_ms : real := VERNIER_DEFAULT_TAU_MS;
         sync_aux_en : boolean := VERNIER_DEFAULT_AUX_EN;
         sync_frq_en : boolean := VERNIER_DEFAULT_FRQ_EN)
-    return vernier_config is begin
-        return VERNIER_DISABLED;
+    return vernier_config is
+        variable result : vernier_config := VERNIER_DISABLED;
+        variable f0, f1 : real; -- Output frequency (Hz)
+    begin
+        f0 := 0.0;
+        f1 := 0.0;
+        for i in VERNIER_PLL_PARAMS'range loop
+            if input_hz = VERNIER_PLL_PARAMS(i).REF_CLK then
+                f0 := real(VERNIER_PLL_PARAMS(i).REF_CLK) * VERNIER_PLL_PARAMS(i).FBDIV0 / VERNIER_PLL_PARAMS(i).REFDIV0;
+                f1 := real(VERNIER_PLL_PARAMS(i).REF_CLK) * VERNIER_PLL_PARAMS(i).FBDIV1 / VERNIER_PLL_PARAMS(i).REFDIV1;
+            end if;
+        end loop;
+
+        if f0 = 0.0 and f1 = 0.0 then
+            return VERNIER_DISABLED;
+        end if;
+
+        if (f0 < f1) then
+            return (input_hz, f0, f1, sync_tau_ms, sync_aux_en, sync_frq_en,
+                    (others => 0.0));
+        else
+            return (input_hz, f1, f0, sync_tau_ms, sync_aux_en, sync_frq_en,
+                    (others => 0.0));
+        end if;
     end function;
+
 end package body;
 
 ---------------------------------------------------------------------

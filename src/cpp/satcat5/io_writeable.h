@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -106,6 +106,7 @@ namespace satcat5 {
 
         protected:
             friend LimitedWrite;
+            friend WriteableBroadcast;
             friend WriteableRedirect;
 
             //! Only children should create or destroy the base class.

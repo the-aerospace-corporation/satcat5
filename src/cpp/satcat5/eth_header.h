@@ -1,16 +1,17 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Type definitions for Ethernet frames and protocol handlers
-//
-// This file defines various data structures relating to Ethernet frames
-// and their headers, including the MAC address and EtherType fields.
-//
-// Note: Due to byte-alignment and byte-ordering issues, direct use of
-//       write_bytes and read_bytes on header data structures is not
-//       recommended.  Please use the provided write and read methods.
-//
+//!\file
+//! Type definitions for Ethernet frames and protocol handlers
+//!
+//!\details
+//! This file defines various data structures relating to Ethernet frames
+//! and their headers, including the MAC address and EtherType fields.
+//!
+//! Note: Due to byte-alignment and byte-ordering issues, direct use of
+//!       write_bytes and read_bytes on header data structures is not
+//!       recommended.  Please use the provided write and read methods.
 
 #pragma once
 
@@ -24,17 +25,18 @@
 
 namespace satcat5 {
     namespace eth {
-        // An Ethernet MAC address (with serializable interface).
+        //! An Ethernet MAC address (with serializable interface).
         struct MacAddr {
-            // Byte array in network order (Index 0 = MSB)
+            //! Byte array in network order (Index 0 = MSB)
             u8 addr[6];
 
-            // Numeric conversion functions.
+            //! Convert from u64 to MacAddr.
             static constexpr satcat5::eth::MacAddr from_u64(u64 x) {
                 return MacAddr {
                     (u8)(x >> 40), (u8)(x >> 32), (u8)(x >> 24),
                     (u8)(x >> 16), (u8)(x >>  8), (u8)(x >>  0)};
             }
+            //! Convert from MacAddr to u64.
             constexpr u64 to_u64() const {
                 return 1099511627776ULL * addr[0]
                      +    4294967296ULL * addr[1]
@@ -44,57 +46,66 @@ namespace satcat5 {
                      +             1ULL * addr[5];
             }
 
-            // Basic comparisons.
+            //! Basic comparisons.
+            //!@{
             bool operator==(const satcat5::eth::MacAddr& other) const;
             bool operator<(const satcat5::eth::MacAddr& other) const;
             inline bool operator!=(const satcat5::eth::MacAddr& other) const
                 {return !operator==(other);}
+            //!@}
 
             // Tests for various reserved address ranges:
-            bool is_broadcast() const;      // Broadcast (FF:FF:FF:FF:FF:FF)
-            bool is_l2multicast() const;    // L2 multicast (01:80:C2:*:*:* except link-local)
-            bool is_l3multicast() const;    // L3 multicast (01:00:5E:*:*:*)
-            bool is_multicast() const;      // Broadcast, L2 multicast, or L3 multicast
-            bool is_swcontrol() const;      // Link-local control (01:80:C2:00:00:*)
-            bool is_unicast() const;        // Any normal single-destination address
-            bool is_valid() const;          // Any nonzero address
+            bool is_broadcast() const;      //!< Broadcast (FF:FF:FF:FF:FF:FF)
+            bool is_l2multicast() const;    //!< L2 multicast (01:80:C2:*:*:* except link-local)
+            bool is_l3multicast() const;    //!< L3 multicast (01:00:5E:*:*:*)
+            bool is_multicast() const;      //!< Broadcast, L2 multicast, or L3 multicast
+            bool is_swcontrol() const;      //!< Link-local control (01:80:C2:00:00:*)
+            bool is_unicast() const;        //!< Any normal single-destination address
+            bool is_valid() const;          //!< Any nonzero address
 
-            // I/O functions.
+            //! Format this field as a human-readable string.
             void log_to(satcat5::log::LogBuffer& wr) const;
+            //! Write this field to a byte-stream.
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_bytes(6, addr);}
+            //! Read this field from a byte-stream.
             inline bool read_from(satcat5::io::Readable* rd)
                 {return rd->read_bytes(6, addr);}
         };
 
-        // EtherType field (uint16) is used a protocol-ID [1536..65535].
-        // Use as a "length" field [64..1500] is supported but not recommended.
-        // See also: https://en.wikipedia.org/wiki/EtherType
+        //! EtherType field (uint16) is used a protocol-ID [1536..65535].
+        //! Use as a "length" field [64..1500] is supported but not recommended.
+        //! See also: https://en.wikipedia.org/wiki/EtherType
         struct MacType {
-            // The 16-bit value is stored in processor-native order.
+            //! The 16-bit value is stored in processor-native order.
             u16 value;
 
-            // Basic comparisons.
+            //! Basic comparisons.
+            //!@{
             inline bool operator==(const satcat5::eth::MacType& other) const
                 {return value == other.value;}
             inline bool operator!=(const satcat5::eth::MacType& other) const
                 {return value != other.value;}
+            //!@}
 
-            // I/O functions.
+            //! Format this field as a human-readable string.
             void log_to(satcat5::log::LogBuffer& wr) const;
+            //! Write this field to a byte-stream.
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
+            //! Read this field from a byte-stream.
             inline bool read_from(satcat5::io::Readable* rd)
                 {value = rd->read_u16(); return true;}
         };
 
-        // Header contents for an 802.1Q Virtual-LAN tag.
-        // See also: https://en.wikipedia.org/wiki/IEEE_802.1Q
+        //! Header contents for an 802.1Q Virtual-LAN tag.
+        //! See also: https://en.wikipedia.org/wiki/IEEE_802.1Q
         struct VlanTag {
-            // The 16-bit value holds VID, DEI, and PCP fields.
+            //! The 16-bit value holds VID, DEI, and PCP fields.
             u16 value;
 
-            // Accessors for each individual field.
+            //! Accessors for each individual field.
+            //!@{
             inline bool any() const {return !!value;}
             inline u16 vid() const {return ((value >> 0)  & 0xFFF);}
             inline u16 dei() const {return ((value >> 12) & 0x001);}
@@ -104,38 +115,47 @@ namespace satcat5 {
                       | ((dei & 0x001) << 12)
                       | ((pcp & 0x007) << 13);
             }
+            //!@}
 
-            // Basic comparisons.
+            //! Basic comparisons.
+            //!@{
             inline bool operator==(const satcat5::eth::VlanTag& other) const
                 {return value == other.value;}
             inline bool operator!=(const satcat5::eth::VlanTag& other) const
                 {return value != other.value;}
+            //!@}
 
-            // I/O functions.
+            //! Format this field as a human-readable string.
             void log_to(satcat5::log::LogBuffer& wr) const;
+            //! Write this field to a byte-stream.
             inline void write_to(satcat5::io::Writeable* wr) const
                 {wr->write_u16(value);}
+            //! Read this field from a byte-stream.
             inline bool read_from(satcat5::io::Readable* rd)
                 {value = rd->read_u16(); return true;}
         };
 
-        // An Ethernet header (destination, source, and EtherType)
-        // See also: https://en.wikipedia.org/wiki/Ethernet_frame
+        //! An Ethernet frame header.
+        //! The Ethernet frame header always constains destination MAC,
+        //! source MAC, and EtherType. It may contain an optional VLAN tag.
+        //! See also: https://en.wikipedia.org/wiki/Ethernet_frame
         struct Header {
-            // Ethernet header fields.
+            //! Ethernet header fields.
+            //!@{
             satcat5::eth::MacAddr dst;
             satcat5::eth::MacAddr src;
             satcat5::eth::MacType type;
             satcat5::eth::VlanTag vtag;
+            //!@}
 
-            // Human-readable report of all fields.
+            //! Human-readable report of all fields.
             void log_to(satcat5::log::LogBuffer& wr) const;
 
-            // Write Ethernet header to the designated stream.
+            //! Write Ethernet header to the designated stream.
             void write_to(satcat5::io::Writeable* wr) const;
 
-            // Read Ethernet header from the designated stream.
-            // (Returns true on success, false otherwise.)
+            //! Read Ethernet header from the designated stream.
+            //! (Returns true on success, false otherwise.)
             bool read_from(satcat5::io::Readable* rd);
         };
 
@@ -157,6 +177,7 @@ namespace satcat5 {
             ETYPE_NONE          = {0x0000},
             ETYPE_IPV4          = {0x0800},
             ETYPE_ARP           = {0x0806},
+            ETYPE_RECOVERY      = {0x5252},
             ETYPE_CFGBUS_CMD    = {0x5C01},
             ETYPE_CFGBUS_ACK    = {0x5C02},
             ETYPE_SLINGSHOT_LOG = {0x5C03},
@@ -182,5 +203,9 @@ namespace satcat5 {
         constexpr u16 VID_MIN   = 1;    // Start of user VID range
         constexpr u16 VID_MAX   = 4094; // End of user VID range
         constexpr u16 VID_RSVD  = 4095; // Reserved
+
+        // Null Ethernet header.
+        constexpr satcat5::eth::Header HEADER_NULL =
+            {MACADDR_NONE, MACADDR_NONE, ETYPE_NONE, VTAG_NONE};
     }
 }

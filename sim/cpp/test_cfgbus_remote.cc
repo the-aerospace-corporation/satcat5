@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for remotely-operated ConfigBus tools
@@ -173,6 +173,7 @@ TEST_CASE("cfgbus-remote-eth") {
 
     SECTION("bad-command") {
         // Inject an invalid command (Eth header only, too short).
+        xlink.set_zero_pad(0);
         c2p.write_obj(HDR_CMD);
         c2p.write_finalize();
         // Confirm processing the packet generates an error message.
@@ -192,6 +193,7 @@ TEST_CASE("cfgbus-remote-eth") {
 
     SECTION("bad-length2") {
         // Inject an invalid write command where the length doesn't match.
+        xlink.set_zero_pad(0);
         c2p.write_obj(HDR_CMD);
         c2p.write_u8(0x2F);                 // Opcode = write
         c2p.write_u8(2);                    // Length = 3 words (M+1)
@@ -221,6 +223,7 @@ TEST_CASE("cfgbus-remote-eth") {
 
     SECTION("bad-response") {
         // Inject an invalid response (Eth header only, too short).
+        xlink.set_zero_pad(0);
         p2c.write_obj(HDR_ACK);
         p2c.write_finalize();
         // ConfigRemote ignores traffic if PENDING flag isn't set, so request
@@ -234,6 +237,7 @@ TEST_CASE("cfgbus-remote-eth") {
 
     SECTION("bad-response2") {
         // Inject a slightly longer, but still invalid response.
+        xlink.set_zero_pad(0);
         p2c.write_obj(HDR_ACK);             // Ethernet header
         p2c.write_u32(0x50000100u);         // Opcode = read, length 1, seq 1
         p2c.write_u32(42);                  // Address = 42

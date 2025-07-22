@@ -39,7 +39,7 @@
 
 namespace satcat5 {
     namespace util {
-        //! Timestamp for measuring elapsed time
+        //! Timestamp for measuring elapsed time.
         //!
         //! \link timeref.h SatCat5 system timer concepts. \endlink
         //!
@@ -49,7 +49,7 @@ namespace satcat5 {
             TimeRef* clk;   //!< Pointer to the parent time reference.
             u32 tval;       //!< The value of this timestamp, measured in ticks.
 
-            //! Measure elapsed time in ticks
+            //! Measure elapsed time in ticks.
             //!
             //! This example measures time spent in the "do_thing()" function:
             //! \code
@@ -58,12 +58,13 @@ namespace satcat5 {
             //!     unsigned elapsed = ref.elapsed_usec();  // Returns 42
             //! \endcode
             unsigned elapsed_tick() const;
-            //! Elapsed time in microseconds \see elapsed_tick
+            //! Elapsed time in microseconds. \see elapsed_tick
             unsigned elapsed_usec() const;
-            //! Elapsed time in milliseconds \see elapsed_tick
+            //! Elapsed time in milliseconds. \see elapsed_tick
             unsigned elapsed_msec() const;
 
-            //! Measure elapsed time in microseconds, then increment.
+            //! Measure elapsed time in microseconds, then increment by the
+            //! returned quantized value.
             //!
             //! Measure elapsed time since the timestamp, then increment
             //! the timestamp by that integer quantity.  This is typically
@@ -72,13 +73,17 @@ namespace satcat5 {
             //! This example measures time spent in the "do_thing()" function:
             //! \code
             //!     TimeVal ref = SATCAT5_CLOCK->now(); // Create timestamp
-            //!     do_thing();                         // Delay 3.7 msec
-            //!     unsigned t1 = ref.elapsed_msec();   // Returns 3
-            //!     do_thing();                         // Delay 3.7 msec
-            //!     unsigned t2 = ref.elapsed_msec();   // Returns 4
+            //!     do_thing();                         // Delay 3.7 usec
+            //!     unsigned t1 = ref.increment_usec(); // Returns 3
+            //!     do_thing();                         // Delay 3.7 usec
+            //!     unsigned t2 = ref.increment_msec(); // Returns 4
+            //!     do_thing();                         // Delay 3.7 usec
+            //!     unsigned t3 = ref.increment_msec(); // Returns 4
             //! \endcode
             unsigned increment_usec();
-            //! Measure elapsed time in milliseconds, then increment.
+
+            //! Measure elapsed time in milliseconds, then increment by the
+            //! returned quantized value.
             //! \copydetails increment_usec
             unsigned increment_msec();
 
@@ -196,8 +201,7 @@ namespace satcat5 {
         //! Implement TimeRef API using a memory-mapped performance counter.
         //! (i.e., A read-only register that reports elapsed clock cycles.)
         //! Note: The register MUST roll-over from UINT32_MAX to zero.
-        class TimeRegister final : public satcat5::util::TimeRef
-        {
+        class TimeRegister final : public satcat5::util::TimeRef {
         public:
             constexpr TimeRegister(volatile u32* reg, u32 clkref_hz)
                 : TimeRef(clkref_hz), m_reg(reg) {}

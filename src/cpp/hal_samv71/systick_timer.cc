@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -7,10 +7,8 @@
 #include <satcat5/polling.h>
 
 // SAMV71 Drivers
-extern "C"
-{
-    // Advanced Software Framework
-    #include <asf.h>
+extern "C" {
+    #include <samv71.h>
 };
 
 // SatCat HAL

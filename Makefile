@@ -1,4 +1,4 @@
-# Copyright 2021-2024 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 
@@ -29,6 +29,7 @@ CPPCHECK_RUN := cppcheck \
     --suppress=knownConditionTrueFalse \
     --suppress=missingInclude \
     --suppress=oppositeExpression \
+    --suppress=preprocessorErrorDirective \
     --suppress=stlFindInsert \
     --suppress=unusedFunction
 CPPLINT_FILTERS := \
@@ -136,12 +137,18 @@ ice40_rmii_serial:
 log_viewer:
 	@cd test/log_viewer && make run
 
+# Build and run the Pkt-Viewer tool
+.PHONY: pkt_viewer
+pkt_viewer:
+	@cd test/pkt_viewer && make run
+
 # Build each of the C++ example tools.
 .PHONY: sw_tools
 sw_tools:
 	@cd examples/arty_managed/oled_demo && make all
 	@cd examples/zcu208_clksynth/config_tool && make all
 	@cd test/log_viewer && make all
+	@cd test/pkt_viewer && make all
 
 # Build and run software tests
 .PHONY: sw_test

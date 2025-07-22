@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -28,9 +28,11 @@ entity switch_port_rx is
     generic (
     DEV_ADDR        : integer;      -- ConfigBus device address
     CORE_CLK_HZ     : positive;     -- Rate of core_clk (Hz)
+    PORT_COUNT      : positive;     -- Total ports in this switch
     PORT_INDEX      : natural;      -- Index for current port
     PTP_DOPPLER     : boolean;      -- Enable Doppler-TLV tags?
     STRIP_FCS       : boolean;      -- Strip FCS from incoming frames?
+    SUPPORT_LOG     : boolean;      -- Support packet logging diagnostics?
     SUPPORT_PAUSE   : boolean;      -- Support or ignore 802.3x PAUSE frames?
     SUPPORT_PTP     : boolean;      -- Support precise frame timestamps?
     SUPPORT_VLAN    : boolean;      -- Support or ignore 802.1q VLAN tags?
@@ -68,6 +70,8 @@ entity switch_port_rx is
     err_badfrm      : out std_logic;
     err_rxmac       : out std_logic;
     err_overflow    : out std_logic;
+    err_log_data    : out log_meta_t;
+    err_log_write   : out std_logic;
 
     -- Configuration interface (required for PTP/VLAN)
     cfg_cmd         : in  cfgbus_cmd;
@@ -90,6 +94,11 @@ begin
     end if;
 end function;
 
+-- Calculate worst-case timeout for round-robin packet readout.
+-- (i.e., Every other port is waiting to read out a max-length frame.)
+constant READ_MAX_WAIT : positive := div_ceil(PORT_COUNT * get_max_frame, OUTPUT_BYTES);
+constant FLUSH_TIMEOUT : positive := 2 ** log2_ceil(2 * READ_MAX_WAIT) - 1;
+
 -- Convenience types
 subtype data_t is std_logic_vector(8*INPUT_BYTES-1 downto 0);
 subtype last_t is integer range 0 to INPUT_BYTES;
@@ -102,28 +111,25 @@ signal rx_nlast_adj : integer range 0 to INPUT_BYTES;
 signal chk_data     : data_t;
 signal chk_nlast    : last_t;
 signal chk_write    : std_logic;
-signal chk_commit   : std_logic;
-signal chk_revert   : std_logic;
-signal chk_error    : std_logic;
+signal chk_result   : frm_result_t;
 
 -- VLAN tag parsing
 signal vlan_data    : data_t;
 signal vlan_nlast   : last_t;
 signal vlan_write   : std_logic;
-signal vlan_commit  : std_logic;
-signal vlan_revert  : std_logic;
-signal vlan_error   : std_logic;
+signal vlan_result  : frm_result_t;
 
 -- PTP metadata
 signal ptp_data     : data_t;
 signal ptp_nlast    : last_t;
 signal ptp_write    : std_logic;
-signal ptp_commit   : std_logic;
-signal ptp_revert   : std_logic;
+signal ptp_result   : frm_result_t;
 signal ptp_error    : std_logic;
 
 -- Output FIFO and metadata format conversion.
 signal rx_meta      : switch_meta_t := SWITCH_META_NULL;
+signal rx_overflow  : std_logic;
+signal log_toggle   : std_logic;
 signal mvec_in      : switch_meta_v := (others => '0');
 signal mvec_out     : switch_meta_v;
 signal pkt_error    : std_logic;
@@ -174,9 +180,7 @@ u_frmchk : entity work.eth_frame_check
     out_data    => chk_data,
     out_nlast   => chk_nlast,
     out_write   => chk_write,
-    out_commit  => chk_commit,
-    out_revert  => chk_revert,
-    out_error   => chk_error,
+    out_result  => chk_result,
     clk         => rx_clk,
     reset_p     => rx_reset_i);
 
@@ -193,16 +197,12 @@ gen_vlan1 : if SUPPORT_VLAN generate
         in_data     => chk_data,
         in_nlast    => chk_nlast,
         in_write    => chk_write,
-        in_commit   => chk_commit,
-        in_revert   => chk_revert,
-        in_error    => chk_error,
+        in_result   => chk_result,
         out_data    => vlan_data,
         out_vtag    => rx_meta.vtag,
         out_nlast   => vlan_nlast,
         out_write   => vlan_write,
-        out_commit  => vlan_commit,
-        out_revert  => vlan_revert,
-        out_error   => vlan_error,
+        out_result  => vlan_result,
         cfg_cmd     => cfg_cmd,
         clk         => rx_clk,
         reset_p     => rx_reset_i);
@@ -212,9 +212,7 @@ gen_vlan0 : if not SUPPORT_VLAN generate
     vlan_data   <= chk_data;
     vlan_nlast  <= chk_nlast;
     vlan_write  <= chk_write;
-    vlan_commit <= chk_commit;
-    vlan_revert <= chk_revert;
-    vlan_error  <= chk_error;
+    vlan_result <= chk_result;
 end generate;
 
 -- If PTP is enabled, generate additional metadata.
@@ -276,13 +274,11 @@ gen_ptp1 : if SUPPORT_PTP generate
             in_data     => vlan_data,
             in_nlast    => vlan_nlast,
             in_write    => vlan_write,
-            in_commit   => vlan_commit,
-            in_revert   => vlan_revert,
+            in_result   => vlan_result,
             out_data    => ptp_data,
             out_nlast   => ptp_nlast,
             out_write   => ptp_write,
-            out_commit  => ptp_commit,
-            out_revert  => ptp_revert,
+            out_result  => ptp_result,
             io_clk      => rx_clk,
             reset_p     => rx_reset_i);
 
@@ -295,14 +291,13 @@ gen_ptp0 : if not SUPPORT_PTP generate
     ptp_data    <= vlan_data;
     ptp_nlast   <= vlan_nlast;
     ptp_write   <= vlan_write;
-    ptp_commit  <= vlan_commit;
-    ptp_revert  <= vlan_revert;
+    ptp_result  <= vlan_result;
     ptp_error   <= '0';
 end generate;
 
 -- End-of-frame strobe.
-pkt_final <= ptp_write and (ptp_commit or ptp_revert);
-pkt_error <= (vlan_write and vlan_error) or (ptp_error);
+pkt_final <= ptp_write and (ptp_result.commit or ptp_result.revert);
+pkt_error <= (vlan_write and vlan_result.error) or (ptp_error);
 
 -- Metadata format conversion.
 -- Note: Relying on synthesis tools to trim unused metadata fields.
@@ -316,6 +311,7 @@ u_fifo : entity work.fifo_packet
     OUTPUT_BYTES    => OUTPUT_BYTES,
     BUFFER_KBYTES   => IBUF_KBYTES,
     META_WIDTH      => SWITCH_META_WIDTH,
+    FLUSH_TIMEOUT   => FLUSH_TIMEOUT,
     MAX_PACKETS     => IBUF_PACKETS,
     MAX_PKT_BYTES   => get_max_frame)
     port map(
@@ -323,10 +319,10 @@ u_fifo : entity work.fifo_packet
     in_pkt_meta     => mvec_in,
     in_data         => ptp_data,
     in_nlast        => ptp_nlast,
-    in_last_commit  => ptp_commit,
-    in_last_revert  => ptp_revert,
+    in_last_commit  => ptp_result.commit,
+    in_last_revert  => ptp_result.revert,
     in_write        => ptp_write,
-    in_overflow     => open,
+    in_overflow     => rx_overflow,
     in_reset        => rx_reset_i,
     out_clk         => core_clk,
     out_pkt_meta    => mvec_out,
@@ -337,6 +333,37 @@ u_fifo : entity work.fifo_packet
     out_ready       => out_ready,
     out_overflow    => err_overflow,
     reset_p         => rx_reset_p);
+
+-- Optional diagnostic logging, just before the FIFO input.
+gen_log1 : if SUPPORT_LOG generate
+    u_log : entity work.eth_frame_log
+        generic map(
+        INPUT_BYTES => INPUT_BYTES,
+        FILTER_MODE => true,    -- Dropped packets only
+        OUT_BUFFER  => true)    -- Double-buffer required
+        port map(
+        in_data     => ptp_data,
+        in_meta     => rx_meta,
+        in_nlast    => ptp_nlast,
+        in_result   => ptp_result,
+        in_write    => ptp_write,
+        ovr_strobe  => rx_overflow,
+        out_data    => err_log_data,
+        out_toggle  => log_toggle,
+        clk         => rx_clk,
+        reset_p     => rx_reset_i);
+
+    u_log_hs : sync_toggle2pulse
+        port map(
+        in_toggle   => log_toggle,
+        out_strobe  => err_log_write,
+        out_clk     => core_clk);
+end generate;
+
+gen_log0 : if not SUPPORT_LOG generate
+    err_log_data    <= LOG_META_NULL;
+    err_log_write   <= '0';
+end generate;
 
 -- Detect error strobes from MII Rx.
 u_err : sync_toggle2pulse

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Unit tests for various classes defined in "satcat5/io_core.h"
@@ -95,6 +95,16 @@ TEST_CASE("ArrayRead") {
     SECTION("underflow_consume") {
         CHECK(uut.read_consume(5));
         CHECK(!uut.read_consume(4));
+    }
+
+    SECTION("empty_constructor") {
+        io::ArrayRead empty;
+        CHECK(empty.buffer() == nullptr);
+        CHECK(empty.get_read_ready() == 0);
+        CHECK_FALSE(empty.read_consume(1));
+        empty.read_reset(10);
+        CHECK(empty.get_read_ready() == 0);
+        CHECK_FALSE(empty.read_consume(1));
     }
 }
 
@@ -465,6 +475,34 @@ TEST_CASE("LimitedRead") {
     // Create backing Readable object.
     io::ArrayRead rd(wr.buffer(), wr.written_len());
     REQUIRE(rd.get_read_ready() == 8);              // Initial state
+
+    SECTION("copy_and_finalize_stream") {
+        const auto mode = io::CopyMode::STREAM;
+        io::ArrayWriteStatic<4> dst;                // Limited capacity
+        CHECK(rd.copy_and_finalize(&dst, mode));    // Copy first 4 bytes
+        CHECK(dst.written_len() == 4);
+        CHECK(rd.copy_and_finalize(&dst, mode));    // Copy remaining bytes
+        CHECK(dst.written_len() == 4);
+    }
+
+    SECTION("copy_and_finalize_packet") {
+        const auto mode = io::CopyMode::PACKET;
+        io::ArrayWriteStatic<8> dst;
+        CHECK(rd.copy_and_finalize(&dst, mode));    // Copy the full 8 bytes
+        CHECK(dst.written_len() == 8);
+        rd.read_reset(0);                           // Empty input should fail
+        CHECK_FALSE(rd.copy_and_finalize(&dst, mode));
+    }
+
+    SECTION("copy_and_finalize_always") {
+        const auto mode = io::CopyMode::ALWAYS;
+        io::ArrayWriteStatic<8> dst;
+        CHECK(rd.copy_and_finalize(&dst, mode));    // Copy the full 8 bytes
+        CHECK(dst.written_len() == 8);
+        rd.read_reset(0);
+        CHECK(rd.copy_and_finalize(&dst, mode));    // Empty input still OK
+        CHECK(dst.written_len() == 0);
+    }
 
     SECTION("read_normal") {
         io::LimitedRead uut(&rd, 4);                // Stop at 4 of 8 bytes

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -24,6 +24,7 @@ package body common_primitives is
     constant PREFER_DPRAM_AWIDTH : positive := 6;
     constant PREFER_DPRAM_ONEBIT : boolean := true;
     constant PREFER_FIFO_SREG    : boolean := true;
+    constant PREFER_SPI_SYNC     : boolean := false;
 
     -- Given reference frequency, determine the "best" Vernier configuration.
     -- (See also: "ultrascale_vernier.vhd")

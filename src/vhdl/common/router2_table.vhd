@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2024 The Aerospace Corporation.
+-- Copyright 2024-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -111,6 +111,9 @@ signal out_meta_i   : meta_t := (others => '0');
 
 -- Command interface in the primary clock domain.
 signal cfg_write    : std_logic;
+signal cfg_clear1    : std_logic := '0';
+signal cfg_clear2    : std_logic := '0';
+signal cfg_clear3    : std_logic := '0';
 signal cfg_clear    : std_logic := '0';
 signal cfg_valid    : std_logic := '0';
 signal cfg_ready    : std_logic;
@@ -152,7 +155,7 @@ u_tcam : entity work.tcam_table
     out_found   => tcam_found,
     out_next    => tcam_next,
     out_error   => tcam_error,
-    cfg_clear   => cfg_clear,
+    cfg_clear   => cfg_clear1,
     cfg_suggest => open,
     cfg_index   => cfg_index,
     cfg_plen    => cfg_plen,
@@ -196,7 +199,7 @@ p_cfg : process(clk)
 begin
     if rising_edge(clk) then
         -- Handle the clear command.
-        cfg_clear <= cfg_write and bool2bit(cpu_opcode = OPCODE_CLEAR);
+        cfg_clear2 <= cfg_write and bool2bit(cpu_opcode = OPCODE_CLEAR);
 
         -- Handle writes to individual rows.
         if (reset_p = '1') then
@@ -250,7 +253,7 @@ cfg_plen_u <= unsigned(cpu_sreg(95 downto 88)); -- Prefix length
 u_sync_clear : sync_toggle2pulse
     port map(
     in_toggle   => cpu_clear_t,
-    out_strobe  => cfg_clear,
+    out_strobe  => cfg_clear3,
     out_clk     => clk);
 
 u_sync_write : sync_toggle2pulse
@@ -265,6 +268,8 @@ u_sync_done : sync_toggle2pulse
     in_toggle   => cfg_done_t,
     out_strobe  => cpu_done,
     out_clk     => cfg_cmd.clk);
+
+cfg_clear <= cfg_clear1 or cfg_clear2 or cfg_clear3;
 
 -- Command interface in the ConfigBus clock domain.
 p_cpu : process(cfg_cmd.clk)

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -19,24 +19,7 @@ static const unsigned DEBUG_SAFE_ZCW    = 0;
 // Label for AtomicLock statistics tracking.
 static const char* LBL_PKT = "PKT";
 
-PacketBuffer::PacketBuffer(u8* buff, unsigned nbytes, unsigned max_pkt)
-    : m_buff(buff + 2*max_pkt)
-    , m_buff_size(nbytes - 2*max_pkt)
-    , m_buff_rdidx(0)
-    , m_buff_rdcount(0)
-    , m_pkt_lbuff((u16*)buff)
-    , m_pkt_maxct(max_pkt)
-    , m_pkt_rdidx(0)
-    , m_next_wrpos(0)
-    , m_next_wrlen(0)
-    , m_shared_rdavail(0)
-    , m_shared_pktcount(0)
-{
-    // No further initialization required
-}
-
-void PacketBuffer::clear()
-{
+void PacketBuffer::clear() {
     AtomicLock lock(LBL_PKT);
     m_buff_rdidx = 0;
     m_buff_rdcount = 0;
@@ -47,8 +30,7 @@ void PacketBuffer::clear()
     m_shared_pktcount = 0;
 }
 
-u8 PacketBuffer::get_percent_full() const
-{
+u8 PacketBuffer::get_percent_full() const {
     unsigned wralloc = m_buff_size - m_shared_rdavail;
     if (m_next_wrlen >= wralloc)
         return 100;
@@ -59,8 +41,7 @@ u8 PacketBuffer::get_percent_full() const
     return (u8)satcat5::util::max_unsigned(wr_pct, pkt_pct);
 }
 
-unsigned PacketBuffer::get_write_space() const
-{
+unsigned PacketBuffer::get_write_space() const {
     // No space if we overflow the buffer (wrlen = UINT32_MAX).
     unsigned wralloc = m_buff_size - m_shared_rdavail;
     if (m_next_wrlen > wralloc)
@@ -77,13 +58,11 @@ unsigned PacketBuffer::get_write_space() const
     }
 }
 
-unsigned PacketBuffer::get_write_partial() const
-{
+unsigned PacketBuffer::get_write_partial() const {
     return m_next_wrlen;
 }
 
-void PacketBuffer::write_bytes(unsigned nbytes, const void* src)
-{
+void PacketBuffer::write_bytes(unsigned nbytes, const void* src) {
     // For performance, use memcpy rather than repeated write_next().
     const u8* src_u8 = (const u8*)src;
     if (get_write_space() >= nbytes) {
@@ -99,13 +78,11 @@ void PacketBuffer::write_bytes(unsigned nbytes, const void* src)
     } else {write_overflow();}
 }
 
-void PacketBuffer::write_abort()
-{
+void PacketBuffer::write_abort() {
     m_next_wrlen = 0; // Operation cancelled
 }
 
-void PacketBuffer::write_next(u8 data)
-{
+void PacketBuffer::write_next(u8 data) {
     // Write to the appropriate location in the circular buffer.
     unsigned wridx = modulo_add_uns(m_next_wrpos + m_next_wrlen, m_buff_size);
     m_buff[wridx] = data;
@@ -113,13 +90,11 @@ void PacketBuffer::write_next(u8 data)
     ++m_next_wrlen;
 }
 
-void PacketBuffer::write_overflow()
-{
+void PacketBuffer::write_overflow() {
     m_next_wrlen = UINT32_MAX;    // Overflow / Error
 }
 
-bool PacketBuffer::write_finalize()
-{
+bool PacketBuffer::write_finalize() {
     AtomicLock lock(LBL_PKT);
 
     // Whatever happens, clear m_next_wrlen.
@@ -154,8 +129,7 @@ bool PacketBuffer::write_finalize()
     return true;
 }
 
-unsigned PacketBuffer::zcw_maxlen() const
-{
+unsigned PacketBuffer::zcw_maxlen() const {
     unsigned wralloc = m_buff_size - m_shared_rdavail;
     if (m_next_wrlen < wralloc) {
         unsigned wridx = modulo_add_uns(m_next_wrpos + m_next_wrlen, m_buff_size);
@@ -167,8 +141,7 @@ unsigned PacketBuffer::zcw_maxlen() const
     }
 }
 
-u8* PacketBuffer::zcw_start()
-{
+u8* PacketBuffer::zcw_start() {
     // Safety check: Confirm maxlen > 0.
     if (DEBUG_SAFE_ZCW && !zcw_maxlen())
         return 0;   // Not an error unless user tries to write.
@@ -178,8 +151,7 @@ u8* PacketBuffer::zcw_start()
     return m_buff + wridx;
 }
 
-void PacketBuffer::zcw_write(unsigned nbytes)
-{
+void PacketBuffer::zcw_write(unsigned nbytes) {
     // Safety check: Confirm this was a safe write.
     if (DEBUG_SAFE_ZCW) {
         unsigned max_safe = zcw_maxlen();
@@ -192,8 +164,7 @@ void PacketBuffer::zcw_write(unsigned nbytes)
     m_next_wrlen += nbytes;
 }
 
-unsigned PacketBuffer::get_read_ready() const
-{
+unsigned PacketBuffer::get_read_ready() const {
     if (!m_pkt_maxct) {                 // Non-packet mode
         return m_shared_rdavail - m_buff_rdcount;
     } else if (m_shared_pktcount) {     // Remainder of current packet
@@ -203,8 +174,7 @@ unsigned PacketBuffer::get_read_ready() const
     }
 }
 
-bool PacketBuffer::read_bytes(unsigned nbytes, void* dst)
-{
+bool PacketBuffer::read_bytes(unsigned nbytes, void* dst) {
     // For performance, use memcpy rather than repeated read_next().
     u8* dst_u8 = (u8*)dst;
     if (can_read_internal(nbytes)) {
@@ -223,16 +193,14 @@ bool PacketBuffer::read_bytes(unsigned nbytes, void* dst)
     }
 }
 
-u8 PacketBuffer::read_next()
-{
+u8 PacketBuffer::read_next() {
     // Return the next byte.
     u8 temp = m_buff[m_buff_rdidx];
     consume_internal(1);
     return temp;
 }
 
-bool PacketBuffer::can_read_internal(unsigned nbytes) const
-{
+bool PacketBuffer::can_read_internal(unsigned nbytes) const {
     if (!m_pkt_maxct) {
         return (nbytes <= m_shared_rdavail - m_buff_rdcount);
     } else if (m_shared_pktcount) {
@@ -242,8 +210,7 @@ bool PacketBuffer::can_read_internal(unsigned nbytes) const
     }
 }
 
-void PacketBuffer::consume_internal(unsigned nbytes)
-{
+void PacketBuffer::consume_internal(unsigned nbytes) {
     // Increment read pointer.
     m_buff_rdidx = modulo_add_uns(m_buff_rdidx + nbytes, m_buff_size);
 
@@ -262,15 +229,13 @@ void PacketBuffer::consume_internal(unsigned nbytes)
     }
 }
 
-unsigned PacketBuffer::get_peek_ready() const
-{
+unsigned PacketBuffer::get_peek_ready() const {
     unsigned max_read = get_read_ready();
     unsigned max_wrap = m_buff_size - m_buff_rdidx;
     return min_unsigned(max_read, max_wrap);
 }
 
-const u8* PacketBuffer::peek(unsigned nbytes) const
-{
+const u8* PacketBuffer::peek(unsigned nbytes) const {
     if (nbytes <= get_peek_ready()) {
         return m_buff + m_buff_rdidx;
     } else {
@@ -278,8 +243,7 @@ const u8* PacketBuffer::peek(unsigned nbytes) const
     }
 }
 
-bool PacketBuffer::read_consume(unsigned nbytes)
-{
+bool PacketBuffer::read_consume(unsigned nbytes) {
     if (can_read_internal(nbytes)) {
         consume_internal(nbytes);
         return true;
@@ -289,8 +253,7 @@ bool PacketBuffer::read_consume(unsigned nbytes)
     }
 }
 
-void PacketBuffer::read_finalize()
-{
+void PacketBuffer::read_finalize() {
     AtomicLock lock(LBL_PKT);
 
     // Move to next packet, if applicable.

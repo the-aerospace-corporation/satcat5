@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -27,8 +27,7 @@ static const u8  ARP_PLEN_IPV4      = 4;
 static const u16 ARP_OPER_QUERY     = 0x0001;
 static const u16 ARP_OPER_REPLY     = 0x0002;
 
-bool ArpHeader::read_from(satcat5::io::Readable* src)
-{
+bool ArpHeader::read_from(satcat5::io::Readable* src) {
     // Reject anything that's too short to be a valid ARP packet.
     if (src->get_read_ready() < 28) return false;
 
@@ -61,6 +60,18 @@ bool ArpHeader::read_from(satcat5::io::Readable* src)
     return true;    // Success!
 }
 
+void ArpHeader::write_to(satcat5::io::Writeable* wr) const{
+    wr->write_u16(ARP_HTYPE_ETHERNET);  // Hardware type (Ethernet = 1)
+    wr->write_u16(ARP_PTYPE_IPV4);      // Protocol type (IPv4 = 0x0800)
+    wr->write_u8(ARP_HLEN_ETHERNET);    // Hardware address length (Ethernet = 6)
+    wr->write_u8(ARP_PLEN_IPV4);        // Protocol address length (IPv4 = 4)
+    wr->write_u16(oper);                // Operation (1 = request, 2 = reply)
+    wr->write_obj(sha);                 // Sender hardware address (MAC)
+    wr->write_obj(spa);                 // Sender protocol address (IPv4)
+    wr->write_obj(tha);                 // Target hardware address (MAC)
+    wr->write_obj(tpa);                 // Target protocol address (IPv4)
+}
+
 ProtoArp::ProtoArp(
         eth::Dispatch* dispatch,
         const ip::Addr& ipaddr)
@@ -71,8 +82,7 @@ ProtoArp::ProtoArp(
     // Nothing else to initialize.
 }
 
-bool ProtoArp::send_announce(const VlanTag& vtag) const
-{
+bool ProtoArp::send_announce(const VlanTag& vtag) const {
     // Psuedo-request method, preferred per RFC5227:
     //  https://datatracker.ietf.org/doc/html/rfc5227#section-3
     return send_internal(
@@ -85,10 +95,10 @@ bool ProtoArp::send_announce(const VlanTag& vtag) const
         m_ipaddr);                          // Announce TPA = Our IP
 }
 
-bool ProtoArp::send_probe(const ip::Addr& target, const VlanTag& vtag)
-{
+bool ProtoArp::send_probe(const ip::Addr& target, const VlanTag& vtag) {
     // Probe-request method from RFC5227:
-    // https://www.rfc-editor.org/rfc/rfc5227#section-2.1
+    //  https://www.rfc-editor.org/rfc/rfc5227#section-2.1
+    // (i.e., Check if someone else is using our IP address.)
     return send_internal(
         ARP_OPER_QUERY,                     // ARP query
         vtag,                               // User-specified VLAN tag
@@ -99,8 +109,7 @@ bool ProtoArp::send_probe(const ip::Addr& target, const VlanTag& vtag)
         target);                            // Probe TPA = Target IP
 }
 
-bool ProtoArp::send_query(const ip::Addr& target, const VlanTag& vtag)
-{
+bool ProtoArp::send_query(const ip::Addr& target, const VlanTag& vtag) {
     // Send a query for the designated target:
     return send_internal(
         ARP_OPER_QUERY,                     // ARP query
@@ -112,10 +121,7 @@ bool ProtoArp::send_query(const ip::Addr& target, const VlanTag& vtag)
         target);                            // Query TPA = Target IP
 }
 
-void ProtoArp::gateway_change(
-    const ip::Addr& dstaddr,
-    const ip::Addr& gateway)
-{
+void ProtoArp::gateway_change(const ip::Addr& dstaddr, const ip::Addr& gateway) {
     ArpListener* item = m_listeners.head();
     while (item) {
         item->gateway_change(dstaddr, gateway);
@@ -123,14 +129,13 @@ void ProtoArp::gateway_change(
     }
 }
 
-void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src)
-{
+void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "ProtoArp: frame_rcvd");
 
     // Attempt to read the incoming message.
     // Proceed only if it's a valid Ethernet/IPv4 message.
-    ArpHeader hdr{};
+    ArpHeader hdr;
     if (!hdr.read_from(&src)) return;
 
     // Does this query have a valid SHA/SPA pair?
@@ -160,8 +165,7 @@ void ProtoArp::frame_rcvd(satcat5::io::LimitedRead& src)
     }
 }
 
-eth::MacAddr ProtoArp::match(const ArpHeader& hdr) const
-{
+eth::MacAddr ProtoArp::match(const ArpHeader& hdr) const {
     // Simple check: Is this a query for our IP address?
     if (hdr.oper != ARP_OPER_QUERY) return eth::MACADDR_NONE;
     if (hdr.tpa == m_ipaddr) return m_iface->macaddr();
@@ -182,6 +186,14 @@ bool ProtoArp::send_internal(u16 opcode,
     const eth::MacAddr& tha,
     const ip::Addr& tpa) const
 {
+    // Sanity check: TPA should always be a valid unicast address, except
+    // for replies to a host with no valid IP address (e.g., DHCP setup).
+    if (!(opcode == ARP_OPER_REPLY || tpa.is_unicast())) {
+        if (DEBUG_VERBOSE > 0)
+            log::Log(log::DEBUG, "ProtoArp: Invalid TPA").write(tpa);
+        return false;
+    }
+
     // Start with the Ethernet frame header...
     satcat5::io::Writeable* wr =
         m_iface->open_write(dst, eth::ETYPE_ARP, vtag);

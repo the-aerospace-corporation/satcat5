@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -75,9 +75,9 @@ bool DopplerTlv::tlv_rcvd(const Header& hdr, const TlvHeader& tlv, LimitedRead& 
     // Optional logging
     if (DEBUG_VERBOSE > 1) {
         satcat5::log::Log(satcat5::log::DEBUG, "DopplerTlv::tlv_recv")
-            .write("\n  typ").write(hdr.type)       // PTP message type
-            .write("\n  raw").write((u64)m_dstamp)  // Raw measurement (hex)
-            .write("\n  raw").write10(m_dstamp);    // Raw measurement (dec)
+            .write("\r\n  typ").write(hdr.type)         // PTP message type
+            .write("\r\n  raw").write((u64)m_dstamp)    // Raw measurement (hex)
+            .write("\r\n  raw").write10(m_dstamp);      // Raw measurement (dec)
     }
 
     // Matching tag has been read.
@@ -130,11 +130,11 @@ void DopplerTlv::tlv_meas(satcat5::ptp::Measurement& meas)
     // Optional logging
     if (DEBUG_VERBOSE > 0) {
         satcat5::log::Log(satcat5::log::DEBUG, "DopplerTlv::tlv_meas")
-            .write("\n  time ").write10(t)          // Elapsed time
-            .write("\n  vraw ").write10(m_dstamp)   // Raw velocity
-            .write("\n  vfilt").write10(v)          // Filtered velocity
-            .write("\n  accel").write10(a)          // Filtered acceleration
-            .write("\n  tcomp").write10(delta);     // Compensation amount
+            .write("\r\n  time ").write10(t)            // Elapsed time
+            .write("\r\n  vraw ").write10(m_dstamp)     // Raw velocity
+            .write("\r\n  vfilt").write10(v)            // Filtered velocity
+            .write("\r\n  accel").write10(a)            // Filtered acceleration
+            .write("\r\n  tcomp").write10(delta);       // Compensation amount
     }
 }
 

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Unit tests for various classes defined in "satcat5/ip_core.h"
@@ -88,8 +88,10 @@ TEST_CASE("ip_header") {
         0xC0, 0xA8, 0x32, 0x32};
     satcat5::io::ArrayRead ref1(REF_HEADER1, sizeof(REF_HEADER1));
 
+    // Test that various reference-packet fields are parsed correctly.
     SECTION("accessors") {
         // Read the reference header.
+        // Note use of `read_core` rather than `read_from`.
         satcat5::ip::Header hdr;
         REQUIRE(hdr.read_core(&ref1));
         // Check various accessors:
@@ -106,8 +108,26 @@ TEST_CASE("ip_header") {
         CHECK(hdr.dst() == satcat5::ip::Addr(192, 168, 50, 50));
     }
 
+    // Test that the increment checksum updates correctly.
+    SECTION("chk_incr") {
+        // Example from RFC1624 Section 4.
+        // (Contrived to generate an 0x0000 rollover.)
+        satcat5::ip::Header hdr = {0, 0, 0, 0, 0, 0xDD2F};
+        CHECK(hdr.chk() == 0xDD2F);
+        hdr.chk_incr16(0x5555, 0x3285);
+        CHECK(hdr.chk() == 0x0000);
+        // Hand-verified example.
+        hdr.chk_incr32(0x12345678u, 0x87654321u);
+        CHECK(hdr.chk() == 0x9E25);
+        // Identical input/output should produce no change.
+        hdr.chk_incr16(0x1234, 0x1234);
+        CHECK(hdr.chk() == 0x9E25);
+        hdr.chk_incr32(0xDEADBEEF, 0xDEADBEEF);
+        CHECK(hdr.chk() == 0x9E25);
+    }
+
+    // Test that a header without associated data reports an error.
     SECTION("length_check") {
-        // Attempting to read header with missing data should fail.
         satcat5::ip::Header hdr;
         CHECK_FALSE(hdr.read_from(&ref1));
     }

@@ -1,19 +1,17 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// General-purpose ConfigBus emulator
-//
-// This block emulates a ConfigBus host interface, allowing a driver under
-// test to read and write control registers.  It is flexible enough to
-// emulate many simple devices; more complex devices usually need custom
-// logic.  (Refer to "sim_multiserial.h" for an example of the latter.)
-//
-// Each register write is saved for later inspection by the test script
-// (i.e., write_count, write_next).  Each register read is pulled from a
-// pre-populated queue, usually filled before the test starts.  In both
-// cases, each register has a separate queue.
-//
+//!\file
+//! General-purpose ConfigBus emulator utilities.
+//!
+//!\details
+//! This file has seeveral utilities for emulating a ConfigBus host interface,
+//! allowing a driver under test to read and write control registers.
+//!
+//! The classes defined here are flexible enough to emulate most simple
+//! devices.  However, more complex devices may need custom logic derived
+//! directly from cfg::ConfigBus. \see test::MultiSerial for one example.
 
 #pragma once
 
@@ -22,7 +20,12 @@
 
 namespace satcat5 {
     namespace test {
-        // Simulated register.
+        //! Simulation of a single ConfigBus register.
+        //! \see sim_cfgbus.h
+        //! Each register write is saved for later inspection by the test
+        //! script (i.e., write_count, write_next).  Each register read
+        //! depends on mode; it may echo the most recent write, read a
+        //! single fixed value, or pull from a pre-populated queue.
         class CfgRegister : public satcat5::cfg::ConfigBus {
         public:
             // For safety checking, registers cannot be read by default.

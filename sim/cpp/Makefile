@@ -1,4 +1,4 @@
-# Copyright 2021-2024 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 .PHONY: test verbose valgrind_test build clean coverage coverage_test precov
@@ -13,6 +13,7 @@ IGNORE_ERROR := 2>&1 || cd .
 ### environment
 ifeq ($(OS),Windows_NT)
     COPY=copy /Y
+    LIBS=-lWs2_32 -lpthread
     MKDIR=mkdir
     MOVE=move /Y
     NULL=NUL
@@ -80,6 +81,7 @@ coverage: $(COVERAGE_DIR)/coverage.txt $(COVERAGE_DIR)/coverage.html
 
 test: build
 	@echo Running tests...
+	@$(REMOVE) $(BUILD_DIR)/*.gcda > $(NULL) $(IGNORE_ERROR)
 	@$(BUILD_DIR)/$(PROJECT).bin
 
 verbose: build
@@ -151,4 +153,3 @@ coverage_test: precov
 
 # Forces rebuild of an object file if an included header is updated
 -include $(OBJS:.o=.d)
-

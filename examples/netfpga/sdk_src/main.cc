@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Microblaze software top-level for the "NetFPGA-Managed" example design
@@ -85,7 +85,7 @@ satcat5::io::ArrayRead tftp_source(TFTP_MESSAGE, sizeof(TFTP_MESSAGE)-1);
 satcat5::udp::TftpServerSimple tftp_server(&ip_stack.m_udp, &tftp_source, 0);
 
 // State-of-health telemetry for the switch status and traffic statistics.
-satcat5::udp::Telemetry tlm(&ip_stack.m_udp, satcat5::udp::PORT_CBOR_TLM);
+satcat5::udp::Telemetry tlm(&ip_stack.m_udp);
 satcat5::eth::SwitchTelemetry tlm_sw(&tlm, &eth_switch, &traffic_stats);
 
 // DHCP client is dormant if user sets a static IP.
@@ -121,8 +121,7 @@ satcat5::eth::LogToChat     log_chat(&eth_chat);
 // Note: Requires ~40 msec delay before attempting MDIO access.
 
 // Timer object for general househeeping.
-class HousekeepingTimer : satcat5::poll::Timer
-{
+class HousekeepingTimer : satcat5::poll::Timer {
 public:
     HousekeepingTimer() : m_first(1) {
         // Set callback delay for first-time startup message.
@@ -156,8 +155,7 @@ public:
 } housekeeping;
 
 // A slower timer object that activates once every minute.
-class SlowHousekeepingTimer : satcat5::poll::Timer
-{
+class SlowHousekeepingTimer : satcat5::poll::Timer {
 public:
     SlowHousekeepingTimer() {
         timer_every(60000);
@@ -172,8 +170,7 @@ public:
 } slowkeeping;
 
 // Main loop: Initialize and then poll forever.
-int main()
-{
+int main() {
     // VLAN setup for the managed Ethernet switch.
     eth_switch.vlan_reset();    // Reset in open mode
 
@@ -181,6 +178,9 @@ int main()
     if (DEBUG_PING_HOST) {
          ip_stack.m_ping.ping(PING_TARGET);
     }
+
+    // State-of-health telemetry in broadcast mode.
+    tlm.connect(satcat5::ip::ADDR_BROADCAST);
 
     // Set up the status LEDs.
     for (unsigned a = 0 ; a < LED_COUNT ; ++a)

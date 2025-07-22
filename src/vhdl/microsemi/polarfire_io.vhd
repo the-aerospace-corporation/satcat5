@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -37,13 +37,14 @@ end bidir_io;
 
 architecture polarfire of bidir_io is
 
-    signal out_en : std_logic;
+    signal out_en   : std_logic;
+    signal s_io_pin : std_logic;
 
     -- Custom attribute makes it easy to "set_io" with pull-up/down resistors.
     attribute satcat5_res_pull_dn : boolean;
-    attribute satcat5_res_pull_dn of io_pin : signal is EN_PULLDN;
+    attribute satcat5_res_pull_dn of s_io_pin : signal is EN_PULLDN;
     attribute satcat5_res_pull_up : boolean;
-    attribute satcat5_res_pull_up of io_pin : signal is EN_PULLUP;
+    attribute satcat5_res_pull_up of s_io_pin : signal is EN_PULLUP;
 
     component BIBUF
     port(
@@ -55,26 +56,27 @@ architecture polarfire of bidir_io is
 
 begin
 
-out_en <= not t_en;
+out_en   <= not t_en;
+s_io_pin <= io_pin;
 
 gen_pd : if EN_PULLDN generate
     assert false report "Set pull-down manually with 'set_io' and the " &
         "'satcat5_res_pull_dn' attribute or in the I/O attribute editor"
-    severity warning;
+        severity warning;
 end generate;
 
 gen_pu : if EN_PULLUP generate
     assert false report "Set pull-up manually with 'set_io' and the " &
-    "'satcat5_res_pull_up' attribute or in the I/O attribute editor"
-    severity warning;
+        "'satcat5_res_pull_up' attribute or in the I/O attribute editor"
+        severity warning;
 end generate;
 
 u_iobuf : BIBUF
 port map (
-    D => d_out,
-    E => out_en,
-    Y => d_in,
-    PAD => io_pin);
+    D   => d_out,
+    E   => out_en,
+    Y   => d_in,
+    PAD => s_io_pin);
 
 end polarfire;
 
@@ -105,8 +107,6 @@ end clk_input;
 
 architecture polarfire of clk_input is
 
-    constant DELAY_TAPS_INT : integer := integer(round(DELAY_NSEC / 0.025));
-
     -- Declare intermediate clock signals
     signal clk_dly, clk_mmcm, clk_buf : std_logic;
 
@@ -126,13 +126,12 @@ architecture polarfire of clk_input is
 begin
 
 -- DELAY GEN
-gen_dly_en : if (DELAY_TAPS_INT >= 0) generate
-    assert false report "cannot be implemented; set manually with the CCC " &
-    "configurator"
+gen_dly_en : if (DELAY_NSEC >= 0.0) generate
+    assert false report "cannot be implemented; set manually with the CCC configurator"
     severity error;
 end generate;
 
-gen_dly_no : if (DELAY_TAPS_INT < 0) generate
+gen_dly_no : if (DELAY_NSEC < 0.0) generate
     clk_dly <= clk_pin;
 end generate;
 
@@ -202,11 +201,15 @@ port (
     QR      : out std_logic);
 end component;
 
+signal s_d_pin : std_logic;
+
 -- Custom attribute makes it easy to "set_io" with input delay.
 attribute satcat5_in_delay : integer;
-attribute satcat5_in_delay of d_pin : signal is DELAY_TAPS;
+attribute satcat5_in_delay of s_d_pin : signal is DELAY_TAPS;
 
 begin
+
+s_d_pin <= d_pin;
 
 gen_dly_en : if (DELAY_TAPS >= 0) generate
     assert false report "Set delay manually with 'set_io' and the " &
@@ -217,8 +220,8 @@ end generate;
 -- Microsemi UG0686 seems to suggest that QR is from the rising edge before QF
 -- This matches Xilinx SAME_EDGE_PIPELINED mode
 u_iddr : IDDR_IOD
-    port map(
-    PADI    => d_pin,
+port map(
+    PADI    => s_d_pin,
     RX_CLK  => clk,
     QF      => q_fe,
     QR      => q_re);

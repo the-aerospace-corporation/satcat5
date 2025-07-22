@@ -1,28 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// ConfigBus core definitions
-//
-// Define the ConfigBus interrupt handler and the basic interface(s)
-// for accessing ConfigBus registers.
-//
-// On bare-metal embedded systems, ConfigBus is directly memory-mapped
-// to a volatile pointer in the local address space.  This is, by far,
-// the simplest and most direct way to access ConfigBus and provides
-// native support for byte-at-a-time writes (e.g., for MailMap).  This
-// simplified interface is enabled by setting SATCAT5_CFGBUS_DIRECT = 1.
-//
-// If the "simple" flag is not set, we instead define an object-oriented
-// interface that overloads the array-index and assignment operators.
-//
-// In many cases, code written with this in mind should be compatible
-// with both options, e.g.:
-//      my_register[n] = writeval;
-//      readval = my_register[n];
-// The object-oriented interface allows hooks for unit tests or even
-// for remote commanding of an Ethernet-enabled ConfigBus host.
-//
+// Event-handler for individual ConfigBus interrupts.
 
 #pragma once
 
@@ -31,27 +11,44 @@
 
 namespace satcat5 {
     namespace cfg {
-        // Event-handler for the shared ConfigBus interrupt.
+        //! Event-handler for individual ConfigBus interrupts.
+        //! ConfigBus defines a single interrupt channel that is shared by
+        //! all attached peripherals.  \see interrupts.h, cfg::ConfigBusMmap.
+        //! In contrast, this class defines the interrupt servicing and
+        //! callback API used for individual ConfigBus peripherals.
         class Interrupt {
         public:
-            // Check if this interrupt may need service, then call irq_event.
+            //! Check if this interrupt may need service.
+            //! If the interrupt needs service, this calls irq_event.
             void irq_check();
 
-            // Interrupt service routine.
-            // (Child class must override this method.)
+            //! Interrupt service routine.
+            //! (Child class must override this method.)
             virtual void irq_event() = 0;
 
-            // Optionally enable or disable this interrupt.
-            // (Not generally required, but helpful in certain edge cases.)
+            //! Enable this interrupt.
+            //! Interrupts are enabled by default, but some peripherals
+            //! may wish to temporary toggle this setting.
+            //! For use with standard "cfgbus_interrupt" only.
             void irq_enable();
+
+            //! Temporarily disable this interrupt.
+            //! \copydetails irq_enable
             void irq_disable();
 
         protected:
-            // Note: Only children should create or destroy base class.
-            // Register this interrupt (nonstandard control)
+            //! Nonstandard constructor.
+            //! Use this alternate constructor for peripherals that assert
+            //! ConfigBus interrupts without using "cfgbus_interrupt" block.
+            //! Registers with the ConfigBus host but takes no further action.
+            //! Methods irq_enable and irq_disable cannot be used.
+            //! Only children should create or destroy base class.
             explicit Interrupt(satcat5::cfg::ConfigBus* cfg);
 
-            // Register this interrupt (standard control register)
+            //! Standard constructor.
+            //! Only children should create or destroy base class.
+            //! Use this constructor with the standard "cfgbus_interrupt"
+            //! peripheral defined in "cfgbus_core.vhd".
             Interrupt(satcat5::cfg::ConfigBus* cfg,
                 unsigned devaddr, unsigned regaddr);
             ~Interrupt() SATCAT5_OPTIONAL_DTOR;

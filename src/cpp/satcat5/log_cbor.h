@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //!\file
@@ -47,7 +47,15 @@ namespace satcat5 {
             ~FromCbor() SATCAT5_OPTIONAL_DTOR;
 
             //! Event handler for incoming messages.
+            //! After parsing and validation, this method calls `log_event`.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
+
+            //! Event handler for validated messages.
+            //! The built-in handler creates a `log::Log` message object, which
+            //! notifies all local `log::EventHandler` instances. Users may
+            //! override this method in a child class to add new behavior.
+            //! Note: The string argument is NOT null-terminated.
+            virtual void log_event(s8 priority, unsigned nbytes, const char* msg);
 
             //! Pointer to the interface object.
             satcat5::net::Dispatch* const m_src;
@@ -71,17 +79,13 @@ namespace satcat5 {
         //! protocol, `satcat5::eth::ToCbor` or `satcat5::udp::ToCbor`.
         class ToCbor : public satcat5::log::EventHandler {
         protected:
-            // Only children can safely access constructor/destructor.
-            ToCbor(
-                satcat5::datetime::Clock* clk,      // System clock (or NULL)
-                satcat5::net::Address* dst);        // Destination interface
+            //! Only children can safely access constructor/destructor.
+            //! Constructor sets the destination address and interface.
+            explicit ToCbor(satcat5::net::Address* dst);
             ~ToCbor() {}
 
             // Implement the required "log_event" handler.
             void log_event(s8 priority, unsigned nbytes, const char* msg) override;
-
-            // Date/time reference.
-            satcat5::datetime::Clock* const m_clk;
 
             // Destination interface and address.
             satcat5::net::Address* const m_dst;
@@ -116,7 +120,6 @@ namespace satcat5 {
             //! The default destination is the broadcast address.  To change
             //! this behavior, call `connect`.
             LogToCbor(
-                satcat5::datetime::Clock* clk,      // System clock (or NULL)
                 satcat5::eth::Dispatch* eth,        // Ethernet interface
                 const satcat5::eth::MacType& typ);  // Destination EtherType
             ~LogToCbor() {}
@@ -156,7 +159,6 @@ namespace satcat5 {
             //! The default destination is the IPv4 broadcast address.
             //! To change this behavior, call `connect`.
             LogToCbor(
-                satcat5::datetime::Clock* clk,      // System clock (or NULL)
                 satcat5::udp::Dispatch* udp,        // UDP interface
                 const satcat5::udp::Port& dstport); // Destination port
             ~LogToCbor() {}

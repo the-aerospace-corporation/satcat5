@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 logging system
@@ -167,6 +167,20 @@ TEST_CASE("log") {
         // The resulting message should have exactly the same formatting.
         {Log(LOG_ERROR, "MsgD").write(&ard);}
         uut.check_next(MSG_D);
+    }
+
+    SECTION("sprintf") {
+        // Using log::LogBuffer as a string-formatting tool.
+        satcat5::log::LogBuffer buf1;
+        buf1.wr_d32(1234);
+        buf1.wr_str(" = 0x");
+        buf1.wr_h32(1234, 4);
+        CHECK(std::string(buf1.c_str()) == "1234 = 0x04D2");
+        satcat5::log::LogBuffer buf2;
+        buf2.wr_d32(1, 999);
+        buf2.wr_str("-");
+        buf2.wr_d32(123, 9999);
+        CHECK(std::string(buf2.c_str()) == "001-0123");
     }
 }
 

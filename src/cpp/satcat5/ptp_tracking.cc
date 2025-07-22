@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -149,9 +149,9 @@ void TrackingController::filter(u32 elapsed_usec, s64 delta_subns)
     // Additinoal diagnostics?
     if (DEBUG_VERBOSE > 1) {
         log::Log(log::DEBUG, "PTP-Track: Update")
-            .write("\n  delta  ").write10(delta_subns)
-            .write("\n  elapsed").write10(elapsed_usec)
-            .write("\n  output ").write10(result);
+            .write("\r\n  delta  ").write10(delta_subns)
+            .write("\r\n  elapsed").write10(elapsed_usec)
+            .write("\r\n  output ").write10(result);
     } else if (DEBUG_VERBOSE > 0) {
         log::Log(log::DEBUG, "PTP-Track: Update")
             .write10(delta_subns).write10(result);

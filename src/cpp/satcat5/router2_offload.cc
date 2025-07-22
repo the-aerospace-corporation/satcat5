@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -9,13 +9,13 @@
 #include <satcat5/timeref.h>
 #include <satcat5/utils.h>
 
-using satcat5::eth::SwitchPlugin;
 using satcat5::io::MultiPacket;
 using satcat5::log::CRITICAL;
 using satcat5::log::Log;
 using satcat5::router2::Offload;
 
 static const char* LBL = "ROUTER_OFFLOAD";
+static const unsigned REGADDR_LOG = 489;    // Same as m_ctrl->pkt_log
 static const unsigned REGADDR_IRQ = 510;    // Same as m_ctrl->rx_irq
 
 Offload::Offload(
@@ -25,7 +25,9 @@ Offload::Offload(
     , MultiWriter(router)
     , m_ctrl((ctrl_reg*)cfg->get_device_mmap(devaddr))
     , m_router(router)
+    , m_pktlog(cfg->get_register(devaddr, REGADDR_LOG))
     , m_port_index(router->port_count())
+    , m_zero_pad(true)
     , m_port_mask(0)
     , m_policy(satcat5::router2::RULE_ALL)
 {
@@ -64,9 +66,10 @@ void Offload::rule_block(u32 mask) {
     reconfigure();  // Load the new settings.
 }
 
-void Offload::deliver(const SwitchPlugin::PacketMeta& meta) {
+void Offload::deliver(const satcat5::eth::PluginPacket& meta) {
     // Sanity check: This interface can't support jumbo frames.
-    if (meta.pkt->m_length > sizeof(m_ctrl->txrx_buff)) return;
+    unsigned len = meta.pkt->m_length;
+    if (len > sizeof(m_ctrl->txrx_buff)) return;
 
     // Translate the software port-mask to a hardware port-mask.
     u32 hw_mask((meta.dst_mask & m_port_mask) >> m_port_index);
@@ -81,12 +84,20 @@ void Offload::deliver(const SwitchPlugin::PacketMeta& meta) {
 
     // Copy packet to the transmit buffer.
     MultiPacket::Reader rd(meta.pkt);
-    rd.read_bytes(meta.pkt->m_length, m_ctrl->txrx_buff);
+    rd.read_bytes(len, m_ctrl->txrx_buff);
     rd.read_finalize();
+
+    // Zero-padding to the minimum Ethernet frame size?
+    static const unsigned MIN_ZPAD = 60;
+    if (m_zero_pad && len < MIN_ZPAD) {
+        unsigned diff = MIN_ZPAD - len;
+        memset(m_ctrl->txrx_buff + len, 0, diff);
+        len += diff;
+    }
 
     // Start transmission.
     m_ctrl->tx_mask = u32(hw_mask);
-    m_ctrl->tx_ctrl = u32(meta.pkt->m_length);
+    m_ctrl->tx_ctrl = u32(len);
 }
 
 void Offload::irq_event() {

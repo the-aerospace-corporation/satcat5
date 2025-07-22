@@ -1,4 +1,4 @@
-# Copyright 2019-2024 The Aerospace Corporation.
+# Copyright 2019-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 # Ignore compiled Python and C files
@@ -25,6 +25,7 @@ cpplint.log
 # Ignore temporary files from example designs.
 examples/*/*/*
 examples/vc707_ptp_master/
+project/vivado/vivado_sims/
 test/log_viewer/build_tmp
 
 # Ignore rendered documentation

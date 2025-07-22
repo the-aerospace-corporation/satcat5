@@ -1,12 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Sending packets to a specific Ethernet address
-//
-// This file defines an child of net::Address that can send packets to
-// a designated MAC-address and EtherType.
-//
+// Send packets to a specific Ethernet address.
 
 #pragma once
 
@@ -15,12 +11,14 @@
 
 namespace satcat5 {
     namespace eth {
-        // Implementation of "net::Address" for Ethernet Dispatch.
+        //! Send packets to a specific Ethernet address.
+        //! Implementation of `net::Address` for Ethernet Dispatch.
         class Address : public satcat5::net::Address {
         public:
+            //! Link this object to a network interface.
             explicit Address(satcat5::eth::Dispatch* iface);
 
-            // Connect to the designated address.
+            //! Connect to the designated address.
             void connect(
                 const satcat5::eth::MacAddr& addr,
                 const satcat5::eth::MacType& type,
@@ -51,8 +49,9 @@ namespace satcat5 {
             satcat5::eth::VlanTag m_vtag;
         };
 
-        // Simple wrapper for Address class, provided to allow control of
-        // multiple-inheritance initialization order (e.g., eth::Socket).
+        //! Inheritable container for a eth::Address.
+        //! Simple wrapper for Address class, provided to allow control of
+        //! multiple-inheritance initialization order (e.g., eth::Socket).
         class AddressContainer {
         protected:
             explicit AddressContainer(satcat5::eth::Dispatch* iface)

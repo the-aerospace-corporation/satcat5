@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Heap-allocated equivalent to udp::Socket.
@@ -10,8 +10,11 @@
 
 namespace satcat5 {
     namespace udp {
+        //! Heap-allocated equivalent to udp::Socket.
         class SocketHeap : public satcat5::udp::SocketCore {
         public:
+            //! Link this UDP socket to the designated SatCat5 interface.
+            //! Optionally set transmit and receive buffer sizes.
             explicit SocketHeap(satcat5::udp::Dispatch* iface,
                 unsigned txbytes=8192, unsigned rxbytes=8192);
             virtual ~SocketHeap();

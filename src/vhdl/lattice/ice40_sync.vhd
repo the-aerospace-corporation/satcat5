@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -221,11 +221,12 @@ end;
 library IEEE;
 use     IEEE.STD_LOGIC_1164.ALL;
 use     work.common_primitives.sync_buffer;
+use     work.common_functions.boolean_to_string;
 
 entity sync_reset is
     generic(
     HOLD_MIN    : integer := 7;
-    KEEP_ATTR   : string := "true");
+    KEEP_ATTR   : boolean := true);
     port(
     in_reset_p  : in  std_logic;
     out_reset_p : out std_logic;
@@ -238,7 +239,7 @@ signal sync_reset_p : std_logic := '0';
 signal out_reset_i  : std_logic := '1';
 
 attribute KEEP : string;
-attribute KEEP of out_reset_i : signal is KEEP_ATTR;
+attribute KEEP of out_reset_i : signal is boolean_to_string(KEEP_ATTR);
 
 begin
 

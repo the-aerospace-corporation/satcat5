@@ -1,21 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // All-in-one Internet Protocol stack with all basic services.
-//
-// This file defines an all-in-one wrapper that makes it easier to use the
-// SatCat5 IPv4 protocol stack.  Users can instantiate these objects
-// directly for a slimmer design, but this class provides more accessible
-// basket of commonly-used services.  The only prerequisites are an Ethernet
-// connection (e.g., port::MailMap) and a time reference (e.g., cfg::Timer).
-//
-// The wrapper includes all of the basic IPv4 services:
-//  * Address Resolution Protocol (ARP)
-//  * Internet Control Message Protocol (ICMP)
-//  * User Datagraph Protocol (UDP)
-//  * User-facing services including Ping and UDP-echo.
-//
 
 #pragma once
 
@@ -28,8 +15,23 @@
 
 namespace satcat5 {
     namespace ip {
+        //! All-in-one Internet Protocol stack with all basic services.
+        //!
+        //! This file defines an all-in-one wrapper that makes it easier to
+        //! use the SatCat5 IPv4 protocol stack.  Users can instantiate the
+        //! contained objects directly for a slimmer design, but this class
+        //! provides a more accessible basket of commonly-used services.  The
+        //! only prerequisites are an Ethernet connection (e.g., port::MailMap)
+        //! and a time reference (e.g., cfg::Timer).
+        //!
+        //! The wrapper includes all of the basic IPv4 services:
+        //!  * Address Resolution Protocol (ARP)
+        //!  * Internet Control Message Protocol (ICMP)
+        //!  * User Datagraph Protocol (UDP)
+        //!  * User-facing services including Ping and UDP-echo.
         class Stack {
         public:
+            //! Create a complete IPv4/UDP protocol stack.
             Stack(
                 const satcat5::eth::MacAddr& local_mac, // Local MAC address
                 const satcat5::ip::Addr& local_ip,      // Local IP address
@@ -38,14 +40,14 @@ namespace satcat5 {
                 satcat5::util::TimeRef* timer = 0);     // Time reference
 
             // Core protocol stack.
-            satcat5::eth::Dispatch      m_eth;          // Ethernet layer
-            satcat5::ip::Table          m_route;        // IPv4 routing table
-            satcat5::ip::Dispatch       m_ip;           // IPv4 and ICMP layer
-            satcat5::udp::Dispatch      m_udp;          // UDP layer
+            satcat5::eth::Dispatch      m_eth;          //!< Ethernet layer
+            satcat5::ip::Table          m_route;        //!< IPv4 routing table
+            satcat5::ip::Dispatch       m_ip;           //!< IPv4 and ICMP layer
+            satcat5::udp::Dispatch      m_udp;          //!< UDP layer
 
             // User services.
-            satcat5::udp::ProtoEcho     m_echo;         // Echo on UDP port 7
-            satcat5::ip::Ping           m_ping;         // Ping+Arping utilities
+            satcat5::udp::ProtoEcho     m_echo;         //!< Echo on UDP port 7
+            satcat5::ip::Ping           m_ping;         //!< Ping+Arping utilities
 
             // Other accessors:
             inline satcat5::ip::Addr ipaddr() const
@@ -53,7 +55,7 @@ namespace satcat5 {
             inline satcat5::eth::MacAddr macaddr() const
                 {return m_ip.macaddr();}
             inline void set_addr(const satcat5::ip::Addr& addr)
-                {m_ip.set_ipaddr(addr);}                // Legacy / deprecated
+                {m_ip.set_ipaddr(addr);}                //!< DEPRECATED \see set_ipaddr
             inline void set_ipaddr(const satcat5::ip::Addr& addr)
                 {m_ip.set_ipaddr(addr);}
             inline void set_macaddr(const satcat5::eth::MacAddr& macaddr)

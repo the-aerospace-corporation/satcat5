@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2021 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -48,8 +48,7 @@ signal uut_ready    : std_logic;
 signal uut_write    : std_logic;
 signal out_rate     : real := 0.0;
 signal out_data     : byte_t;
-signal out_last     : std_logic;
-signal out_revert   : std_logic;
+signal out_result   : frm_result_t;
 signal out_write    : std_logic;
 
 begin
@@ -67,7 +66,7 @@ p_src : process(clk_100)
 begin
     if rising_edge(clk_100) then
         -- Clear contents after word is consumed.
-        if (reset_p = '0' and out_write = '1' and out_last = '1') then
+        if (reset_p = '0' and out_write = '1' and out_result.commit = '1') then
             empty := true;
         end if;
 
@@ -115,8 +114,7 @@ u_fcs : entity work.eth_frame_check
     in_write    => uut_write,
     out_data    => out_data,
     out_write   => out_write,
-    out_commit  => out_last,
-    out_revert  => out_revert,
+    out_result  => out_result,
     clk         => clk_100,
     reset_p     => reset_p);
 
@@ -139,7 +137,7 @@ p_chk : process(clk_100)
 begin
     if rising_edge(clk_100) then
         -- Watch for FCS mismatch and other errors:
-        assert (out_revert = '0')
+        assert (out_result.revert = '0')
             report "Unexpected packet error." severity error;
 
         -- Confirm data against reference sequence.
@@ -149,7 +147,7 @@ begin
             assert (out_data = ref_data)
                 report "Data mismatch" severity error;
             byte_idx := byte_idx + 1;
-            if (out_last = '1' or out_revert = '1') then
+            if (out_result.commit = '1' or out_result.revert = '1') then
                 -- Check length before starting new frame.
                 assert (byte_idx = FRAME_BYTES)
                     report "Length mismatch" severity error;

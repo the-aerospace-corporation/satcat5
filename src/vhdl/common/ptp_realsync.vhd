@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2023-2024 The Aerospace Corporation.
+-- Copyright 2023-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -47,11 +47,13 @@ entity ptp_realsync is
     port (
     -- Reference clock domain.
     ref_clk     : in  std_logic;
+    ref_reset_p : in  std_logic;
     ref_tstamp  : in  tstamp_t;
     ref_rtc     : in  ptp_time_t;
 
     -- Output clock domain.
     out_clk     : in  std_logic;
+    out_reset_p : in  std_logic;
     out_tstamp  : in  tstamp_t;
     out_rtc     : out ptp_time_t);
 end ptp_realsync;
@@ -84,19 +86,23 @@ p_ref : process(ref_clk)
     variable count : integer range 0 to REF_UPDATE-1 := REF_UPDATE-1;
 begin
     if rising_edge(ref_clk) then
+        -- Latch reference and precalculate "subns" difference term.
+        -- Note: Wraparound / underflow is OK here as long as the final
+        --   unwrapped "sum_tdiff" falls in range of [-1, +2) seconds.
         if (count = 0) then
-            -- Latch reference and precalculate "subns" difference term.
-            -- Note: Wraparound / underflow is OK here as long as the final
-            --   unwrapped "sum_tdiff" falls in range of [-1, +2) seconds.
             xref_tvalid <= bool2bit(ref_rtc /= PTP_TIME_ZERO)
-                       and bool2bit(ref_tstamp /= TSTAMP_DISABLED);
+                       and bool2bit(ref_tstamp /= TSTAMP_DISABLED)
+                       and not ref_reset_p;
             xref_tdiff  <= (ref_rtc.nsec & ref_rtc.subns) - ref_tstamp;
             xref_sec    <= ref_rtc.sec;
             xref_toggle <= not xref_toggle;
-            count       := REF_UPDATE - 1;
+        end if;
+
+        -- Countdown until next update...
+        if (ref_reset_p = '1' or count = 0) then
+            count := REF_UPDATE - 1;
         else
-            -- Countdown until next update...
-            count       := count - 1;
+            count := count - 1;
         end if;
     end if;
 end process;
@@ -135,13 +141,18 @@ begin
 
         -- Pipeline stage 1: Summation of subnanosecond terms.
         -- (As before, wraparound at 2^48 is expected and routine.)
-        sum_tvalid  <= xref_tvalid and bool2bit(out_tstamp /= TSTAMP_DISABLED);
+        sum_tvalid  <= xout_tvalid and bool2bit(out_tstamp /= TSTAMP_DISABLED);
         sum_tdiff   <= xout_tdiff + out_tstamp + TOTAL_OFFSET;
         sum_sec     <= xout_sec;
 
         -- Pipeline stage 0: Latch each reference timestamp.
-        if (xout_strobe = '1') then
+        if (out_reset_p = '1') then
+            xout_tvalid <= '0';
+        elsif (xout_strobe = '1') then
             xout_tvalid <= xref_tvalid;
+        end if;
+
+        if (xout_strobe = '1') then
             xout_tdiff  <= xref_tdiff;
             xout_sec    <= xref_sec;
         end if;

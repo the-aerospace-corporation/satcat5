@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Interface driver for the cfgbus_uart block
@@ -17,15 +17,16 @@
 
 namespace satcat5 {
     namespace cfg {
+        //! Interface driver for the cfgbus_uart block.
         class Uart
             : public    satcat5::io::BufferedIO
             , protected satcat5::cfg::Interrupt
         {
         public:
-            // Initialize this UART and link to a specific register bank.
+            //! Initialize this UART and link to a specific register bank.
             Uart(satcat5::cfg::ConfigBus* cfg, unsigned devaddr);
 
-            // Set baud rate.
+            //! Set baud rate.
             void configure(
                 unsigned clkref_hz,     // ConfigBus clock rate
                 unsigned baud_hz);      // Desired UART baud rate

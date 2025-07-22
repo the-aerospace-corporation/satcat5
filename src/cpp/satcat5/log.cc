@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -23,8 +23,7 @@ using log::LogBuffer;
 log::EventHandler* g_log_dst = 0;
 
 // Forcibly unregister any EventHandler objects.
-bool log::pre_test_reset()
-{
+bool log::pre_test_reset() {
     bool ok = true;
     if (g_log_dst) {g_log_dst = 0; ok = false;}
     return ok;
@@ -54,14 +53,14 @@ inline char hex_lookup(unsigned val) {
 
 // Helper function for writing a single decimal digit.
 template <typename T>
-inline void next_digit(char* out, unsigned& wridx, T& val, T place) {
+inline void next_digit(char* out, unsigned& wridx, T& val, T zpad, T place) {
     // Find value of leading digit (i.e., '0' through '9').
     // Use while loop in case CPU doesn't have a divide instruction.
     char digit = '0';
     while (val >= place) {++digit; val -= place;}
 
     // Write the next digit if it is nonzero or trails an earlier digit.
-    if ((digit > '0') || (wridx > 0))
+    if ((digit > '0') || (wridx > 0) || (place <= zpad))
         out[wridx++] = digit;
 }
 
@@ -70,44 +69,44 @@ inline void next_digit(char* out, unsigned& wridx, T& val, T place) {
 //  u32 max = ~4 billion = 10 digits + terminator = 11 bytes
 //  u64 max = ~18 pentillion = 20 digits + terminator = 21 bytes
 static constexpr unsigned LOG_ITOA_BUFF32 = 11;
-static unsigned log_itoa32(char* out, u32 val) {
+static unsigned log_itoa32(char* out, u32 val, u32 zpad) {
     unsigned wridx = 0;
-    next_digit<u32>(out, wridx, val, 1000000000u);
-    next_digit<u32>(out, wridx, val, 100000000u);
-    next_digit<u32>(out, wridx, val, 10000000u);
-    next_digit<u32>(out, wridx, val, 1000000u);
-    next_digit<u32>(out, wridx, val, 100000u);
-    next_digit<u32>(out, wridx, val, 10000u);
-    next_digit<u32>(out, wridx, val, 1000u);
-    next_digit<u32>(out, wridx, val, 100u);
-    next_digit<u32>(out, wridx, val, 10u);
+    next_digit<u32>(out, wridx, val, zpad, 1000000000u);
+    next_digit<u32>(out, wridx, val, zpad, 100000000u);
+    next_digit<u32>(out, wridx, val, zpad, 10000000u);
+    next_digit<u32>(out, wridx, val, zpad, 1000000u);
+    next_digit<u32>(out, wridx, val, zpad, 100000u);
+    next_digit<u32>(out, wridx, val, zpad, 10000u);
+    next_digit<u32>(out, wridx, val, zpad, 1000u);
+    next_digit<u32>(out, wridx, val, zpad, 100u);
+    next_digit<u32>(out, wridx, val, zpad, 10u);
     out[wridx++] = val + '0';   // Always write final digit
     out[wridx] = 0;             // Null termination
     return wridx;               // String length excludes terminator
 }
 
 static constexpr unsigned LOG_ITOA_BUFF64 = 21;
-static unsigned log_itoa64(char* out, u64 val) {
+static unsigned log_itoa64(char* out, u64 val, u64 zpad) {
     unsigned wridx = 0;
-    next_digit<u64>(out, wridx, val, 10000000000000000000ull);
-    next_digit<u64>(out, wridx, val, 1000000000000000000ull);
-    next_digit<u64>(out, wridx, val, 100000000000000000ull);
-    next_digit<u64>(out, wridx, val, 10000000000000000ull);
-    next_digit<u64>(out, wridx, val, 1000000000000000ull);
-    next_digit<u64>(out, wridx, val, 100000000000000ull);
-    next_digit<u64>(out, wridx, val, 10000000000000ull);
-    next_digit<u64>(out, wridx, val, 1000000000000ull);
-    next_digit<u64>(out, wridx, val, 100000000000ull);
-    next_digit<u64>(out, wridx, val, 10000000000ull);
-    next_digit<u64>(out, wridx, val, 1000000000ull);
-    next_digit<u64>(out, wridx, val, 100000000ull);
-    next_digit<u64>(out, wridx, val, 10000000ull);
-    next_digit<u64>(out, wridx, val, 1000000ull);
-    next_digit<u64>(out, wridx, val, 100000ull);
-    next_digit<u64>(out, wridx, val, 10000ull);
-    next_digit<u64>(out, wridx, val, 1000ull);
-    next_digit<u64>(out, wridx, val, 100ull);
-    next_digit<u64>(out, wridx, val, 10ull);
+    next_digit<u64>(out, wridx, val, zpad, 10000000000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 1000000000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 100000000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 10000000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 1000000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 100000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 10000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 1000000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 100000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 10000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 1000000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 100000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 10000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 1000000ull);
+    next_digit<u64>(out, wridx, val, zpad, 100000ull);
+    next_digit<u64>(out, wridx, val, zpad, 10000ull);
+    next_digit<u64>(out, wridx, val, zpad, 1000ull);
+    next_digit<u64>(out, wridx, val, zpad, 100ull);
+    next_digit<u64>(out, wridx, val, zpad, 10ull);
     out[wridx++] = val + '0';   // Always write final digit
     out[wridx] = 0;             // Null termination
     return wridx;               // String length excludes terminator
@@ -134,8 +133,7 @@ log::EventHandler::EventHandler()
 }
 
 #if SATCAT5_ALLOW_DELETION
-log::EventHandler::~EventHandler()
-{
+log::EventHandler::~EventHandler() {
     satcat5::util::ListCore::remove(g_log_dst, this);
 }
 #endif
@@ -185,8 +183,7 @@ Log::Log(s8 priority, const void* str, unsigned nbytes)
     m_buff.wr_fix((const char*)str, nbytes);
 }
 
-log::Log::~Log()
-{
+log::Log::~Log() {
     // Null-terminate the final message string.
     m_buff.terminate();
 
@@ -205,25 +202,25 @@ Log& Log::write(const char* str) {
 
 Log& Log::write(bool val) {
     m_buff.wr_str(" = ");
-    m_buff.wr_hex(val ? 1:0, 1);
+    m_buff.wr_h32(val ? 1:0, 1);
     return *this;
 }
 
 Log& Log::write(u8 val) {
     m_buff.wr_str(" = 0x");
-    m_buff.wr_hex(val, 2);
+    m_buff.wr_h32(val, 2);
     return *this;
 }
 
 Log& Log::write(u16 val) {
     m_buff.wr_str(" = 0x");
-    m_buff.wr_hex(val, 4);
+    m_buff.wr_h32(val, 4);
     return *this;
 }
 
 Log& Log::write(u32 val) {
     m_buff.wr_str(" = 0x");
-    m_buff.wr_hex(val, 8);
+    m_buff.wr_h32(val, 8);
     return *this;
 }
 
@@ -233,23 +230,21 @@ Log& Log::write(u64 val) {
     return *this;
 }
 
-Log& Log::write(io::Readable* rd)
-{
+Log& Log::write(io::Readable* rd) {
     m_buff.wr_str(" = 0x");
     while (rd->get_read_ready())
-        m_buff.wr_hex(rd->read_u8(), 2);
+        m_buff.wr_h32(rd->read_u8(), 2);
     return *this;
 }
 
 Log& Log::write(const u8* val, unsigned nbytes) {
     m_buff.wr_str(" = 0x");
     for (unsigned a = 0 ; a < nbytes ; ++a)
-        m_buff.wr_hex(val[a], 2);
+        m_buff.wr_h32(val[a], 2);
     return *this;
 }
 
-Log& Log::write(const satcat5::eth::MacAddr& mac)
-{
+Log& Log::write(const satcat5::eth::MacAddr& mac) {
     // Convention is six hex bytes with ":" delimeter.
     // e.g., "DE:AD:BE:EF:CA:FE"
     m_buff.wr_str(" = ");
@@ -257,8 +252,7 @@ Log& Log::write(const satcat5::eth::MacAddr& mac)
     return *this;
 }
 
-Log& Log::write(const satcat5::ip::Addr& ip)
-{
+Log& Log::write(const satcat5::ip::Addr& ip) {
     m_buff.wr_str(" = ");
     ip.log_to(m_buff);
     return *this;
@@ -288,59 +282,56 @@ Log& Log::write10(u64 val) {
     return *this;
 }
 
-void LogBuffer::wr_fix(const char* str, unsigned len)
-{
+const char* LogBuffer::c_str() {
+    terminate();
+    return m_buff;
+}
+
+void LogBuffer::wr_fix(const char* str, unsigned len) {
     if (!str) return;  // Ignore null pointers
     const char* end = str + len;
     while (str != end && m_wridx < SATCAT5_LOG_MAXLEN)
         m_buff[m_wridx++] = *(str++);
 }
 
-void LogBuffer::wr_str(const char* str)
-{
+void LogBuffer::wr_str(const char* str) {
     if (!str) return;  // Ignore null pointers
     while (*str && m_wridx < SATCAT5_LOG_MAXLEN)
         m_buff[m_wridx++] = *(str++);
 }
 
-void LogBuffer::wr_hex(u32 val, unsigned nhex)
-{
+void LogBuffer::wr_h32(u32 val, unsigned nhex) {
     for (unsigned a = 0 ; m_wridx < SATCAT5_LOG_MAXLEN && a < nhex ; ++a) {
         unsigned shift = 4 * (nhex-a-1);    // Most significant nybble first
         m_buff[m_wridx++] = hex_lookup(val >> shift);
     }
 }
 
-void LogBuffer::wr_h64(u64 val, unsigned nhex)
-{
+void LogBuffer::wr_h64(u64 val, unsigned nhex) {
     for (unsigned a = 0 ; m_wridx < SATCAT5_LOG_MAXLEN && a < nhex ; ++a) {
         unsigned shift = 4 * (nhex-a-1);    // Most significant nybble first
         m_buff[m_wridx++] = hex_lookup(val >> shift);
     }
 }
 
-void LogBuffer::wr_d32(u32 val)
-{
+void LogBuffer::wr_d32(u32 val, unsigned zpad) {
     char temp[LOG_ITOA_BUFF32];
-    log_itoa32(temp, val);
+    log_itoa32(temp, val, zpad);
     wr_str(temp);
 }
 
-void LogBuffer::wr_d64(u64 val)
-{
+void LogBuffer::wr_d64(u64 val, unsigned zpad) {
     char temp[LOG_ITOA_BUFF64];
-    log_itoa64(temp, val);
+    log_itoa64(temp, val, zpad);
     wr_str(temp);
 }
 
-void LogBuffer::wr_s32(s32 val)
-{
+void LogBuffer::wr_s32(s32 val, unsigned zpad) {
     wr_str(val < 0 ? "-" : "+");
-    wr_d32(satcat5::util::abs_s32(val));
+    wr_d32(satcat5::util::abs_s32(val), zpad);
 }
 
-void LogBuffer::wr_s64(s64 val)
-{
+void LogBuffer::wr_s64(s64 val, unsigned zpad) {
     wr_str(val < 0 ? "-" : "+");
-    wr_d64(satcat5::util::abs_s64(val));
+    wr_d64(satcat5::util::abs_s64(val), zpad);
 }

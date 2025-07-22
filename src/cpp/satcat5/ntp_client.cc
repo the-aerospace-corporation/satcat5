@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -45,12 +45,12 @@ Client::Client(
     , m_stratum(0)
     , m_rate(0)
 {
-    m_iface.m_iface->add(this);
+    m_iface.udp()->add(this);
 }
 
 #if SATCAT5_ALLOW_DELETION
 Client::~Client() {
-    m_iface.m_iface->remove(this);
+    m_iface.udp()->remove(this);
 }
 #endif
 
@@ -86,7 +86,7 @@ void Client::frame_rcvd(satcat5::io::LimitedRead& src) {
     if (msg.mode() == Header::MODE_SERVER) {
         // Ignore anything that doesn't come from the expected server.
         // TODO: Support broadcast mode for auto-association?
-        if (m_iface.m_iface->reply_ip() == m_iface.dstaddr())
+        if (m_iface.udp()->reply_ip() == m_iface.dstaddr())
             rcvd_reply(msg, rxtime);
     } else if (msg.mode() == Header::MODE_CLIENT) {
         // If server mode is active, respond to client queries.
@@ -123,7 +123,7 @@ void Client::rcvd_reply(const Header& msg, u64 rxtime) {
 
 bool Client::send_reply(const Header& query, u64 rxtime) {
     if (DEBUG_VERBOSE > 0) Log(DEBUG, "NtpClient: send_reply");
-    auto wr = m_iface.m_iface->open_reply(TYPE_NTP, Header::HEADER_LEN);
+    auto wr = m_iface.udp()->open_reply(TYPE_NTP, Header::HEADER_LEN);
     bool ok = false;
     if (wr) {
         // Formulate and send the SNTP reply (Section 14).
@@ -134,7 +134,7 @@ bool Client::send_reply(const Header& query, u64 rxtime) {
         msg.precision   = Header::TIME_1USEC;
         msg.rootdelay   = 0;    // TODO: Fill this in?
         msg.rootdisp    = 0;    // TODO: Fill this in?
-        msg.refid       = m_iface.m_iface->ipaddr().value;
+        msg.refid       = m_iface.udp()->ipaddr().value;
         msg.ref         = m_reftime;
         msg.org         = query.xmt;
         msg.rec         = rxtime;
@@ -160,7 +160,7 @@ bool Client::send_query() {
         msg.precision   = Header::TIME_1MSEC;
         msg.rootdelay   = 0;
         msg.rootdisp    = 0;
-        msg.refid       = m_iface.m_iface->ipaddr().value;
+        msg.refid       = m_iface.udp()->ipaddr().value;
         msg.ref         = m_reftime;
         msg.org         = 0;
         msg.rec         = 0;

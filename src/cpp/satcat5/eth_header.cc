@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -89,28 +89,28 @@ void MacAddr::log_to(satcat5::log::LogBuffer& wr) const
     // e.g., "DE:AD:BE:EF:CA:FE"
     for (unsigned a = 0 ; a < 6 ; ++a) {
         if (a) wr.wr_str(":");
-        wr.wr_hex(addr[a], 2);
+        wr.wr_h32(addr[a], 2);
     }
 }
 
 void MacType::log_to(satcat5::log::LogBuffer& wr) const
 {
     wr.wr_str(" = 0x");
-    wr.wr_hex(value, 4);
+    wr.wr_h32(value, 4);
 }
 
 void VlanTag::log_to(satcat5::log::LogBuffer& wr) const
 {
-    wr.wr_str("\n  VlanID = 0x");   wr.wr_hex(vid(), 3);
-    wr.wr_str("\n  DropOK = ");     wr.wr_dec(dei());
-    wr.wr_str("\n  Priority = ");   wr.wr_dec(pcp());
+    wr.wr_str("\r\n  VlanID = 0x"); wr.wr_h32(vid(), 3);
+    wr.wr_str("\r\n  DropOK = ");   wr.wr_d32(dei());
+    wr.wr_str("\r\n  Priority = "); wr.wr_d32(pcp());
 }
 
 void Header::log_to(satcat5::log::LogBuffer& wr) const
 {
-    wr.wr_str("\n  DstMAC = ");     dst.log_to(wr);
-    wr.wr_str("\n  SrcMAC = ");     src.log_to(wr);
-    wr.wr_str("\n  EType ");        type.log_to(wr);
+    wr.wr_str("\r\n  DstMAC = ");   dst.log_to(wr);
+    wr.wr_str("\r\n  SrcMAC = ");   src.log_to(wr);
+    wr.wr_str("\r\n  EType ");      type.log_to(wr);
     if (vtag.value)                 vtag.log_to(wr);
 }
 

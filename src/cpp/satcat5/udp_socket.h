@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // BufferedIO wrapper for two-way UDP communication
@@ -24,32 +24,38 @@
 
 namespace satcat5 {
     namespace udp {
-        // Core functionality with DIY memory allocation.
+        //! BufferedIO wrapper for two-way UDP communication.
+        //! Core functionality with DIY memory allocation.
         class SocketCore
             : public satcat5::udp::AddressContainer
             , public satcat5::net::SocketCore
         {
         public:
-            // Listening mode only (no remote address).
+            //! Listening mode only (no remote address).
             void bind(const satcat5::udp::Port& port);
 
-            // Manual address resolution (user supplies IP + MAC)
-            // Note: If source port is not specified, assign any free port index.
+            //! Connect with manual address resolution.
+            //! In manual mode, the user supplies both the IP and MAC address.
+            //! Note: If source port is not specified, assign any free port index.
             void connect(
                 const satcat5::udp::Addr& dstaddr,
                 const satcat5::eth::MacAddr& dstmac,
                 const satcat5::udp::Port& dstport,
-                satcat5::udp::Port srcport = satcat5::udp::PORT_NONE);
+                satcat5::udp::Port srcport = satcat5::udp::PORT_NONE,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
-            // Automatic address resolution (user supplies IP + gateway)
-            // (See "ip_core.h / ip::Address" for more information.
-            // Note: If source port is not specified, assign any free port index.
+            //! Connect with automatic address resolution.
+            //! In automatic mode, the user supplies the IP address only,
+            //! and MAC address resolution uses ARP or the ARP cache.
+            //! \see ip_core.h and ip::Address for more information.
+            //! Note: If source port is not specified, assign any free port index.
             void connect(
                 const satcat5::udp::Addr& dstaddr,
                 const satcat5::udp::Port& dstport,
-                satcat5::udp::Port srcport = satcat5::udp::PORT_NONE);
+                satcat5::udp::Port srcport = satcat5::udp::PORT_NONE,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
 
-            // Retry automatic address resolution.
+            //! Retry automatic address resolution.
             void reconnect() {m_addr.retry();}
 
             // Useful inherited methods from net::SocketCore:
@@ -63,9 +69,10 @@ namespace satcat5 {
             ~SocketCore() {}
         };
 
-        // Wrapper with a fixed-size buffer.
+        //! Wrapper for SocketCore with a fixed-size buffer.
         class Socket final : public satcat5::udp::SocketCore {
         public:
+            //! Connect this Socket to a network interface.
             explicit Socket(satcat5::udp::Dispatch* iface);
             ~Socket() {}
 

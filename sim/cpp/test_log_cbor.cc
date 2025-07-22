@@ -1,12 +1,11 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 logging system
 
 #include <hal_test/catch.hpp>
 #include <hal_test/sim_utils.h>
-#include <satcat5/datetime.h>
 #include <satcat5/eth_socket.h>
 #include <satcat5/ip_stack.h>
 #include <satcat5/log_cbor.h>
@@ -40,7 +39,6 @@ TEST_CASE("log_cbor") {
 
     // Logging and timing infrastructure.
     satcat5::test::TimerSimulation timer;
-    satcat5::datetime::Clock clock;
 
     // Suppress repeated LogFromCbor output of the test message.
     log.suppress("Test message");
@@ -60,7 +58,7 @@ TEST_CASE("log_cbor") {
         // Separate send/echo/receive blocks, since having LogToCbor and
         // LogFromCbor running simultaneously causes an infinite loop.
         {   // Write CBOR message to buffer
-            satcat5::eth::LogToCbor uut(&clock, &client.m_eth, TYPE_ETH);
+            satcat5::eth::LogToCbor uut(&client.m_eth, TYPE_ETH);
             log_something();
             timer.sim_wait(10);
         }
@@ -75,7 +73,7 @@ TEST_CASE("log_cbor") {
 
     SECTION("basic-udp") {
         {   // Write CBOR message to buffer
-            satcat5::udp::LogToCbor uut(&clock, &client.m_udp, PORT_UDP);
+            satcat5::udp::LogToCbor uut(&client.m_udp, PORT_UDP);
             log_something();
             timer.sim_wait(10);
         }
@@ -88,24 +86,9 @@ TEST_CASE("log_cbor") {
         }
     }
 
-    SECTION("no-clock") {
-        {   // Write CBOR message to buffer
-            satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
-            log_something();
-            timer.sim_wait(10);
-        }
-        REQUIRE(echo_buffer(&echo_eth));
-        log.clear();
-        {   // Read CBOR message from buffer.
-            satcat5::eth::LogFromCbor uut(&client.m_eth, TYPE_ETH);
-            timer.sim_wait(10);
-            CHECK(log.contains("Test"));
-        }
-    }
-
     SECTION("min-priority-filtered-at-send") {
         {   // Write CBOR message to buffer below minimum
-            satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
+            satcat5::eth::LogToCbor uut(&client.m_eth, TYPE_ETH);
             uut.set_min_priority(satcat5::log::WARNING);
             log_something();  // Uses INFO level
             timer.sim_wait(10);
@@ -115,7 +98,7 @@ TEST_CASE("log_cbor") {
 
     SECTION("min-priority-filtered-at-receive") {
         {   // Write CBOR message to buffer below minimum
-            satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
+            satcat5::eth::LogToCbor uut(&client.m_eth, TYPE_ETH);
             log_something();  // Uses INFO level
             timer.sim_wait(10);
         }
@@ -131,7 +114,7 @@ TEST_CASE("log_cbor") {
 
     SECTION("min-priority-same-as-message") {
         {   // Write CBOR message to buffer below minimum
-            satcat5::eth::LogToCbor uut(0, &client.m_eth, TYPE_ETH);
+            satcat5::eth::LogToCbor uut(&client.m_eth, TYPE_ETH);
             uut.set_min_priority(satcat5::log::INFO);
             log_something();  // Uses INFO level
             timer.sim_wait(10);

@@ -1,12 +1,12 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <hal_freertos/task.h>
 
 // Allocate the task handle in task.cc, marked as extern in task.h
-TaskHandle_t satcat5::freertos::task_handle = NULL;
+TaskHandle_t satcat5::freertos::satcat_task_handle = NULL;
 
 // Default hook functions for SatCat5, marked as weak to allow users to override
 // them. See also:
@@ -16,7 +16,7 @@ TaskHandle_t satcat5::freertos::task_handle = NULL;
 // Function required for static allocation. Copied from FreeRTOS documentation.
 extern "C" __attribute__((weak))
 void vApplicationGetIdleTaskMemory(StaticTask_t** ppxIdleTaskTCBBuffer,
-    StackType_t** ppxIdleTaskStackBuffer, uint32_t* pulIdleTaskStackSize)
+    StackType_t** ppxIdleTaskStackBuffer, configSTACK_DEPTH_TYPE* pulIdleTaskStackSize)
 {
     static StaticTask_t xIdleTaskTCB;
     static StackType_t uxIdleTaskStack[configMINIMAL_STACK_SIZE];
@@ -29,7 +29,7 @@ void vApplicationGetIdleTaskMemory(StaticTask_t** ppxIdleTaskTCBBuffer,
 extern "C" __attribute__((weak))
 void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer,
                                      StackType_t **ppxTimerTaskStackBuffer,
-                                     uint32_t *pulTimerTaskStackSize )
+                                     configSTACK_DEPTH_TYPE *pulTimerTaskStackSize )
 {
     static StaticTask_t xTimerTaskTCB;
     static StackType_t uxTimerTaskStack[ configTIMER_TASK_STACK_DEPTH ];
@@ -42,7 +42,8 @@ void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer,
 extern "C" __attribute__((weak)) void vApplicationTickHook(void)
 {
     satcat5::poll::timekeeper.request_poll();
-    xTaskResumeFromISR(satcat5::freertos::task_handle);
+    if(satcat5::freertos::satcat_task_handle)
+        xTaskResumeFromISR(satcat5::freertos::satcat_task_handle);
 }
 
 // If dynamic allocation is used, halt execution if malloc() fails.

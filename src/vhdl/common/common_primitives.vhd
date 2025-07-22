@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -143,6 +143,7 @@ package common_primitives is
     constant PREFER_DPRAM_AWIDTH : positive;
     constant PREFER_DPRAM_ONEBIT : boolean;
     constant PREFER_FIFO_SREG    : boolean;
+    constant PREFER_SPI_SYNC     : boolean;
 
     ---------------------------------------------------------------------
     -- Synchronization primitives
@@ -222,7 +223,7 @@ package common_primitives is
     component sync_reset is
         generic(
         HOLD_MIN    : integer := 7;
-        KEEP_ATTR   : string := "true");
+        KEEP_ATTR   : boolean := true);
         port(
         in_reset_p  : in  std_logic;
         out_reset_p : out std_logic;

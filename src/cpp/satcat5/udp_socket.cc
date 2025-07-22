@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -38,21 +38,31 @@ void SocketCore::connect(
     const satcat5::udp::Addr& dstaddr,
     const satcat5::eth::MacAddr& dstmac,
     const satcat5::udp::Port& dstport,
-    satcat5::udp::Port srcport)
+    satcat5::udp::Port srcport,
+    const satcat5::eth::VlanTag& vtag)
 {
+    // If no source port is specified, assign one automatically.
     if (srcport == satcat5::udp::PORT_NONE)
-        srcport = m_addr.m_iface->next_free_port();
-    m_addr.connect(dstaddr, dstmac, dstport, srcport);
-    m_filter = Type(srcport.value);     // Rebind Rx
+        srcport = m_addr.udp()->next_free_port();
+    m_addr.connect(dstaddr, dstmac, dstport, srcport, vtag);
+    // Rebind Rx to the paired source + destination ports.
+    // TODO: For now, we are filtering on UDP port numbers only.  To be fully
+    //  compliant, it should also bind to the source and destination address.
+    if (srcport.value) m_filter = Type(dstport.value, srcport.value);
 }
 
 void SocketCore::connect(
     const satcat5::udp::Addr& dstaddr,
     const satcat5::udp::Port& dstport,
-    satcat5::udp::Port srcport)
+    satcat5::udp::Port srcport,
+    const satcat5::eth::VlanTag& vtag)
 {
+    // If no source port is specified, assign one automatically.
     if (srcport == satcat5::udp::PORT_NONE)
-        srcport = m_addr.m_iface->next_free_port();
-    m_addr.connect(dstaddr, dstport, srcport);
-    m_filter = Type(srcport.value);     // Rebind Rx
+        srcport = m_addr.udp()->next_free_port();
+    m_addr.connect(dstaddr, dstport, srcport, vtag);
+    // Rebind Rx to the paired source + destination ports.
+    // TODO: For now, we are filtering on UDP port numbers only.  To be fully
+    //  compliant, it should also bind to the source and destination address.
+    if (srcport.value) m_filter = Type(dstport.value, srcport.value);
 }

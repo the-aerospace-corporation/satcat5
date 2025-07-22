@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------
-# Copyright 2024 The Aerospace Corporation.
+# Copyright 2024-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 # ------------------------------------------------------------------------
 #
@@ -874,6 +874,7 @@ proc create_root_design { parentCell } {
    CONFIG.CORE_CLK_HZ {125000000} \
    CONFIG.DATAPATH_BYTES {3} \
    CONFIG.HBUF_KBYTES {2} \
+   CONFIG.LOG_CFGBUS {true} \
    CONFIG.PORT_COUNT {5} \
    CONFIG.PTP_DOPPLER {true} \
    CONFIG.STATS_DEVADDR {1} \

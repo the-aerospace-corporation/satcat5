@@ -1,9 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
-#include <climits>
 #include <satcat5/interrupts.h>
 #include <satcat5/multi_buffer.h>
 #include <satcat5/utils.h>
@@ -16,6 +15,7 @@ using satcat5::io::MultiReaderPriority;
 using satcat5::io::MultiReaderSimple;
 using satcat5::io::MultiWriter;
 using satcat5::irq::AtomicLock;
+using satcat5::util::ListCore;
 using satcat5::util::min_unsigned;
 using satcat5::util::modulo_add_uns;
 
@@ -27,19 +27,17 @@ static_assert(sizeof(MultiPacket) <= sizeof(MultiChunk),
 // Label for AtomicLock statistics tracking.
 static const char* LBL_MBUFF = "MBUFF";
 
-satcat5::io::ArrayRead MultiPacket::peek() const
-{
+satcat5::io::ArrayRead MultiPacket::peek() const {
     unsigned max_peek = min_unsigned(SATCAT5_MBUFF_CHUNK, m_length);
     return satcat5::io::ArrayRead(m_chunks.head()->m_data, max_peek);
 }
 
-bool MultiPacket::copy_to(satcat5::io::Writeable* wr)
-{
+bool MultiPacket::copy_to(satcat5::io::Writeable* wr) const {
     MultiPacket::Reader rd(this);
     return rd.copy_and_finalize(wr);
 }
 
-MultiPacket::Reader::Reader(MultiPacket* pkt)
+MultiPacket::Reader::Reader(const MultiPacket* pkt)
     : m_read_pos(0)
     , m_read_rem(0)
     , m_read_pkt(0)
@@ -48,7 +46,7 @@ MultiPacket::Reader::Reader(MultiPacket* pkt)
     read_reset(pkt);
 }
 
-void MultiPacket::Reader::read_reset(MultiPacket* packet) {
+void MultiPacket::Reader::read_reset(const MultiPacket* packet) {
     // Reset read state and load the first chunk if applicable.
     m_read_pos = 0;
     m_read_pkt = packet;
@@ -106,10 +104,53 @@ u8 MultiPacket::Reader::read_next() {
     return temp;
 }
 
+MultiPacket::Overwriter::Overwriter(satcat5::io::MultiPacket* pkt)
+    : m_write_pos(0)
+    , m_write_rem(pkt->m_length)
+    , m_write_tot(0)
+    , m_write_chunk(pkt->m_chunks.head())
+{
+    // Nothing else to initialize.
+}
+
+unsigned MultiPacket::Overwriter::get_write_space() const {
+    return m_write_rem;
+}
+
+void MultiPacket::Overwriter::write_bytes(unsigned nbytes, const void* src) {
+    // Write one chunk at a time until finished...
+    if (nbytes > m_write_rem) return;
+    u8* src8 = (u8*)src;
+    while (nbytes) {
+        // Stop at end of request or end of chunk, whichever comes first.
+        unsigned chunk = SATCAT5_MBUFF_CHUNK - m_write_pos;
+        unsigned ncopy = min_unsigned(nbytes, chunk);
+        memcpy(m_write_chunk->m_data + m_write_pos, src8, ncopy);
+        // Advance to the next chunk?
+        if (ncopy == chunk) m_write_chunk = ListCore::next(m_write_chunk);
+        m_write_pos = modulo_add_uns(m_write_pos + ncopy, SATCAT5_MBUFF_CHUNK);
+        // Increment the read/write position.
+        src8        += ncopy;
+        nbytes      -= ncopy;
+        m_write_rem -= ncopy;
+        m_write_tot += ncopy;
+    }
+}
+
+void MultiPacket::Overwriter::write_next(u8 data) {
+    // Write a single byte to the current chunk.
+    --m_write_rem; ++m_write_tot;
+    m_write_chunk->m_data[m_write_pos] = data;
+    // Advance to the next chunk if applicable.
+    if (++m_write_pos >= SATCAT5_MBUFF_CHUNK) {
+        m_write_chunk = ListCore::next(m_write_chunk);
+        m_write_pos = 0;
+    }
+}
+
 MultiBuffer::MultiBuffer(u8* buff, unsigned nbytes)
     : m_free_bytes(0)
     , m_pcount(0)
-    , m_debug(0)
     , m_free_chunks()
     , m_read_ports()
     , m_rcvd_packets()
@@ -123,8 +164,7 @@ MultiBuffer::MultiBuffer(u8* buff, unsigned nbytes)
     }
 }
 
-bool MultiBuffer::consistency() const
-{
+bool MultiBuffer::consistency() const {
     // Compare the list of free chunks against m_free_count.
     AtomicLock lock(LBL_MBUFF);
     if (m_free_chunks.has_loop()) return false;
@@ -132,8 +172,7 @@ bool MultiBuffer::consistency() const
     return free_count == m_free_bytes;
 }
 
-bool MultiBuffer::enqueue(MultiPacket* packet)
-{
+bool MultiBuffer::enqueue(MultiPacket* packet) {
     // Push new packet onto the thread-safe delivery queue.
     {
         AtomicLock lock(LBL_MBUFF);
@@ -146,22 +185,19 @@ bool MultiBuffer::enqueue(MultiPacket* packet)
     return true;
 }
 
-MultiPacket* MultiBuffer::dequeue()
-{
+MultiPacket* MultiBuffer::dequeue() {
     // Pop next packet from the thread-safe delivery queue.
     AtomicLock lock(LBL_MBUFF);
     return m_rcvd_packets.pop_front();
 }
 
-void MultiBuffer::poll_demand()
-{
+void MultiBuffer::poll_demand() {
     // Delivery processing for each packet, using child's "deliver" method:
     //  * Result = 0: No outputs accepted the packet, discard it immediately.
     //  * Result = 1: Matches new_packet() default, take no further action.
     //      This code may be used safely if the packet has already been freed.
     //  * Result > 1: Multiple outputs accepted the packet, update m_refct.
     while (MultiPacket* pkt = dequeue()) {
-        if (m_debug) pkt->copy_to(m_debug);
         unsigned result = deliver(pkt);
         if (result == 0) free_packet(pkt);
         if (result > 1) pkt->m_refct = result;
@@ -245,6 +281,11 @@ bool MultiReader::accept(MultiPacket* packet) {
     return ok;
 }
 
+void MultiReader::flush() {
+    // Discard all queued packets.
+    while (get_packet()) read_finalize();
+}
+
 void MultiReader::read_finalize() {
     // Cleanup current packet and start the next one.
     // (Ignore this request if there is no active packet.)
@@ -272,7 +313,7 @@ void MultiReader::pkt_free(MultiPacket* packet) {
 void MultiReader::timer_event() {
     // Watchdog timeout, discard all packets to prevent resource hogging.
     // (The most likely cause is a UART port that's stuck or disconnected.)
-    while (get_packet()) read_finalize();
+    flush();
 }
 
 MultiReaderSimple::MultiReaderSimple(MultiBuffer* src)
@@ -379,7 +420,7 @@ MultiPacket* MultiReaderPriority::pkt_pop() {
     return next;
 }
 
-u32 MultiReaderPriority::offset_priority(unsigned idx) const{
+u32 MultiReaderPriority::offset_priority(unsigned idx) const {
     // Calculate effective packet priority, with tiebreaker by age.
     // Note: Difference in u16 pcount values will wrap correctly, unless
     //  a low priority packet is stuck behind 32k high-priority packets.
@@ -470,23 +511,20 @@ void MultiWriter::write_abort() {
 }
 
 bool MultiWriter::write_finalize() {
-    // Deliver valid packets to the MultiBuffer, otherwise discard.
-    if (m_write_pkt && m_write_len < UINT_MAX) {
-        // Calling enqueue() may trigger callbacks, so copy the pointer first.
-        MultiPacket* tmp = m_write_pkt;
-        tmp->m_length = m_write_len;
-        // Reset internal state.
-        timer_stop();
-        m_write_pkt  = 0;
-        m_write_tail = 0;
-        m_write_pos  = 0;
-        m_write_len  = 0;
-        // Transfer the packet to the MultiBuffer's delivery queue.
-        return m_dst->enqueue(tmp);
-    } else {
-        write_abort();
-        return false;
-    }
+    // Deliver valid packets to the MultiBuffer for processing.
+    // (This calls MultiBuffer::deliver() or an override of that method.)
+    MultiPacket* pkt = prepare_pkt();
+    return pkt && m_dst->enqueue(pkt);
+}
+
+bool MultiWriter::write_bypass(MultiReader* dst) {
+    // Attempt delivery directly to the specified MultiReader.
+    // (This does NOT pass through MultiBuffer::deliver().)
+    MultiPacket* pkt = prepare_pkt();
+    bool rcvd = pkt && dst->accept(pkt);
+    // If the attempt failed, free associated memory.
+    if (pkt && !rcvd) m_dst->free_packet(pkt);
+    return rcvd;
 }
 
 void MultiWriter::write_next(u8 data) {
@@ -543,4 +581,23 @@ unsigned MultiWriter::write_prep() {
         m_write_tail = tmp;
     }
     return SATCAT5_MBUFF_CHUNK - m_write_pos;
+}
+
+satcat5::io::MultiPacket* MultiWriter::prepare_pkt() {
+    MultiPacket* tmp = nullptr;
+    if (m_write_pkt && m_write_len < UINT_MAX) {
+        // Return value is the active packet.
+        tmp           = m_write_pkt;
+        tmp->m_length = m_write_len;
+        // Reset internal state.
+        timer_stop();
+        m_write_pkt  = 0;
+        m_write_tail = 0;
+        m_write_pos  = 0;
+        m_write_len  = 0;
+    } else {
+        // Reset to a known-good state.
+        write_abort();
+    }
+    return tmp;
 }

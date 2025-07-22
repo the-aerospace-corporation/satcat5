@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Incoming packet dispatch for the IPv4 router
@@ -78,24 +78,24 @@ namespace satcat5 {
             // Internal event-handlers called from deliver(...).
             void adjust_mac(
                 const satcat5::eth::MacAddr& dst,
-                satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                satcat5::eth::PluginPacket& meta);
             bool decrement_ttl(
-                satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                satcat5::eth::PluginPacket& meta);
             unsigned process_gateway(
-                satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                satcat5::eth::PluginPacket& meta);
             unsigned deliver_arp(
-                satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                satcat5::eth::PluginPacket& meta);
             unsigned deliver_defer(
-                const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                const satcat5::eth::PluginPacket& meta);
             unsigned deliver_local(
-                const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                const satcat5::eth::PluginPacket& meta);
             unsigned deliver_offload(
-                const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                const satcat5::eth::PluginPacket& meta);
             bool icmp_reply(
                 u16 errtyp, u32 arg,
-                const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                const satcat5::eth::PluginPacket& meta);
             bool is_from_offload(
-                const satcat5::eth::SwitchPlugin::PacketMeta& meta);
+                const satcat5::eth::PluginPacket& meta);
             SATCAT5_PMASK_TYPE link_up_mask();
 
             // Internal state:

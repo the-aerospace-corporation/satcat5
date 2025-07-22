@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2024 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -11,10 +11,15 @@
 --
 -- Flow control is asymmetric; the switch FPGA is always ready to accept new
 -- data, so RTS/CTS signals are used to simplify flow control for the user
--- endpoint (which is usually a simple microcontroller).  By convention,
--- both CTS and RTS are active-low (0V = Request/Clear asserted.)
+-- endpoint (which is usually a simple microcontroller).  By convention, both
+-- CTS and RTS are active-low (0V = Request/Clear asserted.) The default RTS
+-- mode matches most implementations, which a 'ready' signal that is asserted
+-- when data can be received. Enabling RTS_SYMM alternatively uses this pin to
+-- signal that data is ready to transmit, enabling microcontrollers to sleep and
+-- use the RTS as a wakeup signal.
 --    * RTS = Request to send
---      Switch FPGA has data available, will send once permission granted.
+--      RTS_SYMM = false: Switch FPGA can receive data (always true).
+--      RTS_SYMM = true: Switch FPGA has data available, requesting to send.
 --    * CTS = Clear to send
 --      User endpoint is ready to receive data, permission granted.
 --
@@ -62,6 +67,7 @@ entity port_serial_uart_4wire is
     CLKREF_HZ   : positive;         -- Reference clock rate (Hz)
     BAUD_HZ     : positive;         -- Default UART baud rate (bps)
     TIMEOUT_SEC : positive := 15;   -- Activity timeout, in seconds
+    RTS_SYMM    : boolean := false; -- Alt. RTS mode: assert when TX data avail
     -- ConfigBus device address (optional)
     DEVADDR     : integer := CFGBUS_ADDR_NONE);
     port (
@@ -218,7 +224,7 @@ raw_data    <= enc_data;
 raw_valid   <= enc_valid and flow_en;
 enc_ready   <= raw_ready and flow_en;
 flow_en     <= ignore_cts or not cts_n;
-uart_rts_n  <= not enc_valid;
+uart_rts_n  <= not enc_valid when RTS_SYMM else reset_sync;
 
 -- Detect stuck ports (flow control blocked) and clear transmit buffer.
 -- (Otherwise, broadcast packets will overflow the buffer.)
@@ -231,7 +237,7 @@ begin
         wdog_ctr    := TIMEOUT;
     elsif rising_edge(refclk) then
         wdog_rst_p  <= bool2bit(wdog_ctr = 0);
-        if (cts_n = '0') then
+        if (flow_en = '1') then
             wdog_ctr := TIMEOUT;        -- Clear to send
         elsif (wdog_ctr > 0) then
             wdog_ctr := wdog_ctr - 1;   -- Countdown to zero

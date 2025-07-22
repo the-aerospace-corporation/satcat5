@@ -1,26 +1,29 @@
 --------------------------------------------------------------------------
--- Copyright 2021 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
 -- Round-robin priority scheduler
 --
--- This block implements a scheduler for sharing access from multiple
--- sources to a single output port.  When the output port is contested,
--- priority is assigned using the round-robin rule. In short: to assign
--- the next source, count up (with wraparound) from the previous source,
--- stopping at the first one that has data ready.  That source is held
--- until the end-of-frame, and then another is selected.
+-- This block implements a scheduler for sharing access from multiple sources to
+-- a single output port.  When the output port is contested, priority is
+-- assigned using the round-robin rule.  In short: to assign the next source,
+-- count up (with wraparound) from the previous source, stopping at the first
+-- one that has data ready.  That source is held until the end-of-frame, and
+-- then another is selected.  An optional frame size limit can be provided,
+-- which will force the scheduler to move to the next input if a frame exceeds a
+-- maximum size.  This ensures continued switch operation (with invalid frames)
+-- should an input freeze and idle with the valid signal high.
 --
 -- For simplicity, the block handles flow-control signals only; data and
 -- metadata must be MUXed separately.
 --
--- This block supports 100% throughput, but to support reasonable timing
--- it does have a single-cycle decision latency under certain conditions.
+-- This block supports 100% throughput, but to support reasonable timing it does
+-- have a single-cycle decision latency under certain conditions.
 --
--- Note: For any given input, once in_valid is asserted it MUST be held
---       high for the full duration of the packet.  If this constraint
---       is not followed then the scheduler may switch inputs prematurely.
+-- Note: For any given input, once in_valid is asserted it MUST be held high for
+--       the full duration of the packet.  If this constraint is not followed
+--       then the scheduler may switch inputs prematurely.
 --
 
 library ieee;
@@ -30,22 +33,24 @@ use     work.common_functions.all;
 
 entity packet_round_robin is
     generic (
-    INPUT_COUNT : positive);    -- Number of input ports
+    INPUT_COUNT     : positive;         -- Number of input ports
+    MAX_FRM_WORDS   : natural := 0);    -- Enforce max frame size (0 = disable)
     port (
     -- Flow control signals for each input port.
-    in_last     : in  std_logic_vector(INPUT_COUNT-1 downto 0);
-    in_valid    : in  std_logic_vector(INPUT_COUNT-1 downto 0);
-    in_ready    : out std_logic_vector(INPUT_COUNT-1 downto 0);
-    in_select   : out integer range 0 to INPUT_COUNT-1;
-    in_error    : out std_logic;
+    in_last         : in  std_logic_vector(INPUT_COUNT-1 downto 0);
+    in_valid        : in  std_logic_vector(INPUT_COUNT-1 downto 0);
+    in_ready        : out std_logic_vector(INPUT_COUNT-1 downto 0);
+    in_select       : out integer range 0 to INPUT_COUNT-1;
+    in_error        : out std_logic;
 
     -- Flow control signals for the shared output port.
-    out_last    : out std_logic;
-    out_valid   : out std_logic;
-    out_ready   : in  std_logic;
+    out_last        : out std_logic;
+    out_valid       : out std_logic;
+    out_ready       : in  std_logic;
 
-    -- System clock (no reset needed).
-    clk         : in  std_logic);
+    -- System clock and optional reset.
+    clk             : in  std_logic;
+    reset_p         : in  std_logic);
 end packet_round_robin;
 
 architecture packet_round_robin of packet_round_robin is
@@ -84,6 +89,8 @@ signal out_valid_i  : std_logic := '0';
 signal select_curr  : port_idx := 0;
 signal select_next  : port_idx := 0;
 signal select_mask  : port_slv := (others => '0');
+signal force_last   : std_logic := '0';
+signal pkt_words    : integer range 0 to MAX_FRM_WORDS := 0;
 
 begin
 
@@ -94,7 +101,8 @@ in_select   <= select_curr;
 in_error    <= in_error_i;
 
 -- Combinational logic for each flow-control signal.
-out_last_i  <= in_last(select_curr);
+force_last  <= bool2bit(MAX_FRM_WORDS > 0 and pkt_words = MAX_FRM_WORDS-1);
+out_last_i  <= in_last(select_curr) or force_last;
 out_valid_i <= in_valid(select_curr);
 gen_ready : for n in in_ready'range generate
     in_ready(n) <= out_ready and bool2bit(select_curr = n);
@@ -106,13 +114,21 @@ select_next <= round_robin(in_valid, select_mask, select_curr);
 p_select : process(clk)
 begin
     if rising_edge(clk) then
-        if (out_valid_i = '0' or out_last_i = '1') then
+        if (reset_p = '1') then
+            select_curr <= 0;
+            select_mask <= (others => '0');
+            pkt_words   <= 0;
+        elsif (out_valid_i = '0' or out_last_i = '1') then
             -- Update selection between packets or just after end of packet.
             select_curr <= select_next;
             -- Do the same for the priority-encoder mask (see above).
             for n in select_mask'range loop
                 select_mask(n) <= bool2bit(n > select_next);
             end loop;
+            -- Reset forced early-termination counter.
+            pkt_words <= 0;
+        else
+            pkt_words <= pkt_words + 1;
         end if;
     end if;
 end process;

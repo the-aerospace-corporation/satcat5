@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2021 The Aerospace Corporation.
+-- Copyright 2019-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -50,9 +50,7 @@ entity eth_frame_check is
     out_data    : out std_logic_vector(8*IO_BYTES-1 downto 0);
     out_nlast   : out integer range 0 to IO_BYTES := 0;
     out_write   : out std_logic;
-    out_commit  : out std_logic;
-    out_revert  : out std_logic;
-    out_error   : out std_logic;
+    out_result  : out frm_result_t;
 
     -- System interface.
     clk         : in  std_logic;
@@ -90,12 +88,6 @@ constant MAX_USERLEN_BYTES : integer := 1530;
 subtype data_t is std_logic_vector(8*IO_BYTES-1 downto 0);
 subtype last_t is integer range 0 to IO_BYTES;
 
-type result_t is record
-    commit  : std_logic;
-    revert  : std_logic;
-    error   : std_logic;
-end record;
-
 -- Counter initializes to a negative number, so that the total
 -- represents only the user data (i.e., no header/footer).
 constant COUNT_INIT : signed(15 downto 0) := to_signed(-HEADER_CRC_BYTES, 16);
@@ -121,19 +113,19 @@ signal chk_etype    : unsigned(15 downto 0) := (others => '0');
 signal chk_count    : signed(15 downto 0) := COUNT_INIT;
 signal frm_ok       : std_logic := '0';
 signal frm_keep     : std_logic := '0';
-signal frm_result   : result_t;
+signal frm_result   : frm_result_t;
 
 -- Buffered output signals
 signal buf_data     : data_t := (others => '0');
 signal buf_nlast    : last_t := 0;
 signal buf_write    : std_logic := '0';
-signal buf_result   : result_t := (others => '0');
+signal buf_result   : frm_result_t := FRM_RESULT_NULL;
 
 -- Modified output signals with no FCS (optional)
 signal trim_data    : data_t := (others => '0');
 signal trim_nlast   : last_t := 0;
 signal trim_write   : std_logic := '0';
-signal trim_result  : result_t := (others => '0');
+signal trim_result  : frm_result_t := FRM_RESULT_NULL;
 
 begin
 
@@ -177,7 +169,7 @@ begin
             for n in 0 to 5 loop
                 if (strm_byte_present(IO_BYTES, ETH_HDR_DSTMAC+n, wcount)) then
                     bref := strm_byte_value(n, MAC_MCTRL);
-                    btmp := strm_byte_value(ETH_HDR_SRCMAC+n, dly_data);
+                    btmp := strm_byte_value(ETH_HDR_DSTMAC+n, dly_data);
                     chk_mctrl(n) <= bool2bit(bref = btmp);
                 end if;
             end loop;
@@ -243,6 +235,11 @@ frm_keep <= frm_ok and bool2bit(ALLOW_MCTRL or and_reduce(chk_mctrl) = '0');
 frm_result.commit <= bool2bit(crc_nlast > 0) and frm_keep;
 frm_result.revert <= bool2bit(crc_nlast > 0) and not frm_keep;
 frm_result.error  <= bool2bit(crc_nlast > 0) and not frm_ok;
+frm_result.reason <=
+    REASON_KEEP     when (crc_nlast = 0 or frm_keep = '1') else
+    DROP_BADFCS     when (crc_result /= CRC_RESIDUE) else
+    DROP_MCTRL      when (frm_ok = '1') else
+    DROP_BADFRM;    -- e.g., Invalid source, Length min/max
 
 -- Simple buffered output.
 p_out_reg : process(clk)
@@ -304,7 +301,7 @@ gen_strip : if STRIP_FCS generate
             if (ovr_ct > 0) then
                 trim_result <= buf_result;      -- Delayed output
             elsif (count > 0 or crc_nlast > OVR_THR) then
-                trim_result <= (others => '0'); -- Suppress output
+                trim_result <= FRM_RESULT_NULL; -- Suppress output
             else
                 trim_result <= frm_result;      -- Prompt output
             end if;
@@ -331,11 +328,9 @@ gen_strip : if STRIP_FCS generate
 end generate;
 
 -- Select final output signal based on configuration.
-out_data    <= trim_data            when STRIP_FCS else buf_data;
-out_nlast   <= trim_nlast           when STRIP_FCS else buf_nlast;
-out_write   <= trim_write           when STRIP_FCS else buf_write;
-out_commit  <= trim_result.commit   when STRIP_FCS else buf_result.commit;
-out_revert  <= trim_result.revert   when STRIP_FCS else buf_result.revert;
-out_error   <= trim_result.error    when STRIP_FCS else buf_result.error;
+out_data    <= trim_data    when STRIP_FCS else buf_data;
+out_nlast   <= trim_nlast   when STRIP_FCS else buf_nlast;
+out_write   <= trim_write   when STRIP_FCS else buf_write;
+out_result  <= trim_result  when STRIP_FCS else buf_result;
 
 end eth_frame_check;

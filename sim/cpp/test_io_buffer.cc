@@ -1,14 +1,16 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for BufferedIO, BufferedCopy, and BufferedWriter classes.
 
 #include <hal_test/catch.hpp>
+#include <hal_test/eth_crosslink.h>
 #include <hal_test/sim_utils.h>
 #include <satcat5/io_buffer.h>
+#include <satcat5/udp_socket.h>
 
-namespace io    = satcat5::io;
+namespace io = satcat5::io;
 
 // Helper class for testing BufferedIO in loopback mode:
 // Immediately forward all Tx data to the Rx buffer.
@@ -101,10 +103,12 @@ TEST_CASE("BufferedIO") {
 
 TEST_CASE("BufferedCopy") {
     SATCAT5_TEST_START;                 // Simulation infrastructure
-    io::PacketBufferHeap tx, rx;        // Test buffers
-    io::BufferedCopy uut(&tx, &rx);     // UUT copies from tx to rx
 
-    SECTION("Basic") {
+    SECTION("Packet") {
+        io::PacketBufferHeap tx, rx;
+        io::BufferedCopy uut(&tx, &rx, io::CopyMode::PACKET);
+        CHECK(uut.src() == &tx);
+        CHECK(uut.dst() == &rx);
         tx.write_u8(12);
         tx.write_u16(1234);
         tx.write_u32(12345678);
@@ -115,12 +119,66 @@ TEST_CASE("BufferedCopy") {
         CHECK(rx.read_u32() == 12345678);
         rx.read_finalize();
     }
+
+    SECTION("Stream") {
+        io::StreamBufferHeap tx(32), rx(16);
+        io::BufferedCopy uut(&tx, &rx, io::CopyMode::STREAM);
+        tx.write_str("Long test message in two parts.");
+        REQUIRE(tx.write_finalize());
+        satcat5::poll::service();
+        CHECK(satcat5::test::read(&rx, "Long test messag"));
+        satcat5::poll::service();
+        CHECK(satcat5::test::read(&rx, "e in two parts."));
+    }
+}
+
+TEST_CASE("BufferedStream") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Back-to-back test network.
+    constexpr satcat5::udp::Port TEST_PORT = {0x4321};
+    satcat5::test::CrosslinkIp xlink(__FILE__);
+    satcat5::udp::Address send(&xlink.net0.m_udp);
+    satcat5::udp::Socket recv(&xlink.net1.m_udp);
+    send.connect(xlink.IP1, TEST_PORT);
+    recv.bind(TEST_PORT);
+
+    // Unit under test with chunk-size = 8 bytes.
+    io::StreamBufferHeap tx;
+    io::BufferedStream uut(&tx, &send, 8);
+
+    SECTION("Exact") {
+        // Exact multiples only, first segment should stall.
+        uut.set_timeout(0);
+        CHECK(satcat5::test::write(&tx, "7 bytes"));
+        xlink.timer.sim_wait(1000);
+        CHECK(recv.get_read_ready() == 0);
+        // With more data, it should send two packets.
+        CHECK(satcat5::test::write(&tx, "9 more..."));
+        xlink.timer.sim_wait(1000);
+        CHECK(satcat5::test::read(&recv, "7 bytes9"));
+        CHECK(satcat5::test::read(&recv, " more..."));
+    }
+
+    SECTION("Split") {
+        // Normal mode should send after timeout.
+        uut.set_timeout(10);
+        CHECK(satcat5::test::write(&tx, "7 bytes"));
+        xlink.timer.sim_wait(1000);
+        CHECK(satcat5::test::read(&recv, "7 bytes"));
+        // A longer message will be split into two parts.
+        CHECK(satcat5::test::write(&tx, "9 more..."));
+        xlink.timer.sim_wait(1000);
+        CHECK(satcat5::test::read(&recv, "9 more.."));
+        CHECK(satcat5::test::read(&recv, "."));
+    }
 }
 
 TEST_CASE("BufferedTee") {
     SATCAT5_TEST_START;                 // Simulation infrastructure
-    io::BufferedTee uut;
-    io::PacketBufferHeap rx1, rx2, rx3;
+    io::BufferedTee uut;                // Unit under test
+    io::PacketBufferHeap rx1, rx2, rx3; // Working buffers
 
     // Written data should be copied to all outputs.
     SECTION("Basic") {

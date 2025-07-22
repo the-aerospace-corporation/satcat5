@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -26,6 +26,14 @@
 //! Each of the included primitives includes built-in tools for measuring
 //! elapsed time.  Interrupt service routines and uninterruptible sections
 //! should always be VERY quick, so we track the worst offenders.
+//!
+//! Note that the interrupt services here are intended for hardware
+//! interrupts, i.e., interrupt signals attached directly to a platform-
+//! specific hardware interrupt handler, such irq::ControllerMicroblaze
+//! or freertos::ControllerFreeRTOS.  This includes the shared interrupt
+//! channel associated with a ConfigBus host, such as cfg::ConfigBusMmap.
+//! It is separate from the cfg::Interrupt handlers used for individual
+//! ConfigBus peripherals.
 
 #pragma once
 

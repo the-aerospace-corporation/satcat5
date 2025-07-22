@@ -1,12 +1,8 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Internal "MailBox" Ethernet port
-//
-// This class interfaces with "port_axi_mailbox" through ConfigBus.
-// It can be used to send and receive Ethernet frames.
-//
+// Driver for the internal "MailBox" Ethernet port
 
 #pragma once
 
@@ -26,13 +22,15 @@
 
 namespace satcat5 {
     namespace port {
-        // Define the interface driver object.
+        //! Driver for the internal "MailBox" Ethernet port
+        //! This class interfaces with "port_axi_mailbox" through ConfigBus.
+        //! It can be used to send and receive Ethernet frames.
         class Mailbox
             : public    satcat5::io::BufferedIO
             , protected satcat5::cfg::Interrupt
         {
         public:
-            // Constructor
+            //! Constructor links this driver to a ConfigBus address.
             Mailbox(satcat5::cfg::ConfigBus* cfg, unsigned devaddr, unsigned regaddr);
 
         private:
