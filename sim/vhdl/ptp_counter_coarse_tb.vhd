@@ -1,19 +1,19 @@
 --------------------------------------------------------------------------
--- Copyright 2022-2024 The Aerospace Corporation.
+-- Copyright 2022-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
--- Testbench for the PTP cross-clock counter system (gen + sync)
+-- Testbench for the coarse PTP cross-clock counter system (gen + sync)
 --
--- This unit test connects a Vernier-clock counter-generator to a counter-
+-- This unit test connects a Vernier-clock counter-generator to a coarse-
 -- synchronizer, runs for a few milliseconds, and confirms that the result
--- converges with sub-nanosecond accuracy.
+-- converges with accuracy of 0.5 user clock period.
 --
 -- Note: If you encounter a SIGFPE "Floating point exception" when running
 -- this testbench, set simulation timestep to 1 picosecond or finer.
---  * In Modelsim: "vsim ptp_counter_tb -t ps"
+--  * In Modelsim: "vsim ptp_counter_coarse_tb -t ps"
 --
--- The complete test takes 40 milliseconds.
+-- The complete test takes 12 milliseconds.
 --
 
 library ieee;
@@ -25,15 +25,15 @@ use     work.common_functions.all;
 use     work.common_primitives.all;
 use     work.ptp_types.all;
 
-entity ptp_counter_tb_single is
+entity ptp_counter_coarse_tb_single is
     generic (
     VREF_HZ     : positive;
     USER_HZ     : positive;
     USER_PPM    : integer;
     FILTER_EN   : boolean := false);
-end ptp_counter_tb_single;
+end ptp_counter_coarse_tb_single;
 
-architecture single of ptp_counter_tb_single is
+architecture single of ptp_counter_coarse_tb_single is
 
 -- Vernier clock parameters:
 --  * Calculate picosecond increment first, with rounding.
@@ -113,23 +113,20 @@ begin
 end process;
 
 -- Unit under test: Synchronizer
-uut_sync : entity work.ptp_counter_sync
+uut_sync : entity work.ptp_counter_coarse
     generic map(
     VCONFIG     => VACTUAL,
-    USER_CLK_HZ => USER_HZN,
-    LOCK_SETTLE => 3.0,
-    WAIT_LOCKED => false)
+    USER_CLK_HZ => USER_HZN)
     port map(
     ref_time    => ref_time,
     user_clk    => uclk,
     user_ctr    => sync_time,
     user_freq   => sync_freq,
-    user_lock   => sync_lock,
-    user_rst_p  => reset_p);
+    user_lock   => sync_lock);
 
 -- Measure error in synchronized counter (UCLK domain).
 p_user : process(uclk)
-    constant TOL_NSEC : real := 0.3;
+    constant TOL_NSEC : real := 0.5 * (1.0e9) * (1.0/real(USER_HZ));    -- tolerate error of up to half user clock period
     variable delta_ns, sumdd, sumsq, count : real := 0.0;
     variable cooldown, coolfreq : natural := 0;
 begin
@@ -159,18 +156,6 @@ begin
             cooldown := 1000;
         end if;
 
-        if (sync_check = '0') then
-            -- Ignore difference until check flag is asserted.
-            coolfreq := 0;
-        elsif (coolfreq > 0) then
-            -- Waiting period after each minor error report.
-            coolfreq := coolfreq - 1;
-        elsif (sync_dfreq > 1.0) then
-            -- Print a warning and reset cooldown timer.
-            report "Frequency mismatch: " & real'image(sync_dfreq) severity warning;
-            coolfreq := 1000;
-        end if;
-
         -- Once we reach the "check" phase, lock should be asserted.
         if (sync_check = '1' and sync_lock = '0' and cooldown = 0) then
             report "Missing LOCK flag." severity error;
@@ -193,8 +178,8 @@ end process;
 p_test : process
 begin
     reset_p <= '1'; wait for 1 us;          -- Reset at start of test
-    reset_p <= '0'; wait for 39 ms;         -- Run a few milliseconds
-    sync_check <= '1'; wait for 990 us;     -- Start checking once converged
+    reset_p <= '0'; wait for 1 ms;         -- Run a few milliseconds
+    sync_check <= '1'; wait for 10 ms;     -- Start checking once converged
     report "Steady-state time offset: "
         & real'image(delta_mean) & " +/- "
         & real'image(delta_std) & " (ns)";
@@ -205,36 +190,30 @@ end single;
 
 --------------------------------------------------------------------------
 
-entity ptp_counter_tb is
+entity ptp_counter_coarse_tb is
     -- Testbench --> No I/O ports
-end ptp_counter_tb;
+end ptp_counter_coarse_tb;
 
-architecture tb of ptp_counter_tb is
+architecture tb of ptp_counter_coarse_tb is
 
 begin
 
 -- Demonstrate tolerance of reference frequency errors.
-uut0 : entity work.ptp_counter_tb_single
+uut0 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => 0);
-uut1 : entity work.ptp_counter_tb_single
+uut1 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => 250);
-uut2 : entity work.ptp_counter_tb_single
+uut2 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => -250);
 
--- Demonstrate operation at various reference and user frequencies.
-uut3 : entity work.ptp_counter_tb_single
+---- Demonstrate operation at various reference and user frequencies.
+uut3 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 20_000_000,  USER_HZ => 100_000_000, USER_PPM => 0);
-uut4 : entity work.ptp_counter_tb_single
+uut4 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 50_000_000,  USER_HZ => 150_000_000, USER_PPM => 0);
-uut5 : entity work.ptp_counter_tb_single
+uut5 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 100_000_000, USER_HZ =>  50_000_000, USER_PPM => 0);
-uut6 : entity work.ptp_counter_tb_single
+uut6 : entity work.ptp_counter_coarse_tb_single
     generic map(VREF_HZ => 125_000_000, USER_HZ => 200_000_000, USER_PPM => 0);
-
--- Demonstrate operation of the auxiliary IIR filter.
-uut7 : entity work.ptp_counter_tb_single
-    generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => 250, FILTER_EN => true);
-uut8 : entity work.ptp_counter_tb_single
-    generic map(VREF_HZ => 25_000_000, USER_HZ => 125_000_000, USER_PPM => -250, FILTER_EN => true);
 
 end tb;

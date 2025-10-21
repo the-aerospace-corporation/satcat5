@@ -38,7 +38,7 @@ namespace satcat5 {
             //!  * Otherwise, this creates a new partial file.
             //! \param work_folder Path to working folder.
             //! \param file_id Numeric ID for the new file.
-            //! \param Length of the new file, measured in 32-bit words.
+            //! \param file_len of the new file, measured in 32-bit words.
             //! \param resume Allow resume of a previous partial file?
             AeroFtpFile(
                 const char* work_folder,

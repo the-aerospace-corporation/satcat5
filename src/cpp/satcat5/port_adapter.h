@@ -18,6 +18,12 @@
 //!    This adapter accepts data from a Readable interface and copies it
 //!    to the switch, and it copies data from the switch to a Writeable
 //!    interface after applying required modifications to the VLAN tag.
+//!  * `port::CobsAdapter`
+//!    Use this adapter with byte-streams containing COBS-encoded Ethernet
+//!    frames with an FCS, such as "cfg:Spi" or "cfg::Uart".  The adapter
+//!    decodes COBS data from a Readable interface, verifies the FCS, and
+//!    copies to the switch. Egress data updates VLAN tags before appending
+//!    an FCS, applying COBS encoding, and relaying to a Writeable interface.
 //!  * `port::SlipAdapter`
 //!    Use this adapter with byte-streams containing SLIP-encoded Ethernet
 //!    frames with an FCS, such as "cfg:Spi" or "cfg::Uart".  The adapter
@@ -34,6 +40,7 @@
 
 #pragma once
 
+#include <satcat5/codec_cobs.h>
 #include <satcat5/codec_slip.h>
 #include <satcat5/eth_checksum.h>
 #include <satcat5/eth_switch.h>
@@ -75,6 +82,34 @@ namespace satcat5 {
             satcat5::io::BufferedCopy m_rx_copy;    // Push/pull adapter
         };
 
+        //! Port adapter for COBS-encoded serial ports.
+        //! Implementation of SwitchPort for COBS-encoded byte streams, such as
+        //! `cfg::Spi` or `cfg::Uart`.  Includes COBS codec and FCS calculation.
+        //! \see port_adapter.h, cfg::Spi, cfg::Uart.
+        class CobsAdapter final : public satcat5::port::VlanAdapter {
+        public:
+            //! Attach port to the Ethernet switch and its data source/sink.
+            CobsAdapter(
+                satcat5::eth::SwitchCore* sw,
+                satcat5::io::Readable* src,
+                satcat5::io::Writeable* dst);
+
+            //! Access the event-listener used for read/pull mode.
+            inline satcat5::io::EventListener* listen()
+                { return &m_rx_copy; }
+
+            //! Report packet statistics since the previous query.
+            inline satcat5::io::TrafficStats stats()
+                { return satcat5::io::TrafficStats::query(m_rx_fcs, m_tx_fcs); }
+
+        protected:
+            satcat5::io::BufferedCopy m_rx_copy;    // Push/pull adapter
+            satcat5::io::CobsDecoder m_rx_cobs;     // COBS decoder
+            satcat5::eth::ChecksumRx m_rx_fcs;      // Checksum verification
+            satcat5::eth::ChecksumTx m_tx_fcs;      // Checksum calculation
+            satcat5::io::CobsEncoder m_tx_cobs;     // COBS encoder
+        };
+
         //! Port adapter for SLIP-encoded serial ports.
         //! Implementation of SwitchPort for SLIP-encoded byte streams, such as
         //! `cfg::Spi` or `cfg::Uart`.  Includes SLIP codec and FCS calculation.
@@ -87,17 +122,13 @@ namespace satcat5 {
                 satcat5::io::Readable* src,
                 satcat5::io::Writeable* dst);
 
-            //! Count frame errors since previous query.
-            inline unsigned error_count()
-                { return m_rx_fcs.error_count(); }
-
-            //! Count valid frames since previous query.
-            inline unsigned frame_count()
-                { return m_rx_fcs.frame_count(); }
-
             //! Access the event-listener used for read/pull mode.
             inline satcat5::io::EventListener* listen()
                 { return &m_rx_copy; }
+
+            //! Report packet statistics since the previous query.
+            inline satcat5::io::TrafficStats stats()
+                { return satcat5::io::TrafficStats::query(m_rx_fcs, m_tx_fcs); }
 
         protected:
             satcat5::io::BufferedCopy m_rx_copy;    // Push/pull adapter

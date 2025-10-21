@@ -35,6 +35,11 @@ namespace satcat5 {
             //! Raw access to the underlying header contents.
             u16 data[HDR_MAX_SHORTS];
 
+            // Explicitly declare default constructor and assignment methods.
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
+
             // Accessors for specific sub-fields.
             // https://en.wikipedia.org/wiki/Transmission_Control_Protocol#TCP_segment_structure
             constexpr satcat5::tcp::Port src() const    //!< Source port

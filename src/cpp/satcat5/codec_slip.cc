@@ -135,7 +135,7 @@ SlipCodec::SlipCodec(Writeable* dst, Readable* src)
     : SlipEncoder(dst)              // Upstream writes are encoded enroute
     , ReadableRedirect(&m_buff)     // Upstream reads pull from buffer
     , m_buff(m_rawbuff, SATCAT5_SLIP_BUFFSIZE, SATCAT5_SLIP_PACKETS)
-    , m_decode(&m_buff)               // Decoder writes to buffer
+    , m_decode(&m_buff)             // Decoder writes to buffer
     , m_copy(src, &m_decode)        // Auto-copy from source to decoder
 {
     // Nothing else to initialize.

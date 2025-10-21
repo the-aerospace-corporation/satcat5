@@ -12,8 +12,6 @@ from random import randrange
 from struct import pack, unpack
 from time import sleep
 from zlib import crc32
-import serial
-import serial.tools.list_ports as lp
 import threading
 import traceback
 
@@ -34,8 +32,9 @@ def list_uart_interfaces():
         Values are ID-strings suitable for passing to serial.Serial.
         (Formatting of the ID-strings is OS-specific)
     """
+    import serial.tools.list_ports as list_ports
     result = {}
-    for dev in lp.comports():
+    for dev in list_ports.comports():
         os_name = dev.device
         label = os_name + ': ' + dev.description
         result[label] = os_name
@@ -129,6 +128,7 @@ class AsyncSerialPort:
         self._tx_buff = b''
         self.set_callback(callback)
         # Create placeholder Serial object and worker threads.
+        import serial
         self._port = serial.Serial()
         self._rx_thread = None
         self._tx_thread = None
@@ -161,6 +161,7 @@ class AsyncSerialPort:
             # Cleanup if already open.
             self.close()
             # Open the specified port.
+            import serial
             self._log.info(self._lbl + ': Opening')
             self._port = serial.Serial(
                 port = portname,
@@ -465,3 +466,7 @@ class AsyncSLIPWriteOnly:
         """
         slip_frm = slipEncodeFCS(eth_usr, self._zpad)
         self._port.msg_send(slip_frm, blocking)
+
+if __name__ == "__main__":
+    errcount = crc_self_test(verbose = True)
+    print(f"Total errors {errcount}")

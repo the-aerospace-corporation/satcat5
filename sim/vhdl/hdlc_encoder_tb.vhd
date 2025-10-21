@@ -13,10 +13,10 @@
 --
 
 library ieee;
-use     ieee.std_logic_1164.all;
-use     ieee.numeric_std.all;
 use     ieee.math_real.floor;
 use     ieee.math_real.uniform;
+use     ieee.numeric_std.all;
+use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.byte_t;
 
@@ -30,6 +30,8 @@ end hdlc_encoder_tb_helper;
 
 architecture helper of hdlc_encoder_tb_helper is
 
+constant FRAME_BYTES_WIDTH : positive := 16;
+
 signal in_data      : byte_t := (others => '0');
 signal in_valid     : std_logic := '0';
 signal in_last      : std_logic := '0';
@@ -39,6 +41,8 @@ signal enc_data     : std_logic;
 signal enc_valid    : std_logic;
 signal enc_last     : std_logic;
 signal enc_ready    : std_logic := '0';
+
+signal u_frame_bytes : unsigned(FRAME_BYTES_WIDTH-1 downto 0);
 
 signal dec_write    : std_logic;
 
@@ -58,6 +62,8 @@ signal rate_enc     : real := 0.0;
 signal test_done_i  : std_logic := '0';
 
 begin
+
+u_frame_bytes <= to_unsigned(FRAME_BYTES, u_frame_bytes'length);
 
 -- Clock gen
 clk <= not clk after 5 ns; -- 1/(2*5 ns) = 100 MHz
@@ -185,19 +191,19 @@ end process;
 
 uut_enc : entity work.hdlc_encoder
     generic map(
-    FRAME_BYTES => FRAME_BYTES,
     MSB_FIRST   => MSB_FIRST)
     port map(
-    in_data   => in_data,
-    in_valid  => in_valid,
-    in_last   => in_last,
-    in_ready  => in_ready,
-    out_data  => enc_data,
-    out_valid => enc_valid,
-    out_last  => enc_last,
-    out_ready => enc_ready,
-    clk       => clk,
-    reset_p   => reset_p);
+    in_data     => in_data,
+    in_valid    => in_valid,
+    in_last     => in_last,
+    in_ready    => in_ready,
+    out_data    => enc_data,
+    out_valid   => enc_valid,
+    out_last    => enc_last,
+    out_ready   => enc_ready,
+    frame_bytes => u_frame_bytes,
+    clk         => clk,
+    reset_p     => reset_p);
 
 dec_write <= enc_valid and enc_ready;
 

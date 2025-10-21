@@ -39,25 +39,27 @@ namespace satcat5 {
 
             // Other accessors.
             inline satcat5::eth::ProtoArp* arp() const
-                {return &m_iface->m_arp;}
+                { return &m_iface->m_arp; }
+            inline satcat5::eth::Dispatch* eth() const
+                { return m_iface->iface(); }
             inline satcat5::ip::Dispatch* iface() const
-                {return m_iface;}
+                { return m_iface; }
             inline satcat5::ip::Addr ipaddr() const
-                {return m_iface->ipaddr();}
+                { return m_iface->ipaddr(); }
             inline satcat5::eth::MacAddr macaddr() const
-                {return m_iface->macaddr();}
+                { return m_iface->macaddr(); }
             inline satcat5::eth::VlanTag reply_vtag() const
                 { return m_iface->reply_vtag(); }
             inline satcat5::eth::MacAddr reply_mac() const
-                {return m_iface->reply_mac();}
+                { return m_iface->reply_mac(); }
             inline bool reply_is_multicast() const
-                {return m_iface->reply_is_multicast();}
+                { return m_iface->reply_is_multicast(); }
             inline satcat5::ip::Addr reply_ip() const
-                {return m_iface->reply_ip();}
+                { return m_iface->reply_ip(); }
             inline satcat5::udp::Port reply_src() const
-                {return m_reply_src;}
+                { return m_reply_src; }
             inline satcat5::udp::Port reply_dst() const
-                {return m_reply_dst;}
+                { return m_reply_dst; }
 
             //! Get the next unclaimed dynamically-allocated port index.
             satcat5::udp::Port next_free_port();

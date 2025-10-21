@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // ConfigBus core definitions
@@ -12,6 +12,15 @@
 
 namespace cfg = satcat5::cfg;
 
+u32 cfg::TrafficStats::errct_total() const {
+    return u32(errct_mac)
+         + u32(errct_ovr_tx)
+         + u32(errct_ovr_rx)
+         + u32(errct_pkt)
+         + u32(errct_ptp_rx)
+         + u32(errct_ptp_tx);
+}
+
 cfg::NetworkStats::NetworkStats(
         cfg::ConfigBus* cfg, unsigned devaddr)
     : m_traffic(cfg->get_register(devaddr))
@@ -19,14 +28,12 @@ cfg::NetworkStats::NetworkStats(
     // Nothing else to initialize.
 }
 
-void cfg::NetworkStats::refresh_now()
-{
+void cfg::NetworkStats::refresh_now() {
     // Writing to any portion of the register map reloads all counters.
     *m_traffic = 0;
 }
 
-cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx)
-{
+cfg::TrafficStats cfg::NetworkStats::get_port(unsigned idx) {
     cfg::TrafficStats stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned reg = 16 * idx;         // Fixed size, 16 registers per port
     if (reg < cfg::REGS_PER_DEVICE) {

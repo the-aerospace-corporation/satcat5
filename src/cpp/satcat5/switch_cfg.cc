@@ -120,6 +120,10 @@ void SwitchConfig::set_promiscuous(unsigned port_idx, bool enable) {
     m_reg[REG_PROMISC] = temp;
 }
 
+void SwitchConfig::set_promiscuous_mask(u32 mask) {
+    m_reg[REG_PROMISC] = mask;
+}
+
 u32 SwitchConfig::get_promiscuous_mask() {
     return m_reg[REG_PROMISC];
 }

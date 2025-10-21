@@ -263,8 +263,13 @@ namespace satcat5 {
         protected:
             //! Constructor requires child class to provide a working buffer.
             //! This constructor is protected for use by child objects only.
-            //! \see ListWriterStatic.
-            //! \copydoc satcat5::cbor::CborWriter::CborWriter()
+            //! \see CborWriter, ListWriterStatic.
+            //!
+            //! \param dst Writeable destination, or NULL if child classes will
+            //!            access the buffer directly after `close()`.
+            //! \param encode Pointer to an uninitialized QCBOR encoder object.
+            //! \param buff Backing buffer for QCBOR.
+            //! \param size Backing buffer size for QCBOR.
             ListWriter(
                     satcat5::io::Writeable* dst,
                     QCBOREncodeContext* encode,
@@ -591,10 +596,9 @@ namespace satcat5 {
             //! This method always writes true/false values as single bytes
             //! (u8 per boolean value), regardless of platform `sizeof(bool)`.
             //!
-            //! Template parameter is the type of elements to write to the
-            //! array. Two interfaces are provided - one takes a pointer to an
-            //! array and the other uses io::Writeable. All values are always
-            //! written in CPU-native endian order.
+            //! Two interfaces are provided: one takes a pointer to an
+            //! array, and the other uses io::Writeable. All values are
+            //! always written in CPU-native endian order.
             //!
             //! Example usage to directly populate an array:
             //! ```
@@ -611,7 +615,7 @@ namespace satcat5 {
             //! \param dst Writeable destination for array elements.
             //! \returns Number of elements written to `dst`.
             //! If there was not enough space in `dst`, this returns -1.
-            //! If the read element was not of type `T`, this return -2.
+            //! If any CBOR item has a mismatched type, this returns -2.
             //! @{
             int get_bool_array(satcat5::io::Writeable& dst) const;
             int get_bool_array(u8* arr, unsigned arr_len) const {
@@ -721,10 +725,9 @@ namespace satcat5 {
             //! Read an array of boolean values from the Map, always
             //! written as u8 values regardless of platform `sizeof(bool)`.
             //!
-            //! Template parameter is the type of elements to write to the
-            //! array. Two interfaces are provided - one takes a pointer to an
-            //! array and the other uses io::Writeable. All values are always
-            //! written in CPU-native endian order.
+            //! Two interfaces are provided: one takes a pointer to an
+            //! array, and the other uses io::Writeable. All values are
+            //! always written in CPU-native endian order.
             //!
             //! Example usage to directly populate an array:
             //! ```
@@ -736,12 +739,13 @@ namespace satcat5 {
             //! s8 val = (s8) buffer[2]; // Example cast down to 8-bit type
             //! ```
             //!
+            //! \param key The dictionary key to be read.
             //! \param arr Destination array for read values.
             //! \param arr_len Length of `arr`.
             //! \param dst Writeable destination for array elements.
             //! \returns Number of elements written to `dst`.
             //! If there was not enough space in `dst`, this returns -1.
-            //! If the read element was not of type `T`, this return -2.
+            //! If any CBOR item has a mismatched type, this returns -2.
             //! @{
             int get_bool_array(KEYTYPE key, satcat5::io::Writeable& dst) const;
             int get_bool_array(KEYTYPE key, u8* arr, unsigned arr_len) const {
@@ -823,8 +827,11 @@ namespace satcat5 {
         //! Output includes the key/value pair, if applicable.
         struct Logger {
             const QCBORItem& m_item;
+
             constexpr explicit Logger(const QCBORItem& item)
                 : m_item(item) {}
+            Logger(const Logger& t) = default;
+            Logger& operator=(const Logger& t) = default;
             void log_to(satcat5::log::LogBuffer& wr) const;
         };
     }

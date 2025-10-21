@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2023 The Aerospace Corporation.
+// Copyright 2022-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Console application for viewing Chat/Log messages
@@ -15,6 +15,10 @@
 #include <hal_posix/posix_uart.h>
 #include <hal_posix/posix_utils.h>
 #include <satcat5/eth_chat.h>
+#include <satcat5/eth_socket.h>
+#include <satcat5/eth_sw_log.h>
+#include <satcat5/ip_stack.h>
+#include <satcat5/udp_socket.h>
 
 using namespace satcat5;
 
@@ -22,20 +26,28 @@ using namespace satcat5;
 log::ToConsole logger;          // Print Log messages to console
 util::PosixTimekeeper timer;    // Link system time to internal timers
 
+// Set local MAC and IP address for sending chat messages.
+constexpr eth::MacAddr LOCAL_MAC
+    = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
+constexpr ip::Addr LOCAL_IP(192, 168, 1, 42);
+
 // Set up a network stack and print received messages.
-void chat_forever(io::Writeable* dst, io::Readable* src,
-    eth::MacAddr local_mac = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC})
-{
-    // Set up a network stack for the chat protocol.
-    eth::Dispatch* dispatch = new eth::Dispatch(
-        local_mac, dst, src);
-    eth::ChatProto* proto = new eth::ChatProto(
-        dispatch, "log-viewer");
-    util::ChatPrinter* chat = new util::ChatPrinter(proto);
+void chat_forever(io::Writeable* dst, io::Readable* src) {
+    // Create an Ethernet/IP/UDP network stack.
+    ip::Stack net(LOCAL_MAC, LOCAL_IP, dst, src);
+
+    // Attach the system to read and print chat/log messages.
+    eth::ChatProto proto(&net.m_eth, "log-viewer");
+    util::ChatPrinter chat(&proto);
+
+    // Attach the system to read and print packet-log messages.
+    // (One instance for raw-Ethernet, and another for UDP.)
+    eth::SwitchLogFormatter pktlog_eth(&net.m_eth);
+    eth::SwitchLogFormatter pktlog_udp(&net.m_udp);
 
     // Forward user input to the chat protocol.
     // (Type message and hit enter to send.)
-    io::KeyboardStream* kb = new io::KeyboardStream(chat);
+    io::KeyboardStream* kb = new io::KeyboardStream(&chat);
 
     // Poll until user hits Ctrl+C.
     while(1) {
@@ -45,13 +57,9 @@ void chat_forever(io::Writeable* dst, io::Readable* src,
 
     // Cleanup.
     delete kb;
-    delete chat;
-    delete proto;
-    delete dispatch;
 }
 
-int main(int argc, const char* argv[])
-{
+int main(int argc, const char* argv[]) {
     // Set console mode for UTF-8 support.
     setlocale(LC_ALL, SATCAT5_WIN32 ? ".UTF8" : "");
 
@@ -85,7 +93,7 @@ int main(int argc, const char* argv[])
     io::SlipUart* uart = 0;
 
     if (pcap::is_device(ifname.c_str())) {
-        sock = new pcap::Socket(ifname.c_str(), RX_BUFF_SIZE, eth::ETYPE_CHAT_TEXT);
+        sock = new pcap::Socket(ifname.c_str(), RX_BUFF_SIZE);
     } else {
         uart = new io::SlipUart(ifname.c_str(), baud, RX_BUFF_SIZE);
     }

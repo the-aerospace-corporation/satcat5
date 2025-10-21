@@ -92,6 +92,8 @@ project addfolder common_sw
 project addfile ../../src/vhdl/common/aes_cipher.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/aes_gcm_gf_mult.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/aes_gcm.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/cobs_decoder.vhd VHDL common_lib
+project addfile ../../src/vhdl/common/cobs_encoder.vhd VHDL common_lib
 project addfile ../../src/vhdl/common/hdlc_decoder.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/hdlc_encoder.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/io_clock_detect.vhd VHDL common_sw
@@ -143,12 +145,15 @@ project addfile ../../src/vhdl/common/eth_traffic_src.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_augment.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_delay.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_inject.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/packet_prefix.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/packet_round_robin.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_adjust.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_clksynth.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_filter.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_free.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_gen.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_counter_coarse.vhd VHDL common_sw
+project addfile ../../src/vhdl/common/ptp_counter_verdact.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_counter_sync.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_egress.vhd VHDL common_sw
 project addfile ../../src/vhdl/common/ptp_ingress.vhd VHDL common_sw
@@ -291,6 +296,7 @@ project addfile ../../sim/vhdl/cfgbus_i2c_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_port_stats_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_spi_tb.vhd VHDL test
 project addfile ../../sim/vhdl/cfgbus_uart_tb.vhd VHDL test
+project addfile ../../sim/vhdl/cobs_encoder_tb.vhd VHDL test
 project addfile ../../sim/vhdl/config_file2rom_tb.vhd VHDL test
 project addfile ../../sim/vhdl/config_mdio_rom_tb.vhd VHDL test
 project addfile ../../sim/vhdl/config_port_test_tb.vhd VHDL test
@@ -354,7 +360,8 @@ project addfile ../../sim/vhdl/port_stream_tb.vhd VHDL test
 project addfile ../../sim/vhdl/prng_lfsr_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_adjust_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_clksynth_tb.vhd VHDL test
-project addfile ../../sim/vhdl/ptp_counter_tb.vhd VHDL test
+project addfile ../../sim/vhdl/ptp_counter_coarse_tb.vhd VHDL test
+project addfile ../../sim/vhdl/ptp_counter_verdact_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_egress_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_filter_tb.vhd VHDL test
 project addfile ../../sim/vhdl/ptp_ingress_tb.vhd VHDL test

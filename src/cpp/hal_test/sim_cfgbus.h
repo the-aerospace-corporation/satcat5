@@ -16,6 +16,7 @@
 #pragma once
 
 #include <deque>
+#include <map>
 #include <satcat5/cfgbus_core.h>
 
 namespace satcat5 {
@@ -28,29 +29,43 @@ namespace satcat5 {
         //! single fixed value, or pull from a pre-populated queue.
         class CfgRegister : public satcat5::cfg::ConfigBus {
         public:
-            // For safety checking, registers cannot be read by default.
-            // Call read_default_* to set the appropriate mode.
+            //! Constructor for a single register.
+            //! For safety checking, registers cannot be read by default.
+            //! Call read_default_* to set the appropriate mode.
             CfgRegister();
 
-            // Set default value for reads when the queue is empty.
-            void read_default_none();       // Read when empty = error
-            void read_default_echo();       // Read when empty = last written
-            void read_default(u32 val);     // Read when empty = value
+            //! Set default value for reads when the queue is empty.
+            //! The simulated register includes a queue of expected reads.
+            //! \see read_push, read_count, read_queue.
+            //! These methods set the behavior when that queue is empty:
+            //! * read_default_none(): Report an error, then return zero.
+            //! * read_default_echo(): Returns the last written value.
+            //! * read_default(...): Returns the user-specified value.
+            //!@{
+            void read_default_none();
+            void read_default_echo();
+            void read_default(u32 val);
+            //!@}
 
-            // Queue up a read for this register.
-            // The read queue is populated by the mock or test infrastructure.
-            // Reads are pulled from the queue until it is empty, then follow
-            // the "default" policy set by the various methods above.
-            void read_push(u32 val);        // Enqueue next read-response
-            unsigned read_count() const;    // Total reads from this register
-            unsigned read_queue() const;    // Number of queued responses
+            // Cumulative read/write statistics.
+            unsigned read_count() const;    //!< Total reads from this register.
+            unsigned write_count() const;   //!< Total writes to this register.
 
-            // Query the queue of write commands.
-            // Each write to the register is added to this queue, which can
-            // then be queried to verify that the written value is correct.)
-            unsigned write_count() const;   // Total writes to this register
-            unsigned write_queue() const;   // Number of queued write values
-            u32 write_pop();                // Pop next write value from queue
+            //! Queue up a read for this register.
+            //! The read queue is populated by the mock or test infrastructure.
+            //! Reads are pulled from the queue until it is empty, then follow
+            //! the "default" policy set by the various "read_default" methods.
+            //! \see read_default_none, read_default_echo, read_default
+            void read_push(u32 val);
+            //! Number of queued responses. \see read_push.
+            unsigned read_queue() const;
+
+            //! Pop one value from the recent write queue.
+            //! Each write to the register is added to an queue, which can
+            //! then be queried to verify that the written value is correct.
+            u32 write_pop();
+            //!< Number of queued write values. \see write_pop.
+            unsigned write_queue() const;
 
             // Basic read and write operations for ConfigBus API.
             satcat5::cfg::IoStatus read(unsigned regaddr, u32& rdval) override;
@@ -71,27 +86,59 @@ namespace satcat5 {
             unsigned m_wr_count;
         };
 
-        // Simulated bank of registers.
+        //! Simulated bank of ConfigBus registers.
+        //! This class wraps an array of CfgRegister objects, representing
+        //! a ConfigBus "device-address" spanning up to 1024 registers.
+        //! It provides accessors for configuring individual registers, or
+        //! for configuring all registers at once. \see CfgRegister.
         class CfgDevice : public satcat5::cfg::ConfigBus {
         public:
             // Basic read and write operations for ConfigBus API.
             satcat5::cfg::IoStatus read(unsigned regaddr, u32& val) override;
             satcat5::cfg::IoStatus write(unsigned regaddr, u32 wrval) override;
 
-            // Accessor for each simulated register.
+            //! Accessor for each simulated register.
             satcat5::test::CfgRegister& operator[](unsigned idx) {return reg[idx];}
 
-            // Make the "irq_poll" method accessible.
+            //! Make the "irq_poll" method accessible.
             void irq_poll() {satcat5::cfg::ConfigBus::irq_poll();}
 
-            // Set read mode for all contained registers.
+            //! Set read mode for all contained registers.
+            //! \see CfgRegister::read_default.
+            //!@{
             void read_default_none();   // Read when empty = error
             void read_default_echo();   // Read when empty = last written
             void read_default(u32 val); // Read when empty = value
+            //!@}
 
         protected:
             // Bank of underlying registers.
             satcat5::test::CfgRegister reg[satcat5::cfg::REGS_PER_DEVICE];
+        };
+
+        //! Simulated ConfigBus address space with many devices.
+        //! This class wraps a set of ConfigBus objects, each representing
+        //! a single ConfigBus device address. \see CfgDevice.
+        class CfgSpace : public satcat5::cfg::ConfigBus {
+        public:
+            // Basic read and write operations for ConfigBus API.
+            satcat5::cfg::IoStatus read(unsigned regaddr, u32& val) override;
+            satcat5::cfg::IoStatus write(unsigned regaddr, u32 wrval) override;
+
+            //! Make the "irq_poll" method accessible.
+            void irq_poll() {satcat5::cfg::ConfigBus::irq_poll();}
+
+            //! Register a handler for a specific device address.
+            void add_device(unsigned devaddr, satcat5::cfg::ConfigBus& cfg);
+
+            //! Access the designated device handler, by device-address.
+            satcat5::cfg::ConfigBus& get_device(unsigned devaddr);
+
+        protected:
+            // Handler for undefined registers.
+            satcat5::test::CfgRegister m_undef;
+            // Bank of underlying registers.
+            std::map<unsigned, satcat5::cfg::ConfigBus&> m_devs;
         };
     }
 }

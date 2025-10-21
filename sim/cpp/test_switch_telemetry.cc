@@ -30,7 +30,7 @@ TEST_CASE("switch_telemetry") {
     tlm.connect(satcat5::ip::ADDR_BROADCAST, satcat5::udp::PORT_CBOR_TLM);
     satcat5::eth::SwitchConfig cfg(&reg_cfg, 0);
     satcat5::cfg::NetworkStats stats(&reg_stats, 0);
-    satcat5::udp::Socket rx_udp(&xlink.net1.m_udp);
+    satcat5::udp::SocketRx rx_udp(&xlink.net1.m_udp);
     rx_udp.bind(satcat5::udp::PORT_CBOR_TLM);
 
     // Basic test with SwitchConfig only.

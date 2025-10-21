@@ -16,6 +16,22 @@ satcat5::udp::Socket::Socket(satcat5::udp::Dispatch* iface)
     // No other initialization required.
 }
 
+satcat5::udp::SocketRx::SocketRx(satcat5::udp::Dispatch* iface)
+    : SocketCore(iface,
+        nullptr, 0, 0,
+        m_rxbuff, SATCAT5_UDP_BUFFSIZE, SATCAT5_UDP_PACKETS)
+{
+    // No other initialization required.
+}
+
+satcat5::udp::SocketTx::SocketTx(satcat5::udp::Dispatch* iface)
+    : SocketCore(iface,
+        m_txbuff, SATCAT5_UDP_BUFFSIZE, SATCAT5_UDP_PACKETS,
+        nullptr, 0, 0)
+{
+    // No other initialization required.
+}
+
 SocketCore::SocketCore(
         satcat5::udp::Dispatch* iface,
         u8* txbuff, unsigned txbytes, unsigned txpkt,
@@ -28,8 +44,7 @@ SocketCore::SocketCore(
     // No other initialization required.
 }
 
-void SocketCore::bind(const satcat5::udp::Port& port)
-{
+void SocketCore::bind(const satcat5::udp::Port& port) {
     m_addr.close();                     // Unbind Tx
     m_filter = Type(port.value);        // Rebind Rx
 }

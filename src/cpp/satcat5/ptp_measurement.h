@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //!\file
@@ -42,6 +42,11 @@ namespace satcat5 {
             satcat5::ptp::Time t2;      //!< Timestamp T2 (A to B / Rx)
             satcat5::ptp::Time t3;      //!< Timestamp T3 (B to A / Tx)
             satcat5::ptp::Time t4;      //!< Timestamp T4 (B to A / Rx)
+
+            // Explicitly declare default constructor and assignment methods.
+            Measurement() = default;
+            Measurement(const Measurement& t) = default;
+            Measurement& operator=(const Measurement& t) = default;
 
             //! Is this measurement completed? (i.e., T1/T2/T3/T4 all known)
             bool done() const;

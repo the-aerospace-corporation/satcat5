@@ -1,6 +1,6 @@
 # SatCat5 Arty A7 Example Design
 
-![SatCat5 Logo](images/satcat5.svg)
+![SatCat5 Logo](../../doc/images/satcat5.svg)
 
 
 # Overview

@@ -61,7 +61,6 @@ uut : entity work.cfgbus_hdlc
     SLIP_ENABLE   => SLIP_ENABLE,
     INJECT_ENABLE => false,
     CMD_CODE      => x"03",
-    FRAME_BYTES   => FRAME_BYTES,
     MSB_FIRST     => MSB_FIRST,
     FIFO_LOG2     => FIFO_LOG2)
     port map(

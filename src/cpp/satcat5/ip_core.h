@@ -28,6 +28,8 @@ namespace satcat5 {
             //! Constructor in human-readable form (a.b.c.d)
             constexpr Addr(u8 a, u8 b, u8 c, u8 d)
                 : value(16777216ul * a + 65536ul * b + 256ul * c + d) {}
+            Addr(const Addr& t) = default;
+            Addr& operator=(const Addr& t) = default;
 
             //! Commonly used operators.
             //!@{
@@ -74,6 +76,7 @@ namespace satcat5 {
             //! Copy-constructor.
             constexpr Mask(const satcat5::ip::Addr& addr)  // NOLINT
                 : Addr(addr.value) {}
+            Mask& operator=(const Mask& t) = default;
 
             //! Convert this subnet-mask to a CIDR prefix length.
             //! (Undefined if this mask is not a valid CIDR subnet.)
@@ -85,6 +88,10 @@ namespace satcat5 {
             // Raw access to the underlying representation.
             satcat5::ip::Addr addr;     //!< Base address
             satcat5::ip::Mask mask;     //!< Subnet mask
+
+            Subnet() = default;
+            Subnet(const Subnet& t) = default;
+            Subnet& operator=(const Subnet& t) = default;
 
             //! Does this subnet contain the given address?
             constexpr bool contains(const satcat5::ip::Addr& other) const
@@ -115,6 +122,8 @@ namespace satcat5 {
 
             //! Constructor.
             constexpr Port(u16 port) : value(port) {}   // NOLINT
+            Port(const Port& t) = default;
+            Port& operator=(const Port& t) = default;
 
             //! Commonly used operators.
             //!@{
@@ -166,6 +175,10 @@ namespace satcat5 {
         struct Header {
             //! Raw access to the underlying header contents.
             u16 data[HDR_MAX_SHORTS];
+
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
 
             // Accessors for specific sub-fields.
             // See also: https://en.wikipedia.org/wiki/IPv4#Header

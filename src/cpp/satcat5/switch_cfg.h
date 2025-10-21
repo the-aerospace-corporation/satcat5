@@ -196,6 +196,9 @@ namespace satcat5 {
             //! switch traffic regardless of the desitnation address.
             void set_promiscuous(unsigned port_idx, bool enable);
 
+            //! Set the "promiscuous" flag for all ports at once.
+            void set_promiscuous_mask(u32 mask);
+
             //! Identify which ports are currently promiscuous.
             u32 get_promiscuous_mask();
 

@@ -180,11 +180,11 @@ Many embedded systems should also set "SATCAT5_CFGBUS_DIRECT=1" to minimize code
 
 The "qcbor" folder contains Laurence Lundblade's
 [QCBOR library](https://github.com/laurencelundblade/QCBOR).
-It is derived from version 1.2, but with a flattened folder structure,
+It is derived from version 1.5.2, but with a flattened folder structure,
 no support code, and minimal compatibility fixes for specific compilers.
 
 QCBOR is redistributed alongside SatCat5 under the terms of its
-[open-source license](qcbor/README.md),
+[open-source license](qcbor/LICENSE),
 which is essentially the 3-clause BSD license.
 
 The QCBOR library is used for encoding of CBOR key-value dictionaries as part of the 
@@ -205,7 +205,7 @@ which is redistributed under the terms of the Boost license.
 
 # Copyright Notice
 
-Copyright 2021-2024 The Aerospace Corporation.
+Copyright 2021-2025 The Aerospace Corporation.
 
 This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 

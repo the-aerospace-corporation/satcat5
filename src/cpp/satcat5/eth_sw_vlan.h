@@ -70,6 +70,10 @@ namespace satcat5 {
                 satcat5::eth::VlanRate vrate;   // Rate-limiter policy
                 SATCAT5_PMASK_TYPE pmask;       // Connected ports mask
                 u32 tcount;                     // Token-bucket counter
+
+                VlanPolicy() = default;
+                VlanPolicy(const VlanPolicy& t) = default;
+                VlanPolicy& operator=(const VlanPolicy& t) = default;
             };
 
             // Configure this object and link to the working buffer.

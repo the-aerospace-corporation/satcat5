@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -12,13 +12,11 @@ using satcat5::io::ArrayWriteStatic;
 using satcat5::ip::PROTO_UDP;
 using satcat5::net::Type;
 using satcat5::udp::Dispatch;
+using satcat5::udp::HEADER_BYTES;
 namespace log = satcat5::log;
 
 // Set verbosity level (0/1/2)
 static const unsigned DEBUG_VERBOSE = 0;
-
-// UDP header has a fixed length of 8 bytes (src/dst/len/checksum)
-static const unsigned UDP_HDR_LEN   = 8;
 
 // Maximum number of dynamically assigned ports?
 #ifndef SATCAT5_UDP_MAXDYN
@@ -90,7 +88,7 @@ satcat5::io::Writeable* Dispatch::open_write(
         log::Log(log::DEBUG, "UdpDispatch: open_write").write(dst.value);
 
     // Write out Ethernet and IPv4 headers.
-    unsigned total_len = len + UDP_HDR_LEN;
+    unsigned total_len = len + HEADER_BYTES;
     satcat5::io::Writeable* wr = addr.open_write(total_len);
 
     // Write the UDP frame header.
@@ -109,7 +107,7 @@ void Dispatch::frame_rcvd(satcat5::io::LimitedRead& src)
         log::Log(log::DEBUG, "UdpDispatch: frame_rcvd").write((u16)src.get_read_ready());
 
     // Sanity-check on length before reading header.
-    if (src.get_read_ready() < 8) return;
+    if (src.get_read_ready() < HEADER_BYTES) return;
 
     // Read the UDP frame header.
     src.read_obj(m_reply_src);      // Source port
@@ -118,8 +116,8 @@ void Dispatch::frame_rcvd(satcat5::io::LimitedRead& src)
     u16 chk = src.read_u16();       // Checksum (ignored)
 
     // Sanity-check on the reported length.
-    unsigned len_eff = len - UDP_HDR_LEN;
-    if ((len < UDP_HDR_LEN) || (len_eff > src.get_read_ready())) {
+    unsigned len_eff = len - HEADER_BYTES;
+    if ((len < HEADER_BYTES) || (len_eff > src.get_read_ready())) {
         if (DEBUG_VERBOSE > 0)
             log::Log(log::INFO, "UdpDispatch: Bad length").write(len);
         return;                     // Invalid length parameter

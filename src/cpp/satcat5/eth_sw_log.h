@@ -61,10 +61,12 @@
 #pragma once
 
 #include <satcat5/cfgbus_core.h>
-#include <satcat5/eth_header.h>
+#include <satcat5/eth_address.h>
 #include <satcat5/eth_switch.h>
 #include <satcat5/io_writeable.h>
+#include <satcat5/pkt_buffer.h>
 #include <satcat5/polling.h>
+#include <satcat5/udp_core.h>
 
 namespace satcat5 {
     namespace eth {
@@ -102,6 +104,11 @@ namespace satcat5 {
             u8  type_src;               //!< Type and source port
             satcat5::eth::Header hdr;   //!< Ethernet packet header
             u32 meta;                   //!< Additional metadata
+
+            // Explicitly declare default constructor and assignment methods.
+            SwitchLogMessage() = default;
+            SwitchLogMessage(const SwitchLogMessage& t) = default;
+            SwitchLogMessage& operator=(const SwitchLogMessage& t) = default;
 
             //! Coded reason for a dropped packet, if applicable.
             //! \see DROP_OVERFLOW, DROP_BADFCS, DROP_BADFRM, DROP_MCTRL, etc.
@@ -225,11 +232,54 @@ namespace satcat5 {
             u16 m_skip_keep;
         };
 
-        //! Read packet-logs from an input byte-stream.
-        class SwitchLogReader : protected satcat5::io::EventListener {
+        //! Combine a SwitchLogWriter with a built-in output buffer.
+        //! The buffer size fits a designated number of packet descriptors.
+        //! Two to four is typical, to better handle short packet bursts.
+        template <unsigned NPKT>
+        class SwitchLogBuffer : public satcat5::io::ReadableRedirect {
+        public:
+            //! Create and link the writer and buffer objects.
+            SwitchLogBuffer()
+                : ReadableRedirect(&m_buffer), m_writer(&m_buffer) {}
+
+            //! Flush contents of the internal buffer.
+            inline void clear()
+                { m_buffer.clear(); }
+
+            //! Return the inner object for passing to SwitchCore::add_log().
+            inline SwitchLogHandler* writer()
+                { return &m_writer; }
+
         protected:
+            static constexpr unsigned NBYTES = NPKT * SwitchLogMessage::LEN_BYTES;
+            satcat5::io::StreamBufferStatic<NBYTES> m_buffer;
+            satcat5::eth::SwitchLogWriter m_writer;
+        };
+
+        //! Read packet-logs from an input stream or network interface.
+        //! In buffered mode, the input may be any io::Readable object, either
+        //! packetized or an undifferentiated byte-stream.
+        //! In network mode, the input may be any net::Dispatch object. The
+        //! user specifies the filter value (i.e., EtherType, UDP port, etc.)
+        class SwitchLogReader
+            : protected satcat5::io::EventListener
+            , protected satcat5::net::Protocol
+            , protected satcat5::poll::Timer {
+        public:
+            //! Set polling interval, in milliseconds.
+            //! This method applies to buffered sources only.
+            //! By default (interval = zero), log descriptors are read and
+            //! processed immediately. To rate-limit outgoing messages, set
+            //! the desired polling interval in milliseconds.
+            void set_polling_interval(unsigned msec);
+
+        protected:
+            //! Constructor for buffered mode.
             //! Only children should create or destroy the base class.
             explicit SwitchLogReader(satcat5::io::Readable* src);
+            //! Constructor for network mode.
+            //! Only children should create or destroy the base class.
+            SwitchLogReader(satcat5::net::Dispatch* iface, satcat5::net::Type filter);
             ~SwitchLogReader() SATCAT5_OPTIONAL_DTOR;
 
             //! The child class MUST override this method.
@@ -239,22 +289,103 @@ namespace satcat5 {
             // Event handlers.
             void data_rcvd(satcat5::io::Readable* src) override;
             void data_unlink(satcat5::io::Readable* src) override;
+            void frame_rcvd(satcat5::io::LimitedRead& src) override;
+            void timer_event() override;
 
             // Member variables.
             satcat5::io::Readable* m_src;
+            satcat5::net::Dispatch* const m_iface;
         };
 
         //! Read binary packet logs to produce human-readable log messages.
-        class SwitchLogFormatter : protected SwitchLogReader {
+        //! Do not use this class in systems where log messages are relayed
+        //! over the network, because this may create an infinite loop.
+        class SwitchLogFormatter : public SwitchLogReader {
         public:
             //! Bind this object to a stream of packet-logging data.
             explicit SwitchLogFormatter(
                 satcat5::io::Readable* src,
                 const char* lbl = "PktLog");
+
+            //! Bind this object to an Ethernet interface.
+            explicit SwitchLogFormatter(
+                satcat5::eth::Dispatch* iface,
+                satcat5::eth::MacType etype = satcat5::eth::ETYPE_SWITCH_LOG,
+                const char* lbl = "PktLog");
+
+            //! Bind this object to a UDP interface.
+            explicit SwitchLogFormatter(
+                satcat5::udp::Dispatch* iface,
+                satcat5::udp::Port port = satcat5::udp::PORT_SWITCH_LOG,
+                const char* lbl = "PktLog");
+
+            //! Implement the SwitchLogReader callback.
             void log_event(const satcat5::eth::SwitchLogMessage& msg) override;
 
         protected:
             const char* const m_label;
+        };
+
+        //! Forward binary packet logs to a network interface.
+        //!
+        //! When used with a software SwitchPort, this class accesses
+        //! the egress buffer directly, bypassing the switch logic
+        //! and the normal IP/UDP stack.  This avoids creating log
+        //! messages about forwarded log messages.
+        //!
+        //! When used with a hardware port, duplicates are unavoidable.
+        //! However, consolidating consecutive messages into a single
+        //! packet reduces the impact of such overhead.
+        //!
+        //! The recipient can use eth::Socket to receive log packets,
+        //! then decode the contents using any SwitchLogReader.
+        class SwitchLogToPort : public SwitchLogReader {
+        public:
+            //! Bind this object to a software egress port.
+            //! Call `connect` to start forwarding log packets.
+            SwitchLogToPort(
+                satcat5::io::Readable* src,
+                satcat5::eth::SwitchPort* dst,
+                satcat5::udp::Dispatch* iface);
+
+            //! Bind this object to a hardware egress port.
+            //! Call `connect` to start forwarding log packets.
+            SwitchLogToPort(
+                satcat5::io::Readable* src,
+                satcat5::io::Writeable* dst,
+                satcat5::udp::Dispatch* iface);
+
+            //! Connect to a designated raw-Ethernet address.
+            void connect(
+                const satcat5::eth::MacAddr& addr,
+                const satcat5::eth::MacType& type = satcat5::eth::ETYPE_SWITCH_LOG,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
+
+            //! Connect to a designated IP/UDP address.
+            void connect(
+                const satcat5::udp::Addr& addr,
+                const satcat5::udp::Port& port = satcat5::udp::PORT_SWITCH_LOG,
+                const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
+
+            //! Close the connection and stop log forwarding.
+            inline void close() {
+                m_eth.close();
+                m_udp.close();
+            }
+
+            //! Is this connection currently active?
+            inline bool ready() const
+                { return m_eth.ready() || m_udp.ready(); }
+
+            //! Implement the SwitchLogReader callback.
+            void log_event(const satcat5::eth::SwitchLogMessage& msg) override;
+
+        protected:
+            satcat5::io::MultiWriterBypass m_dst_port;
+            satcat5::io::Writeable* const m_dst_raw;
+            satcat5::eth::Address m_eth;
+            satcat5::udp::Address m_udp;
+            bool m_first;
         };
     }
 }

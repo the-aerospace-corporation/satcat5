@@ -45,7 +45,8 @@ namespace satcat5 {
         //! (RTS/CTS) is not supported for UART peripherals.
         //!
         //! Note that this does NOT establish the SAMV71 I/O mux, this should be
-        //! done externally.
+        //! done externally. Note that support for RTS and/or CTS can be
+        //! configured independently.
         //!
         //! A configurable polling interval is available in the constructor. The
         //! DMA controller only raises interrupts when the buffers are full, so
@@ -93,23 +94,37 @@ namespace satcat5 {
             , public satcat5::sam::HandlerSAMV71
         {
         public:
+            //! Constructor for an ASF3 USART with user-provided buffers.
+            //!
             //! Constructor takes a pointer to the ASF3 USART instance (base
             //! address), configures required DMA channels and USART peripheral,
             //! and starts I/O streaming.
             //!
-            //! \param usart Pointer to (baseaddr of) UART/USART peripheral.
-            //! \param baud_hz Baud rate for the serial line, in Hz.
-            //! \param poll_ms Polling rate for new data in ms, or = 0 for
-            //!     continuous polling via poll::Always.
-            //! \param fc_on Use hardware flow control (RTS/CTS), default off.
-            UsartSamv71(Usart* usart, unsigned baud_hz, unsigned poll_ms,
+            //! \param usart    Pointer to (baseaddr of) UART/USART peripheral.
+            //! \param baud_hz  Baud rate for the serial line, in Hz.
+            //! \param poll_ms  Polling rate for new data in ms, or = 0 for
+            //!                 continuous polling via poll::Always.
+            //! \param txbuff   Pointer to the transmit working buffer.
+            //! \param txbytes  Size of the transmit working buffer, in bytes.
+            //! \param rxbuff   Pointer to the receive working buffer.
+            //! \param rxbytes  Size of the receive working buffer, in bytes.
+            //! \param rxdma0   Pointer to the first DMA working buffer.
+            //! \param rxdma1   Pointer to the second DMA working buffer.
+            //! \param rxdmabytes Size of each DMA working buffer, in bytes.
+            //! \param fc_on    Use hardware flow control (RTS/CTS), default off.
+            UsartSamv71(
+                Usart* usart, unsigned baud_hz, unsigned poll_ms,
                 u8* txbuff, unsigned txbytes, u8* rxbuff, unsigned rxbytes,
                 u8* rxdma0, u8* rxdma1, unsigned rxdmabytes,
                 bool fc_on=false);
 
             //! Set baud rate and RTS/CTS enable.
             //! Always set to 8 bit length, no parity, 1 stop bit.
-            void configure(unsigned baud_hz, bool fc_on=false);
+            void configure(unsigned baud_hz, bool rts_en, bool cts_en);
+
+            //! Alias for backwards compatibility (deprecated).
+            inline void configure(unsigned baud_hz, bool fc_on=false)
+                { configure(baud_hz, fc_on, fc_on); }
 
         protected:
             //! Immediately transfer incoming TX data to the DMA engine.
@@ -154,7 +169,8 @@ namespace satcat5 {
             u8* const       m_rxdma1;
             const unsigned  m_rxdma_nbytes;
             unsigned        m_rxdma_buffidx;
-            bool            m_fc_on;
+            bool            m_rts_en;
+            bool            m_cts_en;
             u8              m_tx_dma_ch;
             u8              m_rx_dma_ch;
         };
@@ -170,12 +186,20 @@ namespace satcat5 {
         template <unsigned SIZE = SATCAT5_SAMV71_UART_BUFFSIZE>
         class UsartSamv71Static : public UsartSamv71 {
         public:
-            //! \copydoc satcat5::sam::UsartSamv71::UsartSamv71
-            UsartSamv71Static(Usart* usart, unsigned baud_hz, unsigned poll_ms,
-                bool fc_on=false)
+            //! Constructor for an ASF3 USART with built-in buffers.
+            //! \see UsartSamv71::UsartSamv71().
+            //!
+            //! \param usart    Pointer to (baseaddr of) UART/USART peripheral.
+            //! \param baud_hz  Baud rate for the serial line, in Hz.
+            //! \param poll_ms  Polling rate for new data in ms, or = 0 for
+            //!                 continuous polling via poll::Always.
+            //! \param fc_on    Use hardware flow control (RTS/CTS), default off.
+            UsartSamv71Static(
+                Usart* usart, unsigned baud_hz,
+                unsigned poll_ms, bool fc_on=false)
             : UsartSamv71(usart, baud_hz, poll_ms,
-                m_txbuff, SIZE, m_rxbuff, SIZE, m_rxdma0, m_rxdma1, SIZE,
-                fc_on) {}
+                m_txbuff, SIZE, m_rxbuff, SIZE,
+                m_rxdma0, m_rxdma1, SIZE, fc_on) {}
 
         private:
             u8 m_txbuff[SIZE];
@@ -204,7 +228,8 @@ namespace satcat5 {
             //!     at least 1ms.
             //! \param poll_always Keeps the poll::Always call to minimize
             //!     latency of received byte processing under light load.
-            UsartSamv71Preempt(Usart* usart, unsigned baud_hz, unsigned poll_ms,
+            UsartSamv71Preempt(
+                Usart* usart, unsigned baud_hz, unsigned poll_ms,
                 bool poll_always=false, bool fc_on=false)
             : satcat5::freertos::StaticTask<TASK_SIZE, TASK_PRIORITY>(
                 "UsartSamv71Preempt", task, this)

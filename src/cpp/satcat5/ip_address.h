@@ -7,6 +7,7 @@
 #pragma once
 
 #include <satcat5/eth_arp.h>
+#include <satcat5/ip_dispatch.h>
 #include <satcat5/net_core.h>
 #include <satcat5/timeref.h>
 
@@ -70,10 +71,20 @@ namespace satcat5 {
             void save_reply_address() override;
 
             // Various accessors.
-            satcat5::eth::MacAddr dstmac() const {return m_dstmac;}
-            satcat5::eth::VlanTag vtag() const {return m_vtag;}
-            satcat5::ip::Addr dstaddr() const {return m_dstaddr;}
-            satcat5::ip::Addr gateway() const {return m_gateway;}
+            inline satcat5::eth::MacAddr dstmac() const
+                { return m_dstmac; }
+            inline satcat5::eth::MacAddr srcmac() const
+                { return m_iface->macaddr(); }
+            inline satcat5::eth::VlanTag vtag() const
+                { return m_vtag; }
+            inline satcat5::eth::Dispatch* eth() const
+                { return m_iface->iface(); }
+            inline satcat5::eth::Header eth_header() const
+                { return {dstmac(), srcmac(), satcat5::eth::ETYPE_IPV4, vtag()}; }
+            inline satcat5::ip::Addr dstaddr() const
+                { return m_dstaddr; }
+            inline satcat5::ip::Addr gateway() const
+                { return m_gateway; }
 
         protected:
             void arp_event(

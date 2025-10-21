@@ -9,6 +9,7 @@ using satcat5::eth::SwitchCore;
 using satcat5::io::EventListener;
 using satcat5::io::null_write;
 using satcat5::io::Readable;
+using satcat5::io::TrafficStats;
 using satcat5::io::TriMode;
 using satcat5::io::Writeable;
 
@@ -55,10 +56,8 @@ void TriMode::configure(Port port, Stream tx, Stream rx) {
     m_eth_slip.port_flush();
 
     // Flush frame and error counters.
-    m_aos_core.error_count();
-    m_aos_core.frame_count();
-    m_eth_slip.error_count();
-    m_eth_slip.frame_count();
+    m_aos_core.stats();
+    m_eth_slip.stats();
 
     // Enable or disable the Ethernet port.
     // (Logic below will connect the callback if requested.)
@@ -176,12 +175,9 @@ void TriMode::configure(Port port, Stream tx, Stream rx) {
     m_rx_mpdu.set_callback(rxm);
 }
 
-unsigned TriMode::error_count() {
-    return m_aos_core.error_count()
-         + m_eth_slip.error_count();
-}
-
-unsigned TriMode::frame_count() {
-    return m_aos_core.frame_count()
-         + m_eth_slip.frame_count();
+TrafficStats TriMode::stats() {
+    if (m_eth_slip.port_enabled())
+        return m_eth_slip.stats();
+    else
+        return TrafficStats::query(m_rx_buff.counter(), m_tx_buff.counter());
 }

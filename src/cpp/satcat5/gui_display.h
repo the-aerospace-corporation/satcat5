@@ -31,19 +31,27 @@ namespace satcat5 {
     namespace gui {
         //! Cursor object tracks position and foreground/background colors.
         struct Cursor {
-            u16 r;      // Row coordinate (0 = top)
-            u16 c;      // Column coordinate (0 = left)
-            u32 fg;     // Foreground color (format defined by display)
-            u32 bg;     // Background color (format defined by display)
+            u16 r;      //!< Row coordinate (0 = top)
+            u16 c;      //!< Column coordinate (0 = left)
+            u32 fg;     //!< Foreground color (format defined by display)
+            u32 bg;     //!< Background color (format defined by display)
+
+            Cursor() = default;
+            Cursor(const Cursor& t) = default;
+            Cursor& operator=(const Cursor& t) = default;
         };
 
         //! Argument for a draw command (see below).
         union DrawArg {
-            const void* ptr;        // Pointer to an icon or other object.
-            u32 color;              // Display-specific color argument
-            s16 scroll;             // Scrolling parameter (signed)
-            u32 count;              // Any other counter
-            u16 rc[2];              // A row and column (coordinate or size)
+            const void* ptr;    //!< Pointer to an icon or other object.
+            u32 color;          //!< Display-specific color argument
+            s16 scroll;         //!< Scrolling parameter (signed)
+            u32 count;          //!< Any other counter
+            u16 rc[2];          //!< A row and column (coordinate or size)
+
+            DrawArg() = default;
+            DrawArg(const DrawArg& t) = default;
+            DrawArg& operator=(const DrawArg& t) = default;
         };
 
         //! Each "draw command" updates a rectangular region of pixels.
@@ -232,6 +240,10 @@ namespace satcat5 {
             u32 bg_warn,  fg_warn;
             u32 bg_info,  fg_info;
             u32 bg_debug, fg_debug;
+
+            LogColors() = default;
+            LogColors(const LogColors& t) = default;
+            LogColors& operator=(const LogColors& t) = default;
         };
 
         //! Service for forwarding Log events to a display adapter.

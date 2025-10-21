@@ -16,17 +16,28 @@
 #include <climits>
 
 // Allow safe destruction of SatCat5 objects?
-// Many embedded systems never need to delete anything, and disabling this
-// feature can save several kilobytes of code-size.  Use with caution.
-// For GCC/G++: compiler flag "-DSATCAT5_ALLOW_DELETION=0" to disable.
+//
+// Some embedded systems never need to delete anything, and disabling this
+// feature can save significant code-size.  (Sometimes 100+ kB, if secondary
+// libraries are imported for exception handling.)
+//
+// However, disabling this flag means that SatCat5 objects cannot be safely
+// deleted or allowed to fall out of scope.  To prevent undefined behavior
+// and "fail loud" in the event of such exceptions, placeholder destructors
+// are replaced with an infinite loop.  This eases debugging and prevents
+// catastrophic hazards, such as dangling pointers in global linked lists.
+//
+// Disable this flag at your own risk.
+// For GCC/G++: compiler flag "-DSATCAT5_ALLOW_DELETION=0".
 #ifndef SATCAT5_ALLOW_DELETION
-#define SATCAT5_ALLOW_DELETION  1
+#define SATCAT5_ALLOW_DELETION 1
 #endif
 
+// If applicable, define the placeholder destructor / error-trap.
 #if SATCAT5_ALLOW_DELETION
-#define SATCAT5_OPTIONAL_DTOR       // Full function defined elsewhere
+#define SATCAT5_OPTIONAL_DTOR               // Full function defined elsewhere
 #else
-#define SATCAT5_OPTIONAL_DTOR {}    // Null inline placeholder
+#define SATCAT5_OPTIONAL_DTOR {while(1);}   // Infinite loop placeholder
 #endif
 
 // Enable use of the QCBOR library?
@@ -212,11 +223,21 @@ namespace satcat5 {
     }
 
     namespace io {                  // Input and output streams
+        struct TrafficStats;        // satcat5/io_checksum.h
         class ArrayRead;            // satcat5/io_readable.h
         class ArrayWrite;           // satcat5/io_writeable.h
         class BufferedCopy;         // satcat5/io_buffer.h
         class BufferedIO;           // satcat5/io_buffer.h
         class BufferedWriter;       // satcat5/io_buffer.h
+        class ChecksumRxCommon;     // satcat5/io_checksum.h
+        class ChecksumTxCommon;     // satcat5/io_checksum.h
+        class CobsCodec;            // satcat5/codec_cobs.h
+        class CobsCodecInverse;     // satcat5/codec_cobs.h
+        class CobsDecoder;          // satcat5/codec_cobs.h
+        class CobsEncoder;          // satcat5/codec_cobs.h
+        class Counter;              // satcat5/io_counter.h
+        class CounterInline;        // satcat5/io_counter.h
+        class CounterSimple;        // satcat5/io_counter.h
         class EventListener;        // satcat5/io_readable.h
         class HdlcDecoder;          // satcat5/codec_hdlc.h
         class HdlcEncoder;          // satcat5/codec_hdlc.h
@@ -233,6 +254,7 @@ namespace satcat5 {
         class NullSink;             // satcat5/io_readable.h
         class NullWrite;            // satcat5/io_writeable.h
         class PacketBuffer;         // satcat5/pkt_buffer.h
+        class PacketCombiner;        // satcat5/pkt_combine.h
         class Readable;             // satcat5/io_readable.h
         class ReadableRedirect;     // satcat5/io_readable.h
         class SlipCodec;            // satcat5/codec_slip.h
@@ -310,6 +332,7 @@ namespace satcat5 {
     }
 
     namespace port {                // Network ports
+        class CobsAdapter;          // satcat5/port_adapter.h
         class MailAdapter;          // satcat5/port_adapter.h
         class Mailbox;              // satcat5/port_mailbox.h
         class Mailmap;              // satcat5/port_mailmap.h

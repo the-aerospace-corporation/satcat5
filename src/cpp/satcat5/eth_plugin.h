@@ -85,6 +85,8 @@ namespace satcat5 {
             constexpr PluginPacket()
                 : pkt(nullptr), hdr{}, arp(), ip{}, tcp{}
                 , udp(udp::HEADER_EMPTY), dst_mask(0), hlen(0), flags(0) {}
+            PluginPacket(const PluginPacket& t) = delete;
+            PluginPacket& operator=(const PluginPacket& t) = delete;
 
             //! Read metadata from a packet object.
             //! Always reads #hdr. If present, also reads #ip, #arp, #tcp, #udp.

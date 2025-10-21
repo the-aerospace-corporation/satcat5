@@ -48,6 +48,7 @@ constant EDGE_BOTH_TXR  : cfgbus_word := x"00000003";
 constant DEV_ADDR   : integer := 42;
 constant REG_PPSI   : integer := 43;
 constant REG_PPSO   : integer := 44;
+constant REG_PERIOD : integer := 45;
 
 -- Test sgnals
 signal clk_100      : std_logic := '1';
@@ -58,6 +59,7 @@ signal uut_pps      : std_logic_vector(PAR_COUNT-1 downto 0);
 -- High-level test control
 signal cfg_cmd      : cfgbus_cmd;
 signal cfg_ack      : cfgbus_ack;
+signal test_period  : real := 1.0;
 signal test_phase   : tstamp_t := (others => '0');
 signal test_mode    : cfgbus_word := (others => '0');
 signal test_check   : std_logic := '0';
@@ -94,10 +96,10 @@ begin
         -- Generate the reference PPS, allowing some uncertainty for dither.
         for n in ref_pps'range loop
             phase := real(n) * TSAMP + get_time_sec(subns - test_phase);
-            phase := phase mod 1.0;
-            if (TSAMP <= phase and phase <= 0.5 - TSAMP) then
+            phase := phase mod test_period;
+            if (TSAMP <= phase and phase <= 0.5*test_period - TSAMP) then
                 pval := test_mode(0);       -- First half of cycle
-            elsif (0.5 + TSAMP <= phase and phase <= 1.0 - TSAMP) then
+            elsif (0.5*test_period + TSAMP <= phase and phase <= test_period - TSAMP) then
                 pval := not test_mode(0);   -- Second half of cycle
             else
                 pval := 'Z';                -- Margin for rounding error
@@ -118,6 +120,7 @@ uut_out : entity work.ptp_pps_out
     PAR_COUNT   => PAR_COUNT,
     DEV_ADDR    => DEV_ADDR,
     REG_ADDR    => REG_PPSO,
+    REG_PERIOD  => REG_PERIOD,
     DITHER_EN   => DITHER_EN,
     MSB_FIRST   => MSB_FIRST)
     port map(
@@ -171,30 +174,44 @@ p_test : process
         end if;
     end procedure;
 
-    procedure run_one(phase : real; edge: cfgbus_word) is
-        variable tmax, tmod, tsec, tsub, tdiff : tstamp_t := (others => '0');
+    procedure run_one(period, phase : real; edge: cfgbus_word) is
+        variable psub, tmax, tmod, tsec, tsub, tdiff : tstamp_t := (others => '0');
     begin
         -- Set the new test conditions.
+        test_period <= period;
         test_phase  <= get_tstamp_sec(phase);
         test_mode   <= edge;
         test_check  <= '0';
+        psub := get_tstamp_sec(period);
         if (edge = EDGE_RISING or edge = EDGE_FALLING) then
-            -- Single-edge mode: Range is +/- 0.50 seconds.
-            tmax := shift_right(TSTAMP_ONE_SEC, 1);
+            -- Single-edge mode: Range is +/- 0.50 period.
+            tmax := shift_right(psub, 1);
         elsif (edge = EDGE_BOTH_TXR or edge = EDGE_BOTH_TXF) then
-            -- Double-edge mode: Range is +/- 0.25 seconds.
-            tmax := shift_right(TSTAMP_ONE_SEC, 2);
+            -- Double-edge mode: Range is +/- 0.25 period.
+            tmax := shift_right(psub, 2);
         else
             report "Unsupported edge mode." severity error;
         end if;
         tmod := shift_left(tmax, 1);
-        -- Configure the PPS output. (Write 2x then read.)
+        -- Configure the PPS output phase. (Write 2x then read.)
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.regaddr <= REG_PPSO;
         cfg_cmd.wrcmd   <= '1';
         cfg_cmd.wdata   <= edge(0) & i2s(0, 15) & std_logic_vector(test_phase(47 downto 32));
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.wdata   <= std_logic_vector(test_phase(31 downto 0));
+        wait until rising_edge(cfg_cmd.clk);
+        cfg_cmd.wrcmd   <= '0';
+        cfg_cmd.rdcmd   <= '1';
+        wait until rising_edge(cfg_cmd.clk);
+        cfg_cmd.rdcmd   <= '0';
+        -- Configure the PPS output frequency. (Write 2x then read.)
+        wait until rising_edge(cfg_cmd.clk);
+        cfg_cmd.regaddr <= REG_PERIOD;
+        cfg_cmd.wrcmd   <= '1';
+        cfg_cmd.wdata   <= i2s(0, 16) & std_logic_vector(psub(47 downto 32));
+        wait until rising_edge(cfg_cmd.clk);
+        cfg_cmd.wdata   <= std_logic_vector(psub(31 downto 0));
         wait until rising_edge(cfg_cmd.clk);
         cfg_cmd.wrcmd   <= '0';
         cfg_cmd.rdcmd   <= '1';
@@ -261,16 +278,16 @@ begin
     wait for 1 us;
     cfg_cmd.reset_p <= '0';
     wait for 1 us;
-    -- Run a test at various offsets.
-    run_one(-0.4000, EDGE_RISING);
-    run_one(-0.3214, EDGE_FALLING);
-    run_one(-0.2098, EDGE_BOTH_TXR);
-    run_one(-0.1185, EDGE_BOTH_TXF);
-    run_one( 0.0003, EDGE_RISING);
-    run_one( 0.1577, EDGE_FALLING);
-    run_one( 0.2222, EDGE_BOTH_TXR);
-    run_one( 0.3681, EDGE_BOTH_TXF);
-    run_one( 0.4321, EDGE_RISING);
+    -- Run a test at various frequencies and phase-offsets.
+    run_one(1.0, -0.4000, EDGE_RISING);
+    run_one(1.0, -0.3214, EDGE_FALLING);
+    run_one(1.0, -0.2098, EDGE_BOTH_TXR);
+    run_one(0.5, -0.1185, EDGE_BOTH_TXF);
+    run_one(0.5,  0.0003, EDGE_RISING);
+    run_one(0.5,  0.1577, EDGE_FALLING);
+    run_one(1.0,  0.2222, EDGE_BOTH_TXR);
+    run_one(1.0,  0.3681, EDGE_BOTH_TXF);
+    run_one(1.0,  0.4321, EDGE_RISING);
     report "All tests completed!";
     wait;
 end process;

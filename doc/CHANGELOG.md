@@ -4,6 +4,22 @@
 
 This log will be updated for each new release, but may not reflect the latest development branch(es).
 
+## v2.8.0 (2025 October)
+
+* Added coarse options for PTP clock-crossing (less precise, more robust).
+* Added gateware and software support for Constant Overhead Byte Stuffing (COBS).
+* Added Python support for CCSDS-AOS and CCSDS-SPP.
+* Fixed formatting of NTP-related UDP headers.
+* Fixed handling of certain CCSDS-AOS edge cases.
+* Fixed statistics reporting for Ethernet ports with a stopped clock.
+* Fixed unsafe handling of destructors when "SATCAT5_ALLOW_DELETION=0". (Replaces undefined behavior with an intentional deadlock/halt.)
+* Fixed various bugs in the SAM V71 hardware abstraction layer.
+* Improved control over PTP message rates and UTC offset.
+* Improved logging functions, including log-forwarding.
+* Improved PTP-locked synthesizers with runtime-adjustable frequency (e.g., PPS, 10 MHz).
+* Split net::Socket class into Rx-only and Tx-only variants.
+* Update included QCBOR to v1.5.2, bug-fixes for associated SatCat5 wrappers.
+
 ## v2.7.0 (2025 August)
 
 * Added support for CoAP reverse-proxy.
@@ -141,7 +157,9 @@ This log will be updated for each new release, but may not reflect the latest de
 * Initial release of the SatCat5 mixed-media Ethernet switch.
 * Supported FPGA platforms: Lattice iCE40, Xilinx 7-Series
 * Supported Ethernet interfaces: RMII, RGMII, SGMII, SPI, UART
-* Also included: Example designs for the Arty A7 as well as several [custom boards](../test/proto_pcb/README.md), the [PiWire](../test/pi_wire/readme.md) adapter software, a Python-based mixed-media-Ethernet [chatroom demo](../test/chat_client/README.md), and Jenkins scripts for continuous integration and testing.
+* Example designs for the Arty A7 and [a custom FMC board](../examples/ac701_proto_v1/proto_pcb/README.md).
+* [PiWire](../test/pi_wire/readme.md) mixed-media Ethernet bridge.
+* Python [chatroom demo](../test/chat_client/README.md) for mixed-media Ethernet.
 
 # Copyright Notice
 

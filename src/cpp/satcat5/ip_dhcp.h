@@ -45,6 +45,10 @@ namespace satcat5 {
             u8 id_len;      // Number of bytes in "id"
             u8 type;        // Type code (RFC2132 Section 9.14)
             u8 id[SATCAT5_DHCP_MAX_ID_LEN];
+
+            DhcpId() = default;
+            DhcpId(const DhcpId& t) = default;
+            DhcpId& operator=(const DhcpId& t) = default;
         };
 
         //! DHCP protocol state. \see DhcpClient
@@ -127,6 +131,10 @@ namespace satcat5 {
         struct DhcpAddress {
             u32 client;                     //!< Hash of client-ID
             u32 timeout;                    //!< Lease expiration time
+
+            DhcpAddress() = default;
+            DhcpAddress(const DhcpAddress& t) = default;
+            DhcpAddress& operator=(const DhcpAddress& t) = default;
         };
 
         //! Generic container for a group of DhcpAddress objects.

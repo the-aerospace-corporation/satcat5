@@ -9,11 +9,13 @@
 
 using satcat5::cfg::PpsInput;
 using satcat5::cfg::PpsOutput;
+using satcat5::cfg::RefOutput;
 using satcat5::cfg::Register;
 
 PpsInput::PpsInput(Register reg, PpsInput::Edge mode)
     : m_reg(reg)
     , m_callback(0)
+    , m_mode(mode)
     , m_offset(0)
     , m_period(0)
 {
@@ -24,6 +26,7 @@ PpsInput::PpsInput(Register reg, PpsInput::Edge mode)
 void PpsInput::reset(PpsInput::Edge mode) {
     // Set the configuration register.
     *m_reg = u32(mode);
+    m_mode = mode;
 
     // One-second or half-second interval?
     m_period = satcat5::ptp::SUBNS_PER_SEC;
@@ -85,7 +88,11 @@ PpsOutput::PpsOutput(Register reg, bool rising)
     , m_offset(0)
     , m_rising(rising)
 {
-    configure();
+    timer_once(50);    // delay configuration to make sure module out of reset
+}
+
+void PpsOutput::timer_event() {
+     configure();
 }
 
 void PpsOutput::set_offset(s64 offset) {
@@ -116,4 +123,19 @@ void PpsOutput::configure() {
     // Update the hardware configuration register.
     // Note: Cast to void prevents unused-value warnings.
     (void)wide_write(m_reg, cfg);
+}
+
+RefOutput::RefOutput(Register reg_phase, Register reg_period, bool rising)
+    : PpsOutput(reg_phase, rising)
+    , m_reg_period(reg_period)
+    , m_freq_hz(0)
+{
+    set_frequency(1);
+}
+
+void RefOutput::set_frequency(u32 freq_hz) {
+    m_freq_hz = freq_hz;
+    u64 subns = satcat5::util::div_round<u64>(
+        u64(satcat5::ptp::SUBNS_PER_SEC), u64(freq_hz));
+    (void)wide_write(m_reg_period, subns);
 }

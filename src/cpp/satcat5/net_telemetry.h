@@ -289,6 +289,8 @@ namespace satcat5 {
         //! Calculates string-hash for use with TelemetryWatcher::telem_rcvd().
         struct TelemetryKey {
             explicit TelemetryKey(const char* label);
+            TelemetryKey(const TelemetryKey& t) = default;
+            TelemetryKey& operator=(const TelemetryKey& t) = default;
 
             const char* key;    //!< String key.
             const u32 hash;     //!< CRC32 of that string.

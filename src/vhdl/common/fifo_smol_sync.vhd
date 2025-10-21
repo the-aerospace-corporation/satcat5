@@ -8,7 +8,7 @@
 -- This is a resource-light FIFO block with first-word fallthrough.  The
 -- core memory element is selectable, defaulting to one that is optimized
 -- for the target platform.  The default depth is 16 words.  The size can
--- be incresed to 32, 64, or 128 words as needed.  For larger sizes, please
+-- be increased to 32, 64, or 128 words as needed.  For larger sizes, please
 -- consider using "fifo_large_sync" for a more efficient implementation.
 --
 -- Data, metadata, and the last strobe are stored on a word-by-word basis.

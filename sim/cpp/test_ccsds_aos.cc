@@ -73,7 +73,8 @@ TEST_CASE("ccsds_aos") {
         satcat5::poll::service_all();
         CHECK(satcat5::test::read(&dstb, "Short stream"));
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Pkt")));
-        CHECK(link_dst.frame_count() == 2);
+        auto count = link_dst.stats();
+        CHECK(count.rcvd_frames == 2);
     }
 
     // Longer test with packets split across several transfer frames.
@@ -94,7 +95,8 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::write(&srcp, make_spp(4, "one more")));
         satcat5::poll::service_all();
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
-        CHECK(link_dst.frame_count() == 10);
+        auto count = link_dst.stats();
+        CHECK(count.rcvd_frames == 10);
     }
 
     // Hard-code the expected output from "basic_long".
@@ -134,7 +136,8 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(2, "packets")));
         CHECK(satcat5::test::read(&dstp, make_spp(3, "and one longer packet")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
-        CHECK(link_dst.error_count() == 1);
+        auto count = link_dst.stats();
+        CHECK(count.rcvd_errors == 1);
     }
 
     SECTION("drop1") {
@@ -148,7 +151,8 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Several")));
         CHECK(satcat5::test::read(&dstp, make_spp(3, "and one longer packet")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
-        CHECK(link_dst.error_count() == 1);
+        auto count = link_dst.stats();
+        CHECK(count.rcvd_errors == 1);
     }
 
     SECTION("drop2") {
@@ -162,7 +166,8 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Several")));
         CHECK(satcat5::test::read(&dstp, make_spp(1, "shorter")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
-        CHECK(link_dst.error_count() == 1);
+        auto count = link_dst.stats();
+        CHECK(count.rcvd_errors == 1);
     }
 
     SECTION("drop3") {
@@ -177,7 +182,8 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::read(&dstp, make_spp(1, "shorter")));
         CHECK(satcat5::test::read(&dstp, make_spp(2, "packets")));
         CHECK(satcat5::test::read(&dstp, make_spp(4, "one more")));
-        CHECK(link_dst.error_count() == 1);
+        auto count = link_dst.stats();
+        CHECK(count.rcvd_errors == 1);
     }
 
     // Test a case where consecutive SPP frames fall *exactly*

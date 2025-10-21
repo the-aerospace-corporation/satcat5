@@ -18,6 +18,9 @@
 //!    compare against the calculated checksum. If it is a match call
 //!    write_finalize(), and otherwise call write_abort().
 //!
+//! Because checksum validation is often tied to a network interface, these
+//! classes include the io::Counter API for counting sent and received frames.
+//!
 //! In all child classes of either template, the user MUST override the methods
 //! write_next() and write_finalize() to calculate and format the checksum. For
 //! child classes of io::ChecksumTx, the implementation of write_finalize()
@@ -30,16 +33,54 @@
 
 #pragma once
 
+#include <satcat5/io_counter.h>
 #include <satcat5/io_writeable.h>
 #include <satcat5/utils.h>
 
 namespace satcat5 {
     namespace io {
+        //! Parent class for non-template elements of ChecksumTx.
+        //! This class is not used directly. \see ChecksumTx.
+        class ChecksumTxCommon
+            : public satcat5::io::CounterSimple
+            , public satcat5::io::Writeable {
+        public:
+            // Implement the Writeable API:
+            void write_abort() override;
+
+        protected:
+            //! Only the child class has access to the constructor.
+            constexpr explicit ChecksumTxCommon(satcat5::io::Writeable* dst)
+                : m_dst(dst), m_ovr(false) {}
+
+            //! Reset internal state and return true if the frame is valid.
+            //! i.e., If false, do not forward the write_finalize() event.
+            bool chk_finalize();
+
+            //! Reset the checksum calculation to its initial state.
+            //! Child MUST implement this method, since data type is unknown.
+            virtual void chk_reset() = 0;
+
+            // Implement required API from Writeable:
+            void write_overflow() override;
+
+            // Internal state:
+            satcat5::io::Writeable* const m_dst;    //!< Output object
+            bool m_ovr;                             //!< Overflow flag
+        };
+
         //! Inline checksum insertion, appends FCS to each outgoing frame.
         //! \copydoc io_checksum.h
-        template <class T, unsigned N> class ChecksumTx
-            : public satcat5::io::Writeable
-        {
+        //!
+        //! Child class is responsible for the following:
+        //! * Implement the `chk_reset()` method.
+        //! * Implement the `write_next()` method.  This method must
+        //!   update the checksum calculation and increment `m_frm_len`.
+        //! * Implement the `write_finalize()` method.  This method must
+        //!   write the calculated checksum, then call `chk_finalize()`,
+        //!   then proceed only if the returned value is true.
+        template <class T, unsigned N>
+        class ChecksumTx : public satcat5::io::ChecksumTxCommon {
         public:
             // Implement required API from Writeable:
             unsigned get_write_space() const override {
@@ -48,101 +89,89 @@ namespace satcat5 {
                 return (m_ovr || nbytes < N) ? (0) : (nbytes - N);
             }
 
-            void write_abort() override {
-                m_chk = m_init;                     // Reset internal state
-                m_ovr = false;
-                m_dst->write_abort();               // Forward error event
-            }
-
         protected:
             //! Only the child class has access to the constructor.
             ChecksumTx(satcat5::io::Writeable* dst, T init)
-                : m_dst(dst), m_chk(init), m_init(init), m_ovr(false)
+                : ChecksumTxCommon(dst), m_chk(init), m_init(init)
             {
                 // Nothing else to initialize
             }
 
-            void write_overflow() override {
-                m_ovr = true;                       // Flag until end-of-frame.
-            }
+            //! Reset checksum calculation to its initial state.
+            void chk_reset() override
+                { m_chk = m_init; }
 
-            //! Reset internal state and return true if the frame is valid.
-            //! i.e., If false, do not forward the write_finalize() event.
-            bool chk_finalize() {
-                bool ovr = m_ovr;
-                if (ovr) m_dst->write_abort();      // Forward error event?
-                m_chk = m_init;                     // Reset internal state
-                m_ovr = false;
-                return !ovr;                        // Continue finalize event?
-            }
-
-            // Internal state:
-            satcat5::io::Writeable* const m_dst;    //!< Output object
+            // Templated internal state:
             T m_chk;                                //!< Checksum state
             const T m_init;                         //!< State after reset
-            bool m_ovr;                             //!< Overflow flag
         };
 
-        //! Check and remove FCS from each incoming frame.
-        //! \copydoc io_checksum.h
-        template <class T, unsigned N> class ChecksumRx
-            : public satcat5::io::Writeable
-        {
+        //! Parent class for non-template elements of ChecksumRx.
+        //! This class is not used directly. \see ChecksumRx.
+        class ChecksumRxCommon
+            : public satcat5::io::CounterSimple
+            , public satcat5::io::Writeable {
         public:
-            //! Report cumulative error count since last reset.
-            //! By default, each query resets the cumulative error counter.
-            unsigned error_count(bool reset = true) {
-                unsigned tmp = m_err_ct;
-                if (reset) m_err_ct = 0;
-                return tmp;
-            }
-
             //! Increment the internal error counter.
             //! Some systems use the checksum error counter to consolidate
             //! tracking of multiple frame-error types. \see ccsds_aos.h.
             inline void error_incr()
                 { ++m_err_ct; }
 
-            //! Report cumulative packet count since last reset.
-            //! By default, each query resets the cumulative error counter.
-            unsigned frame_count(bool reset = true) {
-                unsigned tmp = m_frm_ct;
-                if (reset) m_frm_ct = 0;
-                return tmp;
-            }
-
             // Implement required API from Writeable:
-            unsigned get_write_space() const override {
-                return m_dst->get_write_space();
-            }
-
-            void write_abort() override {
-                m_dst->write_abort();               // Forward error event
-                m_chk = m_init;                     // Reset internal state
-                m_bidx = 0;
-                ++m_err_ct;                         // Count this as an error
-            }
+            unsigned get_write_space() const override;
+            void write_abort() override;
 
         protected:
             //! Only the child class has access to the constructor.
+            constexpr explicit ChecksumRxCommon(satcat5::io::Writeable* dst)
+                : m_dst(dst) {}
+
+            // Reset the checksum calculation to its initial state.
+            // Child MUST implement this method, since data type is unknown.
+            virtual void chk_reset() = 0;
+
+            // Internal state:
+            satcat5::io::Writeable* const m_dst;    //!< Output object
+        };
+
+        //! Check and remove FCS from each incoming frame.
+        //! \copydoc io_checksum.h
+        //!
+        //! Child class is responsible for the following:
+        //! * Implement the `chk_reset()` method.
+        //! * Implement the `write_next()` method.  This method must
+        //!   update the checksum calculation and call `sreg_push()`.
+        //! * Implement the `write_finalize()` method.  This method must
+        //!   complete the checksum calculation, then call `sreg_match()`,
+        //!   then return the resulting pass/fail indicator.
+        template <class T, unsigned N>
+        class ChecksumRx : public satcat5::io::ChecksumRxCommon {
+        protected:
+            //! Only the child class has access to the constructor.
             ChecksumRx(satcat5::io::Writeable* dst, T init)
-                : m_dst(dst), m_chk(init), m_init(init)
-                , m_sreg(0), m_bidx(0), m_err_ct(0), m_frm_ct(0)
+                : ChecksumRxCommon(dst), m_chk(init), m_init(init)
             {
                 // Nothing else to initialize.
             }
+
+            //! Reset checksum calculation to its initial state.
+            void chk_reset() override
+                { m_chk = m_init; }
 
             //! Child class MUST call sreg_match(...) during write_finalize().
             //! The child provides the FCS in a format that matches SREG.
             inline bool sreg_match(T fcs) {
                 // Does the calculated FCS match the last N bytes in SREG?
                 constexpr T MASK = satcat5::util::mask_lower<T>(8*N);
-                bool ok = (m_bidx >= N) && ((fcs & MASK) == (m_sreg & MASK));
+                bool ok = (m_frm_len >= N) && ((fcs & MASK) == (m_sreg & MASK));
                 // Reset internal state.
+                unsigned len = m_frm_len - N;
                 m_chk = m_init;
-                m_bidx = 0;
+                m_frm_len = 0;
                 // Call write_finalize() or write_abort().
                 if (ok && m_dst->write_finalize()) {
+                    m_byte_ct += len;
                     ++m_frm_ct;
                     return true;
                 } else {
@@ -162,8 +191,7 @@ namespace satcat5 {
                 data = (u8)(m_sreg >> SHIFT);       // Pop oldest data
                 m_sreg = (m_sreg << 8) | tmp;       // Push new data
                 // Is the shift register currently full?
-                if (m_bidx < N) {
-                    ++m_bidx;                       // Wait until full...
+                if (m_frm_len++ < N) {
                     return false;                   // No update to CRC
                 } else {
                     m_dst->write_u8(data);          // Forward popped data
@@ -171,14 +199,10 @@ namespace satcat5 {
                 }
             }
 
-            // Internal state:
-            satcat5::io::Writeable* const m_dst;    //!< Output object
+            // Templated internal state:
             T m_chk;                                //!< Checksum state
             const T m_init;                         //!< State after reset
             T m_sreg;                               //!< Big-endian input buffer
-            unsigned m_bidx;                        //!< Bytes received
-            unsigned m_err_ct;                      //!< Cumulative error count
-            unsigned m_frm_ct;                      //!< Cumulative error count
         };
     }
 }

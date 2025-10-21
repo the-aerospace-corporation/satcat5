@@ -73,6 +73,11 @@ namespace satcat5 {
             //! Otherwise, the MAC address is derived from an ARP query.
             static constexpr u8 FLAG_MAC_FIXED = 0x02;
 
+            // Explicitly declare default constructor and copy methods.
+            Route() = default;
+            Route(const Route& t) = default;
+            Route& operator=(const Route& t) = default;
+
             //! Does this route have a known next-hop MAC address?
             inline bool has_dstmac() const
                 { return (dstmac != satcat5::eth::MACADDR_NONE); }

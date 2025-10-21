@@ -79,26 +79,42 @@ TEST_CASE("ptp_client") {
 
     // Basic test in L2 mode (Ethernet)
     SECTION("BasicL2") {
+        // Set an unusual offset, to allow confirmation below.
+        uut0.set_utc_offset(1234);
+        // Configure server and client.
         uut0.set_mode(ClientMode::MASTER_L2);
         uut1.set_mode(ClientMode::SLAVE_ONLY);
         CHECK(uut0.get_state() == ClientState::MASTER);
         CHECK(uut1.get_state() == ClientState::LISTENING);
+        // Wait for successful handshake.
         xlink.timer.sim_wait(5000);
         CHECK(uut0.get_state() == ClientState::MASTER);
         CHECK(uut1.get_state() == ClientState::SLAVE);
         CHECK(count1.count() > 0);
+        // Confirm clock and offset parameters were transferred.
+        CHECK(uut0.get_clock().grandmasterIdentity
+            == uut1.get_remote().grandmasterIdentity);
+        CHECK(uut0.get_utc_offset() == uut1.get_utc_offset());
     }
 
     // Basic test in L3 mode (UDP)
     SECTION("BasicL3") {
+        // Set an unusual offset, to allow confirmation below.
+        uut0.set_utc_offset(2345);
+        // Configure server and client.
         uut0.set_mode(ClientMode::MASTER_L3);
         uut1.set_mode(ClientMode::SLAVE_ONLY);
         CHECK(uut0.get_state() == ClientState::MASTER);
         CHECK(uut1.get_state() == ClientState::LISTENING);
+        // Wait for successful handshake.
         xlink.timer.sim_wait(5000);
         CHECK(uut0.get_state() == ClientState::MASTER);
         CHECK(uut1.get_state() == ClientState::SLAVE);
         CHECK(count1.count() > 0);
+        // Confirm clock and offset parameters were transferred.
+        CHECK(uut0.get_clock().grandmasterIdentity
+            == uut1.get_remote().grandmasterIdentity);
+        CHECK(uut0.get_utc_offset() == uut1.get_utc_offset());
     }
 
     // Same as "BasicL2", but we add some TLV handlers.
@@ -132,8 +148,7 @@ TEST_CASE("ptp_client") {
     }
 
     // Basic test for PDelay
-    SECTION("PeerToPeer_OneStep")
-    {
+    SECTION("PeerToPeer_OneStep") {
         uut0.set_mode(ClientMode::PASSIVE);
         uut1.set_mode(ClientMode::PASSIVE);
         CHECK(uut0.get_state() == ClientState::PASSIVE);
@@ -163,9 +178,9 @@ TEST_CASE("ptp_client") {
     SECTION("SPTP") {
         // Test the normal operating condition.
         uut0.set_mode(ClientMode::MASTER_L2);
-        uut0.set_sync_rate(-1);     // No SYNC from master
+        uut0.set_sync_rate(INT_MIN);    // No SYNC from master
         uut1.set_mode(ClientMode::SLAVE_SPTP);
-        uut1.set_sync_rate(3);      // 2^3 = 8 per sec
+        uut1.set_sync_rate(3);          // 2^3 = 8 per sec
         CHECK(uut0.get_state() == ClientState::MASTER);
         CHECK(uut1.get_state() == ClientState::LISTENING);
         xlink.timer.sim_wait(5000);
@@ -182,9 +197,11 @@ TEST_CASE("ptp_client") {
     }
 
     // Test the methods that set broadcast message rates.
+    // (Including the edge case where ANNOUNCE is more frequent than SYNC.)
     SECTION("SyncRate") {
         uut0.set_mode(ClientMode::MASTER_L2);
         uut1.set_mode(ClientMode::SLAVE_ONLY);
+        uut0.set_announce_rate(3);  // 2^3 = 8 per sec
         uut0.set_sync_rate(2);      // 2^2 = 4 per sec
         xlink.timer.sim_wait(2000);
         CHECK(count1.count() >= 7);

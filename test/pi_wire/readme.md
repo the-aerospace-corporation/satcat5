@@ -1,11 +1,11 @@
+# PiWire Demo Application
+
 <br />
 <p align="center">
   <a href="https://github.com/the-aerospace-corporation/satcat5">
-    <img src="/doc/images/satcat5.png" alt="Logo" width="80" height="80">
+    <img src="../../doc/images/satcat5.png" alt="Logo" width="80" height="80">
   </a>
-
   <h3 align="center">PiWire</h3>
-
   <p align="center">
     A comphrehensive guide to installing/utilizing PiWire
     <br />
@@ -17,8 +17,6 @@
     <a href="https://github.com/the-aerospace-corporation/satcat5/blob/main/doc/FAQ.md">General SatCat5 FAQ's</a>
   </p>
 </p>
-
-
 
 <!-- TABLE OF CONTENTS -->
 <details open="open">

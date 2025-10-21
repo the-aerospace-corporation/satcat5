@@ -37,5 +37,5 @@
  * into four include files).
  */
 
-#include "qcbor/qcbor_encode.h"
-#include "qcbor/qcbor_decode.h"
+#include "qcbor_encode.h"
+#include "qcbor_decode.h"

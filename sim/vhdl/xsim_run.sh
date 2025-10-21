@@ -109,6 +109,7 @@ simulate_all()
     simulate_one cfgbus_spi_tb 1ms
     simulate_one cfgbus_to_axilite_tb 100us
     simulate_one cfgbus_uart_tb 2ms
+    simulate_one cobs_encoder_tb 2ms
     simulate_one config_file2rom_tb 1us TEST_DATA_FOLDER $test_data_folder
     simulate_one config_mdio_rom_tb 30ms
     simulate_one config_port_test_tb 4ms
@@ -175,7 +176,8 @@ simulate_all()
     simulate_one prng_lfsr_tb 1ms
     simulate_one ptp_adjust_tb 9ms
     simulate_one ptp_clksynth_tb 3ms
-    simulate_one ptp_counter_tb 40ms
+    simulate_one ptp_counter_coarse_tb 12ms
+    simulate_one ptp_counter_verdact_tb 40ms
     simulate_one ptp_egress_tb 5ms
     simulate_one ptp_filter_tb 5ms
     simulate_one ptp_pps_tb 1ms

@@ -29,6 +29,10 @@ namespace satcat5 {
         //!    (i.e., usually at build-time) simplifies downstream processing.
         struct I2cAddr final {      // GCOVR_EXCL_START
         public:
+            I2cAddr() = delete;
+            I2cAddr(const I2cAddr& t) = default;
+            I2cAddr& operator=(const I2cAddr& t) = default;
+
             //! Create I2C address from a 7-bit input (right-justified)
             //! Example: ```I2cAddr my_addr = I2cAddr::addr7(0x77);```
             static constexpr I2cAddr addr7(u8 addr)

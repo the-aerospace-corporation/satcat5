@@ -162,7 +162,7 @@ namespace satcat5 {
             //! mode for inputs that do not delimit packet boundaries.
             //!
             //! \param dst The destination object.
-            //! \param strm Select packet mode or stream mode.
+            //! \param mode Select packet mode or stream mode.
             //! \returns True if the output was finalized successfully.
             bool copy_and_finalize(
                 satcat5::io::Writeable* dst,

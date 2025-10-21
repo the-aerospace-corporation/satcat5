@@ -109,6 +109,9 @@ TEST_CASE("eth-checksum-tx") {
         // Expect matching references with FCS.
         CHECK(read(&rx, sizeof(REF1B), REF1B));
         CHECK(read(&rx, sizeof(REF2B), REF2B));
+        // Check statistic counters.
+        CHECK(uut.byte_count() == sizeof(REF1A) + sizeof(REF2A));
+        CHECK(uut.frame_count() == 2);
     }
 
     SECTION("abort-then-write") {
@@ -119,6 +122,24 @@ TEST_CASE("eth-checksum-tx") {
         CHECK(uut.write_finalize());
         // Expect only the second packet, with FCS.
         CHECK(read(&rx, sizeof(REF2B), REF2B));
+        // Check statistic counters.
+        CHECK(uut.byte_count() == sizeof(REF2A));
+        CHECK(uut.frame_count() == 1);
+    }
+
+    SECTION("counter-inline") {
+        // Same as "abort-then-write", but with an applique counter.
+        satcat5::io::CounterInline ctr(&uut);
+        ctr.write_bytes(sizeof(REF1A), REF1A);
+        ctr.write_abort();
+        ctr.write_bytes(sizeof(REF2A), REF2A);
+        CHECK(ctr.write_finalize());
+        // Expect only the second packet, with FCS.
+        CHECK(read(&rx, sizeof(REF2B), REF2B));
+        // Check statistic counters.
+        CHECK(ctr.byte_count() == uut.byte_count());
+        CHECK(ctr.error_count() == uut.error_count());
+        CHECK(ctr.frame_count() == uut.frame_count());
     }
 }
 
@@ -135,7 +156,10 @@ TEST_CASE("eth-checksum-rx") {
         // Expect matching references without FCS.
         CHECK(read(&rx, sizeof(REF1A), REF1A));
         CHECK(read(&rx, sizeof(REF2A), REF2A));
-        CHECK(uut.frame_count() == 2);      // Expect two valid frames
+        // Check statistic counters.
+        CHECK(uut.byte_count() == sizeof(REF1A) + sizeof(REF2A));
+        CHECK(uut.frame_count() == 2);
+        CHECK(uut.error_count() == 0);
     }
 
     SECTION("bad-fcs") {
@@ -144,14 +168,20 @@ TEST_CASE("eth-checksum-rx") {
         // Write Ref2 but skip the last byte.
         CHECK_FALSE(write(&uut, sizeof(REF2B) - 1, REF2B));
         CHECK(rx.get_read_ready() == 0);    // Should remain empty
-        CHECK(uut.error_count() == 2);      // Expect two frame errors
+        // Check statistic counters.
+        CHECK(uut.byte_count() == 0);
+        CHECK(uut.frame_count() == 0);
+        CHECK(uut.error_count() == 2);
     }
 
     SECTION("runt-pkt") {
         // Write only the first three bytes of Ref1.
         CHECK_FALSE(write(&uut, 3, REF1B)); // Should fail (runt packet)
         CHECK(rx.get_read_ready() == 0);    // Should remain empty
-        CHECK(uut.error_count() == 1);      // Expect one frame error
+        // Check statistic counters.
+        CHECK(uut.byte_count() == 0);
+        CHECK(uut.frame_count() == 0);
+        CHECK(uut.error_count() == 1);
     }
 
     SECTION("abort-then-write") {
@@ -162,10 +192,31 @@ TEST_CASE("eth-checksum-rx") {
         CHECK(uut.write_finalize());
         // Expect only the second packet, minus FCS.
         CHECK(read(&rx, sizeof(REF2A), REF2A));
-        CHECK(uut.error_count() == 1);      // Expect one frame error
-        CHECK(uut.frame_count() == 1);      // Expect one valid frame
+        // Check statistic counters.
+        CHECK(uut.byte_count() == sizeof(REF2A));
+        CHECK(uut.frame_count() == 1);
+        CHECK(uut.error_count() == 1);
     }
 
+    SECTION("counter-inline") {
+        // Prefix a reference packet with some junk data.
+        // (This should cause the first CRC to fail.)
+        satcat5::io::CounterInline ctr(&uut);
+        ctr.write_u32(0x12345678);
+        CHECK_FALSE(write(&ctr, sizeof(REF1B), REF1B));
+        CHECK(rx.get_read_ready() == 0);
+        // The second packet should go through.
+        CHECK(write(&ctr, sizeof(REF2B), REF2B));
+        CHECK(read(&rx, sizeof(REF2A), REF2A));
+        // Check statistic counters.
+        // Note: CounterInline includes CRC bytes, 
+        CHECK(ctr.byte_count() == uut.byte_count() + 4);
+        CHECK(ctr.error_count() == uut.error_count());
+        CHECK(ctr.frame_count() == uut.frame_count());
+    }
+
+    // Confirm statistic counters reset after each query.
+    CHECK(uut.byte_count() == 0);
     CHECK(uut.frame_count() == 0);
     CHECK(uut.error_count() == 0);
 }
@@ -198,8 +249,10 @@ TEST_CASE("eth-slip-codec") {
 
     SECTION("loopback") {
         // Connect SlipCodec in loopback with SlipCodecInverse.
+        constexpr unsigned TOTAL_FRAMES = 100;
+        constexpr unsigned TOTAL_BYTES  = 8 * TOTAL_FRAMES;
         satcat5::eth::SlipCodecInverse inv(&rx, &tx);
-        for (unsigned a = 0 ; a < 100 ; ++a) {
+        for (unsigned a = 0 ; a < TOTAL_FRAMES ; ++a) {
             // Write a randomized test packet.
             u32 ref1 = satcat5::test::rand_u32();
             u32 ref2 = satcat5::test::rand_u32();
@@ -215,5 +268,18 @@ TEST_CASE("eth-slip-codec") {
             CHECK(uut.read_u32() == ref2);
             uut.read_finalize();
         }
+        // Confirm expected counts for transferred bytes and packets.
+        // (Inverse counter includes SLIP overhead.)
+        auto count1 = uut.stats(), count2 = inv.stats();
+        CHECK(count1.sent_bytes  == TOTAL_BYTES);
+        CHECK(count2.sent_bytes  >= TOTAL_BYTES);
+        CHECK(count1.sent_frames == TOTAL_FRAMES);
+        CHECK(count2.sent_frames == TOTAL_FRAMES);
+        CHECK(count1.rcvd_bytes  == TOTAL_BYTES);
+        CHECK(count2.rcvd_bytes  >= TOTAL_BYTES);
+        CHECK(count1.rcvd_frames == TOTAL_FRAMES);
+        CHECK(count2.rcvd_frames == TOTAL_FRAMES);
+        CHECK(count1.rcvd_errors == 0);
+        CHECK(count2.rcvd_errors == 0);
     }
 }

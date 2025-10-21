@@ -51,8 +51,8 @@ TEST_CASE("port_recovery") {
     satcat5::port::RecoveryEgress recovery_eg(&port2);
 
     // Attach a Layer-2 socket to each port.
-    satcat5::eth::Socket sock0(nic0.eth());
-    satcat5::eth::Socket sock1(nic1.eth());
+    satcat5::eth::SocketTx sock0(nic0.eth());
+    satcat5::eth::SocketRx sock1(nic1.eth());
 
     // Preload all MAC addresses.
     cache.mactbl_write(0, MAC0);

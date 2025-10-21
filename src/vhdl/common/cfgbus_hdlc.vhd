@@ -22,6 +22,7 @@
 --      Refer to cfgbus_common::cfgbus_interrupt
 --  * REGADDR = 1: Configuration
 --      Any write to this register resets the HDLC and clears all FIFOs.
+--      Bit 31-16: Frame size in bytes not including FLAG or FCS
 --      Bit 15-00: Clock divider ratio (BAUD_HZ = REF_CLK / N)
 --  * REGADDR = 2: Status (Read only)
 --      Bit 03-03: Error flag (SLIP decode error)
@@ -65,11 +66,10 @@ use     work.eth_frame_common.all;
 entity cfgbus_hdlc is
     generic(
     DEVADDR       : integer;          -- Control register address
-    FCS_ENABLE    : boolean;          -- Append FCS on Tx, and strip FCS on Rx?
-    SLIP_ENABLE   : boolean;          -- SLIP encode on Tx, and decode on Rx?
-    INJECT_ENABLE : boolean;          -- Inject a command code into the byte stream
-    CMD_CODE      : byte_t;           -- Command code to prepend the TX stream with
-    FRAME_BYTES   : natural;          -- 0 for variable length, > 0 for zero pad
+    FCS_ENABLE    : boolean := false; -- Append FCS on Tx, and strip FCS on Rx?
+    SLIP_ENABLE   : boolean := false; -- SLIP encode on Tx, and decode on Rx?
+    INJECT_ENABLE : boolean := false; -- Inject a command code into the byte stream
+    CMD_CODE      : byte_t  := x"00"; -- Command code to prepend the TX stream with
     MSB_FIRST     : boolean := false; -- false for LSb first
     FIFO_LOG2     : integer);         -- Tx/Rx FIFO depth = 2^N
     port(
@@ -88,6 +88,8 @@ end cfgbus_hdlc;
 
 architecture cfgbus_hdlc of cfgbus_hdlc is
 
+constant RATE_WIDTH    : positive := 16;
+constant FSIZE_WIDTH   : positive := 16;
 constant BUFFER_KBYTES : positive := div_ceil(2**FIFO_LOG2, 1000);
 
 -- Transmit data
@@ -133,7 +135,8 @@ signal pkt_last   : std_logic;
 
 -- ConfigBus interface
 signal cfg_word   : cfgbus_word;
-signal cfg_rate   : unsigned(15 downto 0);
+signal cfg_rate   : unsigned(RATE_WIDTH-1 downto 0);
+signal cfg_fsize  : unsigned(FSIZE_WIDTH-1 downto 0);
 signal cfg_reset  : std_logic;
 
 begin
@@ -141,19 +144,19 @@ begin
 -- Tx and Rx HDLCs
 u_tx : entity work.io_hdlc_tx
     generic map(
-    FRAME_BYTES => FRAME_BYTES,
     MSB_FIRST   => MSB_FIRST)
     port map(
-    hdlc_clk   => hdlc_txclk,
-    hdlc_data  => hdlc_txdata,
-    hdlc_ready => hdlc_txready,
-    tx_data    => tx_data,
-    tx_valid   => tx_valid,
-    tx_last    => tx_last,
-    tx_ready   => tx_ready,
-    rate_div   => cfg_rate,
-    refclk     => cfg_cmd.clk,
-    reset_p    => cfg_reset);
+    hdlc_clk    => hdlc_txclk,
+    hdlc_data   => hdlc_txdata,
+    hdlc_ready  => hdlc_txready,
+    tx_data     => tx_data,
+    tx_valid    => tx_valid,
+    tx_last     => tx_last,
+    tx_ready    => tx_ready,
+    rate_div    => cfg_rate,
+    frame_bytes => cfg_fsize,
+    refclk      => cfg_cmd.clk,
+    reset_p     => cfg_reset);
 
 u_rx : entity work.io_hdlc_rx
     generic map(
@@ -217,7 +220,6 @@ gen_slip : if SLIP_ENABLE generate
             out_ready => slp_ready,
             refclk    => cfg_cmd.clk,
             reset_p   => cfg_reset);
-            
 
         -- Rx SLIP
         u_unpad : process(cfg_cmd.clk)
@@ -359,7 +361,8 @@ cmd_ready <= dly_ready or not dly_wren;
 cmd_busy  <= cmd_valid or not cmd_ready;
 
 -- Extract configuration parameters:
-cfg_rate <= unsigned(cfg_word(15 downto 0));
+cfg_rate  <= unsigned(cfg_word(RATE_WIDTH-1 downto 0));
+cfg_fsize <= unsigned(cfg_word(FSIZE_WIDTH+RATE_WIDTH-1 downto RATE_WIDTH));
 
 -- ConfigBus interface
 u_cfg : entity work.cfgbus_multiserial
@@ -383,4 +386,3 @@ u_cfg : entity work.cfgbus_multiserial
     cfg_ack     => cfg_ack);
 
 end cfgbus_hdlc;
-

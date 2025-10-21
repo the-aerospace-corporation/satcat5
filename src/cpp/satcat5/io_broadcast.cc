@@ -7,7 +7,9 @@
 #include <satcat5/utils.h>
 
 using satcat5::io::WriteableBroadcast;
+using satcat5::io::WriteableBroadcastAny;
 using satcat5::util::min_unsigned;
+using satcat5::util::max_unsigned;
 
 
 // Available write space is the minimum of all Writeables.
@@ -58,4 +60,22 @@ void WriteableBroadcast::write_overflow() {
     for (unsigned i = 0; i < m_size; ++i) {
         if (m_dsts[i]) { m_dsts[i]->write_overflow(); }
     }
+}
+
+// WriteableBroadcastAny changes to maximum available write space.
+unsigned WriteableBroadcastAny::get_write_space() const {
+    unsigned ws = 0; // Default if no open Writeables.
+    for (unsigned i = 0; i < m_size; ++i) {
+        if (m_dsts[i]) { ws = max_unsigned(ws, m_dsts[i]->get_write_space()); }
+    }
+    return ws;
+}
+
+// WriteableBroadcastAny changes to return OK if any write_finalize succeeds.
+bool WriteableBroadcastAny::write_finalize() {
+    bool any_ok = false;
+    for (unsigned i = 0; i < m_size; ++i) {
+        if (!m_dsts[i] || m_dsts[i]->write_finalize()) { any_ok = true; }
+    }
+    return any_ok;
 }

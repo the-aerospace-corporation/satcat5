@@ -96,9 +96,9 @@ use     work.eth_frame_common.HDLC_FLAG;
 
 entity io_hdlc_tx is
     generic(
-    FRAME_BYTES : natural;           -- Bytes per frame excluding flags/FCS
-    MSB_FIRST   : boolean  := false; -- false for LSb first
-    RATE_WIDTH  : positive := 16);   -- Width of clock divider
+    MSB_FIRST         : boolean  := false; -- false for LSb first
+    RATE_WIDTH        : positive := 16;    -- Width of clock divider
+    FRAME_BYTES_WIDTH : positive := 16);   -- Width of the frame size
     port(
     -- External HDLC interface.
     hdlc_clk   : out std_logic; -- Output clock
@@ -114,6 +114,9 @@ entity io_hdlc_tx is
     -- Rate control (clocks per bit, from 1 to 2**RATE_WIDTH-1)
     -- LIMITATION: a rate_div of 1 will not work. No clock will be generated.
     rate_div   : in  unsigned(RATE_WIDTH-1 downto 0);
+
+    -- Frame size in bytes, not including FLAGS or FCS.
+    frame_bytes : in unsigned(FRAME_BYTES_WIDTH-1 downto 0);
 
     -- Clock and reset
     refclk     : in  std_logic;  -- Reference clock
@@ -154,8 +157,8 @@ hdlc_clk  <= hdlc_clk_i;
 
 encoder : entity work.hdlc_encoder
     generic map(
-    FRAME_BYTES => FRAME_BYTES,
-    MSB_FIRST   => MSB_FIRST)
+    MSB_FIRST         => MSB_FIRST,
+    FRAME_BYTES_WIDTH => FRAME_BYTES_WIDTH)
     port map(
     in_data     => tx_data,
     in_valid    => tx_valid,
@@ -165,6 +168,7 @@ encoder : entity work.hdlc_encoder
     out_valid   => enc_valid,
     out_last    => enc_last,
     out_ready   => enc_ready,
+    frame_bytes => frame_bytes,
     clk         => refclk,
     reset_p     => reset_p);
 

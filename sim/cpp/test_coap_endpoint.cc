@@ -350,6 +350,13 @@ TEST_CASE("coap_endpoint_udp") {
         TestEndpointUdp<1> client(Reply::NONE,     &xlink.net0.m_udp);
         TestEndpointUdp<1> server(Reply::ECHO_NOW, &xlink.net1.m_udp);
         server.bind(PORT_COAP);
+        // Test the interface accessors.
+        CHECK(client.eth() == &xlink.net0.m_eth);
+        CHECK(client.ip()  == &xlink.net0.m_ip);
+        CHECK(client.udp() == &xlink.net0.m_udp);
+        CHECK(server.eth() == &xlink.net1.m_eth);
+        CHECK(server.ip()  == &xlink.net1.m_ip);
+        CHECK(server.udp() == &xlink.net1.m_udp);
         // Open connection, without waiting for ARP resolution.
         Connection *c1 = 0;
         REQUIRE((c1 = client.connect(xlink.IP1, PORT_COAP)));

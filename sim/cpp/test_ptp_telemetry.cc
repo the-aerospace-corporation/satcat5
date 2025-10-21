@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the SatCat5 "PTP Telemetry" system (ptp_telemetry.h)
@@ -67,7 +67,7 @@ TEST_CASE("ptp_telemetry") {
     uut.connect(xlink.net0.ipaddr());
 
     // Create a buffer to receive test telemetry.
-    satcat5::udp::Socket rx_udp(&xlink.net0.m_udp);
+    satcat5::udp::SocketRx rx_udp(&xlink.net0.m_udp);
     rx_udp.bind(satcat5::udp::PORT_CBOR_TLM);
 
     // Basic test confirms that all expected fields are present.

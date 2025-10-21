@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <satcat5/ethernet.h>
+#include <satcat5/eth_header.h>
 #include <satcat5/net_core.h>
 
 namespace satcat5 {

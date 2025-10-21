@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2024 The Aerospace Corporation.
+// Copyright 2024-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -28,8 +28,7 @@ static const u16 TABLE_XMODEM[16] = {
     0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF,
 };
 
-static inline void kermit_update(u16& crc, u8 next)
-{
+static inline void kermit_update(u16& crc, u8 next) {
     u16 next1 = next >> 0;                      // First nybble
     u16 next2 = next >> 4;                      // Second nybble
     u8 index1 = (crc ^ next1) & 0x0F;           // Table index
@@ -38,8 +37,7 @@ static inline void kermit_update(u16& crc, u8 next)
     crc = (crc >> 4) ^ TABLE_KERMIT[index2];    // XOR with table
 }
 
-static inline void xmodem_update(u16& crc, u8 next)
-{
+static inline void xmodem_update(u16& crc, u8 next) {
     u16 next1 = next >> 4;                      // First nybble
     u16 next2 = next >> 0;                      // Second nybble
     u8 index1 = ((crc >> 12) ^ next1) & 0x0Ful; // Table index
@@ -48,13 +46,11 @@ static inline void xmodem_update(u16& crc, u8 next)
     crc = (crc << 4) ^ TABLE_XMODEM[index2];    // XOR with table
 }
 
-inline u16 kermit_format(u16 crc)
-{
+inline u16 kermit_format(u16 crc) {
     return __builtin_bswap16(crc);
 }
 
-inline u16 xmodem_format(u16 crc)
-{
+inline u16 xmodem_format(u16 crc) {
     return crc;
 }
 #endif  // SATCAT5_CRC_TABLE_BITS == 4
@@ -132,32 +128,27 @@ static const u16 TABLE_XMODEM[256] = {
     0x176E, 0x367E, 0x554E, 0x745E, 0x932E, 0xB23E, 0xD10E, 0xF01E,
 };
 
-static inline void kermit_update(u16& crc, u8 next)
-{
+static inline void kermit_update(u16& crc, u8 next) {
     u8 index = (crc ^ (u16)next) & 0xFFul;      // Table index
     crc = (crc >> 8) ^ TABLE_KERMIT[index];     // XOR with table
 }
 
-static inline void xmodem_update(u16& crc, u8 next)
-{
+static inline void xmodem_update(u16& crc, u8 next) {
     u8 index = (crc  ^ (u16)next) & 0xFFul;     // Table index
     crc = (crc >> 8) ^ TABLE_XMODEM[index];     // XOR with table
 }
 
-inline u16 kermit_format(u16 crc)
-{
+inline u16 kermit_format(u16 crc) {
     return __builtin_bswap16(crc);
 }
 
-inline u16 xmodem_format(u16 crc)
-{
+inline u16 xmodem_format(u16 crc) {
     return __builtin_bswap16(crc);
 }
 
 #endif  // SATCAT5_CRC_TABLE_BITS == 8
 
-u16 satcat5::crc16::kermit(unsigned nbytes, const void* data)
-{
+u16 satcat5::crc16::kermit(unsigned nbytes, const void* data) {
     // Byte-by-byte CRC16 calculation.
     const u8* data8 = (const u8*)data;
     u16 crc = 0;
@@ -166,8 +157,7 @@ u16 satcat5::crc16::kermit(unsigned nbytes, const void* data)
     return kermit_format(crc);
 }
 
-u16 satcat5::crc16::xmodem(unsigned nbytes, const void* data)
-{
+u16 satcat5::crc16::xmodem(unsigned nbytes, const void* data) {
     // Byte-by-byte CRC16 calculation.
     const u8* data8 = (const u8*)data;
     u16 crc = 0;
@@ -183,17 +173,16 @@ KermitTx::KermitTx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     // Nothing else to initialize
 }
 
-bool KermitTx::write_finalize()
-{
+bool KermitTx::write_finalize() {
     u16 fcs = kermit_format(m_chk ^ m_xorout);
-    m_dst->write_u16(fcs);      // Append FCS
+    m_dst->write_u16(fcs);          // Append FCS
     return chk_finalize() && m_dst->write_finalize();
 }
 
-void KermitTx::write_next(u8 data)
-{
-    kermit_update(m_chk, data); // Update internal state
-    m_dst->write_u8(data);      // Forward new data
+void KermitTx::write_next(u8 data) {
+    ++m_frm_len;                    // Update parent state
+    kermit_update(m_chk, data);     // Update internal state
+    m_dst->write_u8(data);          // Forward new data
 }
 
 KermitRx::KermitRx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
@@ -203,13 +192,11 @@ KermitRx::KermitRx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     // Nothing else to initialize
 }
 
-bool KermitRx::write_finalize()
-{
+bool KermitRx::write_finalize() {
     return sreg_match(kermit_format(m_chk) ^ m_xorout);
 }
 
-void KermitRx::write_next(u8 data)
-{
+void KermitRx::write_next(u8 data) {
     if (sreg_push(data)) kermit_update(m_chk, data);
 }
 
@@ -220,17 +207,16 @@ XmodemTx::XmodemTx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     // Nothing else to initialize
 }
 
-bool XmodemTx::write_finalize()
-{
+bool XmodemTx::write_finalize() {
     u16 fcs = xmodem_format(m_chk ^ m_xorout);
-    m_dst->write_u16(fcs);              // Append formatted FCS
+    m_dst->write_u16(fcs);          // Append formatted FCS
     return chk_finalize() && m_dst->write_finalize();
 }
 
-void XmodemTx::write_next(u8 data)
-{
-    xmodem_update(m_chk, data);         // Update internal state
-    m_dst->write_u8(data);              // Forward new data
+void XmodemTx::write_next(u8 data) {
+    ++m_frm_len;                    // Update parent state
+    xmodem_update(m_chk, data);     // Update internal state
+    m_dst->write_u8(data);          // Forward new data
 }
 
 XmodemRx::XmodemRx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
@@ -240,12 +226,10 @@ XmodemRx::XmodemRx(satcat5::io::Writeable* dst, u16 init, u16 xorout)
     // Nothing else to initialize
 }
 
-bool XmodemRx::write_finalize()
-{
+bool XmodemRx::write_finalize() {
     return sreg_match(xmodem_format(m_chk) ^ m_xorout);
 }
 
-void XmodemRx::write_next(u8 data)
-{
+void XmodemRx::write_next(u8 data) {
     if (sreg_push(data)) xmodem_update(m_chk, data);
 }

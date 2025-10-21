@@ -30,6 +30,10 @@ namespace satcat5 {
             //! Byte array in network order (Index 0 = MSB)
             u8 addr[6];
 
+            MacAddr() = default;
+            MacAddr(const MacAddr& t) = default;
+            MacAddr& operator=(const MacAddr& t) = default;
+
             //! Convert from u64 to MacAddr.
             static constexpr satcat5::eth::MacAddr from_u64(u64 x) {
                 return MacAddr {
@@ -80,6 +84,10 @@ namespace satcat5 {
             //! The 16-bit value is stored in processor-native order.
             u16 value;
 
+            MacType() = default;
+            MacType(const MacType& t) = default;
+            MacType& operator=(const MacType& t) = default;
+
             //! Basic comparisons.
             //!@{
             inline bool operator==(const satcat5::eth::MacType& other) const
@@ -103,6 +111,10 @@ namespace satcat5 {
         struct VlanTag {
             //! The 16-bit value holds VID, DEI, and PCP fields.
             u16 value;
+
+            VlanTag() = default;
+            VlanTag(const VlanTag& t) = default;
+            VlanTag& operator=(const VlanTag& t) = default;
 
             //! Accessors for each individual field.
             //!@{
@@ -148,6 +160,10 @@ namespace satcat5 {
             satcat5::eth::VlanTag vtag;
             //!@}
 
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
+
             //! Human-readable report of all fields.
             void log_to(satcat5::log::LogBuffer& wr) const;
 
@@ -182,6 +198,7 @@ namespace satcat5 {
             ETYPE_CFGBUS_ACK    = {0x5C02},
             ETYPE_SLINGSHOT_LOG = {0x5C03},
             ETYPE_CBOR_TLM      = {0x5C04},
+            ETYPE_SWITCH_LOG    = {0x5C05},
             ETYPE_VTAG          = {0x8100},
             ETYPE_FLOWCTRL      = {0x8808},
             ETYPE_MACSEC        = {0x88E5},

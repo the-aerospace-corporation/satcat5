@@ -81,6 +81,9 @@ namespace satcat5 {
         //! Buffered SLIP encoder / decoder pair.
         //! Suitable for connecting to UART or similar.
         //!
+        //! This class provides SLIP encoding only, with no validation.
+        //! For related classes that include CRC32, \see eth_checksum.h.
+        //!
         //! Tx path: Write (*this) -> SLIP encode (parent) -> Write (*dst)
         //!
         //! Rx path: Read (*src) -> SLIP decode -> Buffer -> Read (*this)

@@ -194,8 +194,8 @@ TEST_CASE("net_telemetry_tx") {
     tx_udp.connect(satcat5::ip::ADDR_BROADCAST, PORT_UDP);
 
     // Server-side infrastructure records incoming messages.
-    satcat5::eth::Socket rx_eth(&xlink.net1.m_eth);
-    satcat5::udp::Socket rx_udp(&xlink.net1.m_udp);
+    satcat5::eth::SocketRx rx_eth(&xlink.net1.m_eth);
+    satcat5::udp::SocketRx rx_udp(&xlink.net1.m_udp);
     rx_eth.bind(TYPE_ETH);
     rx_udp.bind(PORT_UDP);
 

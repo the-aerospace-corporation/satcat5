@@ -132,6 +132,31 @@ TEST_CASE("BufferedCopy") {
     }
 }
 
+TEST_CASE("BufferedPackets") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+
+    // Back-to-back test network.
+    constexpr satcat5::udp::Port TEST_PORT = {0x4321};
+    satcat5::test::CrosslinkIp xlink(__FILE__);
+    satcat5::udp::Address send(&xlink.net0.m_udp);
+    satcat5::udp::SocketRx recv(&xlink.net1.m_udp);
+    send.connect(xlink.IP1, TEST_PORT);
+    recv.bind(TEST_PORT);
+
+    // Unit under test.
+    io::PacketBufferHeap tx;
+    io::BufferedPackets uut(&tx, &send);
+
+    SECTION("Basic") {
+        CHECK(satcat5::test::write(&tx, "1st: 12 bytes"));
+        CHECK(satcat5::test::write(&tx, "2nd: 14 more..."));
+        xlink.timer.sim_wait(1000);
+        CHECK(satcat5::test::read(&recv, "1st: 12 bytes"));
+        CHECK(satcat5::test::read(&recv, "2nd: 14 more..."));
+    }
+}
+
 TEST_CASE("BufferedStream") {
     // Simulation infrastructure.
     SATCAT5_TEST_START;
@@ -140,7 +165,7 @@ TEST_CASE("BufferedStream") {
     constexpr satcat5::udp::Port TEST_PORT = {0x4321};
     satcat5::test::CrosslinkIp xlink(__FILE__);
     satcat5::udp::Address send(&xlink.net0.m_udp);
-    satcat5::udp::Socket recv(&xlink.net1.m_udp);
+    satcat5::udp::SocketRx recv(&xlink.net1.m_udp);
     send.connect(xlink.IP1, TEST_PORT);
     recv.bind(TEST_PORT);
 

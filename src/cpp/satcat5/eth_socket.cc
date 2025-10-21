@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -12,6 +12,22 @@ satcat5::eth::Socket::Socket(satcat5::eth::Dispatch* iface)
     : SocketCore(iface,
         m_txbuff, SATCAT5_ESOCK_BUFFSIZE, SATCAT5_ESOCK_PACKETS,
         m_rxbuff, SATCAT5_ESOCK_BUFFSIZE, SATCAT5_ESOCK_PACKETS)
+{
+    // No other initialization required.
+}
+
+satcat5::eth::SocketRx::SocketRx(satcat5::eth::Dispatch* iface)
+    : SocketCore(iface,
+        nullptr, 0, 0,
+        m_rxbuff, SATCAT5_ESOCK_BUFFSIZE, SATCAT5_ESOCK_PACKETS)
+{
+    // No other initialization required.
+}
+
+satcat5::eth::SocketTx::SocketTx(satcat5::eth::Dispatch* iface)
+    : SocketCore(iface,
+        m_txbuff, SATCAT5_ESOCK_BUFFSIZE, SATCAT5_ESOCK_PACKETS,
+        nullptr, 0, 0)
 {
     // No other initialization required.
 }

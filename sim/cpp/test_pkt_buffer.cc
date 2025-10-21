@@ -107,9 +107,9 @@ TEST_CASE("normal writes to non-packet buffers", "[pkt_buffer]") {
 
     // Buffer returns to empty after clear
     uut.clear();
-    REQUIRE(uut.get_write_partial() == 0);
-    REQUIRE((u32)uut.get_percent_full() == 0);
-    REQUIRE(uut.get_write_space() == original_write_space);
+    CHECK(uut.get_write_partial() == 0);
+    CHECK((u32)uut.get_percent_full() == 0);
+    CHECK(uut.get_write_space() == original_write_space);
 }
 
 TEST_CASE("zero-size write", "[pkt_buffer]") {
@@ -144,9 +144,9 @@ TEST_CASE("zero-size write", "[pkt_buffer]") {
 
     // Buffer returns to empty after clear
     uut.clear();
-    REQUIRE(uut.get_write_partial() == 0);
-    REQUIRE((u32)uut.get_percent_full() == 0);
-    REQUIRE(uut.get_write_space() == original_write_space);
+    CHECK(uut.get_write_partial() == 0);
+    CHECK((u32)uut.get_percent_full() == 0);
+    CHECK(uut.get_write_space() == original_write_space);
 }
 
 
@@ -211,9 +211,9 @@ TEST_CASE("Abandon packet on oversize write", "[pkt_buffer]") {
 
     // Buffer returns to empty after clear
     uut.clear();
-    REQUIRE(uut.get_write_partial() == 0);
-    REQUIRE((u32)uut.get_percent_full() == 0);
-    REQUIRE(uut.get_write_space() == original_write_space);
+    CHECK(uut.get_write_partial() == 0);
+    CHECK((u32)uut.get_percent_full() == 0);
+    CHECK(uut.get_write_space() == original_write_space);
 }
 
 
@@ -248,14 +248,14 @@ TEST_CASE("large packet", "[pkt_buffer]") {
     CHECK(uut.get_write_space() == small_space);
 
     // Read the small packet
-    REQUIRE(uut.get_read_ready() == 1);
+    CHECK(uut.get_read_ready() == 1);
     u8 val = uut.read_u8();
-    REQUIRE(val == 'a');
+    CHECK(val == 'a');
 
     // No more packets
-    REQUIRE(uut.get_read_ready() == 0);
+    CHECK(uut.get_read_ready() == 0);
     uut.read_finalize();
-    REQUIRE(uut.get_read_ready() == 0);
+    CHECK(uut.get_read_ready() == 0);
 }
 
 // Test write after read, including wrap around get_write_space
@@ -373,10 +373,10 @@ TEST_CASE("wrap-around-read-packet", "[pkt_buffer]") {
     uut.read_finalize();
 
     // Empty again
-    REQUIRE(bytes_written == 0); // Sanity check on test
+    CHECK(bytes_written == 0); // Sanity check on test
     CHECK(uut.get_percent_full() == 0);
-    REQUIRE(uut.get_write_partial() == 0);
-    REQUIRE(uut.get_write_space() == original_write_space);
+    CHECK(uut.get_write_partial() == 0);
+    CHECK(uut.get_write_space() == original_write_space);
 }
 
 TEST_CASE("zero-copy write", "[pkt_buffer]") {
@@ -422,6 +422,10 @@ TEST_CASE("zero-copy write", "[pkt_buffer]") {
     CHECK(uut.read_u8() == 'e');
     uut.read_finalize();
     CHECK(uut.get_read_ready() == 0);
+
+    // Check cumulative stats.
+    CHECK(uut.byte_count() == 5);
+    CHECK(uut.frame_count() == 2);
 }
 
 TEST_CASE("zero-copy-full1", "[pkt_buffer]") {
@@ -474,6 +478,8 @@ TEST_CASE("underflow read", "[pkt_buffer]") {
     uut.write_u8('e');
     uut.write_u8('f');
     CHECK(uut.write_finalize());
+    CHECK(uut.byte_count() == 6);
+    CHECK(uut.frame_count() == 2);
 
     // Attempt to read too many bytes using various methods.
     // Note: Each SECTION runs the code before and after in a new instance.
@@ -505,14 +511,20 @@ TEST_CASE("Write too many packets", "[pkt_buffer]") {
     // Write first packet (success)
     uut.write_u8('a');
     CHECK(uut.write_finalize());
+    CHECK(uut.byte_count() == 1);
+    CHECK(uut.frame_count() == 1);
 
     // Write second packet (success)
     uut.write_u8('b');
     CHECK(uut.write_finalize());
+    CHECK(uut.byte_count() == 1);
+    CHECK(uut.frame_count() == 1);
 
     // Write third packet (overflow)
     uut.write_u8('c');
     CHECK(!uut.write_finalize());
+    CHECK(uut.byte_count() == 0);
+    CHECK(uut.frame_count() == 0);
 
     // Read back both successful packets.
     CHECK(uut.get_read_ready() == 1);

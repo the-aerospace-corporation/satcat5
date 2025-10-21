@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022-2023 The Aerospace Corporation.
+-- Copyright 2022-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -55,10 +55,6 @@ attribute satcat5_cross_clock_src : boolean;
 attribute satcat5_cross_clock_src of tstamp : signal is true;
 
 begin
-
--- Sanity check on clock configuration.
-assert (VCONFIG.vclka_hz < VCONFIG.vclkb_hz and VCONFIG.vclkb_hz < 1.1*VCONFIG.vclka_hz)
-    report "Invalid Vernier clock (A slightly slower than B)." severity error;
 
 -- Drive main output.
 ref_time.vclka  <= vclka;

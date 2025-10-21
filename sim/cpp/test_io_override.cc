@@ -23,6 +23,7 @@ TEST_CASE("io_override") {
         satcat5::io::PacketBufferHeap dev_tx, ovr_tx;
         satcat5::io::Override uut(&dev_tx, &dev_rx, CopyMode::PACKET);
         uut.set_remote(&ovr_rx, &ovr_tx);
+        uut.set_timeout(0);
         // Send some data in local mode.
         CHECK(ref1.read()->copy_and_finalize(&uut));
         CHECK(ref2.read()->copy_and_finalize(&uut));
@@ -47,6 +48,12 @@ TEST_CASE("io_override") {
         satcat5::poll::service_all();
         CHECK(satcat5::test::read_equal(ref1.read(), &ovr_rx));
         CHECK(satcat5::test::read_equal(ref2.read(), &ovr_rx));
+        CHECK_FALSE(uut.get_read_ready());
+        // Send some data locally while in remote mode. Should not be accepted.
+        CHECK_FALSE(ref1.read()->copy_and_finalize(&uut));
+        CHECK_FALSE(ref2.read()->copy_and_finalize(&uut));
+        satcat5::poll::service_all();
+        CHECK_FALSE(dev_tx.get_read_ready());
     }
 
     SECTION("stream") {

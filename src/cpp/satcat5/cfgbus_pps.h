@@ -41,6 +41,9 @@ namespace satcat5 {
             inline void set_callback(satcat5::ptp::TrackingController* cb)
                 { m_callback = cb; }
 
+            //! Get the current edge-detection mode.
+            inline Edge get_mode() const        { return m_mode; }
+
             //! Get the current phase offset setting.
             //! \returns Offset in subnanoseconds, \see set_offset.
             inline s64 get_offset() const       { return m_offset; }
@@ -51,7 +54,7 @@ namespace satcat5 {
             inline void set_offset(s64 offset)  { m_offset = offset; }
 
             //! Clear FIFO and set the active edge (rising or falling).
-            void reset(satcat5::cfg::PpsInput::Edge mode = Edge::RISING);
+            void reset(Edge mode = Edge::RISING);
 
         protected:
             // Internal methods.
@@ -61,6 +64,7 @@ namespace satcat5 {
             // Internal state.
             satcat5::cfg::Register m_reg;
             satcat5::ptp::TrackingController* m_callback;
+            Edge m_mode;
             s64 m_offset;
             s64 m_period;
         };
@@ -70,7 +74,7 @@ namespace satcat5 {
         //! a PPS signal. This software driver allows configuration of that
         //! block, setting its phase offset and polarity.
         //! \see satcat5::ptp::PpsInput
-        class PpsOutput {
+        class PpsOutput : protected satcat5::poll::Timer {
         public:
             //! Link this driver to the hardware control register.
             //! \param reg Sets ConfigBus control register.
@@ -97,11 +101,38 @@ namespace satcat5 {
         protected:
             // Internal methods.
             void configure();               // Reload all parameters
+            void timer_event() override;    // Timer event handler
 
             // Internal state.
             satcat5::cfg::Register m_reg;
             s64 m_offset;
             bool m_rising;
+        };
+
+        //! Variant of PpsOutput with frequency-control enabled.
+        class RefOutput : public satcat5::cfg::PpsOutput {
+        public:
+            //! Link this driver to the hardware control register.
+            //! \param reg_phase Sets ConfigBus phase-offset register.
+            //! \param reg_period Sets ConfigBus period register.
+            //! \param rising Sets the default output polarity.
+            explicit RefOutput(
+                satcat5::cfg::Register reg_phase,
+                satcat5::cfg::Register reg_period,
+                bool rising=true);
+
+            //! Query the frequency for this output.
+            inline u32 get_frequency() const
+                { return m_freq_hz; }
+
+            //! Adjust the frequency for this output.
+            //! e.g., 1 = 1 Hz = 1 pulse-per-second.
+            void set_frequency(u32 freq_hz);
+
+        protected:
+            // Internal state.
+            satcat5::cfg::Register m_reg_period;
+            u32 m_freq_hz;
         };
     }
 }

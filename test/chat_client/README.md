@@ -1,4 +1,4 @@
-# Chat-Client Demo Application.
+# Chat-Client Demo Application
 
 ![SatCat5 Logo](../../doc/images/satcat5.svg)
 

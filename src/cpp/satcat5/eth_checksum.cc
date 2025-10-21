@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -32,8 +32,7 @@ static const u32 CRC_TABLE[16] = {
     0x9B64C2B0u, 0x86D3D2D4u, 0xA00AE278u, 0xBDBDF21Cu,
 };
 
-inline void crc_update(u32& crc, u8 next)
-{
+inline void crc_update(u32& crc, u8 next) {
     u32 next1 = next >> 0;                  // First nybble
     u32 next2 = next >> 4;                  // Second nybble
     u8 index1 = (crc ^ next1) & 0x0Ful;     // Table index
@@ -112,20 +111,17 @@ static const u32 CRC_TABLE[256] = {
     0xB40BBE37u, 0xC30C8EA1u, 0x5A05DF1Bu, 0x2D02EF8Du
 };
 
-inline void crc_update(u32& crc, u8 next)
-{
+inline void crc_update(u32& crc, u8 next) {
     u8 index = (crc ^ (u32)next) & 0xFFul;  // Table index
     crc = (crc >> 8) ^ CRC_TABLE[index];    // XOR with table
 }
 #endif  // SATCAT5_CRC_TABLE_BITS == 8
 
-inline u32 crc_format(u32 crc)
-{
+inline u32 crc_format(u32 crc) {
     return __builtin_bswap32(~crc);
 }
 
-u32 satcat5::eth::crc32(unsigned nbytes, const void* data)
-{
+u32 satcat5::eth::crc32(unsigned nbytes, const void* data) {
     // Byte-by-byte CRC32 calculation.
     const u8* data8 = (const u8*)data;
     u32 crc = CRC_INIT;
@@ -135,8 +131,7 @@ u32 satcat5::eth::crc32(unsigned nbytes, const void* data)
     return crc_format(crc);
 }
 
-u32 satcat5::eth::crc32(Readable* src)
-{
+u32 satcat5::eth::crc32(Readable* src) {
     // Byte-by-byte CRC32 calculation.
     u32 crc = CRC_INIT;
     while (src->get_read_ready())
@@ -152,15 +147,14 @@ ChecksumTx::ChecksumTx(Writeable* dst)
     // Nothing else to initialize
 }
 
-bool ChecksumTx::write_finalize()
-{
+bool ChecksumTx::write_finalize() {
     // Format and append CRC32 per Ethernet specification.
     m_dst->write_u32(crc_format(m_chk));
     return chk_finalize() && m_dst->write_finalize();
 }
 
-void ChecksumTx::write_next(u8 data)
-{
+void ChecksumTx::write_next(u8 data) {
+    ++m_frm_len;                        // Update parent state
     crc_update(m_chk, data);            // Update internal state
     m_dst->write_u8(data);              // Forward new data
 }
@@ -171,13 +165,11 @@ ChecksumRx::ChecksumRx(Writeable* dst)
     // Nothing else to initialize
 }
 
-bool ChecksumRx::write_finalize()
-{
+bool ChecksumRx::write_finalize() {
     return sreg_match(crc_format(m_chk));
 }
 
-void ChecksumRx::write_next(u8 data)
-{
+void ChecksumRx::write_next(u8 data) {
     if (sreg_push(data)) crc_update(m_chk, data);
 }
 

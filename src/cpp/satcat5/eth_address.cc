@@ -1,10 +1,9 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/eth_address.h>
-#include <satcat5/eth_dispatch.h>
 
 using satcat5::eth::Address;
 
@@ -65,4 +64,3 @@ void Address::save_reply_address() {
     m_type = m_iface->reply_type();
     m_vtag = m_iface->reply_vtag();
 }
-

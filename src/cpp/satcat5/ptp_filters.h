@@ -228,6 +228,8 @@ namespace satcat5 {
                 : kp(satcat5::util::round_u64z(k1(tau_secs, 0.707) / fw_gain()))
                 , ki(satcat5::util::round_u64z(k2(tau_secs, 0.707) / fw_gain()))
                 {} // No other initialization required.
+            CoeffPI(const CoeffPI& t) = default;
+            CoeffPI& operator=(const CoeffPI& t) = default;
 
             //! Are all coefficients large enough to mitigate rounding error?
             bool ok() const {return (kp > 7) && (ki > 7);}
@@ -298,6 +300,8 @@ namespace satcat5 {
                 , ki(satcat5::util::round_u64z(k2(tau_secs) / fw_gain()))
                 , kr(satcat5::util::round_u64z(kratio(tau_secs)))
                 {} // No other initialization required.
+            CoeffPII(const CoeffPII& t) = default;
+            CoeffPII& operator=(const CoeffPII& t) = default;
 
             //! Are all coefficients large enough to mitigate rounding error?
             bool ok() const {return (kp > 7) && (ki > 7) && (kr > 7);}
@@ -381,6 +385,8 @@ namespace satcat5 {
             constexpr LinearRegression()
                 : alpha(satcat5::util::INT128_ZERO)
                 , beta(satcat5::util::INT128_ZERO) {}
+            LinearRegression(const LinearRegression& t) = default;
+            LinearRegression& operator=(const LinearRegression& t) = default;
 
             //! Given input samples, calculate the best-fit line.
             LinearRegression(const unsigned n, const s64* x, const s64* y);
@@ -398,6 +404,8 @@ namespace satcat5 {
                 : ki(satcat5::util::round_u64z(ki_gain() / tau_secs))
                 , kw(satcat5::util::round_u64z(kw_gain() * 2.0 / tau_secs))
                 {} // No other initialization required.
+            CoeffLR(const CoeffLR& t) = default;
+            CoeffLR& operator=(const CoeffLR& t) = default;
 
             //! Are all coefficients large enough to mitigate rounding error?
             bool ok() const {return (ki > 7) && (kw > 7);}

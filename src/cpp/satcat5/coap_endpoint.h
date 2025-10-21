@@ -196,6 +196,8 @@ namespace satcat5 {
 
             //! Pointer to the parent's network interface.
             //!@{
+            inline satcat5::eth::Dispatch* eth() const
+                { return ip()->iface(); }
             inline satcat5::ip::Dispatch* ip() const
                 { return udp()->iface(); }
             inline satcat5::udp::Dispatch* udp() const

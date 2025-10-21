@@ -17,6 +17,11 @@ namespace satcat5 {
         //! (i.e., 2^16 LSB = one nanosecond per second = 1 part per billion.)
         //! \see cfg::NetworkStats.
         struct TrafficStats {
+            // Explicitly declare default constructor and copy methods.
+            TrafficStats() = default;
+            TrafficStats(const TrafficStats& t) = default;
+            TrafficStats& operator=(const TrafficStats& t) = default;
+
             u32 bcast_bytes;        //!< Broadcast bytes received from device
             u32 bcast_frames;       //!< Broadcast frames received from device
             u32 rcvd_bytes;         //!< Total bytes received from device
@@ -32,6 +37,9 @@ namespace satcat5 {
             u8  errct_ptp_rx;       //!< RX PTP packets with bad tstamps
             u8  errct_ptp_tx;       //!< TX PTP packets with bad tstamps
             u8  status;             //!< Port status (Varies by port)
+
+            //! Total errors across all types.
+            u32 errct_total() const;
         };
 
         //! Traffic statistics polling.

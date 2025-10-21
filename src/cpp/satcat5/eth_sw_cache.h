@@ -68,11 +68,15 @@ namespace satcat5 {
             //! Data structure for the internal cache.
             struct CacheEntry {
             public:
-                u64 m_key;              // MAC address as u64
-                unsigned m_port;        // Associated port index
+                CacheEntry() = default;
+                CacheEntry(const CacheEntry& t) = delete;
+                CacheEntry& operator=(const CacheEntry& t) = delete;
+
+                u64 m_key;              //!< MAC address as u64
+                unsigned m_port;        //!< Associated port index
             private:
                 friend satcat5::util::LruCache<CacheEntry>;
-                CacheEntry* m_next;     // Linked list of cache entries
+                CacheEntry* m_next;     //!< Linked list of cache entries
             };
 
             //! Constructor accepts a child-allocated array for the cache.

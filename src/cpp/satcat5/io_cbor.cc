@@ -197,7 +197,12 @@ namespace satcat5 {
             QCBORItem item;
             size_t idx_dat = UsefulInputBuf_Tell(&cbor->InBuf);
             QCBORDecode_VGetNextConsume(cbor, &item);
-            if (QCBORDecode_GetError(cbor) != QCBOR_SUCCESS) return false;
+            QCBORError err = QCBORDecode_GetError(cbor);
+            if (err != QCBOR_SUCCESS) {
+                if (err == QCBOR_ERR_NO_MORE_ITEMS)
+                    { QCBORDecode_GetAndResetError(cbor); }
+                return false;
+            }
             size_t idx_end = UsefulInputBuf_Tell(&cbor->InBuf);
             // Convert offsets to start/end pointers.
             const u8* ptr_dat = (const u8*)cbor->InBuf.UB.ptr + idx_dat;
@@ -224,6 +229,8 @@ namespace satcat5 {
             while (copy_item(dst)) {
                 ++count;
             }
+            if (QCBORDecode_GetError(cbor) == QCBOR_ERR_NO_MORE_ITEMS)
+                { QCBORDecode_GetAndResetError(cbor); } // GCOVR_EXCL_LINE
             return count;
         }
 
@@ -515,6 +522,8 @@ namespace satcat5 {
             QCBORError err = QCBORDecode_GetError(cbor);
             if (err == QCBOR_ERR_LABEL_NOT_FOUND)
                 { QCBORDecode_GetAndResetError(cbor); return ERR_NOT_FOUND; }
+            if (err == QCBOR_ERR_UNEXPECTED_TYPE)
+                { QCBORDecode_GetAndResetError(cbor); return ERR_BAD_TYPE; }
             if (err != QCBOR_SUCCESS) { return ERR_QCBOR_INT; } // Unknown.
 
             // Many QCBOR types are "paired" and have adjacent numbers. Ex:

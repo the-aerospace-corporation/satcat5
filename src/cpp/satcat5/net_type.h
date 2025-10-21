@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -50,6 +50,10 @@ namespace satcat5 {
             //! Construct a Type from a pair of values, concatenated.
             explicit constexpr Type(u16 val1, u16 val2)
                 : m_mask(0xFFFFFFFFu), m_value(65536ul * val1 + val2) {}
+
+            // Default copy operators.
+            Type(const Type& t) = default;
+            Type& operator=(const Type& t) = default;
 
             //! Accessors for `m_value`.
             //! @{

@@ -30,7 +30,7 @@ extern "C"{
 #error The FreeRTOS tick hook must be enabled for SatCat5.
 #endif // (configUSE_TICK_HOOK == 0)
 
-#ifndef portYIELD_FROM_ISR(x)
+#ifndef portYIELD_FROM_ISR
 #define portYIELD_FROM_ISR(x) portEND_SWITCHING_ISR(x)
 #endif
 

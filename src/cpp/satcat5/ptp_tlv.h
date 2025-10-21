@@ -76,6 +76,11 @@ namespace satcat5 {
             u32 org_id;     // (Org) organizationId (zero = disabled)
             u32 org_sub;    // (Org) organizationSubType (zero = disabled)
 
+            // Explicitly declare default constructor and assignment methods.
+            TlvHeader() = default;
+            TlvHeader(const TlvHeader& t) = default;
+            TlvHeader& operator=(const TlvHeader& t) = default;
+
             //! Does this TLV match the designated type and/or subtype?
             bool match(const satcat5::ptp::TlvHeader& other) const;
 

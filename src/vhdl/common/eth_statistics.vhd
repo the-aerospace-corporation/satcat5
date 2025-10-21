@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2021-2024 The Aerospace Corporation.
+-- Copyright 2021-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -44,9 +44,11 @@ use     work.switch_types.all;
 
 entity eth_statistics is
     generic (
-    IO_BYTES    : positive;     -- Max bytes per clock
-    COUNT_WIDTH : positive;     -- Width of each statistics counter
-    SAFE_COUNT  : boolean);     -- Safe counters (no overflow)
+    IO_BYTES    : positive;             -- Max bytes per clock
+    COUNT_WIDTH : positive;             -- Width of each statistics counter
+    SAFE_COUNT  : boolean;              -- Safe counters (no overflow)
+    ARESET_RX   : boolean := true;      -- Async reset Rx counters?
+    ARESET_TX   : boolean := true);     -- Async reset Tx counters?
     port (
     -- Statistics interface (bytes received/sent, frames received/sent)
     stats_req_t : in  std_logic;        -- Toggle to request next block
@@ -204,6 +206,28 @@ err_ptp_tx  <= lat_err_ptp_tx;
 err_ptp_rx  <= lat_err_ptp_rx;
 
 -- Receive clock domain.
+p_async_rx : process(rx_clk, rx_reset_p)
+begin
+    if (ARESET_RX and rx_reset_p = '1') then
+        -- Async reset handles edge case where Rx clock is stopped.
+        -- (This is common on Polarfire ports with no connected signal.)
+        lat_bcst_bytes  <= (others => '0');
+        lat_bcst_frames <= (others => '0');
+        lat_rcvd_bytes  <= (others => '0');
+        lat_rcvd_frames <= (others => '0');
+        lat_rx_freq     <= (others => '0');
+    elsif rising_edge(rx_clk) then
+        -- On demand, update the latched value.
+        if (stats_req_rx = '1') then
+            lat_bcst_bytes  <= wrk_bcst_bytes;
+            lat_bcst_frames <= wrk_bcst_frames;
+            lat_rcvd_bytes  <= wrk_rcvd_bytes;
+            lat_rcvd_frames <= wrk_rcvd_frames;
+            lat_rx_freq     <= rx_freq;
+        end if;
+    end if;
+end process;
+
 p_stats_rx : process(rx_clk)
     function is_byte_ff(x : std_logic_vector; b : integer) return std_logic is
         variable tmp : byte_t := x(x'left-8*b downto x'left-8*b-7);
@@ -217,15 +241,6 @@ p_stats_rx : process(rx_clk)
     variable is_bcast   : std_logic := '1';
 begin
     if rising_edge(rx_clk) then
-        -- On demand, update the latched value.
-        if (stats_req_rx = '1') then
-            lat_bcst_bytes  <= wrk_bcst_bytes;
-            lat_bcst_frames <= wrk_bcst_frames;
-            lat_rcvd_bytes  <= wrk_rcvd_bytes;
-            lat_rcvd_frames <= wrk_rcvd_frames;
-            lat_rx_freq     <= rx_freq;
-        end if;
-
         -- Pipeline stage 3:
         -- Working counters are updated on each byte and each frame.
         wrk_rcvd_bytes  <= accumulator(
@@ -280,22 +295,33 @@ begin
 end process;
 
 -- Transmit clock domain.
-p_stats_tx : process(tx_clk)
-    variable frm_bytes : counter_t := COUNT_ZERO;
+p_async_tx : process(tx_clk, tx_reset_p)
 begin
-    if rising_edge(tx_clk) then
+    if (ARESET_TX and tx_reset_p = '1') then
+        -- Async reset handles edge case where Tx clock is stopped.
+        -- (This may occur where the port is intentionally shut down.)
+        lat_sent_bytes  <= (others => '0');
+        lat_sent_frames <= (others => '0');
+        lat_tx_freq     <= (others => '0');
+    elsif rising_edge(tx_clk) then
         -- On demand, update the latched value.
         if (stats_req_tx = '1') then
             lat_sent_bytes  <= wrk_sent_bytes;
             lat_sent_frames <= wrk_sent_frames;
             lat_tx_freq     <= tx_freq;
         end if;
+    end if;
+end process;
 
+p_stats_tx : process(tx_clk)
+    variable frm_bytes : counter_t := COUNT_ZERO;
+begin
+    if rising_edge(tx_clk) then
         -- Pipeline stage 3:
         -- Working counters are updated on each byte and each frame.
         wrk_sent_bytes  <= accumulator(
             wrk_sent_bytes, frm_bytes, tx_reset_p, stats_req_tx, tx_eof);
-        wrk_sent_frames  <= accumulator(
+        wrk_sent_frames <= accumulator(
             wrk_sent_frames, COUNT_ONE, tx_reset_p, stats_req_tx, tx_eof);
 
         -- Pipeline stage 2:

@@ -56,4 +56,23 @@ TEST_CASE("WriteableBroadcast") {
         CHECK(satcat5::test::read(&out1, "ShortMsg"));
         CHECK(out2.written_len() == 8);
     }
+
+    // Test WriteableBroadcastAny changes.
+    SECTION("any") {
+        satcat5::io::WriteableBroadcastAnyStatic<2> uut_any;
+        satcat5::io::ArrayWriteStatic<8> out8; // 8-byte write space.
+        satcat5::io::ArrayWriteStatic<16> out16; // 16-byte write space.
+        uut_any[0] = &out8;
+        uut_any[1] = &out16;
+        CHECK(uut_any.get_write_space() == 16); // Max of both.
+        CHECK_FALSE(satcat5::test::write(&uut_any, "Too long for both"));
+        CHECK(out8.written_len() == 0);
+        CHECK(out16.written_len() == 0);
+        CHECK(satcat5::test::write(&uut_any, "OK out16."));
+        CHECK(out8.written_len() == 0);
+        CHECK(out16.written_len() == 9);
+        CHECK(satcat5::test::write(&uut_any, "OK all."));
+        CHECK(out8.written_len() == 7);
+        CHECK(out16.written_len() == 7);
+    }
 }

@@ -43,9 +43,14 @@ using satcat5::ptp::TlvHeader;
 #define SATCAT5_PTP_PORT 1
 #endif
 
-// Default rate is 2^3 = 8x per second
+// Default SYNC or PDELAY rate is 2^3 = 8x per second.
 #ifndef SATCAT5_PTP_RATE
 #define SATCAT5_PTP_RATE 3
+#endif
+
+// Maximum ANNOUNCE, SYNC, or PDELAY rate is 2^8 = 256x per second.
+#ifndef SATCAT5_PTP_RMAX
+#define SATCAT5_PTP_RMAX 8
 #endif
 
 // Enable support for SPTP?
@@ -55,7 +60,7 @@ using satcat5::ptp::TlvHeader;
 #define SATCAT5_SPTP_ENABLE 1
 #endif
 
-// Assume offset from TAI to UTC is constant (see also: Section 7.2.4)
+// Default offset from TAI to UTC is a build-time constant.
 // This is equal to the number of leap seconds since the PTP epoch.
 // The value provided below is valid from 2017 to 2035.
 #ifndef SATCAT5_UTC_OFFSET
@@ -78,15 +83,13 @@ static constexpr u16 MSGLEN_PDELAY_RFU  = 54;
 static constexpr u16 MSGLEN_SIGNALING   = 44;
 
 // Convert mode to preferred broadcast type.
-constexpr inline DispatchTo broadcast_to(const ClientMode& mode)
-{
+constexpr inline DispatchTo broadcast_to(const ClientMode& mode) {
     return (mode == ClientMode::MASTER_L2)
         ? DispatchTo::BROADCAST_L2
         : DispatchTo::BROADCAST_L3;
 }
 
-const char* satcat5::ptp::to_string(satcat5::ptp::ClientMode mode)
-{
+const char* satcat5::ptp::to_string(satcat5::ptp::ClientMode mode) {
     switch (mode) {
     case ClientMode::DISABLED:      return "Disabled";
     case ClientMode::MASTER_L2:     return "MasterL2";
@@ -97,8 +100,7 @@ const char* satcat5::ptp::to_string(satcat5::ptp::ClientMode mode)
     }
 }
 
-const char* satcat5::ptp::to_string(satcat5::ptp::ClientState state)
-{
+const char* satcat5::ptp::to_string(satcat5::ptp::ClientState state) {
     switch (state) {
     case ClientState::DISABLED:     return "Disabled";
     case ClientState::LISTENING:    return "Listening";
@@ -121,13 +123,17 @@ Client::Client(
     , m_current_source(satcat5::ptp::PORT_NONE)
     , m_announce_count(0)
     , m_announce_every(0)
+    , m_sync_count(0)
+    , m_sync_every(0)
     , m_cache_wdog(0)
     , m_request_wdog(0)
+    , m_announce_rate(0)
     , m_sync_rate(SATCAT5_PTP_RATE)
     , m_pdelay_rate(SATCAT5_PTP_RATE)
     , m_announce_id(0)
     , m_sync_id(0)
     , m_pdelay_id(0)
+    , m_utc_offset(SATCAT5_UTC_OFFSET)
 {
     // Clock-ID from MAC address using the IEEE 1588-2008 method.
     // (Deprecated in IEEE 1588-2019 unless MAC/OUI is globally-unique.)
@@ -141,14 +147,12 @@ Client::Client(
 }
 
 #if SATCAT5_ALLOW_DELETION
-Client::~Client()
-{
+Client::~Client() {
     m_iface.ptp_callback(0);
 }
 #endif
 
-void Client::set_mode(satcat5::ptp::ClientMode mode)
-{
+void Client::set_mode(satcat5::ptp::ClientMode mode) {
     // Set initial state for the new mode.
     m_mode = mode;
     m_current_source = satcat5::ptp::PORT_NONE;
@@ -167,22 +171,36 @@ void Client::set_mode(satcat5::ptp::ClientMode mode)
     timer_reset();
 }
 
-void Client::set_sync_rate(int rate)
-{
+inline int rate_clamp(int rate) {
+    return (rate < SATCAT5_PTP_RMAX) ? rate : SATCAT5_PTP_RMAX;
+}
+
+void Client::set_announce_rate(int rate) {
     // Store the new rate setting and reconfigure timers.
-    m_sync_rate = rate;
+    m_announce_rate = rate_clamp(rate);
     timer_reset();
 }
 
-void Client::set_pdelay_rate(int rate)
-{
+void Client::set_sync_rate(int rate) {
     // Store the new rate setting and reconfigure timers.
-    m_pdelay_rate = rate;
+    m_sync_rate = rate_clamp(rate);
     timer_reset();
+}
+
+void Client::set_pdelay_rate(int rate) {
+    // Store the new rate setting and reconfigure timers.
+    m_pdelay_rate = rate_clamp(rate);
+    timer_reset();
+}
+
+bool Client::send_sync_bcast() {
+    return send_sync(broadcast_to(m_mode), ++m_sync_id);
 }
 
 bool Client::send_sync_unicast(
-    const satcat5::eth::MacAddr& mac, const satcat5::ip::Addr& ip, const satcat5::eth::VlanTag& vtag)
+    const satcat5::eth::MacAddr& mac,
+    const satcat5::ip::Addr& ip,
+    const satcat5::eth::VlanTag& vtag)
 {
     // Sanity check: Only master should send Sync messages.
     if (m_state != ClientState::MASTER) return false;
@@ -193,8 +211,7 @@ bool Client::send_sync_unicast(
     return send_sync(DispatchTo::STORED, ++m_sync_id);
 }
 
-void Client::ptp_rcvd(LimitedRead& rd)
-{
+void Client::ptp_rcvd(LimitedRead& rd) {
     // Sanity check: Immediately discard all messages if disabled.
     if (m_state == ClientState::DISABLED) return;
 
@@ -248,15 +265,22 @@ void Client::ptp_rcvd(LimitedRead& rd)
     }
 }
 
-void Client::timer_event()
-{
+void Client::timer_event() {
     if (m_state == ClientState::MASTER) {
-        // Send ANNOUNCE and SYNC at regular intervals.
-        if (m_sync_rate >= 0) {
-            send_announce_maybe();
-            send_sync(broadcast_to(m_mode), ++m_sync_id);
-        } else {
-            send_announce();
+        // Announcement message every N timer events.
+        // Note: MailMap may block if multiple packets are sent too quickly.
+        //  Simplest workaround is a short fixed delay, otherwise harmless.
+        if (m_announce_count) {
+            --m_announce_count;
+        } else if (m_announce_every && send_announce()) {
+            m_announce_count = m_announce_every - 1;
+            SATCAT5_CLOCK->busywait_usec(10);
+        }
+        // Sync message every N timer events.
+        if (m_sync_count) {
+            --m_sync_count;
+        } else if (m_sync_every && send_sync_bcast()) {
+            m_sync_count = m_sync_every - 1;
         }
     } else if (m_state == ClientState::SLAVE) {
         if (SATCAT5_SPTP_ENABLE && m_mode == ClientMode::SLAVE_SPTP) {
@@ -272,31 +296,30 @@ void Client::timer_event()
     }
 }
 
-void Client::timer_reset()
-{
-    if (m_state == ClientState::MASTER) {
-        // Conventional masters send both SYNC and ANNOUNCE:
-        //  * SYNC (variable 2^rate / sec) = Every timer event
-        //  * ANNOUNCE (fixed 1 / sec) = Every Nth timer event
-        if (m_sync_rate >= 0) {
-            m_announce_every = (1u << m_sync_rate);
-            m_announce_count = 0;
-            timer_every(div_round(1000u, 1u << m_sync_rate));
-        } else {
-            m_announce_every = 0;
-            m_announce_count = 0;
-            timer_every(1000);
-        }
-    } else if (m_state == ClientState::PASSIVE && m_pdelay_rate >= 0) {
+void Client::timer_reset() {
+    // Reset both one-in-N counters.
+    m_announce_count = 0;
+    m_announce_every = 0;
+    m_sync_count = 0;
+    m_sync_every = 0;
+    // Configure timers based on requested state...
+    int gcd_rate = (m_sync_rate > m_announce_rate) ? m_sync_rate : m_announce_rate;
+    if (m_state == ClientState::MASTER && gcd_rate > INT_MIN) {
+        // Conventional masters send both SYNC and ANNOUNCE.
+        // Timer rate is set by the greatest common denominator.
+        timer_every(div_round(1000u, 1u << gcd_rate));
+        if (m_announce_rate > INT_MIN)
+            m_announce_every = 1u << (gcd_rate - m_announce_rate);
+        if (m_sync_rate > INT_MIN)
+            m_sync_every = 1u << (gcd_rate - m_sync_rate);
+    } else if (m_state == ClientState::PASSIVE && m_pdelay_rate > INT_MIN) {
         // On entry or rate change, passive mode sets a timer:
         // * PDELAY_REQ (variable 0.9 x 2^rate / sec) (Section 9.5.13.2)
         timer_every(div_round(900u, 1u << m_pdelay_rate));
     } else if (m_state == ClientState::SLAVE) {
         bool sptp_mode = SATCAT5_SPTP_ENABLE && (m_mode == ClientMode::SLAVE_SPTP);
-        if (sptp_mode && m_sync_rate >= 0) {
+        if (sptp_mode && m_sync_rate > INT_MIN) {
             // SPTP slaves send DELAY_REQ at regular intervals (2^rate / sec).
-            m_announce_every = 0;
-            m_announce_count = 0;
             timer_every(div_round(1000, 1u << m_sync_rate));
         } else {
             // Watchdog timer for loss of communication.
@@ -308,8 +331,7 @@ void Client::timer_reset()
     }
 }
 
-void Client::cache_miss()
-{
+void Client::cache_miss() {
     // Rare errors (< 10%) are harmless, but high-latency connections may
     // need to increase SATCAT5_PTP_CACHE_SIZE (see "ptp_measurement.h").
     // A running tally logs this error only if the rate is excessive:
@@ -322,8 +344,7 @@ void Client::cache_miss()
     }
 }
 
-unsigned Client::tlv_send(const Header& hdr, satcat5::io::Writeable* wr)
-{
+unsigned Client::tlv_send(const Header& hdr, satcat5::io::Writeable* wr) {
     // Callback to each registered TlvHandler, return total length.
     // If wr is null, this is a prediction; otherwise write TLV(s).
     unsigned total = 0;
@@ -335,8 +356,7 @@ unsigned Client::tlv_send(const Header& hdr, satcat5::io::Writeable* wr)
     return total;
 }
 
-void Client::notify_if_complete(const Measurement* meas)
-{
+void Client::notify_if_complete(const Measurement* meas) {
     if (meas->done()) {
         // Make a local copy of the measurement object.
         // (TlvHandlers may modify or invalidate the timestamps.)
@@ -352,8 +372,7 @@ void Client::notify_if_complete(const Measurement* meas)
     }
 }
 
-void Client::client_timeout()
-{
+void Client::client_timeout() {
     log::Log(log::WARNING, "PtpClient: Connection timeout.");
     if (m_state == ClientState::SLAVE) {
         // Revert to LISTENING state, so we can identify a new server.
@@ -362,12 +381,16 @@ void Client::client_timeout()
     }
 }
 
-void Client::rcvd_announce(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_announce(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: Announcement");
 
     // Message contents defined in Section 13.5.1.
-    // TODO: Read any fields of interest.
+    Time origin; satcat5::ptp::ClockInfo clk_info;
+    bool ok = origin.read_from(&rd);    // originTimestamp (ignored)
+    s16 utc_offset = rd.read_s16();     // currentUtcOffset
+    rd.read_u8();                       // reserved
+    ok = ok && clk_info.read_from(&rd); // grandmaster clock info
+    if (!ok) return;                    // Invalid message?
 
     // See Section 9.5.3, including flowchart in Figure 36.
     if (m_state == ClientState::LISTENING) {
@@ -378,14 +401,19 @@ void Client::rcvd_announce(const Header& hdr, ArrayRead& rd)
         m_current_source = hdr.src_port;
         m_request_wdog = 0;
         m_state = ClientState::SLAVE;
+        m_clock_remote = clk_info;
+        m_utc_offset = utc_offset;
         timer_reset();
     } else if (m_state == ClientState::MASTER) {
         // TODO: Self-demote if a better master clock comes along.
+    } else if (m_state == ClientState::SLAVE && hdr.src_port == m_current_source) {
+        // Update local parameters to match the server.
+        m_clock_remote = clk_info;
+        m_utc_offset = utc_offset;
     }
 }
 
-void Client::rcvd_sync(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_sync(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: Sync");
     bool mode_sptp = SATCAT5_SPTP_ENABLE && (m_mode == ClientMode::SLAVE_SPTP);
 
@@ -428,8 +456,7 @@ void Client::rcvd_sync(const Header& hdr, ArrayRead& rd)
     }
 }
 
-void Client::rcvd_follow_up(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_follow_up(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: Follow-up");
     bool mode_sptp = SATCAT5_SPTP_ENABLE && (m_mode == ClientMode::SLAVE_SPTP);
 
@@ -455,8 +482,7 @@ void Client::rcvd_follow_up(const Header& hdr, ArrayRead& rd)
     }
 }
 
-void Client::rcvd_delay_req(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_delay_req(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: Delay request");
 
     // See Section 9.5.6, including flowchart in Figure 39.
@@ -472,8 +498,7 @@ void Client::rcvd_delay_req(const Header& hdr, ArrayRead& rd)
     }
 }
 
-void Client::rcvd_pdelay_req(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_pdelay_req(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: PDelay request");
 
     if (m_state == ClientState::PASSIVE) {
@@ -481,8 +506,7 @@ void Client::rcvd_pdelay_req(const Header& hdr, ArrayRead& rd)
     }
 }
 
-void Client::rcvd_delay_resp(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_delay_resp(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: Delay response");
 
     // See Section 9.5.7, including flowchart in Figure 40.
@@ -510,8 +534,7 @@ void Client::rcvd_delay_resp(const Header& hdr, ArrayRead& rd)
     }
 }
 
-void Client::rcvd_pdelay_resp(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_pdelay_resp(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: PDelay response");
 
     if (m_state == ClientState::PASSIVE) {
@@ -535,8 +558,7 @@ void Client::rcvd_pdelay_resp(const Header& hdr, ArrayRead& rd)
     }
 }
 
-void Client::rcvd_pdelay_follow_up(const Header& hdr, ArrayRead& rd)
-{
+void Client::rcvd_pdelay_follow_up(const Header& hdr, ArrayRead& rd) {
     if (DEBUG_VERBOSE > 0) log::Log(log::DEBUG, "PtpClient: PDelay response follow up");
 
     // Message contents defined in Section 13.11.1.
@@ -551,14 +573,12 @@ void Client::rcvd_pdelay_follow_up(const Header& hdr, ArrayRead& rd)
     } else {cache_miss();} // GCOVR_EXCL_LINE
 }
 
-void Client::rcvd_unexpected(const Header& hdr)
-{
+void Client::rcvd_unexpected(const Header& hdr) {
     // Log all unexpected message types, but take no further action.
     log::Log(log::INFO, "PtpClient: Unexpected message").write(hdr.type);
 }
 
-Header Client::make_header(u8 type, u16 seq_id)
-{
+Header Client::make_header(u8 type, u16 seq_id) {
     // Most fields are simple constants.
     Header hdr;
     hdr.type            = type;
@@ -599,7 +619,7 @@ Header Client::make_header(u8 type, u16 seq_id)
 
     // Set logMessageInterval based on type (Section 13.3.2.14)
     switch (type & 0x0F) {
-    case Header::TYPE_ANNOUNCE:     hdr.log_interval = 0; break;  // 1 per sec
+    case Header::TYPE_ANNOUNCE:     hdr.log_interval = (s8)(-m_announce_rate); break;
     case Header::TYPE_SYNC:         hdr.log_interval = (s8)(-m_sync_rate); break;
     case Header::TYPE_FOLLOW_UP:    hdr.log_interval = (s8)(-m_sync_rate); break;
     case Header::TYPE_DELAY_RESP:   hdr.log_interval = 0; break;
@@ -609,21 +629,7 @@ Header Client::make_header(u8 type, u16 seq_id)
     return hdr;
 }
 
-void Client::send_announce_maybe()
-{
-    // Announcement message every N timer events.
-    // Note: MailMap may block if multiple packets are sent too quickly.
-    //  Simplest workaround is a short fixed delay, otherwise harmless.
-    if (m_announce_count) {
-        --m_announce_count;
-    } else if (send_announce()) {
-        m_announce_count = m_announce_every - 1;
-        SATCAT5_CLOCK->busywait_usec(10);
-    }
-}
-
-bool Client::send_announce()
-{
+bool Client::send_announce() {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_announce");
     // ANNOUNCE messages are always broadcast.
     // Message contents defined in Section 13.5.
@@ -634,15 +640,14 @@ bool Client::send_announce()
     if (!wr) return false;
     wr->write_obj(hdr);                 // Common message header
     wr->write_obj(TIME_ZERO);           // originTimestamp
-    wr->write_u16(SATCAT5_UTC_OFFSET);  // currentUtcOffset
+    wr->write_u16(m_utc_offset);        // currentUtcOffset
     wr->write_u8(0);                    // Reserved
     wr->write_obj(m_clock_local);       // Grandmaster clock info
     tlv_send(hdr, wr);                  // Write TLV(s)
     return wr->write_finalize();
 }
 
-bool Client::send_sync(DispatchTo addr, u16 seq_id, u16 flags, u64 tref)
-{
+bool Client::send_sync(DispatchTo addr, u16 seq_id, u16 flags, u64 tref) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_sync");
 
     // Before we do anything, note the receive timestamp for SPTP only.
@@ -688,7 +693,9 @@ bool Client::send_sync(DispatchTo addr, u16 seq_id, u16 flags, u64 tref)
     }
 }
 
-bool Client::send_follow_up(satcat5::ptp::DispatchTo addr, u16 seq_id, u16 flags, u64 tref)
+bool Client::send_follow_up(
+    satcat5::ptp::DispatchTo addr,
+    u16 seq_id, u16 flags, u64 tref)
 {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_follow_up");
 
@@ -711,8 +718,7 @@ bool Client::send_follow_up(satcat5::ptp::DispatchTo addr, u16 seq_id, u16 flags
     return wr->write_finalize();
 }
 
-void Client::send_delay_req_sptp()
-{
+void Client::send_delay_req_sptp() {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_delay_req_sptp");
 
     // Error if we send N requests in a row with no response.
@@ -731,8 +737,7 @@ void Client::send_delay_req_sptp()
     }
 }
 
-bool Client::send_delay_req(u16 seq_id, u16 flags)
-{
+bool Client::send_delay_req(u16 seq_id, u16 flags) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_delay_req");
 
     // The timestamp we send here can be approximate (Section 11.3.2 c).
@@ -756,8 +761,7 @@ bool Client::send_delay_req(u16 seq_id, u16 flags)
     return wr->write_finalize();
 }
 
-bool Client::send_delay_resp(const Header& ref)
-{
+bool Client::send_delay_resp(const Header& ref) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_delay_resp");
 
     // Get the timestamp from the DELAY_REQ message we just received.
@@ -780,8 +784,7 @@ bool Client::send_delay_resp(const Header& ref)
     return wr->write_finalize();
 }
 
-bool Client::send_pdelay_req()
-{
+bool Client::send_pdelay_req() {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_pdelay_req");
 
     // Estimate the current time for the originTimestamp field.
@@ -810,8 +813,7 @@ bool Client::send_pdelay_req()
     return ok;
 }
 
-bool Client::send_pdelay_resp(const satcat5::ptp::Header& ref)
-{
+bool Client::send_pdelay_resp(const satcat5::ptp::Header& ref) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_pdelay_resp");
 
     // Get the timestamp from the DELAY_REQ message we just received.
@@ -850,8 +852,7 @@ bool Client::send_pdelay_resp(const satcat5::ptp::Header& ref)
     }
 }
 
-bool Client::send_pdelay_follow_up(const satcat5::ptp::Header& ref)
-{
+bool Client::send_pdelay_follow_up(const satcat5::ptp::Header& ref) {
     if (DEBUG_VERBOSE > 1) log::Log(log::DEBUG, "PtpClient: send_pdelay_follow_up");
 
     // Two-step mode uses most recent transmit and receive timestamps.
@@ -883,8 +884,7 @@ SyncUnicastL2::SyncUnicastL2(Client* client)
     // Nothing else to initialize.
 }
 
-void SyncUnicastL2::timer_event()
-{
+void SyncUnicastL2::timer_event() {
     if (m_dstmac != satcat5::eth::MACADDR_NONE) {
         m_client->send_sync_unicast(m_dstmac);
     }
@@ -897,8 +897,7 @@ SyncUnicastL3::SyncUnicastL3(Client* client)
     // Nothing else to initialize.
 }
 
-void SyncUnicastL3::timer_event()
-{
+void SyncUnicastL3::timer_event() {
     if (m_addr.ready()) {
         m_client->send_sync_unicast(m_addr.dstmac(), m_addr.dstaddr());
     }

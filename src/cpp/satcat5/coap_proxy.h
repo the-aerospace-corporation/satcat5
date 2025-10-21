@@ -51,6 +51,7 @@ namespace satcat5 {
         class ProxyResource final : public satcat5::coap::Resource {
         public:
             //! Constructor sets the URI path for the resource.
+            //! \param server       Pointer to the CoAP server object.
             //! \param local_uri    URI for incoming requests.
             //! \param fwd_addr     Forwarding IP address.
             //! \param fwd_port     Forwarding UDP port.

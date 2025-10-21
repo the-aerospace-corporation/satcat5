@@ -79,6 +79,10 @@ namespace satcat5 {
                 satcat5::io::Writeable* dst,
                 satcat5::io::Readable* src);
 
+            //! Report packet statistics since the previous query.
+            inline satcat5::io::TrafficStats stats()
+                { return satcat5::io::TrafficStats::query(m_rx_fcs, *this); }
+
         protected:
             satcat5::io::SlipEncoder m_tx_slip;     //!< SLIP encoder object
             satcat5::io::BufferedCopy m_rx_copy;    //!< Push/pull adapter
@@ -105,6 +109,10 @@ namespace satcat5 {
             SlipCodecInverse(
                 satcat5::io::Writeable* dst,
                 satcat5::io::Readable* src);
+
+            //! Report packet statistics since the previous query.
+            inline satcat5::io::TrafficStats stats()
+                { return satcat5::io::TrafficStats::query(m_rx_fcs, m_tx_fcs); }
 
         protected:
             satcat5::eth::ChecksumRx m_rx_fcs;      //!< Verify received checksums

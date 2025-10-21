@@ -9,6 +9,7 @@
 
 using satcat5::io::BufferedCopy;
 using satcat5::io::BufferedIO;
+using satcat5::io::BufferedPackets;
 using satcat5::io::BufferedStream;
 using satcat5::util::min_unsigned;
 
@@ -97,6 +98,32 @@ void BufferedStream::data_rcvd(satcat5::io::Readable* src) {
 
 void BufferedStream::data_unlink(satcat5::io::Readable* src) {m_src = 0;} // GCOVR_EXCL_LINE
 
+BufferedPackets::BufferedPackets(
+        satcat5::io::Readable* src,
+        satcat5::net::Address* dst)
+    : m_src(src)
+    , m_dst(dst)
+{
+    if (m_src) m_src->set_callback(this);
+}
+
+#if SATCAT5_ALLOW_DELETION
+BufferedPackets::~BufferedPackets() {
+    if (m_src) m_src->set_callback(0);
+}
+#endif
+
+void BufferedPackets::data_rcvd(satcat5::io::Readable* src) {
+    // One-for-one copy from source to destination.
+    while (src->get_read_ready()) {
+        auto wr = m_dst->open_write(src->get_read_ready());
+        if (wr) src->copy_and_finalize(wr);
+        else break;
+    }
+}
+
+void BufferedPackets::data_unlink(satcat5::io::Readable* src) {m_src = 0;} // GCOVR_EXCL_LINE
+
 satcat5::io::BufferedWriter::BufferedWriter(
         satcat5::io::Writeable* dst,
         u8* txbuff, unsigned txbytes, unsigned txpkt)
@@ -106,3 +133,4 @@ satcat5::io::BufferedWriter::BufferedWriter(
 {
     // Nothing else to initialize.
 }
+

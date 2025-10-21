@@ -30,6 +30,14 @@ void PacketBuffer::clear() {
     m_shared_pktcount = 0;
 }
 
+unsigned PacketBuffer::byte_count(bool reset) {
+    return satcat5::util::poll_counter(m_total_bytes, reset);
+}
+
+unsigned PacketBuffer::frame_count(bool reset) {
+    return satcat5::util::poll_counter(m_total_frames, reset);
+}
+
 u8 PacketBuffer::get_percent_full() const {
     unsigned wralloc = m_buff_size - m_shared_rdavail;
     if (m_next_wrlen >= wralloc)
@@ -113,6 +121,7 @@ bool PacketBuffer::write_finalize() {
             // Packet accepted, update the next stored length.
             unsigned wridx = modulo_add_uns(m_pkt_rdidx + m_shared_pktcount, m_pkt_maxct);
             m_pkt_lbuff[wridx] = next_len;
+            ++m_total_frames;
             ++m_shared_pktcount;
         } else if (m_pkt_maxct) {
             // No room in the length buffer, discard unwritten data.
@@ -121,6 +130,7 @@ bool PacketBuffer::write_finalize() {
     }
 
     // Write accepted, update overall buffer state.
+    m_total_bytes += next_len;
     m_shared_rdavail += next_len;
     m_next_wrpos = modulo_add_uns(m_next_wrpos + next_len, m_buff_size);
 

@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -34,7 +34,8 @@ static const unsigned MAX_ETH_FRAME = 1536;
 static pcap_if_t* g_pcap_alldevs = 0;
 
 // Define the PCAP data structures required for a Socket.
-struct spcap::Device {
+// (Note: Spell out the full name here to help Doxygen.)
+struct satcat5::pcap::Device {
     explicit Device(const char* ifname, u16 filter);
 
     const char* name() const {return m_descr->name;}
@@ -47,8 +48,7 @@ struct spcap::Device {
 };
 
 // First-time PCAP initialization.
-bool pcap_init()
-{
+bool pcap_init() {
 #ifdef _WIN32
     // Windows only: Load the Npcap DLL.
     _TCHAR npcap_dir[512];
@@ -78,8 +78,7 @@ bool pcap_init()
 }
 
 // Is the designated device an Ethernet interface?
-bool is_ethernet_device(const char* ifname)
-{
+bool is_ethernet_device(const char* ifname) {
     // Attempt to open designated interface.
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t* dev = pcap_open_live(ifname, 0, 0, 0, errbuf);
@@ -101,8 +100,7 @@ spcap::Descriptor::Descriptor(const char* n, const char* d)
     // Nothing else to initialize.
 }
 
-spcap::DescriptorList spcap::list_all_devices()
-{
+spcap::DescriptorList spcap::list_all_devices() {
     spcap::DescriptorList list;
 
     // First-time PCAP initialization.
@@ -118,8 +116,7 @@ spcap::DescriptorList spcap::list_all_devices()
     return list;
 }
 
-bool spcap::is_device(const char* ifname)
-{
+bool spcap::is_device(const char* ifname) {
     // First-time setup for Pcap.
     if (!g_pcap_alldevs) pcap_init();
 
@@ -131,8 +128,7 @@ bool spcap::is_device(const char* ifname)
     return false;   // No match
 }
 
-std::string spcap::prompt_for_ifname()
-{
+std::string spcap::prompt_for_ifname() {
     // Sanity check: Only one option? No options at all?
     spcap::DescriptorList devs = spcap::list_all_devices();
     if (devs.size() == 1) return devs[0].name;
@@ -216,8 +212,7 @@ spcap::Socket::Socket(const char* ifname, unsigned bsize, eth::MacType filter)
     // Nothing else to initialize.
 }
 
-spcap::Socket::~Socket()
-{
+spcap::Socket::~Socket() {
     // Close down the socket.
     if (m_device) pcap_close(m_device->m_device);
 
@@ -227,23 +222,19 @@ spcap::Socket::~Socket()
     delete m_device;
 }
 
-bool spcap::Socket::ok() const
-{
+bool spcap::Socket::ok() const {
     return (m_device) && (m_device->m_ok);
 }
 
-const char* spcap::Socket::name() const
-{
+const char* spcap::Socket::name() const {
     return m_device ? m_device->name() : "";
 }
 
-const char* spcap::Socket::desc() const
-{
+const char* spcap::Socket::desc() const {
     return m_device ? m_device->desc() : "";
 }
 
-void spcap::Socket::data_rcvd(satcat5::io::Readable* src)
-{
+void spcap::Socket::data_rcvd(satcat5::io::Readable* src) {
     // New data ready for transmission?
     unsigned nread = m_tx.get_read_ready();
     if (nread > MAX_ETH_FRAME) {
@@ -263,8 +254,7 @@ void spcap::Socket::data_rcvd(satcat5::io::Readable* src)
     m_tx.read_finalize();
 }
 
-void spcap::Socket::poll_always()
-{
+void spcap::Socket::poll_always() {
     struct pcap_pkthdr* pkt_header;
     const u_char *pkt_data;
 

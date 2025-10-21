@@ -61,7 +61,7 @@ static const char* const LBL_POLL = "POLL";
 //! This class inherits from `Always`, meaning that it is polled every
 //! time the user calls `service` or `service_all`, which causes it to
 //! check the global queue of OnDemand requests.
-class poll::OnDemandHelper final : public poll::Always {
+class satcat5::poll::OnDemandHelper final : public poll::Always {
 public:
     // Constructor is the only public method.
     OnDemandHelper() : m_item(nullptr) {}

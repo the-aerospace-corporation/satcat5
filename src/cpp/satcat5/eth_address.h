@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <satcat5/eth_dispatch.h>
 #include <satcat5/eth_header.h>
 #include <satcat5/net_address.h>
 
@@ -37,10 +38,14 @@ namespace satcat5 {
             // Other accessors.
             inline satcat5::eth::MacAddr dstmac() const
                 { return m_addr; }
+            inline satcat5::eth::MacAddr srcmac() const
+                { return m_iface->macaddr(); }
             inline satcat5::eth::MacType etype() const
                 { return m_type; }
             inline satcat5::eth::VlanTag vtag() const
                 { return m_vtag; }
+            inline satcat5::eth::Header header() const
+                { return {m_addr, srcmac(), m_type, m_vtag}; }
 
         protected:
             satcat5::eth::Dispatch* const m_iface;

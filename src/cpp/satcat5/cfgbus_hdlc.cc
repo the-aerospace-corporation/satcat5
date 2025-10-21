@@ -32,10 +32,13 @@ cfg::Hdlc::Hdlc(cfg::ConfigBus* cfg, unsigned devaddr)
     // No other initialization at this time.
 }
 
-void cfg::Hdlc::configure(unsigned clkref_hz, unsigned baud_hz)
+void cfg::Hdlc::configure(unsigned clkref_hz,
+                          unsigned baud_hz,
+                          unsigned frame_bytes)
 {
     // Note: Writing to Config register also resets hardware FIFOs.
-    m_ctrl[REGADDR_CFG] = util::div_round_u32(clkref_hz, baud_hz);
+    u32 clkdiv = util::div_round_u32(clkref_hz, baud_hz);
+    m_ctrl[REGADDR_CFG] = (frame_bytes << 16) | (clkdiv);
 }
 
 void cfg::Hdlc::data_rcvd(satcat5::io::Readable* src)

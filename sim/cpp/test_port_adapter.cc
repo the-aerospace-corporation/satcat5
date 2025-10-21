@@ -44,16 +44,40 @@ TEST_CASE("port_adapter") {
     switch_b.set_debug(&pcap);
     satcat5::port::MailAdapter port1(&switch_a, &nic1, &nic1);
     satcat5::port::MailAdapter port2(&switch_b, &nic2, &nic2);
-    satcat5::port::SwitchAdapter xlink(&switch_a, &switch_b);
 
     // Attach a Layer-2 socket to each port.
     satcat5::eth::Socket sock1(nic1.eth());
     satcat5::eth::Socket sock2(nic2.eth());
+    sock1.connect(MAC2, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+    sock2.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
 
-    // Send a few unicast packets.
-    SECTION("basic") {
-        sock1.connect(MAC2, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
-        sock2.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+    // Uncoded crosslink using the SwitchAdapter class.
+    SECTION("SwitchAdapter") {
+        satcat5::port::SwitchAdapter xlink(&switch_a, &switch_b);
+        CHECK(satcat5::test::write(&sock1, "Message from 1 to 2."));
+        CHECK(satcat5::test::write(&sock2, "Message from 2 to 1."));
+        timer.sim_wait(100);
+        CHECK(satcat5::test::read(&sock1, "Message from 2 to 1."));
+        CHECK(satcat5::test::read(&sock2, "Message from 1 to 2."));
+    }
+
+    // Encoded crosslink using back-to-back COBS adapters.
+    SECTION("CobsAdapter") {
+        satcat5::io::StreamBufferHeap a2b, b2a;
+        satcat5::port::CobsAdapter xa(&switch_a, &b2a, &a2b);
+        satcat5::port::CobsAdapter xb(&switch_b, &a2b, &b2a);
+        CHECK(satcat5::test::write(&sock1, "Message from 1 to 2."));
+        CHECK(satcat5::test::write(&sock2, "Message from 2 to 1."));
+        timer.sim_wait(100);
+        CHECK(satcat5::test::read(&sock1, "Message from 2 to 1."));
+        CHECK(satcat5::test::read(&sock2, "Message from 1 to 2."));
+    }
+
+    // Encoded crosslink using back-to-back SLIP adapters.
+    SECTION("SlipAdapter") {
+        satcat5::io::StreamBufferHeap a2b, b2a;
+        satcat5::port::SlipAdapter xa(&switch_a, &b2a, &a2b);
+        satcat5::port::SlipAdapter xb(&switch_b, &a2b, &b2a);
         CHECK(satcat5::test::write(&sock1, "Message from 1 to 2."));
         CHECK(satcat5::test::write(&sock2, "Message from 2 to 1."));
         timer.sim_wait(100);

@@ -78,9 +78,28 @@ namespace satcat5 {
             //! Get local clock information.
             inline satcat5::ptp::ClockInfo get_clock() const
                 { return m_clock_local; }
+            //! Get grandmaster clock information.
+            inline satcat5::ptp::ClockInfo get_remote() const
+                { return m_clock_remote; }
             //! Read the current time from the network interface.
             inline satcat5::ptp::Time get_time_now()
                 { return m_iface.ptp_time_now(); }
+
+            //! Query the current UTC vs. TAI offset (currentUtcOffset).
+            //! This is the offset (TAI - UTC), equal to the cumulative
+            //! number of UTC leap seconds, which is +37 as of 2017.
+            //! See IEEE1588 Section 7.2.4 for details.
+            inline s16 get_utc_offset() const
+                { return m_utc_offset; }
+
+            //! Immediately adjust the UTC vs. TAI offset (currentUtcOffset).
+            //! This has no effect on the client itself, except to change the
+            //! "currentUtcOffset" reported in each ANNOUNCE message.  Changes
+            //! take effect immediately, without setting the pending-change
+            //! flags (i.e., "leap59" and "leap61"), which are not supported.
+            //! See IEEE1588 Section 7.2.4 for details.
+            inline void set_utc_offset(s16 offset)
+                { m_utc_offset = offset; }
 
             //! Mode and state accessors.
             //!@{
@@ -91,15 +110,22 @@ namespace satcat5 {
             inline satcat5::ptp::PortId get_source() const {return m_current_source;}
             //!@}
 
-            //! Master only: Set the SYNC message rate to 2^N / sec.
-            //! Range 0-8. Negative rates disable outgoing SYNC messages.
+            //! Set the ANNOUNCE message rate to 2^N / sec.
+            //! Range -8 to +8. INT_MIN disables outgoing ANNOUNCE messages.
+            //! This setting applies to master mode only.
+            void set_announce_rate(int rate);
+
+            //! Set the SYNC message rate to 2^N / sec.
+            //! Range -8 to +8. INT_MIN disables outgoing SYNC messages.
+            //! This setting applies to master mode and to SPTP slaves.
             void set_sync_rate(int rate);
 
             //! Set the pdelay message rate to 0.9 x 2^N / sec.
-            //! Range 0-8. Negative rates disable outgoing PDELAY_REQ messages.
+            //! Range -8 to +8. INT_MIN disables outgoing PDELAY_REQ messages.
+            //! This setting applies to passive mode only.
             void set_pdelay_rate(int rate);
 
-            //! Send a unicast Sync message to the designated address.
+            //! Send a unicast SYNC message to the designated address.
             //! Unicast allows higher message rates than broadcast mode,
             //! and ignores the rate parameter from `set_sync_rate`.
             bool send_sync_unicast(
@@ -160,12 +186,11 @@ namespace satcat5 {
             satcat5::ptp::Header make_header(u8 type, u16 seq_id);
 
             // Generate and send specific outgoing messages.
-            // TODO: Update ALL messages to use ptp::Header objects???
-            void send_announce_maybe();
             bool send_announce();
             bool send_sync(
                 satcat5::ptp::DispatchTo addr,
                 u16 seq_id, u16 flags = 0, u64 tref = 0);
+            bool send_sync_bcast();
             bool send_follow_up(
                 satcat5::ptp::DispatchTo addr,
                 u16 seq_id, u16 flags = 0, u64 tref = 0);
@@ -192,13 +217,17 @@ namespace satcat5 {
             satcat5::ptp::PortId m_current_source;
             unsigned m_announce_count;
             unsigned m_announce_every;
+            unsigned m_sync_count;
+            unsigned m_sync_every;
             unsigned m_cache_wdog;
             unsigned m_request_wdog;
+            int m_announce_rate;
             int m_sync_rate;
             int m_pdelay_rate;
             u16 m_announce_id;
             u16 m_sync_id;
             u16 m_pdelay_id;
+            s16 m_utc_offset;
         };
 
         //! Helper class for sending unicast Sync messages to an L2 client.

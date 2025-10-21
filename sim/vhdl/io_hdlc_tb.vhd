@@ -30,10 +30,13 @@ architecture tb of io_hdlc_tb is
 
 constant REF_DEPTH_LOG2 : positive := 7;
 
-constant FRAME_BYTES   : natural   := 0;     -- Variable width frame size
-constant MSB_FIRST     : boolean   := false; -- lsb first
-constant RATE_WIDTH    : positive  := 8;
-constant BUFFER_KBYTES : positive  := 2;
+constant FRAME_BYTES_WIDTH : positive := 1;
+constant FRAME_BYTES       : unsigned(FRAME_BYTES_WIDTH-1 downto 0)
+    := to_unsigned(0, FRAME_BYTES_WIDTH);
+
+constant MSB_FIRST         : boolean   := false; -- lsb first
+constant RATE_WIDTH        : positive  := 8;
+constant BUFFER_KBYTES     : positive  := 2;
 
 -- Clock and reset generation.
 signal clk_100      : std_logic := '0';
@@ -91,20 +94,21 @@ hdlc_ready <= not ref_hfull;
 -- Unit under test.
 uut_tx : entity work.io_hdlc_tx
     generic map (
-    FRAME_BYTES => FRAME_BYTES,
-    MSB_FIRST   => MSB_FIRST,
-    RATE_WIDTH  => RATE_WIDTH)
+    MSB_FIRST         => MSB_FIRST,
+    RATE_WIDTH        => RATE_WIDTH,
+    FRAME_BYTES_WIDTH => FRAME_BYTES_WIDTH)
     port map(
-    hdlc_clk   => hdlc_clk,
-    hdlc_data  => hdlc_data,
-    hdlc_ready => hdlc_ready,
-    tx_data    => tx_data,
-    tx_last    => tx_last,
-    tx_valid   => tx_valid,
-    tx_ready   => tx_ready,
-    rate_div   => rate_div,
-    refclk     => clk_100,
-    reset_p    => reset_p);
+    hdlc_clk    => hdlc_clk,
+    hdlc_data   => hdlc_data,
+    hdlc_ready  => hdlc_ready,
+    tx_data     => tx_data,
+    tx_last     => tx_last,
+    tx_valid    => tx_valid,
+    tx_ready    => tx_ready,
+    rate_div    => rate_div,
+    frame_bytes => FRAME_BYTES,
+    refclk      => clk_100,
+    reset_p     => reset_p);
 
 uut_rx : entity work.io_hdlc_rx
     generic map(

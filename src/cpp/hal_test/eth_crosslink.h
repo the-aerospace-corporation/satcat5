@@ -21,8 +21,7 @@ namespace satcat5 {
         //! also be used with CCSDS-SPP and other packet-oriented protocols.
         //! Automatically links to an io::WritePcap object to save packet
         //! capture logs of the entire simulation.
-        struct Crosslink
-        {
+        struct Crosslink {
             //! Set preferred addresses for each interface.
             //!@{
             static constexpr satcat5::eth::MacAddr
@@ -58,24 +57,21 @@ namespace satcat5 {
         };
 
         //! Crosslink plus Ethernet dispatch.
-        struct CrosslinkEth : public satcat5::test::Crosslink
-        {
+        struct CrosslinkEth : public satcat5::test::Crosslink {
             explicit CrosslinkEth(const char* filename = 0);
             satcat5::eth::Dispatch net0;        //!< Packet handling for eth0.
             satcat5::eth::Dispatch net1;        //!< Packet handling for eth1.
         };
 
         //! Crosslink plus full IPv4+UDP stack.
-        struct CrosslinkIp : public satcat5::test::Crosslink
-        {
+        struct CrosslinkIp : public satcat5::test::Crosslink {
             explicit CrosslinkIp(const char* filename = 0);
             satcat5::ip::Stack net0;            //!< Packet handling for eth0.
             satcat5::ip::Stack net1;            //!< Packet handling for eth1.
         };
 
         //! Crosslink plus CCSDS-SPP dispatch.
-        struct CrosslinkSpp : public satcat5::test::Crosslink
-        {
+        struct CrosslinkSpp : public satcat5::test::Crosslink {
             explicit CrosslinkSpp(const char* filename = 0);
             satcat5::ccsds_spp::Dispatch spp0;  //!< Packet handling for eth0.
             satcat5::ccsds_spp::Dispatch spp1;  //!< Packet handling for eth1.

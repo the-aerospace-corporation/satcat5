@@ -11,6 +11,7 @@ using satcat5::io::Readable;
 using satcat5::io::Writeable;
 using satcat5::log::DEBUG;
 using satcat5::log::Log;
+using satcat5::port::CobsAdapter;
 using satcat5::port::MailAdapter;
 using satcat5::port::NullAdapter;
 using satcat5::port::SlipAdapter;
@@ -30,6 +31,17 @@ VlanAdapter::VlanAdapter(SwitchCore* sw, Writeable* vdst)
 MailAdapter::MailAdapter(SwitchCore* sw, Readable* src, Writeable* dst)
     : VlanAdapter(sw, dst)
     , m_rx_copy(src, this)
+{
+    // Nothing else to initialize.
+}
+
+CobsAdapter::CobsAdapter(SwitchCore* sw, Readable* src, Writeable* dst)
+    : VlanAdapter(sw, &m_tx_fcs)
+    , m_rx_copy(src, &m_rx_cobs)
+    , m_rx_cobs(&m_rx_fcs)
+    , m_rx_fcs(this)
+    , m_tx_fcs(&m_tx_cobs)
+    , m_tx_cobs(dst)
 {
     // Nothing else to initialize.
 }

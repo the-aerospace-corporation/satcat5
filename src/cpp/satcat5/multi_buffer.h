@@ -78,6 +78,8 @@ namespace satcat5 {
             satcat5::io::MultiChunk* m_next;
         public:
             constexpr MultiChunk() : m_next(0), m_data{0} {}
+            MultiChunk(const MultiChunk& t) = delete;
+            MultiChunk& operator=(const MultiChunk& t) = delete;
             u8 m_data[SATCAT5_MBUFF_CHUNK];
         };
 
@@ -103,6 +105,11 @@ namespace satcat5 {
             u16 m_pcount;                       //!< Packet counter
             // Metadata for user extensions (see comment above).
             u32 m_user[SATCAT5_MBUFF_USER];     //!< Packet metadata
+
+            // Explicitly declare default constructor and copy operators.
+            MultiPacket() = default;
+            MultiPacket(const MultiChunk& t) = delete;
+            MultiPacket& operator=(const MultiChunk& t) = delete;
 
             //! Has this packet been deleted?
             inline bool is_deleted() const
@@ -466,6 +473,26 @@ namespace satcat5 {
             unsigned m_write_maxlen;
             unsigned m_write_timeout;
             //! @}
+        };
+
+        //! MultiWriter adapter for bypass mode.
+        //! This variant of the MultiWriter class overrides write_finalize(),
+        //! redirecting user calls to a fixed destination using write_bypass().
+        class MultiWriterBypass : public MultiWriter {
+        public:
+            //! Link this object to a buffer and a destination.
+            //! Optionally set a priority level for each packet.
+            MultiWriterBypass(
+                satcat5::io::MultiBuffer* buf,
+                satcat5::io::MultiReader* dst,
+                u16 priority = 0);
+
+            //! Override redirects to write_bypass().
+            bool write_finalize() override;
+
+        protected:
+            satcat5::io::MultiReader* const m_dst;
+            u16 m_priority;
         };
     }
 }

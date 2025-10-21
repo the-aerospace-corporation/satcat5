@@ -42,6 +42,9 @@ namespace satcat5 {
         {
         protected:
             //! Child provides Tx and Rx working buffers.
+            //! The child class provides the transmit and/or receive buffers.
+            //! Transmit-only or receive-only child objects may provide a null
+            //! pointer for the unused buffer.
             BufferedIO(
                 u8* txbuff, unsigned txbytes, unsigned txpkt,
                 u8* rxbuff, unsigned rxbytes, unsigned rxpkt);
@@ -94,11 +97,12 @@ namespace satcat5 {
             satcat5::io::CopyMode m_mode;
         };
 
-        //! Copy data from a Readable source to a network address.
+        //! Copy bytes from a Readable source to a network address.
         //!
         //! Given a buffered source of data and a maximum chunk size, read
         //! data in chunks and stream each chunk to a net::Address.  The source
-        //! is usually a byte-stream that does not include packet boundaries.
+        //! is a byte-stream that ignores packet boundaries.  For a similiar
+        //! class that retains packet boundaries, \see BufferedPackets.
         //!
         //! Usage is similar to BufferedCopy, but with improved controls for
         //! packetizing the raw stream. Two thresholds control the length of
@@ -147,6 +151,32 @@ namespace satcat5 {
             const unsigned m_min_txnow;
             unsigned m_timeout_msec;
             satcat5::util::TimeVal m_tref;
+        };
+
+        //! Copy packets from a Readable source to a network address.
+        //!
+        //! Given a buffered source of data, read each packet from the source
+        //! and write it to the designated net::Address.  For a similar class
+        //! that ignores packet boundaries, \see BufferedStream.
+        class BufferedPackets final
+            : public satcat5::io::EventListener
+        {
+        public:
+            //! Set source, destination, APID, and chunk-size.
+            //! Default sets max_chunk to 512 bytes and ignores min_txnow.
+            BufferedPackets(
+                satcat5::io::Readable* src,
+                satcat5::net::Address* dst);
+            ~BufferedPackets() SATCAT5_OPTIONAL_DTOR;
+
+        protected:
+            // Required event handlers.
+            void data_rcvd(satcat5::io::Readable* src) override;
+            void data_unlink(satcat5::io::Readable* src) override;
+
+            // Member variables.
+            satcat5::io::Readable* m_src;
+            satcat5::net::Address* const m_dst;
         };
 
         //! BufferedWriter adds an inline buffer to any Writeable interface.

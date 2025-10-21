@@ -49,6 +49,11 @@ namespace satcat5 {
             TimeRef* clk;   //!< Pointer to the parent time reference.
             u32 tval;       //!< The value of this timestamp, measured in ticks.
 
+            // Explicitly declare default constructor and assignment methods.
+            TimeVal() = delete;
+            TimeVal(const TimeVal& t) = default;
+            TimeVal& operator=(const TimeVal& t) = default;
+
             //! Measure elapsed time in ticks.
             //!
             //! This example measures time spent in the "do_thing()" function:

@@ -34,10 +34,17 @@ namespace satcat5 {
         //! call was successful.
         class WriteableBroadcast : public satcat5::io::Writeable {
         public:
-            // Implement the public Writeable API.
+            //! Get the min available write space of downstream Writeables.
             unsigned get_write_space() const override;
+
+            //! Abort writes for all downstream Writeables.
             void write_abort() override;
+
+            //! Write a byte sequence to all downstream Writeables.
             void write_bytes(unsigned nbytes, const void* src) override;
+
+            //! Finalize the in-progress write for all downstream Writeables.
+            //! \returns True if all downstream write_finalize() calls succeed.
             bool write_finalize() override;
 
             //! Access or assign the Nth downstream Writeable object.
@@ -61,10 +68,30 @@ namespace satcat5 {
             ~WriteableBroadcast() {}
             void write_next(u8 data) override;
             void write_overflow() override;
-        private:
+
             // Member variables.
             const unsigned m_size;                  //!< Size of `m_dsts`.
             satcat5::io::Writeable** const m_dsts;  //!< Array of Writeables.
+        };
+
+        //! Version of io::WriteableBroadcast that considers a write successful
+        //! if ANY of the downstream Writeable objects return success. Note that
+        //! get_write_space() is also updated to return the maximum available
+        //! write space of any downstream Writeable object.
+        class WriteableBroadcastAny
+            : public satcat5::io::WriteableBroadcast {
+        public:
+            //! Get the max available write space of any downstream Writeable.
+            unsigned get_write_space() const override;
+
+            //! Finalize the in-progress write for all downstream Writeables.
+            //! \returns True if any downstream write_finalize() call succeeds.
+            bool write_finalize() override;
+
+        protected:
+            constexpr WriteableBroadcastAny(unsigned n_dsts,
+                    satcat5::io::Writeable** dsts)
+                : WriteableBroadcast(n_dsts, dsts) {}
         };
 
         //! Statically-allocated version of io::WriteableBroadcast.
@@ -74,6 +101,17 @@ namespace satcat5 {
         public:
             WriteableBroadcastStatic()
                 : WriteableBroadcast(SIZE, m_dst_array), m_dst_array{0} {}
+        private:
+            satcat5::io::Writeable* m_dst_array[SIZE];
+        };
+
+        //! Statically-allocated version of io::WriteableBroadcastAny.
+        template <unsigned SIZE>
+        class WriteableBroadcastAnyStatic final
+            : public satcat5::io::WriteableBroadcastAny {
+        public:
+            WriteableBroadcastAnyStatic()
+                : WriteableBroadcastAny(SIZE, m_dst_array), m_dst_array{0} {}
         private:
             satcat5::io::Writeable* m_dst_array[SIZE];
         };

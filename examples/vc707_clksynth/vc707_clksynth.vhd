@@ -189,7 +189,7 @@ u_usr1_reset : sync_reset
     out_clk     => gtx1_txclk);
 
 -- Resynchronized counter in each GTX and GPIO clock domain.
-u_sync_gtx0 : entity work.ptp_counter_sync
+u_sync_gtx0 : entity work.ptp_counter_verdact
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => GTX_TXCLK_HZ)
@@ -201,7 +201,7 @@ u_sync_gtx0 : entity work.ptp_counter_sync
     user_lock   => gtx0_lock,
     user_rst_p  => usr0_reset_p);
 
-u_sync_gtx1 : entity work.ptp_counter_sync
+u_sync_gtx1 : entity work.ptp_counter_verdact
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => GTX_TXCLK_HZ)
@@ -213,7 +213,7 @@ u_sync_gtx1 : entity work.ptp_counter_sync
     user_lock   => gtx1_lock,
     user_rst_p  => usr1_reset_p);
 
-u_sync_gpio0 : entity work.ptp_counter_sync
+u_sync_gpio0 : entity work.ptp_counter_verdact
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => GPIO_TXCLK_HZ)
@@ -225,7 +225,7 @@ u_sync_gpio0 : entity work.ptp_counter_sync
     user_lock   => gpio0_lock,
     user_rst_p  => gpio0_rst_p);
 
-u_sync_gpio1 : entity work.ptp_counter_sync
+u_sync_gpio1 : entity work.ptp_counter_verdact
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => GPIO_TXCLK_HZ)

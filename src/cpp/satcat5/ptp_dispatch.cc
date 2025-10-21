@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2024 The Aerospace Corporation.
+// Copyright 2023-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -33,13 +33,13 @@ Dispatch::Dispatch(
 }
 
 #if SATCAT5_ALLOW_DELETION
-Dispatch::~Dispatch()
-{
+Dispatch::~Dispatch() {
     m_iface->ptp_callback(0);
 }
 #endif
 
-satcat5::io::Writeable* Dispatch::ptp_send(DispatchTo addr, unsigned num_bytes, u8 ptp_msg_type)
+satcat5::io::Writeable* Dispatch::ptp_send(
+    DispatchTo addr, unsigned num_bytes, u8 ptp_msg_type)
 {
     // Calculate worst-case packet including Eth + IP headers.
     unsigned max_bytes = num_bytes + 34;
@@ -57,7 +57,7 @@ satcat5::io::Writeable* Dispatch::ptp_send(DispatchTo addr, unsigned num_bytes, 
         satcat5::ip::Addr dst_ip = get_dst_ip(addr);
 
         // Write IPv4 Header
-        unsigned udp_bytes = num_bytes + 8;
+        unsigned udp_bytes = num_bytes + satcat5::udp::HEADER_BYTES;
         satcat5::ip::Header ip_header =
             m_ip->next_header(satcat5::ip::PROTO_UDP, dst_ip, udp_bytes);
         ip_header.write_to(iface);
@@ -74,8 +74,7 @@ satcat5::io::Writeable* Dispatch::ptp_send(DispatchTo addr, unsigned num_bytes, 
     return iface;
 }
 
-void Dispatch::store_reply_addr()
-{
+void Dispatch::store_reply_addr() {
     m_stored_mac    = m_reply_mac;
     m_stored_vtag   = m_reply_vtag;
     m_stored_ip     = m_reply_ip;
@@ -89,8 +88,7 @@ void Dispatch::store_addr(
     m_stored_ip     = ip;
 }
 
-void Dispatch::poll_demand()
-{
+void Dispatch::poll_demand() {
     satcat5::io::Readable* readable = m_iface->ptp_rx_read();
 
     // Read the Ethernet frame header and note L2 reply address.
@@ -128,8 +126,7 @@ static constexpr MacType infer_etype(const satcat5::ip::Addr& addr) {
         ? satcat5::eth::ETYPE_PTP : satcat5::eth::ETYPE_IPV4;
 }
 
-satcat5::eth::Header Dispatch::get_dst_eth(DispatchTo addr) const
-{
+satcat5::eth::Header Dispatch::get_dst_eth(DispatchTo addr) const {
     // Ethernet header fields = {dst, src, etype, vtag}
     switch (addr) {
         case DispatchTo::BROADCAST_L2:
@@ -151,8 +148,7 @@ satcat5::eth::Header Dispatch::get_dst_eth(DispatchTo addr) const
     }
 }
 
-satcat5::udp::Port Dispatch::get_dst_port(u8 ptp_msg_type) const
-{
+satcat5::udp::Port Dispatch::get_dst_port(u8 ptp_msg_type) const {
     if (ptp_msg_type == satcat5::ptp::Header::TYPE_SYNC ||
         ptp_msg_type == satcat5::ptp::Header::TYPE_DELAY_REQ ||
         ptp_msg_type == satcat5::ptp::Header::TYPE_PDELAY_REQ ||
@@ -163,8 +159,7 @@ satcat5::udp::Port Dispatch::get_dst_port(u8 ptp_msg_type) const
     }
 }
 
-satcat5::ip::Addr Dispatch::get_dst_ip(DispatchTo addr) const
-{
+satcat5::ip::Addr Dispatch::get_dst_ip(DispatchTo addr) const {
     switch (addr) {
         case DispatchTo::REPLY:         return m_reply_ip;
         case DispatchTo::STORED:        return m_stored_ip;

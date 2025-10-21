@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 //! \file
@@ -33,9 +33,11 @@ namespace satcat5 {
             bool ready_rx() const;
 
         protected:
-            //! Constructs a SocketCore from a saved net::Address and buffers
-            //! for io::BufferedIO.
+            //! Constructs a SocketCore from a saved net::Address and buffer(s).
             //! Constructor and destructor are only accessible to child class.
+            //! The child class provides the working buffers for transmit and
+            //! receive data.  Transmit-only or receive-only sockets provide a
+            //! null pointer for the unused buffer. \see io::BufferedIO.
             SocketCore(
                 satcat5::net::Address* addr,
                 u8* txbuff, unsigned txbytes, unsigned txpkt,

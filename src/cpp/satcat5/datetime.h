@@ -78,6 +78,14 @@ namespace satcat5 {
             s32 wkn;    //!< Week number
             u32 tow;    //!< Time of week
 
+            GpsTime() = default;
+            GpsTime(const GpsTime& t) = default;
+            GpsTime& operator=(const GpsTime& t) = default;
+
+            //! Convert to standard form. \see from_gps.
+            inline s64 convert() const
+                { return satcat5::datetime::from_gps(*this); }
+
             bool operator==(const satcat5::datetime::GpsTime& other) const;
             bool operator<(const satcat5::datetime::GpsTime& other) const;
             inline bool operator!=(const satcat5::datetime::GpsTime& other) const
@@ -108,6 +116,14 @@ namespace satcat5 {
             u8 mn;      //!< Minutes (0-59)
             u8 sc;      //!< Seconds (0-59)
             u8 ss;      //!< Sub-seconds (0-99)
+
+            RtcTime() = default;
+            RtcTime(const RtcTime& t) = default;
+            RtcTime& operator=(const RtcTime& t) = default;
+
+            //! Convert to standard form. \see from_rtc.
+            inline s64 convert() const
+                { return satcat5::datetime::from_rtc(*this); }
 
             //! Days since 2000 Jan 1 (a Saturday).
             u32 days_since_epoch() const;

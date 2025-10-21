@@ -16,6 +16,10 @@ namespace satcat5 {
     namespace ublaze {
         //! Timestamp format used by the AVB core. \see TemacAvb
         struct TemacTime {
+            TemacTime() = default;
+            TemacTime(const TemacTime& t) = default;
+            TemacTime& operator=(const TemacTime& t) = default;
+
             s64 sec;    // Positive or negative
             u32 nsec;   // Always 0 - 999,999,999
         };

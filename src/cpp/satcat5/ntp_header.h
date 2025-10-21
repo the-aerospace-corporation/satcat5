@@ -32,7 +32,7 @@ namespace satcat5 {
             u64 xmt;                        //!< T3 (Server transmit time)
 
             //! The basic header is exactly 12 words = 48 bytes long.
-            static constexpr unsigned HEADER_LEN = 34;
+            static constexpr unsigned HEADER_LEN = 48;
 
             //! Leap second indictor (LI) for last minute of current day.
             static constexpr u8
@@ -122,6 +122,11 @@ namespace satcat5 {
                 TIME_4NSEC      = -28,
                 TIME_2NSEC      = -29,
                 TIME_1NSEC      = -30;
+
+            // Explicitly declare default constructor and assignment methods.
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
 
             //! Accessors for splitting LI, VN, and Mode fields.
             //!@{

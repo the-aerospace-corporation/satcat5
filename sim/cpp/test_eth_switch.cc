@@ -7,7 +7,9 @@
 #include <hal_posix/file_pcap.h>
 #include <hal_test/catch.hpp>
 #include <hal_test/eth_endpoint.h>
+#include <hal_test/sim_sw_stats.h>
 #include <hal_test/sim_utils.h>
+#include <satcat5/cfgbus_stats.h>
 #include <satcat5/eth_checksum.h>
 #include <satcat5/eth_plugin.h>
 #include <satcat5/eth_socket.h>
@@ -19,11 +21,13 @@
 #include <satcat5/udp_socket.h>
 
 using satcat5::eth::ETYPE_CBOR_TLM;
+using satcat5::eth::ETYPE_SWITCH_LOG;
 using satcat5::eth::MACADDR_BROADCAST;
 using satcat5::eth::PluginPacket;
 using satcat5::eth::VPOL_DEMOTE;
 using satcat5::eth::VPOL_STRICT;
 using satcat5::eth::VtagPolicy;
+using satcat5::udp::PORT_SWITCH_LOG;
 
 // Test plugin with logging and passthrough/divert toggle.
 class TestPlugin : satcat5::eth::PluginCore {
@@ -116,9 +120,8 @@ TEST_CASE("eth_switch") {
     uut.set_debug(&pcap);
 
     // Install the packet-logging plugin.
-    satcat5::io::PacketBufferHeap pktlog;
-    satcat5::eth::SwitchLogWriter logwr(&pktlog);
-    uut.add_log(&logwr);
+    satcat5::eth::SwitchLogBuffer<256> pktlog;
+    uut.add_log(pktlog.writer());
 
     // Create switch ports connected to each simulated endpoint.
     // (Two regular ports and one SLIP-encoded port.)
@@ -160,8 +163,8 @@ TEST_CASE("eth_switch") {
 
     // Simple test with UDP packets.
     SECTION("udp") {
-        satcat5::udp::Socket tx(nic0.udp());
-        satcat5::udp::Socket rx(nic1.udp());
+        satcat5::udp::SocketTx tx(nic0.udp());
+        satcat5::udp::SocketRx rx(nic1.udp());
         rx.bind(satcat5::udp::PORT_CBOR_TLM);
         tx.connect(IP1, satcat5::udp::PORT_CBOR_TLM);
         timer.sim_wait(100);
@@ -192,10 +195,86 @@ TEST_CASE("eth_switch") {
         CHECK(sock1.get_read_ready() == 0);
         // Disable the logging source.
         log.clear();
-        uut.remove_log(&logwr);
+        uut.remove_log(pktlog.writer());
         CHECK(satcat5::test::write(&sock0, "Un-logged packet."));
         timer.sim_wait(100);
         CHECK(log.empty());
+    }
+
+    // Test the ConfigBus packet-statistics emulator.
+    SECTION("log-to-cfgbus") {
+        // Set up a ConfigBus emulator and a driver.
+        // (The driver thinks it's reading from a gateware switch.)
+        satcat5::test::SimSwitchStats cfg(&uut);
+        satcat5::cfg::NetworkStats stats(&cfg, 0);
+        // Send a few packets through the network.
+        sock0.connect(MACADDR_BROADCAST, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock2.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        CHECK(satcat5::test::write(&sock0, "Test broadcast"));
+        CHECK(satcat5::test::write(&sock1, "Test unicast #1"));
+        CHECK(satcat5::test::write(&sock1, "Test unicast #2"));
+        CHECK(satcat5::test::write(&sock2, "Test unicast #3"));
+        CHECK(satcat5::test::write(&sock2, "Test unicast #4"));
+        CHECK(satcat5::test::write(&sock2, "Test unicast #5"));
+        timer.sim_wait(100);
+        // Check packet statistics.
+        stats.refresh_now();
+        auto stats0 = stats.get_port(0);
+        auto stats1 = stats.get_port(1);
+        auto stats2 = stats.get_port(2);
+        CHECK(stats0.bcast_frames == 1);
+        CHECK(stats1.bcast_frames == 0);
+        CHECK(stats2.bcast_frames == 0);
+        CHECK(stats0.rcvd_frames == 1);
+        CHECK(stats1.rcvd_frames == 2);
+        CHECK(stats2.rcvd_frames == 3);
+        CHECK(stats0.sent_frames == 5);
+        CHECK(stats1.sent_frames == 1);
+        CHECK(stats2.sent_frames == 1);
+    }
+
+    // Test the log-to-port function.
+    SECTION("log-to-port") {
+        // Set up log-forwarding system from switch to port 2.
+        // (Use NIC0 as a proxy for the switch's management port.)
+        log.suppress("PktLog");
+        satcat5::eth::SwitchLogToPort log_tx(&pktlog, &port2, nic0.udp());
+        CHECK_FALSE(log_tx.ready());
+        // Receive log messages on raw-Ethernet and on UDP.
+        sock2.bind(ETYPE_SWITCH_LOG);
+        satcat5::udp::SocketRx sock3(nic2.udp());
+        sock3.bind(PORT_SWITCH_LOG);
+        satcat5::eth::SwitchLogFormatter log_rx_eth(&sock2);
+        satcat5::eth::SwitchLogFormatter log_rx_udp(&sock3);
+        // Configure test traffic sources on port 0 and port 1.
+        sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
+        // Test log-forwarding in raw-Ethernet mode.
+        log_tx.connect(MAC2);       // Ready immediately.
+        CHECK(log_tx.ready());
+        CHECK(satcat5::test::write(&sock0, "Message from 0 to 1."));
+        timer.sim_wait(100);
+        CHECK(log.contains("Delivered to: 0x00000002"));
+        CHECK(satcat5::test::write(&sock1, "Message from 1 to 0."));
+        timer.sim_wait(100);
+        CHECK(log.contains("Delivered to: 0x00000001"));
+        // Reset for the next test.
+        log.clear();
+        log_tx.close();
+        CHECK_FALSE(log_tx.ready());
+        // Test log-forwarding in UDP mode.
+        log_tx.connect(IP2);        // Requires ARP handshake.
+        timer.sim_wait(100);
+        CHECK(log_tx.ready());
+        CHECK(satcat5::test::write(&sock0, "Another from 0 to 1."));
+        timer.sim_wait(100);
+        CHECK(log.contains("Delivered to: 0x00000002"));
+        CHECK(satcat5::test::write(&sock1, "Another from 1 to 0."));
+        timer.sim_wait(100);
+        CHECK(log.contains("Delivered to: 0x00000001"));
+        log_tx.close();
+        CHECK_FALSE(log_tx.ready());
     }
 
     // Test the null-adapter.
@@ -350,7 +429,9 @@ TEST_CASE("eth_switch") {
 
     // Test the promiscuous-port mode.
     SECTION("prom") {
+        CHECK(uut.get_promiscuous_mask() == 0);
         uut.set_promiscuous(2, true);
+        CHECK(uut.get_promiscuous_mask() == 0x04);
         CHECK(uut.get_traffic_count() == 0);
         sock0.connect(MAC1, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
         sock1.connect(MAC0, ETYPE_CBOR_TLM, ETYPE_CBOR_TLM);
@@ -360,6 +441,8 @@ TEST_CASE("eth_switch") {
         CHECK(satcat5::test::read(&sock1, "Message from 0 to 1 and 2."));
         CHECK(satcat5::test::read(&sock2, "Message from 0 to 1 and 2."));
         CHECK(uut.get_traffic_count() == 1);
+        uut.set_promiscuous_mask(0x08);
+        CHECK(uut.get_promiscuous_mask() == 0x08);
     }
 
     // Test egress and ingress fault handling for invalid frame headers.

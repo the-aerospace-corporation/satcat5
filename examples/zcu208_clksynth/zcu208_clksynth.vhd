@@ -262,7 +262,7 @@ u_vref : entity work.ptp_counter_gen
     cfg_ack     => cfg_acks(0),
     ref_time    => ref_time);
 
-u_vpll_dac : entity work.ptp_counter_sync
+u_vpll_dac : entity work.ptp_counter_verdact
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => DAC_CLK_HZ,
@@ -290,7 +290,7 @@ u_ref125 : entity work.ptp_counter_free
     ref_clk     => clk_125,
     ref_ctr     => cmp_free);
 
-u_vpll_aux : entity work.ptp_counter_sync
+u_vpll_aux : entity work.ptp_counter_verdact
     generic map(
     VCONFIG     => VCONFIG,
     USER_CLK_HZ => REF_CLK_HZ,

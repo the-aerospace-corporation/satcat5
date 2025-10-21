@@ -33,6 +33,7 @@ use     work.switch_types.all;
 
 entity port_sgmii_common is
     generic (
+    ASYNC_RESET : boolean := true;   -- Async reset for status signals?
     MSB_FIRST   : boolean := true;   -- Bit order for tx_data, rx_data
     SHAKE_WAIT  : boolean := false); -- Wait for MAC/PHY handshake?
     port (
@@ -243,9 +244,16 @@ u_rxamb : entity work.eth_preamble_rx
     rx_data     => prx_data);
 
 -- Rate detection
-p_rate : process(rx_clk)
+p_rate : process(rx_clk, rx_reset_p)
 begin
-    if rising_edge(rx_clk) then
+    if (ASYNC_RESET and rx_reset_p = '1') then
+        -- Async reset ensures correct status even if clock is stopped.
+        rate_10     <= '0';
+        rate_100    <= '0';
+        rate_1000   <= '0';
+        rate_error  <= '0';
+        rate_word   <= RATE_WORD_NULL;
+    elsif rising_edge(rx_clk) then
         -- Set defaults, override as needed.
         rate_10     <= '0';
         rate_100    <= '0';

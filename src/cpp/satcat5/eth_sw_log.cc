@@ -7,6 +7,7 @@
 #include <satcat5/datetime.h>
 #include <satcat5/eth_sw_log.h>
 #include <satcat5/log.h>
+#include <satcat5/udp_dispatch.h>
 
 using satcat5::eth::Header;
 using satcat5::eth::SwitchLogFormatter;
@@ -14,8 +15,10 @@ using satcat5::eth::SwitchLogHardware;
 using satcat5::eth::SwitchLogMessage;
 using satcat5::eth::SwitchLogReader;
 using satcat5::eth::SwitchLogStats;
+using satcat5::eth::SwitchLogToPort;
 using satcat5::eth::SwitchLogWriter;
 using satcat5::io::Readable;
+using satcat5::net::Type;
 
 // Explicit re-declaration of class-local constants.
 // (Workaround for linker errors in some versions of GCC.)
@@ -239,20 +242,42 @@ void SwitchLogStats::log_packet(const SwitchLogMessage& msg) {
 }
 
 SwitchLogReader::SwitchLogReader(Readable* src)
-    : m_src(src)
+    : Protocol(satcat5::net::TYPE_NONE)
+    , m_src(src)
+    , m_iface(nullptr)
 {
     if (m_src) m_src->set_callback(this);
 }
 
+SwitchLogReader::SwitchLogReader(satcat5::net::Dispatch* iface, Type filter)
+    : Protocol(filter)
+    , m_src(nullptr)
+    , m_iface(iface)
+{
+    if (m_iface) m_iface->add(this);
+}
+
 #if SATCAT5_ALLOW_DELETION
 SwitchLogReader::~SwitchLogReader() {
+    if (m_iface) m_iface->remove(this);
     if (m_src) m_src->set_callback(nullptr);
 }
 #endif
 
+void SwitchLogReader::set_polling_interval(unsigned msec) {
+    if (!m_src) return;
+    if (msec) {
+        m_src->set_callback(nullptr);
+        timer_every(msec);
+    } else {
+        m_src->set_callback(this);
+        timer_stop();
+    }
+}
+
 void SwitchLogReader::data_rcvd(Readable* src) {
     SwitchLogMessage msg;
-    if (msg.read_from(src)) {
+    while (msg.read_from(src)) {
         this->log_event(msg);   // Call child's event-handler.
         if (src->get_read_ready() == 0) src->read_finalize();
     }
@@ -260,12 +285,113 @@ void SwitchLogReader::data_rcvd(Readable* src) {
 
 void SwitchLogReader::data_unlink(Readable* src) {m_src = 0;} // GCOVR_EXCL_LINE
 
+void SwitchLogReader::frame_rcvd(satcat5::io::LimitedRead& src) {
+    data_rcvd(&src);
+}
+
+void SwitchLogReader::timer_event() {
+    if (m_src) data_rcvd(m_src);
+}
+
 SwitchLogFormatter::SwitchLogFormatter(Readable* src, const char* lbl)
     : SwitchLogReader(src), m_label(lbl)
 {
     // Nothing else to initialize.
 }
 
+SwitchLogFormatter::SwitchLogFormatter(
+    satcat5::eth::Dispatch* iface, satcat5::eth::MacType etype, const char* lbl)
+    : SwitchLogReader(iface, Type(etype.value)), m_label(lbl)
+{
+    // Nothing else to initialize.
+}
+
+SwitchLogFormatter::SwitchLogFormatter(
+    satcat5::udp::Dispatch* iface, satcat5::udp::Port port, const char* lbl)
+    : SwitchLogReader(iface, Type(port.value)), m_label(lbl)
+{
+    // Nothing else to initialize.
+}
+
 void SwitchLogFormatter::log_event(const SwitchLogMessage& msg) {
     satcat5::log::Log(satcat5::log::DEBUG, m_label).write_obj(msg);
+}
+
+SwitchLogToPort::SwitchLogToPort(
+        satcat5::io::Readable* src,
+        satcat5::eth::SwitchPort* dst,
+        satcat5::udp::Dispatch* iface)
+    : SwitchLogReader(src)
+    , m_dst_port(dst->get_switch(), dst->get_egress())
+    , m_dst_raw(&m_dst_port)
+    , m_eth(iface->eth())
+    , m_udp(iface)
+    , m_first(true)
+{
+    // Nothing else to initialize.
+}
+
+SwitchLogToPort::SwitchLogToPort(
+        satcat5::io::Readable* src,
+        satcat5::io::Writeable* dst,
+        satcat5::udp::Dispatch* iface)
+    : SwitchLogReader(src)
+    , m_dst_port(nullptr, nullptr)
+    , m_dst_raw(dst)
+    , m_eth(iface->eth())
+    , m_udp(iface)
+    , m_first(true)
+{
+    // Nothing else to initialize.
+}
+
+void SwitchLogToPort::connect(
+    const satcat5::eth::MacAddr& addr,
+    const satcat5::eth::MacType& type,
+    const satcat5::eth::VlanTag& vtag)
+{
+    m_udp.close();
+    m_eth.connect(addr, type, vtag);
+}
+
+void SwitchLogToPort::connect(
+    const satcat5::udp::Addr& addr,
+    const satcat5::udp::Port& port,
+    const satcat5::eth::VlanTag& vtag)
+{
+    m_eth.close();
+    m_udp.connect(addr, port, satcat5::udp::PORT_NONE, vtag);
+}
+
+void SwitchLogToPort::log_event(const SwitchLogMessage& msg) {
+    // If there's no valid connection, abort immediately.
+    // (This includes UDP connections waiting for an ARP handshake.)
+    if (!ready()) return;
+
+    // Are additional packets waiting in the read queue?
+    // Use this information to consolidate outgoing log packets.
+    const unsigned BYTES_PER_MSG = SwitchLogMessage::LEN_BYTES;
+    unsigned more_pkt = m_src->get_read_ready() / BYTES_PER_MSG;
+
+    // If this starts a new packet, write Eth/IP/UDP headers.
+    if (m_first) {
+        m_first = false;
+        if (m_eth.ready()) {    // Raw-Ethernet mode
+            m_dst_raw->write_obj(m_eth.header());
+        } else {                // UDP mode
+            unsigned total_bytes = (1 + more_pkt) * BYTES_PER_MSG;
+            m_dst_raw->write_obj(m_udp.eth_header());
+            m_dst_raw->write_obj(m_udp.ip_header(total_bytes));
+            m_dst_raw->write_obj(m_udp.udp_header(total_bytes));
+        }
+    }
+
+    // Write the next log descriptor.
+    m_dst_raw->write_obj(msg);
+
+    // Final descriptor in this packet?
+    if (!more_pkt) {
+        m_dst_raw->write_finalize();
+        m_first = true;
+    }
 }

@@ -10,6 +10,7 @@ extern "C"{
 #include <core_cm7.h>
 #include <ioport.h>
 #include <pmc.h>
+#include <wdt.h>
 }
 
 using satcat5::io::BufferedIO;
@@ -17,6 +18,11 @@ using satcat5::irq::AtomicLock;
 using satcat5::poll::Always;
 using satcat5::sam::HandlerSAMV71;
 using satcat5::sam::UsartSamv71;
+
+// Configure to reset watchdog timer when receiving/sending bytes
+#ifdef SATCAT5_SAMV71_UART_WRST
+    #define SATCAT5_SAMV71_UART_WRST=1
+#endif
 
 // SAMV71 cache is 32-bytes per line, invalidate on the appropriate boundary.
 static const u32 CACHE_LINESIZE = 32;
@@ -91,7 +97,6 @@ UsartSamv71::UsartSamv71(Usart* usart, unsigned baud_hz, unsigned poll_ms,
         m_usart = nullptr;
         return;
     }
-    m_fc_on = ids.supports_fc && fc_on;
     m_tx_dma_ch = ids.tx_dma_ch;
     m_rx_dma_ch = ids.rx_dma_ch;
 
@@ -107,7 +112,7 @@ UsartSamv71::UsartSamv71(Usart* usart, unsigned baud_hz, unsigned poll_ms,
     sysclk_enable_peripheral_clock(ids.clk_id);
     pmc_enable_periph_clk(ID_XDMAC);
     configure_xdmac(ids.tx_perid, ids.rx_perid);
-    configure(baud_hz, fc_on);
+    configure(baud_hz, fc_on, fc_on);
 
     // Start polling at the specified rate, 0 = use poll::Always instead.
     if (poll_ms == 0) {
@@ -117,8 +122,8 @@ UsartSamv71::UsartSamv71(Usart* usart, unsigned baud_hz, unsigned poll_ms,
     }
 }
 
-// Configures the USART peripheral for a specific baud rate.
-void UsartSamv71::configure(unsigned baud_hz, bool fc_on) {
+// Configures the USART peripheral baud rate and flow control.
+void UsartSamv71::configure(unsigned baud_hz, bool rts_en, bool cts_en) {
 
     // Sanity check: driver is correctly configured.
     if (!m_usart) { return; }
@@ -134,12 +139,17 @@ void UsartSamv71::configure(unsigned baud_hz, bool fc_on) {
     };
 
     // Separate init functions with RTS/CTS ("handshaking") and without.
-    if (m_fc_on) {
+    m_rts_en = get_conf(m_usart).supports_fc && rts_en;
+    m_cts_en = get_conf(m_usart).supports_fc && cts_en;
+    if (m_cts_en) {
         usart_init_hw_handshaking(m_usart, &opt, sysclk_get_peripheral_hz());
-        rts_high(); // Block sender until DMA on.
     } else {
         usart_init_rs232(m_usart, &opt, sysclk_get_peripheral_hz());
-        m_usart->US_CR = US_CR_RTSEN; // Leave RTS idling low.
+    }
+    if (m_rts_en && !((XDMAC->XDMAC_GS >> m_rx_dma_ch) & 0x1)) {
+        rts_high(); // Block sender until DMA on.
+    } else {
+        rts_low();
     }
     usart_enable_tx(m_usart);
     usart_enable_rx(m_usart);
@@ -172,6 +182,11 @@ void UsartSamv71::poll_tx_dma() {
     // Check if we have any data waiting to send.
     m_txdma_nbytes = m_tx.get_peek_ready();
     if (!m_txdma_nbytes) { return; }
+
+#ifdef SATCAT5_SAMV71_UART_WRST
+    // Reset Watchdog
+    wdt_restart(WDT);
+#endif
 
 #if SATCAT5_SAMV71_UART_DCACHE
     // Flush the data cache for any 32-byte lines the DMA will read from.
@@ -216,6 +231,11 @@ void UsartSamv71::poll_rx_dma() {
     XDMAC->XDMAC_GE = (1 << m_rx_dma_ch); // Re-enable channel
     rts_low(); // Enabled, drive RTS low
     lock.release();
+
+#ifdef SATCAT5_SAMV71_UART_WRST
+    // Reset Watchdog
+    wdt_restart(WDT);
+#endif
 
     // Invalidate cache for any relevant lines then copy to the PacketBuffer.
     if (!nbytes_wr) { return; }
@@ -291,11 +311,24 @@ void UsartSamv71::configure_xdmac(u32 tx_perid, u32 rx_perid) {
 }
 
 // In handshaking mode (RTS/CTS), the RTS pin is driven High when RTSEN is set.
+// In other modes, the RTS pin is driven High when RTSDIS is set.
+// This is ignored (unused US_CR bit) in 2-wire UART mode.
 void UsartSamv71::rts_high() {
-    if (m_fc_on) { m_usart->US_CR = US_CR_RTSEN; }
+    if (!m_rts_en) { return; } // Ignore (leave low) if RTS disabled.
+    if (m_cts_en) {
+        m_usart->US_CR = US_CR_RTSEN;
+    } else {
+        m_usart->US_CR = US_CR_RTSDIS;
+    }
 }
 
 // In handshaking mode (RTS/CTS), the RTS pin is driven Low when RTSDIS is set.
+// In other modes, the RTS pin is driven Low when RTSEN is set.
+// This is ignored (unused US_CR bit) in 2-wire UART mode.
 void UsartSamv71::rts_low() {
-    if (m_fc_on) { m_usart->US_CR = US_CR_RTSDIS; }
+    if (m_cts_en) {
+        m_usart->US_CR = US_CR_RTSDIS;
+    } else {
+        m_usart->US_CR = US_CR_RTSEN;
+    }
 }

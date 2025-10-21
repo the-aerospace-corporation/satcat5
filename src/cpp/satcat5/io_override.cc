@@ -34,6 +34,11 @@ Override::~Override() {
 void Override::set_override(bool remote) {
     // Set new mode, then reconfigure timer if applicable.
     m_remote = remote;
+    if (remote) {
+        write_dst(0);
+    } else {
+        write_dst(m_dev_wr);
+    }
     watchdog_reset();
 }
 

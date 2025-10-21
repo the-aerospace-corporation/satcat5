@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -43,8 +43,7 @@ static util::TimeRef* g_timer = 0;
 static irq::Controller* g_irq_ctrl = 0;
 
 // Forcibly unregister global event-handler objects.
-bool irq::pre_test_reset()
-{
+bool irq::pre_test_reset() {
     bool ok = true;
     if (g_lock_count)   {g_lock_count = 0;  ok = false;}
     if (g_irq_list)     {g_irq_list = 0;    ok = false;}
@@ -54,8 +53,7 @@ bool irq::pre_test_reset()
 }
 
 #if SATCAT5_ALLOW_DELETION
-irq::Controller::~Controller()
-{
+irq::Controller::~Controller() {
     // Clear all global state.
     g_lock_count = 0;
     g_irq_ctrl = 0;
@@ -64,8 +62,7 @@ irq::Controller::~Controller()
 }
 #endif
 
-void irq::Controller::stop()
-{
+void irq::Controller::stop() {
     irq::AtomicLock lock("IRQ_HANDLER");
 
     // Sanity check so we don't do this twice...
@@ -83,8 +80,7 @@ void irq::Controller::stop()
     g_lock_count -= USER_CONTEXT;
 }
 
-void irq::Controller::init(util::TimeRef* timer)
-{
+void irq::Controller::init(util::TimeRef* timer) {
     // Register each of the interrupt handlers.
     irq::Handler* irq = g_irq_list;
     while (irq) {
@@ -108,30 +104,26 @@ void irq::Controller::init(util::TimeRef* timer)
     g_lock_count = USER_CONTEXT;
 }
 
-bool irq::Controller::is_initialized()
-{
+bool irq::Controller::is_initialized() {
     return (g_lock_count >= USER_CONTEXT);
 }
-bool irq::Controller::is_irq_context()
-{
+
+bool irq::Controller::is_irq_context() {
     return (g_lock_count >= INTERRUPT_CONTEXT);
 }
 
-bool irq::Controller::is_irq_or_locked()
-{
+bool irq::Controller::is_irq_or_locked() {
     return (g_lock_count > USER_CONTEXT);
 }
 
-void irq::Controller::irq_acknowledge(irq::Handler* obj)
-{
+void irq::Controller::irq_acknowledge(irq::Handler* obj) {
     // Default handler does nothing.
 }
 
 // Note: This method must be static for compatibility with the usual
 //       callback signature of most legacy-C interrupt handlers.
-void irq::Controller::interrupt_static(irq::Handler* obj)
-{
-    satcat5::util::TimeVal tstart;
+void irq::Controller::interrupt_static(irq::Handler* obj) {
+    satcat5::util::TimeVal tstart = {0, 0};
     unsigned elapsed = 0;
 
     // While in interrupt mode, increment nested-lock count to
@@ -165,13 +157,11 @@ void irq::Controller::interrupt_static(irq::Handler* obj)
     g_lock_count -= INTERRUPT_CONTEXT;
 }
 
-irq::ControllerNull::ControllerNull(util::TimeRef* timer)
-{
+irq::ControllerNull::ControllerNull(util::TimeRef* timer) {
     init(timer);
 }
 
-void irq::ControllerNull::service_all()
-{
+void irq::ControllerNull::service_all() {
     irq::Handler* irq = g_irq_list;
     while (irq) {
         service_one(irq);
@@ -199,8 +189,7 @@ irq::Handler::Handler(const char* lbl, int irq)
 }
 
 #if SATCAT5_ALLOW_DELETION
-irq::Handler::~Handler()
-{
+irq::Handler::~Handler() {
     irq::AtomicLock lock("IRQ_HANDLER");
 
     // Ignore placeholder interrupts (see above)
@@ -223,14 +212,12 @@ irq::Adapter::Adapter(const char* lbl, int irq, satcat5::poll::OnDemand* obj)
 }
 
 #if SATCAT5_ALLOW_DELETION
-irq::Adapter::~Adapter()
-{
+irq::Adapter::~Adapter() {
     // Parent has already performed all required cleanup.
 }
 #endif
 
-void irq::Adapter::irq_event()
-{
+void irq::Adapter::irq_event() {
     m_obj->request_poll();
 }
 
@@ -241,14 +228,12 @@ irq::Shared::Shared(const char* lbl, int irq)
 }
 
 #if SATCAT5_ALLOW_DELETION
-irq::Shared::~Shared()
-{
+irq::Shared::~Shared() {
     // Parent has already performed all required cleanup.
 }
 #endif
 
-void irq::Shared::irq_event()
-{
+void irq::Shared::irq_event() {
     // Traverse the list, notifying each callback.
     irq::Handler* item = m_list.head();
     while (item) {

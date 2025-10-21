@@ -140,6 +140,11 @@ TEST_CASE("switch_cfg") {
         uut.set_promiscuous(1, true);
         CHECK(regs[REG_PROMISC].write_pop() == 0x0006); // Confirm HW register
         CHECK(uut.get_promiscuous_mask() == 0x0006);    // Confirm SW register
+
+        // Set all the ports.
+        uut.set_promiscuous_mask(0x1234);
+        CHECK(regs[REG_PROMISC].write_pop() == 0x1234); // Confirm HW register
+        CHECK(uut.get_promiscuous_mask() == 0x1234);    // Confirm SW register
     }
 
     SECTION("traffic_filter") {

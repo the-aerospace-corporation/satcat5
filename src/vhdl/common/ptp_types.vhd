@@ -11,6 +11,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 use     ieee.math_real.all;
 use     work.common_functions.all;
+use     work.common_primitives.all;
 use     work.eth_frame_common.all;
 
 package PTP_TYPES is
@@ -188,6 +189,11 @@ package PTP_TYPES is
     constant TLVPOS_NONE        : tlvpos_t := (others => '0');
     function TLVPOS_PTP_L2      return tlvpos_t;
     function TLVPOS_PTP_L3      return tlvpos_t;
+
+    -- Alternate to platform-specific "create_vernier_config".
+    -- When passed to "ptp_counter_sync", this Vernier configuration enables
+    -- a timestamping circuit that is simpler, but less precise.
+    function create_vernier_coarse(input_hz : natural) return vernier_config;
 end package;
 
 package body PTP_TYPES is
@@ -385,5 +391,14 @@ package body PTP_TYPES is
         -- L3 PTP message starts after the UDP frame header with fixed-length
         -- IPv4 header (no options allowed per IEEE 1588-2019, Appendix C.5).
         return bidx_to_tlvpos(UDP_HDR_DAT(IP_IHL_MIN));
+    end function;
+
+    function create_vernier_coarse(input_hz : natural) return vernier_config is
+        -- Baseline configuration is derived from the precise version.
+        variable vconfig : vernier_config := create_vernier_config(input_hz);
+    begin
+        -- Signal coarse mode by setting the VCLKB frequency to zero.
+        vconfig.vclkb_hz := 0.0;
+        return vconfig;
     end function;
 end package body;

@@ -66,6 +66,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, "In OFF mode, all inputs are discarded."));
         timer.sim_wait(100);
         CHECK(uut.get_read_ready() == 0);
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 0);
     }
 
     // Test mode: port = RAW, stream = RAW
@@ -74,6 +77,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, "Short raw message."));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&uut, "Short raw message."));
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
     // Test mode: port = RAW, stream = SPP
@@ -82,6 +88,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, make_spp(0, "SPP headers removed and replaced.")));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&uut, make_spp(0, "SPP headers removed and replaced.")));
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
     // Test mode: port = AOS, stream = RAW
@@ -90,7 +99,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, "AOS carrying B_PDU stream."));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&uut, "AOS carrying B_PDU stream."));
-        CHECK(uut.frame_count() == 1);
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
     // Test mode: port = AOS, stream = SPP
@@ -99,7 +110,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, make_spp(0, "AOS carrying SPP over M_PDU.")));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&uut, make_spp(0, "AOS carrying SPP over M_PDU.")));
-        CHECK(uut.frame_count() == 1);
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
     // Test mode: port = SPP, stream = RAW
@@ -108,6 +121,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, "Single SPP packet, but TriMode adds headers."));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&uut, "Single SPP packet, but TriMode adds headers."));
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
     // Test mode: port = SPP, stream = SPP
@@ -116,6 +132,9 @@ TEST_CASE("io_trimode") {
         CHECK(satcat5::test::write(&uut, make_spp(0, "Single SPP packet.")));
         timer.sim_wait(100);
         CHECK(satcat5::test::read(&uut, make_spp(0, "Single SPP packet.")));
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
     // Test mode: port = SLIP
@@ -129,9 +148,11 @@ TEST_CASE("io_trimode") {
         timer.sim_wait(100);
         CHECK(uut.get_read_ready() == 0);
         CHECK(satcat5::test::read(&sock0, "Packet via Ethernet switch."));
-        CHECK(uut.frame_count() == 1);
+        auto count = uut.stats();
+        CHECK(count.rcvd_errors == 0);
+        CHECK(count.rcvd_frames == 1);
     }
 
-    // Sanity check: No unexpected errors.
-    CHECK(uut.error_count() == 0);
+    // Confirm counters are reset after the test.
+    CHECK_FALSE(uut.stats().any());
 }

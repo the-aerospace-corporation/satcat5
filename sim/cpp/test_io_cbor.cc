@@ -394,16 +394,19 @@ TEST_CASE("cbor_reader") {
         MapWriterStatic<s64> w;
         const bool bool_vals[] = { true, false };
         w.add_array(0, 2, bool_vals);
+        w.add_bool(1, false);
         CHECK(w.close());
         MapReaderStatic<s64> r(w.get_buffer());
         CHECK(r.ok());
         PacketBufferHeap dst;
+        int f0 = r.get_bool_array(1, dst);
+        CHECK(f0 == CborReader::ERR_BAD_TYPE);
         int f1 = r.get_s64_array(0, dst);
         CHECK(f1 == CborReader::ERR_BAD_TYPE);
         ArrayWriteStatic<1> tiny_arr;
         int f2 = r.get_bool_array(0, tiny_arr);
         CHECK(f2 == CborReader::ERR_OVERFLOW);
-        int f3 = r.get_bool_array(1, dst);
+        int f3 = r.get_bool_array(2, dst);
         CHECK(f3 == CborReader::ERR_NOT_FOUND);
         int r1 = r.get_bool_array(0, dst); // Should work now.
         CHECK(r1 == 2);

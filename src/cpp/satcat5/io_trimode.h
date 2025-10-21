@@ -2,11 +2,7 @@
 // Copyright 2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-//! \file
-//! Configurable port with Raw, CCSDS, or SLIP mode.
-//!
-//! \copydetails TriMode
-
+// Configurable port with Raw, CCSDS, or SLIP mode.
 
 #pragma once
 
@@ -73,22 +69,20 @@ namespace satcat5 {
                 u16 apid_raw = 0);
 
             //! Set the input and output formats.
-            //! If #port is OFF or SLIP, then arguments #tx and #rx are unused.
+            //! \param port Physical-layer encoding for this port.
+            //! \param tx Internal format for outgoing user data.
+            //! \param rx Internal format for incoming user data.
+            //! If `port` is OFF or SLIP, then arguments `tx` and `rx` are unused.
             void configure(Port port,
                 Stream tx = Stream::OFF,
                 Stream rx = Stream::OFF);
 
-            //! Count invalid Ethernet or AOS frames since last query.
-            //! (This function will always return zero in RAW mode.)
-            unsigned error_count();
-
-            //! Count valid Ethernet or AOS frames since last query.
-            //! (This function will always return zero in RAW mode.)
-            unsigned frame_count();
-
             //! Accessor for the inner Ethernet port.
             inline satcat5::port::SlipAdapter* eth_port()
                 { return &m_eth_slip; }
+
+            //! Report packet statistics since the previous query.
+            satcat5::io::TrafficStats stats();
 
         protected:
             //! Pointer to the source object.

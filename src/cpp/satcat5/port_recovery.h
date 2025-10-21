@@ -41,16 +41,10 @@ namespace satcat5 {
 
         //! MultiWriter that slips packets written to it into the
         //! port's egress buffer.
-        class RecoveryEgress : public satcat5::io::MultiWriter {
+        class RecoveryEgress : public satcat5::io::MultiWriterBypass {
         public:
             //! Egress interface attaches to an Ethernet port.
             explicit RecoveryEgress(satcat5::eth::SwitchPort* port);
-
-            //! Override write_finalize so it calls write_bypass instead.
-            bool write_finalize() override;
-
-        protected:
-            satcat5::io::MultiReader* const m_egress;
         };
     }
 }

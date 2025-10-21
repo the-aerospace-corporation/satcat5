@@ -8,6 +8,7 @@
 #pragma once
 
 #include <satcat5/io_core.h>
+#include <satcat5/io_counter.h>
 #include <satcat5/types.h>
 
 // Default size is large enough for one full-size Ethernet frame + metadata.
@@ -61,18 +62,21 @@ namespace satcat5 {
         class PacketBuffer
             : public satcat5::io::Writeable
             , public satcat5::io::Readable
+            , public satcat5::io::Counter
         {
         public:
             //! Configure this object and link to the underlying working memory.
             //! Note: If max_pkt = 0, then packet boundaries are ignored.
             constexpr PacketBuffer(void* buff, unsigned nbytes, unsigned max_pkt=0)
                 : m_buff(static_cast<u8*>(buff) + 2*max_pkt)
-                , m_buff_size(nbytes - 2*max_pkt)
+                , m_buff_size((buff && nbytes >= 2*max_pkt) ? (nbytes - 2*max_pkt) : 0)
                 , m_buff_rdidx(0)
                 , m_buff_rdcount(0)
                 , m_pkt_lbuff(static_cast<u16*>(buff))
                 , m_pkt_maxct(max_pkt)
                 , m_pkt_rdidx(0)
+                , m_total_bytes(0)
+                , m_total_frames(0)
                 , m_next_wrpos(0)
                 , m_next_wrlen(0)
                 , m_shared_rdavail(0)
@@ -80,7 +84,12 @@ namespace satcat5 {
                 {} // No further initialization required
 
             //! Reset buffer contents.
+            //! Note: This does not reset byte_count and frame_count.
             void clear();
+
+            // Implement the io::Countable API.
+            unsigned byte_count(bool reset = true) override;
+            unsigned frame_count(bool reset = true) override;
 
             //! Get overall buffer occupancy as percentage full (0-100%).
             u8 get_percent_full() const;
@@ -151,6 +160,12 @@ namespace satcat5 {
             u16* const m_pkt_lbuff;         // Pointer to backing array
             const unsigned m_pkt_maxct;     // Size of backing array
             unsigned m_pkt_rdidx;           // Current read position
+            //! @}
+
+            //! Cumulative total-bytes and total-frames statistics counters.
+            //! @{
+            unsigned m_total_bytes;
+            unsigned m_total_frames;
             //! @}
 
             //! Working state for writes (write domain)

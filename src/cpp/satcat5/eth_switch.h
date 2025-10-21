@@ -118,6 +118,9 @@ namespace satcat5 {
             //! For as long as the flag is set, those port(s) will receive ALL
             //! switch traffic regardless of the destination address, etc.
             void set_promiscuous(unsigned port_idx, bool enable);
+            //! Enable or disable "promiscuous" flag for all ports at once.
+            inline void set_promiscuous_mask(SATCAT5_PMASK_TYPE mask)
+                { m_prom_mask = mask; }
             //! Return a bit-mask identifying all "promiscuous" ports.
             inline SATCAT5_PMASK_TYPE get_promiscuous_mask() const
                 { return m_prom_mask; }

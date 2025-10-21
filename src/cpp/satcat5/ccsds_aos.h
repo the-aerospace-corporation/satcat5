@@ -67,6 +67,8 @@ namespace satcat5 {
             //! Basic constructor sets frame count to zero.
             constexpr Header()
                 : id(0), signal(0), count(0) {}
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
             //! Constructor with known SVID and VCID.
             constexpr Header(u8 svid, u8 vcid)
                 : id(VERSION_2 | pack_svid(svid) | pack_vcid(vcid))
@@ -169,15 +171,15 @@ namespace satcat5 {
             satcat5::io::Writeable* open_write(
                 const satcat5::ccsds_aos::Header& hdr);
 
+            //! Report packet statistics since the previous query.
+            inline satcat5::io::TrafficStats stats()
+                { return satcat5::io::TrafficStats::query(m_crc_rx, m_crc_tx); }
+
             // Other accessors.
             inline unsigned dsize() const   //!< Data field size
                 { return m_dsize; }
-            inline unsigned error_count()   //!< Cumulative error count
-                { return m_crc_rx.error_count(); }
             inline void error_incr()        //!< Increment error count
                 { m_crc_rx.error_incr(); }
-            inline unsigned frame_count()   //!< Cumulative frame count
-                { return m_crc_rx.frame_count(); }
             inline unsigned tsize() const   //!< Total size = Header + Data
                 { return m_dsize + 6;}
             inline const satcat5::ccsds_aos::Header& rcvd_hdr() const

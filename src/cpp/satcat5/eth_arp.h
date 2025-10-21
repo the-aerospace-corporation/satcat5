@@ -31,6 +31,8 @@ namespace satcat5 {
             //! Constructor for an empty header.
             constexpr ArpHeader()
                 : oper(0), sha{}, tha{}, spa(), tpa() {}
+            ArpHeader(const ArpHeader& t) = default;
+            ArpHeader& operator=(const ArpHeader& t) = default;
 
             //! Attempt to read and validate the header.
             bool read_from(satcat5::io::Readable* rd);

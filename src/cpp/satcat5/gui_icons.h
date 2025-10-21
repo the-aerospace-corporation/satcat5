@@ -25,6 +25,11 @@ namespace satcat5 {
         struct Icon8x8 {
             u8 data[8];     //!< 8 x 8 pixels = 8 bytes
 
+            // Explicitly declare default constructor and copy operations.
+            Icon8x8() = default;
+            Icon8x8(const Icon8x8& t) = default;
+            Icon8x8& operator=(const Icon8x8& t) = default;
+
             //! Get pixel value at designated row and column.
             //! Note: Plain-old-data requirement means we cannot
             //! use virtual methods to implement accessor methods.
@@ -41,6 +46,11 @@ namespace satcat5 {
         struct Icon16x16 {
             u16 data[16];   //!< 16 x 16 pixels = 32 bytes
 
+            // Explicitly declare default constructor and copy operations.
+            Icon16x16() = default;
+            Icon16x16(const Icon16x16& t) = default;
+            Icon16x16& operator=(const Icon16x16& t) = default;
+
             //! Get pixel value at designated row and column.
             inline bool rc(u16 r, u16 c) const
                 { return !!(data[r] & (1 << c)); }
@@ -54,6 +64,11 @@ namespace satcat5 {
         //! Coordinates: Top row is index 0, left column is LSB.
         struct Icon32x32 {
             u32 data[32];   //!< 32 x 32 pixels = 128 bytes
+
+            // Explicitly declare default constructor and copy operations.
+            Icon32x32() = default;
+            Icon32x32(const Icon32x32& t) = default;
+            Icon32x32& operator=(const Icon32x32& t) = default;
 
             //! Get pixel value at designated row and column.
             inline bool rc(u16 r, u16 c) const

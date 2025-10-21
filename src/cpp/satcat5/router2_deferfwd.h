@@ -25,6 +25,11 @@ namespace satcat5 {
             u16 sent;                       //!< Number of attempts so far
             u16 trem;                       //!< Remaining time in msec
 
+            // Explicitly declare default constructor and assignment methods.
+            DeferPkt() = default;
+            DeferPkt(const DeferPkt& t) = delete;
+            DeferPkt& operator=(const DeferPkt& t) = delete;
+
             //! Reconstitute switch PacketMeta from this object.
             bool read_meta(satcat5::eth::PluginPacket& meta);
 

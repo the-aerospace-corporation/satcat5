@@ -18,6 +18,11 @@ namespace satcat5 {
             u64 clock_id;   //!< Clock identifier
             u16 port_num;   //!< Port number
 
+            // Explicitly declare default constructor and copy methods.
+            PortId() = default;
+            PortId(const PortId& t) = default;
+            PortId& operator=(const PortId& t) = default;
+
             //! Equality check.
             inline bool operator==(const PortId& other) const {
                 return (clock_id == other.clock_id)
@@ -86,6 +91,11 @@ namespace satcat5 {
 
             //! SPTP uses the PROFILE1 flag, so define an alias.
             static constexpr u16 FLAG_SPTP = FLAG_PROFILE1;
+
+            // Explicitly declare default constructor and copy methods.
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
 
             //! Expected length of message fields, not including header.
             //! i.e., the initial offset for parsing any attached TLVs.
@@ -195,6 +205,11 @@ namespace satcat5 {
                 SRC_MANUAL      = 0x60,     // Human-provided
                 SRC_OTHER       = 0x90,     // Any other source
                 SRC_INTERNAL    = 0xA0;     // Internal oscillator
+
+            // Explicitly declare default constructor and copy methods.
+            ClockInfo() = default;
+            ClockInfo(const ClockInfo& t) = default;
+            ClockInfo& operator=(const ClockInfo& t) = default;
 
             //! Read clock information from a given source.
             bool read_from(satcat5::io::Readable* rd);

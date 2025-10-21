@@ -1,16 +1,16 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2023 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
-// Test cases for the ConfigBus MDIO controller
 
 #include <cstdio>
-#include "sim_cfgbus.h"
+#include <hal_test/sim_cfgbus.h>
 
 using satcat5::cfg::IoStatus;
 using satcat5::cfg::REGS_PER_DEVICE;
-using satcat5::test::CfgRegister;
 using satcat5::test::CfgDevice;
+using satcat5::test::CfgRegister;
+using satcat5::test::CfgSpace;
 
 CfgRegister::CfgRegister()
     : m_rd_mode(ReadMode::UNSAFE)
@@ -21,26 +21,22 @@ CfgRegister::CfgRegister()
     // Nothing else to initialize.
 }
 
-void CfgRegister::read_default_none()
-{
+void CfgRegister::read_default_none() {
     m_rd_mode   = ReadMode::STRICT;
     m_rd_dval   = 0;
 }
 
-void CfgRegister::read_default_echo()
-{
+void CfgRegister::read_default_echo() {
     m_rd_mode   = ReadMode::ECHO;
     m_rd_dval   = 0;
 }
 
-void CfgRegister::read_default(u32 val)
-{
+void CfgRegister::read_default(u32 val) {
     m_rd_mode   = ReadMode::CONSTANT;
     m_rd_dval   = val;
 }
 
-void CfgRegister::read_push(u32 val)
-{
+void CfgRegister::read_push(u32 val) {
     m_queue_rd.push_back(val);
 }
 
@@ -53,8 +49,7 @@ unsigned CfgRegister::write_count() const
 unsigned CfgRegister::write_queue() const
     { return m_queue_wr.size(); }
 
-u32 CfgRegister::write_pop()
-{
+u32 CfgRegister::write_pop() {
     if (m_queue_wr.empty()) {
         fprintf(stderr, "Write queue empty.\n");
         return 0;       // Error
@@ -65,8 +60,7 @@ u32 CfgRegister::write_pop()
     }
 }
 
-IoStatus CfgRegister::read(unsigned regaddr, u32& rdval)
-{
+IoStatus CfgRegister::read(unsigned regaddr, u32& rdval) {
     ++m_rd_count;
     if (m_rd_mode == ReadMode::UNSAFE) {
         // Read from an undefined register.
@@ -89,8 +83,7 @@ IoStatus CfgRegister::read(unsigned regaddr, u32& rdval)
     }
 }
 
-IoStatus CfgRegister::write(unsigned regaddr, u32 wrval)
-{
+IoStatus CfgRegister::write(unsigned regaddr, u32 wrval) {
     ++m_wr_count;
     if (m_rd_mode == ReadMode::UNSAFE) {
         fprintf(stderr, "Unsafe register write: %u\n", regaddr);
@@ -102,32 +95,46 @@ IoStatus CfgRegister::write(unsigned regaddr, u32 wrval)
     return IoStatus::OK;
 }
 
-void CfgDevice::read_default_none()
-{
+void CfgDevice::read_default_none() {
     for (unsigned a = 0 ; a < REGS_PER_DEVICE ; ++a)
         reg[a].read_default_none();
 }
 
-void CfgDevice::read_default_echo()
-{
+void CfgDevice::read_default_echo() {
     for (unsigned a = 0 ; a < REGS_PER_DEVICE ; ++a)
         reg[a].read_default_echo();
 }
 
-void CfgDevice::read_default(u32 val)
-{
+void CfgDevice::read_default(u32 val) {
     for (unsigned a = 0 ; a < REGS_PER_DEVICE ; ++a)
         reg[a].read_default(val);
 }
 
-IoStatus CfgDevice::read(unsigned regaddr, u32 &rdval)
-{
+IoStatus CfgDevice::read(unsigned regaddr, u32 &rdval) {
     regaddr = regaddr % REGS_PER_DEVICE;
     return reg[regaddr].read(regaddr, rdval);
 }
 
-IoStatus CfgDevice::write(unsigned regaddr, u32 wrval)
-{
+IoStatus CfgDevice::write(unsigned regaddr, u32 wrval) {
     regaddr = regaddr % REGS_PER_DEVICE;
     return reg[regaddr].write(regaddr, wrval);
+}
+
+IoStatus CfgSpace::read(unsigned regaddr, u32& val) {
+    auto& cfg = get_device(regaddr / REGS_PER_DEVICE);
+    return cfg.read(regaddr % REGS_PER_DEVICE, val);
+}
+
+IoStatus CfgSpace::write(unsigned regaddr, u32 wrval) {
+    auto& cfg = get_device(regaddr / REGS_PER_DEVICE);
+    return cfg.write(regaddr % REGS_PER_DEVICE, wrval);
+}
+
+void CfgSpace::add_device(unsigned devaddr, ConfigBus& cfg) {
+    m_devs.emplace(devaddr, cfg);
+}
+
+satcat5::cfg::ConfigBus& CfgSpace::get_device(unsigned devaddr) {
+    auto it = m_devs.find(devaddr);
+    return (it == m_devs.end()) ? m_undef : it->second;
 }

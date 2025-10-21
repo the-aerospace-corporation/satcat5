@@ -17,23 +17,24 @@
 --      * Frame is transmitted from left to right, with each field transmitted
 --        most significant byte first.
 --      * Bit order is configurable.
---      * If FRAME_BYTES is positive, the INFO field is split into frames of a
+--      * If frame_bytes is positive, the INFO field is split into frames of a
 --        fixed number of bytes. If in_last is asserted early, the INFO field
 --        will be zero padded.
---      * If FRAME_BYTES is zero, the INFO field is variable length and relies
+--      * If frame_bytes is zero, the INFO field is variable length and relies
 --        on the in_last signal to denote the end of a frame.
 --      * A 16 bit FCS (CRC-CCITT) is appended to each frame.
 --
 
 library ieee;
+use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 use     work.common_functions.all;
 use     work.eth_frame_common.all;
 
 entity hdlc_encoder is
     generic (
-    FRAME_BYTES : natural := 0;      -- bytes per frame excluding flags/FCS
-    MSB_FIRST   : boolean := false); -- false for LSb first
+    MSB_FIRST         : boolean  := false; -- false for LSb first
+    FRAME_BYTES_WIDTH : positive := 16);
     port (
     in_data   : in  byte_t;
     in_valid  : in  std_logic;
@@ -44,6 +45,9 @@ entity hdlc_encoder is
     out_valid : out std_logic;
     out_last  : out std_logic; -- Asserted on last bit of end flag.
     out_ready : in  std_logic;
+
+    -- Bytes per frame excluding the FLAGS and FCS. Latches at end of frame.
+    frame_bytes : in unsigned(FRAME_BYTES_WIDTH-1 downto 0) := (others => '0');
 
     clk       : in  std_logic;
     reset_p   : in  std_logic);
@@ -66,7 +70,7 @@ type state_t is (
 signal state       : state_t;
 signal next_state  : state_t := START_FLAG;
 signal state_en    : std_logic;
-signal crc_result  : crc16_word_t;
+signal crc_result  : crc16_word_t := CRC16_INIT;
 
 -- Encoder signals
 signal enc_in_data   : byte_t;
@@ -79,6 +83,9 @@ signal init_idx      : integer range 0 to MAX_IDX;
 signal idx           : integer range 0 to MAX_IDX;
 signal ones_count    : integer range 0 to MAX_ONES := 0;
 signal enc_out_valid : std_logic := '0';
+
+-- Internal frame_bytes signal. Latches on last bit of end flag.
+signal i_frame_bytes : unsigned(FRAME_BYTES_WIDTH-1 downto 0);
 
 begin
 
@@ -95,8 +102,7 @@ in_ready <= state_en and bool2bit(next_state = DATA);
 
 -- State machine for next byte, and doing byte-at-a-time CRC calculation
 p_state : process(clk)
-    variable first_crc  : std_logic := '1';
-    variable data_count : integer range 0 to FRAME_BYTES := 0;
+    variable data_count : integer range 0 to 2**FRAME_BYTES_WIDTH-1 := 0;
     variable crc_count  : integer range 0 to CRC_BYTES  := 0;
     variable crc_byte   : byte_t;
 
@@ -109,29 +115,20 @@ p_state : process(clk)
         enc_in_valid <= valid;
         enc_in_last  <= last;
 
-        if update_crc then
-            if (valid = '1') then
-                if (first_crc = '1') then
-                    crc_result <= crc16_next(CRC16_INIT, data);
-                    first_crc  := '0';
-                else
-                    crc_result <= crc16_next(crc_result, data);
-                end if;
-            end if;
-        else
-            first_crc := '1';
+        if update_crc and (valid = '1') then
+            crc_result <= crc16_next(crc_result, data);
         end if;
     end procedure;
 
 begin
     if rising_edge(clk) then
         if (reset_p = '1') then
-            next_state   <= START_FLAG;
-            enc_in_valid <= '0';
-            enc_in_last  <= '0';
-            first_crc    := '1';
-            data_count   := 0;
-            crc_count    := 0;
+            next_state    <= START_FLAG;
+            enc_in_valid  <= '0';
+            enc_in_last   <= '0';
+            data_count    := 0;
+            crc_result    <= CRC16_INIT;
+            crc_count     := 0;
         else
             if (state_en = '1') then
                 state <= next_state; -- Update current state for p_enc
@@ -149,7 +146,7 @@ begin
 
                     if (in_valid = '1') then
                         -- Select next state
-                        if (FRAME_BYTES = 0) then
+                        if (i_frame_bytes = 0) then
                             -- Variable length frame
                             if (in_last = '1') then
                                 next_state <= FCS;
@@ -157,7 +154,7 @@ begin
                         else
                             -- Fixed length frame
                             data_count := data_count + 1;
-                            if (data_count = FRAME_BYTES) then
+                            if (data_count = i_frame_bytes) then
                                 data_count := 0;
                                 next_state <= FCS;
                             elsif (in_last = '1') then
@@ -171,7 +168,7 @@ begin
 
                     -- Select next state
                     data_count := data_count + 1;
-                    if (data_count = FRAME_BYTES) then
+                    if (data_count = i_frame_bytes) then
                         data_count := 0;
                         next_state <= FCS;
                     end if;
@@ -184,6 +181,7 @@ begin
                     -- Select next state
                     crc_count := crc_count + 1;
                     if (crc_count = CRC_BYTES) then
+                        crc_result <= CRC16_INIT;
                         crc_count  := 0;
                         next_state <= END_FLAG;
                     end if;
@@ -238,15 +236,23 @@ p_enc : process(clk)
             return inc_idx(idx);
         end if;
     end function;
+
+    variable v_out_last : std_logic := '0';
 begin
     if rising_edge(clk) then
-        -- Set valid and last
+        -- Set valid, last, and frame_bytes
         if (reset_p = '1') then
             enc_out_valid <= '0';
-            out_last <= '0';
+            v_out_last    := '0';
+            out_last      <= '0';
+            i_frame_bytes <= frame_bytes;
         elsif (enc_en = '1') then
             enc_out_valid <= enc_in_valid;
-            out_last <= enc_in_last and enc_done;
+            v_out_last := enc_in_last and enc_done;
+            out_last  <= v_out_last;
+            if (v_out_last = '1') then
+                i_frame_bytes <= frame_bytes;
+            end if;
         end if;
 
         -- Set data

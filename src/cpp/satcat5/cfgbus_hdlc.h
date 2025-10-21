@@ -31,12 +31,16 @@ namespace satcat5 {
 
             //! Configure the HDLC driver.
             //!
-            //! Sets the baud-rate. This method should only be called when the
-            //! bus is idle.
+            //! Sets the baud-rate, and frame size. This method should only be
+            //! called when the bus is idle.
             //!
             //! \param clkref_hz ConfigBus clock rate.
             //! \param baud_hz Desired HDLC baud rate.
-            void configure(unsigned clkref_hz, unsigned baud_hz);
+            //! \param frame_bytes Size of HDLC frame.
+            //!     Set to 0 for variable length frames.
+            void configure(unsigned clkref_hz,
+                           unsigned baud_hz,
+                           unsigned frame_bytes = 0);
 
         private:
             // Event handlers.

@@ -196,4 +196,5 @@ sw_docs:
 #   e.g., "sudo setcap cap_net_raw+eip /usr/bin/python3.6".
 .PHONY: sw_python
 sw_python:
-	@cd sim/python && python3 cfgbus_test.py
+	@cd sim/python && python3 test_ccsds.py
+	@cd sim/python && python3 test_cfgbus.py

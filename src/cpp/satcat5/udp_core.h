@@ -15,6 +15,9 @@ namespace satcat5 {
         typedef satcat5::ip::Addr Addr;
         typedef satcat5::ip::Port Port;
 
+        //! The UDP header is eight bytes long.
+        static constexpr unsigned HEADER_BYTES = 8;
+
         //! Well-known UDP port-numbers used by SatCat5:
         //! https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers#Well-known_ports
         //!@{
@@ -34,10 +37,36 @@ namespace satcat5 {
         constexpr satcat5::udp::Port PORT_CFGBUS_CMD    = {0x5A61};
         constexpr satcat5::udp::Port PORT_CFGBUS_ACK    = {0x5A62};
         constexpr satcat5::udp::Port PORT_CBOR_TLM      = {0x5A63};
+        constexpr satcat5::udp::Port PORT_SWITCH_LOG    = {0x5A64};
         //!@}
 
         //! Reserved UDP multicast addresses.
         constexpr satcat5::ip::Addr MULTICAST_COAP(224, 0, 1, 187);
+
+        //! UDP header contents.
+        //! The UDP checksum field is never used.
+        struct Header {
+            // UDP header fields.
+            satcat5::udp::Port src;     //!< Source port
+            satcat5::udp::Port dst;     //!< Destination port
+            u16 length;                 //!< Length of contained data
+
+            // Explicitly declare default constructor and assignment methods.
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
+
+            //! Write UDP header to the designated stream.
+            //! The checksum field will be written as zero (disabled).
+            void write_to(satcat5::io::Writeable* wr) const;
+
+            //! Read UDP header from the designated stream.
+            //! \returns True on success, false otherwise.
+            bool read_from(satcat5::io::Readable* rd);
+        };
+
+        constexpr satcat5::udp::Header HEADER_EMPTY =
+            {satcat5::udp::PORT_NONE, satcat5::udp::PORT_NONE, 0};
 
         //! Implementation of "net::Address" for UDP Dispatch.
         class Address final : public satcat5::net::Address {
@@ -76,7 +105,7 @@ namespace satcat5 {
             satcat5::net::Dispatch* iface() const override;
             satcat5::io::Writeable* open_write(unsigned len) override;
             bool is_multicast() const override
-                {return m_addr.is_multicast();}
+                { return m_addr.is_multicast(); }
             bool matches_reply_address() const override;
             bool reply_is_multicast() const override
                 { return m_addr.reply_is_multicast(); }
@@ -84,19 +113,28 @@ namespace satcat5 {
 
             // Various accessors.
             inline satcat5::ip::Addr dstaddr() const
-                {return m_addr.dstaddr();}
+                { return m_addr.dstaddr();}
             inline satcat5::eth::MacAddr dstmac() const
-                {return m_addr.dstmac();}
+                { return m_addr.dstmac();}
             inline satcat5::udp::Port dstport() const
-                {return m_dstport;}
+                { return m_dstport;}
+            inline satcat5::eth::Dispatch* eth() const
+                { return m_addr.eth(); }
+            inline satcat5::eth::Header eth_header() const
+                { return m_addr.eth_header(); }
+            satcat5::ip::Header ip_header(unsigned len) const;
             inline satcat5::ip::Addr gateway() const
-                {return m_addr.gateway();}
+                { return m_addr.gateway(); }
+            inline satcat5::eth::MacAddr srcmac() const
+                { return m_addr.srcmac(); }
             inline satcat5::udp::Port srcport() const
-                {return m_srcport;}
+                { return m_srcport; }
             inline satcat5::udp::Dispatch* udp() const
-                {return m_iface;}
+                { return m_iface; }
+            inline satcat5::udp::Header udp_header(unsigned len) const
+                { return {m_srcport, m_dstport, u16(len + 8)}; }
             inline satcat5::eth::VlanTag vtag() const
-                {return m_addr.vtag();}
+                { return m_addr.vtag(); }
 
         protected:
             satcat5::udp::Dispatch* m_iface;
@@ -112,15 +150,21 @@ namespace satcat5 {
         public:
             // Various accessors.
             inline satcat5::ip::Addr dstaddr() const
-                {return m_addr.dstaddr();}
+                { return m_addr.dstaddr(); }
             inline satcat5::eth::MacAddr dstmac() const
-                {return m_addr.dstmac();}
+                { return m_addr.dstmac(); }
             inline satcat5::udp::Port dstport() const
-                {return m_addr.dstport();}
+                { return m_addr.dstport(); }
+            inline satcat5::eth::Dispatch* eth() const
+                { return m_addr.eth(); }
+            satcat5::net::Dispatch* iface() const
+                { return m_addr.iface(); }
             inline satcat5::ip::Addr gateway() const
-                {return m_addr.gateway();}
+                { return m_addr.gateway(); }
             inline satcat5::udp::Port srcport() const
-                {return m_addr.srcport();}
+                { return m_addr.srcport(); }
+            inline satcat5::udp::Dispatch* udp() const
+                { return m_addr.udp(); }
 
         protected:
             explicit AddressContainer(satcat5::udp::Dispatch* iface)
@@ -128,25 +172,5 @@ namespace satcat5 {
             ~AddressContainer() {}
             satcat5::udp::Address m_addr;
         };
-
-        //! UDP header contents.
-        //! The UDP checksum field is never used.
-        struct Header {
-            // UDP header fields.
-            satcat5::udp::Port src;     //!< Source port
-            satcat5::udp::Port dst;     //!< Destination port
-            u16 length;                 //!< Length of contained data
-
-            //! Write UDP header to the designated stream.
-            //! The checksum field will be written as zero (disabled).
-            void write_to(satcat5::io::Writeable* wr) const;
-
-            //! Read UDP header from the designated stream.
-            //! \returns True on success, false otherwise.
-            bool read_from(satcat5::io::Readable* rd);
-        };
-
-        constexpr satcat5::udp::Header HEADER_EMPTY =
-            {satcat5::udp::PORT_NONE, satcat5::udp::PORT_NONE, 0};
     }
 }

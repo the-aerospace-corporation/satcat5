@@ -8,6 +8,7 @@
 
 using satcat5::ip::PROTO_UDP;
 using satcat5::udp::Address;
+using satcat5::udp::HEADER_BYTES;
 using satcat5::udp::PORT_NONE;
 
 Address::Address(satcat5::udp::Dispatch* iface)
@@ -62,6 +63,11 @@ satcat5::net::Dispatch* Address::iface() const {
     return m_iface;
 }
 
+satcat5::ip::Header Address::ip_header(unsigned len) const {
+    // IP frame contains 8-byte UDP header plus inner UDP data.
+    return m_iface->iface()->next_header(PROTO_UDP, dstaddr(), len + HEADER_BYTES);
+}
+
 satcat5::io::Writeable* Address::open_write(unsigned len) {
     return m_iface ? m_iface->open_write(m_addr, m_srcport, m_dstport, len) : nullptr;
 }
@@ -83,7 +89,7 @@ void satcat5::udp::Header::write_to(satcat5::io::Writeable* wr) const {
 }
 
 bool satcat5::udp::Header::read_from(satcat5::io::Readable* rd) {
-    if (rd->get_read_ready() < 8) {return false;}
+    if (rd->get_read_ready() < HEADER_BYTES) {return false;}
     src.read_from(rd);
     dst.read_from(rd);
     length = rd->read_u16();

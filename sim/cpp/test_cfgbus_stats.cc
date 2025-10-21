@@ -52,6 +52,7 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.rate_mbps       == 0);
         CHECK(stats.status          == 9);
         CHECK(stats.delta_freq      == 10);
+        CHECK(stats.errct_total()   == 15);
     }
 
     SECTION("port1") {
@@ -72,6 +73,7 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.rate_mbps       == 0);
         CHECK(stats.status          == 25);
         CHECK(stats.delta_freq      == 26);
+        CHECK(stats.errct_total()   == 47);
     }
 
     SECTION("port999") {
@@ -92,6 +94,7 @@ TEST_CASE("NetworkStats") {
         CHECK(stats.rate_mbps       == 0);
         CHECK(stats.status          == 0);
         CHECK(stats.delta_freq      == 0);
+        CHECK(stats.errct_total()   == 0);
     }
 
     delete mock;

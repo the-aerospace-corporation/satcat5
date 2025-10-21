@@ -10,11 +10,13 @@
 #include <satcat5/cfgbus_pps.h>
 #include <satcat5/ptp_tracking.h>
 
+using satcat5::cfg::PpsInput;
+
 // Constants relating to the unit under test:
 static const unsigned CFG_DEVADDR   = 42;
 static const unsigned REG_PPSI      = 1;
 static const unsigned REG_PPSO      = 2;
-
+static const unsigned REG_FREQ      = 3;
 
 TEST_CASE("cfgbus_ppsi") {
     // Simulation infrastructure.
@@ -24,7 +26,7 @@ TEST_CASE("cfgbus_ppsi") {
     // Simulated memory-map and device under test.
     satcat5::test::CfgDevice regs;
     regs[REG_PPSI].read_default(0);
-    satcat5::cfg::PpsInput uut(
+    PpsInput uut(
         regs.get_register(CFG_DEVADDR, REG_PPSI));
 
     // Set up a TrackingController to receive pulse information.
@@ -64,17 +66,27 @@ TEST_CASE("cfgbus_ppsi") {
         // Confirm the second pulse was processed.
         CHECK(dbg.prev() == 65536);
     }
+
+    // Change the edge-detection mode.
+    SECTION("reset") {
+        CHECK(uut.get_mode() == PpsInput::Edge::RISING);
+        uut.reset(PpsInput::Edge::FALLING);
+        CHECK(uut.get_mode() == PpsInput::Edge::FALLING);
+        CHECK(regs[REG_PPSI].write_pop() == 0);
+    }
 }
 
 TEST_CASE("cfgbus_ppso") {
     // Simulation infrastructure.
     SATCAT5_TEST_START;
+    satcat5::test::TimerSimulation timer;
 
     // Simulated memory-map and device under test.
     satcat5::test::CfgDevice regs;
     regs[REG_PPSO].read_default(0);
     satcat5::cfg::PpsOutput uut(
         regs.get_register(CFG_DEVADDR, REG_PPSO));
+    timer.sim_wait(100);
 
     // Confirm expected startup configuration.
     CHECK(regs[REG_PPSO].write_pop() == 0x80000000u);
@@ -102,5 +114,35 @@ TEST_CASE("cfgbus_ppso") {
         CHECK(regs[REG_PPSO].write_pop() == 0x80000000u);
         CHECK(regs[REG_PPSO].write_pop() == 0x00000000u);
         CHECK(uut.get_polarity());
+    }
+}
+
+TEST_CASE("cfgbus_refout") {
+    // Simulation infrastructure.
+    SATCAT5_TEST_START;
+    satcat5::test::TimerSimulation timer;
+
+    // Simulated memory-map and device under test.
+    satcat5::test::CfgDevice regs;
+    regs[REG_PPSO].read_default(0);
+    regs[REG_FREQ].read_default(0);
+    satcat5::cfg::RefOutput uut(
+        regs.get_register(CFG_DEVADDR, REG_PPSO),
+        regs.get_register(CFG_DEVADDR, REG_FREQ));
+    timer.sim_wait(100);
+
+    // Confirm expected startup configuration.
+    CHECK(regs[REG_PPSO].write_pop() == 0x80000000u);
+    CHECK(regs[REG_PPSO].write_pop() == 0x00000000u);
+    CHECK(regs[REG_FREQ].write_pop() == 0x00003B9Au);
+    CHECK(regs[REG_FREQ].write_pop() == 0xCA000000u);
+
+    // Confirm frequency-change configuration.
+    SECTION("set_frequency") {
+        CHECK(uut.get_frequency() == 1);
+        uut.set_frequency(10000000);
+        CHECK(regs[REG_FREQ].write_pop() == 0x00000000u);
+        CHECK(regs[REG_FREQ].write_pop() == 0x00640000u);
+        CHECK(uut.get_frequency() == 10000000);
     }
 }

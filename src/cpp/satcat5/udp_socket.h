@@ -69,7 +69,7 @@ namespace satcat5 {
             ~SocketCore() {}
         };
 
-        //! Wrapper for SocketCore with a fixed-size buffer.
+        //! SocketCore with fixed-size transmit and receive buffers.
         class Socket final : public satcat5::udp::SocketCore {
         public:
             //! Connect this Socket to a network interface.
@@ -82,6 +82,34 @@ namespace satcat5 {
         private:
             u8 m_txbuff[SATCAT5_UDP_BUFFSIZE];
             u8 m_rxbuff[SATCAT5_UDP_BUFFSIZE];
+        };
+
+        //! SocketCore with fixed-size receive buffer only.
+        class SocketRx final : public satcat5::udp::SocketCore {
+        public:
+            //! Connect this Socket to a network interface.
+            explicit SocketRx(satcat5::udp::Dispatch* iface);
+            ~SocketRx() {}
+
+            // Useful inherited methods from udp::SocketCore:
+            //  bind(...), connect(...), close(), ready_rx(), ready_tx()
+
+        private:
+            u8 m_rxbuff[SATCAT5_UDP_BUFFSIZE];
+        };
+
+        //! SocketCore with fixed-size transmit buffer only.
+        class SocketTx final : public satcat5::udp::SocketCore {
+        public:
+            //! Connect this Socket to a network interface.
+            explicit SocketTx(satcat5::udp::Dispatch* iface);
+            ~SocketTx() {}
+
+            // Useful inherited methods from udp::SocketCore:
+            //  bind(...), connect(...), close(), ready_rx(), ready_tx()
+
+        private:
+            u8 m_txbuff[SATCAT5_UDP_BUFFSIZE];
         };
     }
 }

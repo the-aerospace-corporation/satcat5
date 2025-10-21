@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test the Ethernet dispatcher
@@ -105,15 +105,20 @@ TEST_CASE("ethernet-dispatch") {
         CHECK(addr.reply_is_multicast());
         addr.save_reply_address();
         CHECK(addr.dstmac() == MAC_REMOTE);
+        CHECK(addr.srcmac() == MAC_LOCAL);
         CHECK(addr.etype().value == 12);
         CHECK(addr.vtag().value == 0);
+        CHECK(addr.header().dst == MAC_REMOTE);
+        CHECK(addr.header().src == MAC_LOCAL);
+        CHECK(addr.header().type.value == 12);
+        CHECK(addr.header().vtag.value == 0);
         CHECK(addr.matches_reply_address());
         CHECK_FALSE(addr.is_multicast());
     }
 
     SECTION("socket-rx") {
         // Bind a socket object to EtherType 34.
-        eth::Socket sock(&uut);
+        eth::SocketRx sock(&uut);
         sock.bind({34});
         // Send some data to that port.
         send_msg(&rx, 0, 34, 0xBEEF);

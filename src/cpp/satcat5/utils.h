@@ -72,6 +72,14 @@ namespace satcat5 {
             T val_; bool has_val_;
         };
 
+        //! Poll a cumulative counter, optionally resetting it to zero.
+        template <typename T>
+        inline T poll_counter(T& ct, bool reset = true) {
+            T tmp = ct;
+            if (reset) ct = 0;
+            return tmp;
+        }
+
         //! Min and max functions
         //!@{
         inline constexpr u8 min_u8(u8 a, u8 b)

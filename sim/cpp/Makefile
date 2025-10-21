@@ -85,7 +85,7 @@ test: build
 	@$(BUILD_DIR)/$(PROJECT).bin
 
 verbose: build
-	@echo Running tests (verbose mode)...
+	@echo Running tests in verbose mode...
 	@$(BUILD_DIR)/$(PROJECT).bin -d yes
 
 valgrind_test: build
@@ -119,7 +119,7 @@ $(BUILD_DIR)/%.cc.o: %.cc | $(BUILD_DIR)
 # C source
 $(BUILD_DIR)/%.c.o: %.c | $(BUILD_DIR)
 	@echo Compiling $<...
-	@$(CXX) $(CFLAGS) $(COVERAGE) -c $< -o $@
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 # Binary
 %.bin: $(OBJS)

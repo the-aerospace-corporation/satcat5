@@ -48,19 +48,7 @@ void RecoveryIngress::query(PluginPacket& packet) {
 }
 
 RecoveryEgress::RecoveryEgress(SwitchPort* port)
-    : MultiWriter(port->get_switch())
-    , m_egress(port->get_egress())
+    : MultiWriterBypass(port->get_switch(), port->get_egress(), 9999)
 {
     // Nothing else to initialize.
-}
-
-bool RecoveryEgress::write_finalize() {
-    // Instead of MultiWriter::write_finalize, we want to call write_bypass()
-    // to directly write to port. See Multiwriter::write_bypass()
-    set_priority(9999);
-
-    if (DEBUG_VERBOSE > 1) {
-        Log(DEBUG, "RecoveryEgress::write_finalize");
-    }
-    return write_bypass(m_egress);
 }

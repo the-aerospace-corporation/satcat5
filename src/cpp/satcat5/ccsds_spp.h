@@ -47,6 +47,10 @@ namespace satcat5 {
         struct Header {
             u32 value;              // All fields concatenated.
 
+            Header() = default;
+            Header(const Header& t) = default;
+            Header& operator=(const Header& t) = default;
+
             //! Convert raw APID to the packed internal format.
             static constexpr u32 pack_apid(u16 apid)
                 { return (u32(apid) << 16) & APID_MASK; }
@@ -107,6 +111,10 @@ namespace satcat5 {
             //! Access the event-listener used for read/pull mode.
             inline satcat5::io::EventListener* listen()
                 { return &m_copy; }
+
+            //! Access the internal statistics counters.
+            inline satcat5::io::Counter& counter()
+                { return m_buff; }
 
             //! Reset partial packets and synchronization state.
             //! Discards incomplete partials, but retains complete packets.

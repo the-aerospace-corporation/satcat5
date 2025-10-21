@@ -14,6 +14,7 @@ using satcat5::io::MultiReader;
 using satcat5::io::MultiReaderPriority;
 using satcat5::io::MultiReaderSimple;
 using satcat5::io::MultiWriter;
+using satcat5::io::MultiWriterBypass;
 using satcat5::irq::AtomicLock;
 using satcat5::util::ListCore;
 using satcat5::util::min_unsigned;
@@ -600,4 +601,18 @@ satcat5::io::MultiPacket* MultiWriter::prepare_pkt() {
         write_abort();
     }
     return tmp;
+}
+
+MultiWriterBypass::MultiWriterBypass(
+    satcat5::io::MultiBuffer* buf,
+    satcat5::io::MultiReader* dst,
+    u16 priority)
+    : MultiWriter(buf), m_dst(dst), m_priority(priority)
+{
+    // Nothing else to initialize.
+}
+
+bool MultiWriterBypass::write_finalize() {
+    if (m_priority) MultiWriter::set_priority(m_priority);
+    return MultiWriter::write_bypass(m_dst);
 }
