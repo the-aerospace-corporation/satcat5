@@ -395,9 +395,11 @@ package body PTP_TYPES is
 
     function create_vernier_coarse(input_hz : natural) return vernier_config is
         -- Baseline configuration is derived from the precise version.
-        variable vconfig : vernier_config := create_vernier_config(input_hz);
+        variable vconfig : vernier_config := VERNIER_DISABLED;
     begin
         -- Signal coarse mode by setting the VCLKB frequency to zero.
+        vconfig.input_hz := input_hz;
+        vconfig.vclka_hz := real(input_hz);
         vconfig.vclkb_hz := 0.0;
         return vconfig;
     end function;

@@ -9,28 +9,7 @@
 #include <hal_test/sim_utils.h>
 #include <satcat5/switch_cfg.h>
 
-// Address constants:
-static const unsigned REG_PORTCOUNT = 0;    // Number of ports (read-only)
-static const unsigned REG_DATAPATH  = 1;    // Datapath width, in bits (read-only)
-static const unsigned REG_CORECLOCK = 2;    // Core clock frequency, in Hz (read-only)
-static const unsigned REG_MACCOUNT  = 3;    // MAC-address table size (read-only)
-static const unsigned REG_PROMISC   = 4;    // Promisicuous port mask (read-write)
-static const unsigned REG_PRIORITY  = 5;    // Packet prioritization (read-write, optional)
-static const unsigned REG_PKTCOUNT  = 6;    // Packet-counting w/ filter (read-write)
-static const unsigned REG_FRAMESIZE = 7;    // Min/max frame size limits (read-only)
-static const unsigned REG_VLAN_PORT = 8;    // VLAN port configuration (write-only)
-static const unsigned REG_VLAN_VID  = 9;    // VLAN connections: set VID (read-write)
-static const unsigned REG_VLAN_MASK = 10;   // VLAN connections: set mask (read-write)
-static const unsigned REG_MAC_LSB   = 11;   // MAC-table queries (read-write)
-static const unsigned REG_MAC_MSB   = 12;   // MAC-table queries (read-write)
-static const unsigned REG_MAC_CTRL  = 13;   // MAC-table queries (read-write)
-static const unsigned REG_MISSFLAG  = 14;   // Miss-as-broadcast port mask (read-write)
-static const unsigned REG_PTP_2STEP = 15;   // PTP "twoStep" mode flag (read-write)
-static const unsigned REG_VLAN_RATE = 16;   // VLAN rate-control configuration (write-only)
-static const unsigned REG_LOGGING   = 17;   // Packet-logging output (read-only)
-static unsigned REG_PORT(unsigned idx)      {return 512 + 16*idx;}
-static unsigned REG_PTP_RX(unsigned idx)    {return REG_PORT(idx) + 8;}
-static unsigned REG_PTP_TX(unsigned idx)    {return REG_PORT(idx) + 9;}
+using satcat5::eth::SwitchConfig;
 
 // Other configuration constants:
 static const unsigned CFG_DEVADDR   = 42;   // Device address for test switch
@@ -48,28 +27,28 @@ TEST_CASE("switch_cfg") {
 
     // Configure simulated register-map.
     satcat5::test::CfgDevice regs;
-    regs[REG_PORTCOUNT].read_default(PORT_COUNT);   // N-port switch
-    regs[REG_DATAPATH].read_default(24);            // 24-bit datapath
-    regs[REG_CORECLOCK].read_default(100e6);        // 100 MHz clock
-    regs[REG_MACCOUNT].read_default(MAC_COUNT);     // Up to N MAC-addresses
-    regs[REG_PROMISC].read_default_echo();          // Promiscuous port mask
-    regs[REG_PRIORITY].read_default(TBL_PRIORITY);  // Max priority filters
-    regs[REG_PKTCOUNT].read_default_none();         // Packet-counting filter
-    regs[REG_FRAMESIZE].read_default(0x05F20040);   // Default: Max = 1522, Min = 64
-    regs[REG_VLAN_PORT].read_default_none();        // Port-config = write-only
-    regs[REG_VLAN_VID].read_default_none();         // VID register = write-only
-    regs[REG_VLAN_MASK].read_default_echo();        // Mask register = echo
-    regs[REG_MAC_LSB].read_default_none();          // Only read at designated times
-    regs[REG_MAC_MSB].read_default_none();          // Only read at designated times
-    regs[REG_MAC_CTRL].read_default(0);             // Default = Idle/done
-    regs[REG_MISSFLAG].read_default_echo();         // Miss-as-broadcast port mask
-    regs[REG_PTP_2STEP].read_default_echo();        // PTP twoStep = echo
-    regs[REG_VLAN_RATE].read_default(16);           // Rate-limiter ACCUM_WIDTH
-    regs[REG_LOGGING].read_default(1234);           // Logging register (placeholder)
+    regs[SwitchConfig::REG_PORTCOUNT].read_default(PORT_COUNT);   // N-port switch
+    regs[SwitchConfig::REG_DATAPATH].read_default(24);            // 24-bit datapath
+    regs[SwitchConfig::REG_CORECLOCK].read_default(100e6);        // 100 MHz clock
+    regs[SwitchConfig::REG_MACCOUNT].read_default(MAC_COUNT);     // Up to N MAC-addresses
+    regs[SwitchConfig::REG_PROMISC].read_default_echo();          // Promiscuous port mask
+    regs[SwitchConfig::REG_PRIORITY].read_default(TBL_PRIORITY);  // Max priority filters
+    regs[SwitchConfig::REG_PKTCOUNT].read_default_none();         // Packet-counting filter
+    regs[SwitchConfig::REG_FRAMESIZE].read_default(0x05F20040);   // Default: Max = 1522, Min = 64
+    regs[SwitchConfig::REG_VLAN_PORT].read_default_none();        // Port-config = write-only
+    regs[SwitchConfig::REG_VLAN_VID].read_default_none();         // VID register = write-only
+    regs[SwitchConfig::REG_VLAN_MASK].read_default_echo();        // Mask register = echo
+    regs[SwitchConfig::REG_MACTBL_LSB].read_default_none();       // Only read at designated times
+    regs[SwitchConfig::REG_MACTBL_MSB].read_default_none();       // Only read at designated times
+    regs[SwitchConfig::REG_MACTBL_CTRL].read_default(0);          // Default = Idle/done
+    regs[SwitchConfig::REG_MISS_BCAST].read_default_echo();       // Miss-as-broadcast port mask
+    regs[SwitchConfig::REG_PTP_2STEP].read_default_echo();        // PTP twoStep = echo
+    regs[SwitchConfig::REG_VLAN_RATE].read_default(16);           // Rate-limiter ACCUM_WIDTH
+    regs[SwitchConfig::REG_LOGGING].read_default(1234);           // Logging register (placeholder)
 
     for (unsigned a = 0 ; a < PORT_COUNT ; ++a) {
-        regs[REG_PTP_RX(a)].read_default_echo();    // PTP time offset (Rx)
-        regs[REG_PTP_TX(a)].read_default_echo();    // PTP time offset (Tx)
+        regs[SwitchConfig::REG_PTP_RX(a)].read_default_echo();    // PTP time offset (Rx)
+        regs[SwitchConfig::REG_PTP_TX(a)].read_default_echo();    // PTP time offset (Tx)
     }
 
     // Unit under test.
@@ -77,9 +56,9 @@ TEST_CASE("switch_cfg") {
 
     // Confirm startup process clears the priority table.
     // (This also implicitly tests the "priority_reset" method.)
-    CHECK(regs[REG_PRIORITY].write_queue() == TBL_PRIORITY);
+    CHECK(regs[SwitchConfig::REG_PRIORITY].write_queue() == TBL_PRIORITY);
     for (unsigned a = 0 ; a < TBL_PRIORITY ; ++a) {
-        CHECK(regs[REG_PRIORITY].write_pop() == (a << 24));
+        CHECK(regs[SwitchConfig::REG_PRIORITY].write_pop() == (a << 24));
     }
 
     SECTION("priority_set") {
@@ -89,81 +68,81 @@ TEST_CASE("switch_cfg") {
         //  CC = EtherType
         bool ok;
         ok = uut.priority_set(0x1234, 17);  // Invalid length
-        CHECK(!ok); CHECK(regs[REG_PRIORITY].write_queue() == 0);
+        CHECK(!ok); CHECK(regs[SwitchConfig::REG_PRIORITY].write_queue() == 0);
         ok = uut.priority_set(0x1234, 16);  // 0x1234 only
-        CHECK(ok);  CHECK(regs[REG_PRIORITY].write_pop() == 0x00001234u);
+        CHECK(ok);  CHECK(regs[SwitchConfig::REG_PRIORITY].write_pop() == 0x00001234u);
         ok = uut.priority_set(0x2340, 12);  // 0x2340 - 0x234F
-        CHECK(ok);  CHECK(regs[REG_PRIORITY].write_pop() == 0x01042340u);
+        CHECK(ok);  CHECK(regs[SwitchConfig::REG_PRIORITY].write_pop() == 0x01042340u);
         ok = uut.priority_set(0x3400, 8);   // 0x3400 - 0x34FF
-        CHECK(ok);  CHECK(regs[REG_PRIORITY].write_pop() == 0x02083400u);
+        CHECK(ok);  CHECK(regs[SwitchConfig::REG_PRIORITY].write_pop() == 0x02083400u);
         ok = uut.priority_set(0x4000, 4);   // 0x4000 - 0x4FFF
-        CHECK(ok);  CHECK(regs[REG_PRIORITY].write_pop() == 0x030C4000u);
+        CHECK(ok);  CHECK(regs[SwitchConfig::REG_PRIORITY].write_pop() == 0x030C4000u);
         ok = uut.priority_set(0x5678, 16);  // Table overflow
-        CHECK(!ok); CHECK(regs[REG_PRIORITY].write_queue() == 0);
+        CHECK(!ok); CHECK(regs[SwitchConfig::REG_PRIORITY].write_queue() == 0);
     }
 
     SECTION("miss-broadcast") {
         // Set port #3 (0x0008)
         CHECK(uut.get_miss_mask() == 0x0000);           // Initial state = 0
         uut.set_miss_bcast(3, true);                    // Issue command
-        CHECK(regs[REG_MISSFLAG].write_pop() == 0x0008);
+        CHECK(regs[SwitchConfig::REG_MISS_BCAST].write_pop() == 0x0008);
         CHECK(uut.get_miss_mask() == 0x0008);           // Confirm SW register
 
         // Set port #2 (0x0004) and clear port #3.
         uut.set_miss_bcast(2, true);                    // Issue command
-        CHECK(regs[REG_MISSFLAG].write_pop() == 0x000C);
+        CHECK(regs[SwitchConfig::REG_MISS_BCAST].write_pop() == 0x000C);
         uut.set_miss_bcast(3, false);                   // Issue command
-        CHECK(regs[REG_MISSFLAG].write_pop() == 0x0004);
+        CHECK(regs[SwitchConfig::REG_MISS_BCAST].write_pop() == 0x0004);
         CHECK(uut.get_miss_mask() == 0x0004);           // Confirm SW register
 
         // Set port #1 (0x0002)
         uut.set_miss_bcast(1, true);                    // Issue command
-        CHECK(regs[REG_MISSFLAG].write_pop() == 0x0006);
+        CHECK(regs[SwitchConfig::REG_MISS_BCAST].write_pop() == 0x0006);
         CHECK(uut.get_miss_mask() == 0x0006);           // Confirm SW register
     }
 
     SECTION("promiscuous_mask") {
         // Set port #3 (0x0008)
-        CHECK(uut.get_promiscuous_mask() == 0x0000);    // Initial state = 0
+        CHECK(uut.get_promiscuous_mask() == 0x0000);                    // Initial state = 0
         uut.set_promiscuous(3, true);
-        CHECK(regs[REG_PROMISC].write_pop() == 0x0008); // Confirm HW register
-        CHECK(uut.get_promiscuous_mask() == 0x0008);    // Confirm SW register
+        CHECK(regs[SwitchConfig::REG_PROMISC].write_pop() == 0x0008);   // Confirm HW register
+        CHECK(uut.get_promiscuous_mask() == 0x0008);                    // Confirm SW register
 
         // Set port #2 (0x0004) and clear port #3.
         uut.set_promiscuous(2, true);
-        CHECK(regs[REG_PROMISC].write_pop() == 0x000C); // Confirm HW register
+        CHECK(regs[SwitchConfig::REG_PROMISC].write_pop() == 0x000C);   // Confirm HW register
         uut.set_promiscuous(3, false);
-        CHECK(regs[REG_PROMISC].write_pop() == 0x0004); // Confirm HW register
-        CHECK(uut.get_promiscuous_mask() == 0x0004);    // Confirm SW register
+        CHECK(regs[SwitchConfig::REG_PROMISC].write_pop() == 0x0004);   // Confirm HW register
+        CHECK(uut.get_promiscuous_mask() == 0x0004);                    // Confirm SW register
 
         // Set port #1 (0x0002)
         uut.set_promiscuous(1, true);
-        CHECK(regs[REG_PROMISC].write_pop() == 0x0006); // Confirm HW register
-        CHECK(uut.get_promiscuous_mask() == 0x0006);    // Confirm SW register
+        CHECK(regs[SwitchConfig::REG_PROMISC].write_pop() == 0x0006);   // Confirm HW register
+        CHECK(uut.get_promiscuous_mask() == 0x0006);                    // Confirm SW register
 
         // Set all the ports.
         uut.set_promiscuous_mask(0x1234);
-        CHECK(regs[REG_PROMISC].write_pop() == 0x1234); // Confirm HW register
-        CHECK(uut.get_promiscuous_mask() == 0x1234);    // Confirm SW register
+        CHECK(regs[SwitchConfig::REG_PROMISC].write_pop() == 0x1234);   // Confirm HW register
+        CHECK(uut.get_promiscuous_mask() == 0x1234);                    // Confirm SW register
     }
 
     SECTION("traffic_filter") {
         // Preset reads for this simulation.
-        regs[REG_PKTCOUNT].read_push(0x0000);           // Read-on-configure
-        regs[REG_PKTCOUNT].read_push(0x0005);           // End of 1st interval
-        regs[REG_PKTCOUNT].read_push(0x0007);           // End of 2nd interval
+        regs[SwitchConfig::REG_PKTCOUNT].read_push(0x0000); // Read-on-configure
+        regs[SwitchConfig::REG_PKTCOUNT].read_push(0x0005); // End of 1st interval
+        regs[SwitchConfig::REG_PKTCOUNT].read_push(0x0007); // End of 2nd interval
 
         // Configure the filter.
-        CHECK(uut.get_traffic_filter() == 0x0000);      // Initial state
-        uut.set_traffic_filter(0x1234);                 // Set filter mode
-        CHECK(uut.get_traffic_filter() == 0x1234);      // New filter mode
-        CHECK(regs[REG_PKTCOUNT].write_pop() == 0x1234);
+        CHECK(uut.get_traffic_filter() == 0x0000);          // Initial state
+        uut.set_traffic_filter(0x1234);                     // Set filter mode
+        CHECK(uut.get_traffic_filter() == 0x1234);          // New filter mode
+        CHECK(regs[SwitchConfig::REG_PKTCOUNT].write_pop() == 0x1234);
 
         // Poll for a few intervals.
-        CHECK(uut.get_traffic_count() == 0x0005);       // End of 1st interval
-        CHECK(regs[REG_PKTCOUNT].write_pop() == 0x1234);
-        CHECK(uut.get_traffic_count() == 0x0007);       // End of 2nd interval
-        CHECK(regs[REG_PKTCOUNT].write_pop() == 0x1234);
+        CHECK(uut.get_traffic_count() == 0x0005);           // End of 1st interval
+        CHECK(regs[SwitchConfig::REG_PKTCOUNT].write_pop() == 0x1234);
+        CHECK(uut.get_traffic_count() == 0x0007);           // End of 2nd interval
+        CHECK(regs[SwitchConfig::REG_PKTCOUNT].write_pop() == 0x1234);
     }
 
     SECTION("frame_size") {
@@ -190,19 +169,19 @@ TEST_CASE("switch_cfg") {
         // Set port #3 (0x0008)
         CHECK(uut.ptp_get_2step_mask() == 0x0000);    // Initial state = 0
         uut.ptp_set_2step(3, true);
-        CHECK(regs[REG_PTP_2STEP].write_pop() == 0x0008);
+        CHECK(regs[SwitchConfig::REG_PTP_2STEP].write_pop() == 0x0008);
         CHECK(uut.ptp_get_2step_mask() == 0x0008);    // Confirm SW register
 
         // Set port #2 (0x0004) and clear port #3.
         uut.ptp_set_2step(2, true);
-        CHECK(regs[REG_PTP_2STEP].write_pop() == 0x000C);
+        CHECK(regs[SwitchConfig::REG_PTP_2STEP].write_pop() == 0x000C);
         uut.ptp_set_2step(3, false);
-        CHECK(regs[REG_PTP_2STEP].write_pop() == 0x0004);
+        CHECK(regs[SwitchConfig::REG_PTP_2STEP].write_pop() == 0x0004);
         CHECK(uut.ptp_get_2step_mask() == 0x0004);    // Confirm SW register
 
         // Set port #1 (0x0002)
         uut.ptp_set_2step(1, true);
-        CHECK(regs[REG_PTP_2STEP].write_pop() == 0x0006);
+        CHECK(regs[SwitchConfig::REG_PTP_2STEP].write_pop() == 0x0006);
         CHECK(uut.ptp_get_2step_mask() == 0x0006);    // Confirm SW register
     }
 
@@ -214,12 +193,12 @@ TEST_CASE("switch_cfg") {
         uut.ptp_set_offset_tx(2, 555);
         uut.ptp_set_offset_tx(3, 666);
 
-        CHECK(regs[REG_PTP_RX(1)].write_pop() == 111);
-        CHECK(regs[REG_PTP_RX(2)].write_pop() == 222);
-        CHECK(regs[REG_PTP_RX(3)].write_pop() == 333);
-        CHECK(regs[REG_PTP_TX(1)].write_pop() == 444);
-        CHECK(regs[REG_PTP_TX(2)].write_pop() == 555);
-        CHECK(regs[REG_PTP_TX(3)].write_pop() == 666);
+        CHECK(regs[SwitchConfig::REG_PTP_RX(1)].write_pop() == 111);
+        CHECK(regs[SwitchConfig::REG_PTP_RX(2)].write_pop() == 222);
+        CHECK(regs[SwitchConfig::REG_PTP_RX(3)].write_pop() == 333);
+        CHECK(regs[SwitchConfig::REG_PTP_TX(1)].write_pop() == 444);
+        CHECK(regs[SwitchConfig::REG_PTP_TX(2)].write_pop() == 555);
+        CHECK(regs[SwitchConfig::REG_PTP_TX(3)].write_pop() == 666);
 
         CHECK(uut.ptp_get_offset_rx(1) == 111);
         CHECK(uut.ptp_get_offset_rx(2) == 222);
@@ -240,8 +219,8 @@ TEST_CASE("switch_cfg") {
 
     SECTION("vlan_masks") {
         uut.vlan_set_mask(789, 0x2345);                 // Set port mask for VID = 789
-        CHECK(regs[REG_VLAN_VID].write_pop() == 789);
-        CHECK(regs[REG_VLAN_MASK].write_pop() == 0x2345);
+        CHECK(regs[SwitchConfig::REG_VLAN_VID].write_pop() == 789);
+        CHECK(regs[SwitchConfig::REG_VLAN_MASK].write_pop() == 0x2345);
         CHECK(uut.vlan_get_mask(789) == 0x02345);       // Confirm new setting
         uut.vlan_join(789, 16);                         // Port 16 joins VID = 789
         CHECK(uut.vlan_get_mask(789) == 0x12345);       // Confirm new setting
@@ -252,37 +231,37 @@ TEST_CASE("switch_cfg") {
     SECTION("vlan_ports") {
         for (u16 a = 0 ; a < 5 ; ++a) {
             uut.vlan_set_port(satcat5::eth::VtagPolicy(0, 0, {a}));
-            CHECK(regs[REG_VLAN_PORT].write_pop() == a);
+            CHECK(regs[SwitchConfig::REG_VLAN_PORT].write_pop() == a);
         }
     }
 
     SECTION("vlan_rates") {
         uut.vlan_set_rate(0x123, satcat5::eth::VRATE_UNLIMITED);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 0);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 0);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 0x80000123u);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 0);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 0);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 0x80000123u);
         uut.vlan_set_rate(0x234, satcat5::eth::VRATE_1GBPS);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 500);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 500);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 0xA8000234u);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 500);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 500);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 0xA8000234u);
         uut.vlan_set_rate(0x345, satcat5::eth::VlanRate(
             satcat5::eth::VPOL_AUTO, 2000000000, 10));
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 1000);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 10000);
-        CHECK(regs[REG_VLAN_RATE].write_pop() == 0xB8000345u);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 1000);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 10000);
+        CHECK(regs[SwitchConfig::REG_VLAN_RATE].write_pop() == 0xB8000345u);
     }
 
     SECTION("mactbl_read") {
         // Queue register reads for this simulation.
         const satcat5::eth::MacAddr REF_ADDR = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
-        regs[REG_MAC_MSB].read_push(0x00001234);
-        regs[REG_MAC_LSB].read_push(0x56789ABC);
+        regs[SwitchConfig::REG_MACTBL_MSB].read_push(0x00001234);
+        regs[SwitchConfig::REG_MACTBL_LSB].read_push(0x56789ABC);
         // Function under test.
         unsigned port_idx;
         satcat5::eth::MacAddr mac_addr;
         REQUIRE(uut.mactbl_read(0x42, port_idx, mac_addr));
         // Check writes to each expected control register.
-        CHECK(regs[REG_MAC_CTRL].write_pop() == 0x01000042);
+        CHECK(regs[SwitchConfig::REG_MACTBL_CTRL].write_pop() == 0x01000042);
         // Check reported results.
         CHECK(port_idx == 0);
         CHECK(mac_addr == REF_ADDR);
@@ -293,41 +272,41 @@ TEST_CASE("switch_cfg") {
         const satcat5::eth::MacAddr REF_ADDR = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
         REQUIRE(uut.mactbl_write(0x11, REF_ADDR));
         // Check writes to each control register.
-        CHECK(regs[REG_MAC_MSB].write_pop() == 0x00001234);
-        CHECK(regs[REG_MAC_LSB].write_pop() == 0x56789ABC);
-        CHECK(regs[REG_MAC_CTRL].write_pop() == 0x02000011);
+        CHECK(regs[SwitchConfig::REG_MACTBL_MSB].write_pop() == 0x00001234);
+        CHECK(regs[SwitchConfig::REG_MACTBL_LSB].write_pop() == 0x56789ABC);
+        CHECK(regs[SwitchConfig::REG_MACTBL_CTRL].write_pop() == 0x02000011);
     }
 
     SECTION("mactbl_clear") {
         // Function under test.
         REQUIRE(uut.mactbl_clear());
         // Check writes to each expected control register.
-        CHECK(regs[REG_MAC_CTRL].write_pop() == 0x03000000);
+        CHECK(regs[SwitchConfig::REG_MACTBL_CTRL].write_pop() == 0x03000000);
     }
 
     SECTION("mactbl_learn") {
         // Turn learning on.
         REQUIRE(uut.mactbl_learn(true));
-        CHECK(regs[REG_MAC_CTRL].write_pop() == 0x04000001);
+        CHECK(regs[SwitchConfig::REG_MACTBL_CTRL].write_pop() == 0x04000001);
         // Turn learning off.
         REQUIRE(uut.mactbl_learn(false));
-        CHECK(regs[REG_MAC_CTRL].write_pop() == 0x04000000);
+        CHECK(regs[SwitchConfig::REG_MACTBL_CTRL].write_pop() == 0x04000000);
     }
 
     SECTION("mactbl_timeout") {
         // Force a timeout by having control register return "busy" forever.
-        regs[REG_MAC_CTRL].read_default(0x12000000);
+        regs[SwitchConfig::REG_MACTBL_CTRL].read_default(0x12000000);
         CHECK_FALSE(uut.mactbl_clear());
     }
 
     SECTION("mactbl_log") {
         // Fill the table except for one empty row.
         for (unsigned a = 1 ; a < MAC_COUNT ; ++a) {
-            regs[REG_MAC_MSB].read_push(a);
-            regs[REG_MAC_LSB].read_push(a);
+            regs[SwitchConfig::REG_MACTBL_MSB].read_push(a);
+            regs[SwitchConfig::REG_MACTBL_LSB].read_push(a);
         }
-        regs[REG_MAC_MSB].read_push(0x0000FFFFu);
-        regs[REG_MAC_LSB].read_push(0xFFFFFFFFu);
+        regs[SwitchConfig::REG_MACTBL_MSB].read_push(0x0000FFFFu);
+        regs[SwitchConfig::REG_MACTBL_LSB].read_push(0xFFFFFFFFu);
         // Call function under test.
         // (Log output is below the default threshold for this file.)
         uut.mactbl_log("TestLabel");

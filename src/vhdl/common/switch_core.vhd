@@ -113,6 +113,10 @@
 --  * OBUF_PACKETS (default: 32)
 --      Maximum allowed packets in each port's output queue.
 --      Decreasing this figure can save slices on some platforms.
+--  * IGMP_TIMEOUT (default: 0)
+--      Snoop traffic for IPv4 Multicast subscriptions via IGMP. Default of 0
+--      promotes multicast to broadcast. Other values set a timeout to watch for
+--      IGMP traffic, marking the port to receive all IPv4 Multicast traffic.
 --  * PTP_MIXED_STEP (default: true)
 --      Support PTP format conversion?  (One-step to two-step conversion.)
 --      Required for full PTP compatibility, disable to save resources.
@@ -164,6 +168,7 @@ entity switch_core is
     OBUF_KBYTES     : positive;         -- Normal-priority output buffer (kilobytes)
     IBUF_PACKETS    : positive := 32;   -- Input buffer max packets
     OBUF_PACKETS    : positive := 32;   -- Output buffer max packets
+    IGMP_TIMEOUT    : natural := 0;     -- IGMP timeout (0 = disable)
     PTP_MIXED_STEP  : boolean := true;  -- Support PTP format conversion?
     MAC_TABLE_EDIT  : boolean := true;  -- Manual read/write of MAC table?
     MAC_TABLE_SIZE  : positive := 64;   -- Max stored MAC addresses
@@ -544,6 +549,7 @@ u_mac : entity work.mac_core
     MAX_FRM_BYTES   => get_max_frame,
     MAC_TABLE_SIZE  => MAC_TABLE_SIZE,
     MAC_TABLE_EDIT  => MAC_TABLE_EDIT,
+    IGMP_TIMEOUT    => IGMP_TIMEOUT,
     PTP_MIXED_STEP  => PTP_MIXED_STEP,
     PRI_TABLE_SIZE  => get_pri_table_size)
     port map(

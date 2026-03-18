@@ -140,7 +140,7 @@ namespace satcat5 {
             : public CountHelper, public satcat5::eth::ArpListener {
         public:
             explicit CountArpResponse(satcat5::ip::Dispatch* iface)
-                : m_arp(&iface->m_arp) {m_arp->add(this);}
+                : m_arp(iface->arp()) {m_arp->add(this);}
             virtual ~CountArpResponse() {m_arp->remove(this);}
         protected:
             void arp_event(const satcat5::eth::MacAddr& mac, const satcat5::ip::Addr& ip) override {++m_count;}
@@ -162,7 +162,7 @@ namespace satcat5 {
             : public CountHelper, public satcat5::ip::PingListener {
         public:
             explicit CountPingResponse(satcat5::ip::Dispatch* iface)
-                : m_icmp(&iface->m_icmp) {m_icmp->add(this);}
+                : m_icmp(iface->icmp()) {m_icmp->add(this);}
             virtual ~CountPingResponse() {m_icmp->remove(this);}
         protected:
             void ping_event(const satcat5::ip::Addr& from, u32 elapsed_usec) {++m_count;}

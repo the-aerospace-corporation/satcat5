@@ -114,6 +114,7 @@ namespace satcat5 {
         class MdioWrapper;          // satcat5/cfgbus_mdio.h
         class MultiSerial;          // satcat5/cfgbus_multiserial.h
         class NetworkStats;         // satcat5/cfgbus_stats.h
+        class PpsEventListener;     // satcat5/cfgbus_pps.h
         class PpsInput;             // satcat5/cfgbus_pps.h
         class PpsOutput;            // satcat5/cfgbus_pps.h
         class PtpRealtime;          // satcat5/cfgbus_ptpref.h
@@ -222,6 +223,13 @@ namespace satcat5 {
         class LogToDisplay;         // satcat5/gui_display.h
     }
 
+    namespace igmp {                // Internet Group Message Protocol (IGMP)
+        struct Address;             // satcat5/igmp_client.h
+        struct Group;               // satcat5/igmp_server.h
+        class Client;               // satcat5/igmp_client.h
+        class Server;               // satcat5/igmp_server.h
+    }
+
     namespace io {                  // Input and output streams
         struct TrafficStats;        // satcat5/io_checksum.h
         class ArrayRead;            // satcat5/io_readable.h
@@ -267,9 +275,11 @@ namespace satcat5 {
         class WriteableRedirect;    // satcat5/io_writeable.h
     }
 
-    namespace ip {                  // Internet Protocol v4
+    namespace ip {                  // Internet Protocol v4 (IPv4)
         struct Addr;                // satcat5/ip_core.h
         struct Header;              // satcat5/ip_core.h
+        struct IgmpAddress;         // satcat5/ip_igmp_client.h
+        struct IgmpGroup;           // satcat5/ip_igmp_server.h
         struct Mask;                // satcat5/ip_core.h
         struct Port;                // satcat5/ip_core.h
         struct Route;               // satcat5/ip_table.h
@@ -277,6 +287,8 @@ namespace satcat5 {
         class Address;              // satcat5/ip_address.h
         class DhcpClient;           // satcat5/ip_dhcp.h
         class DhcpServer;           // satcat5/ip_dhcp.h
+        class IgmpClient;           // satcat5/ip_igmp_client.h
+        class IgmpServer;           // satcat5/ip_igmp_server.h
         class Dispatch;             // satcat5/ip_dispatch.h
         class Ping;                 // satcat5/ip_ping.h
         class ProtoIcmp;            // satcat5/ip_icmp.h

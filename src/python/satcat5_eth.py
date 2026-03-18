@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2021-2023 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 """
@@ -10,6 +10,8 @@ which is functionally equivalent to satcat5_uart::AsyncSLIPPort.
 """
 
 from scapy import all as sca
+from scapy.utils import PcapWriter
+import logging
 import scapy
 import threading
 import traceback
@@ -75,7 +77,7 @@ def list_eth_interfaces():
 
 class AsyncEthernetPort:
     """Ethernet port wrapper. Same interface as serial_utils::AsyncSLIPPort."""
-    def __init__(self, label, iface, logger, promisc=True):
+    def __init__(self, label, iface, logger=None, promisc=True):
         """
         Initialize member variables.
 
@@ -84,17 +86,21 @@ class AsyncEthernetPort:
                 Human-readable label for this interface.
             iface (str):
                 ScaPy interface-ID string.  (See list_eth_interfaces.)
-            logger (Logger):
+            logger (Logger or None):
                 Logger object (logging.Logger) for reporting errors.
+                Default is None, which prints a message to the console.
             promisc (bool):
                 Enable promiscuous mode? (Default True)
                 May require admin/root privileges.
         """
+        if logger is None:
+            logger = logging.getLogger(__name__)
         self._iface = sca.conf.L2socket(iface, promisc=promisc)
         self.lbl = label
         self.mac = str2mac(sca.get_if_hwaddr(iface))
         self._callback = None
         self._log = logger
+        self._pcap = None
         self._rx_run = True
         # Reduce ScaPy verbosity (default is rather high).
         sca.conf.verb = 0
@@ -114,6 +120,10 @@ class AsyncEthernetPort:
             self._iface.close()
             # Attempt to close down gracefully, but don't wait forever.
             self._rx_thread.join(0.5)
+        if self._pcap is not None:
+            self._pcap.flush()
+            self._pcap.close()
+            self._pcap = None
 
     def is_uart(self):
         """Is this interface a UART or a true Ethernet port?"""
@@ -129,6 +139,16 @@ class AsyncEthernetPort:
             callback (function): The new callback function.
         """
         self._callback = callback
+
+    def set_pcap(self, filename):
+        """
+        Enable packet-capture on this interface, recording all incoming and
+        outgoing frames to the designated PCAP or PCAPNG file.
+
+        Args:
+            filename (string): Location for the output file.
+        """
+        self._pcap = PcapWriter(filename)
 
     def msg_send(self, eth_frm, blocking=False):
         """
@@ -148,6 +168,8 @@ class AsyncEthernetPort:
                 len_pad = 60 - len(eth_frm)
                 eth_frm += len_pad * b'\x00'
             self._iface.send(eth_frm)
+            if self._pcap is not None:
+                self._pcap.write(sca.Ether(eth_frm))
             if blocking: sleep(0.001)
         except:
             self._log.error(self.lbl + ':\n' + traceback.format_exc())
@@ -160,8 +182,11 @@ class AsyncEthernetPort:
                 pkt = self._iface.nonblock_recv()
                 if pkt is None:
                     sleep(0.01) # Short sleep so we don't hog CPU
-                elif self._callback is not None:
-                    self._callback(sca.raw(pkt))
+                else:
+                    if self._callback is not None:
+                        self._callback(sca.raw(pkt))
+                    if self._pcap is not None:
+                        self._pcap.write(pkt)
             except:
                 self._log.error(self.lbl + ':\n' + traceback.format_exc())
                 sleep(1.0)              # Brief delay before retry

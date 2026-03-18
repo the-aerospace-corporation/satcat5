@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2024 The Aerospace Corporation.
+// Copyright 2021-2025 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -7,14 +7,15 @@
 #include <satcat5/log.h>
 #include <satcat5/utils.h>
 
+using satcat5::cfg::MultiSerial;
 namespace log   = satcat5::log;
 namespace util  = satcat5::util;
 
 // Define the ConfigBus register map.
-const unsigned satcat5::cfg::MultiSerial::REGADDR_IRQ       = 0;
-const unsigned satcat5::cfg::MultiSerial::REGADDR_CFG       = 1;
-const unsigned satcat5::cfg::MultiSerial::REGADDR_STATUS    = 2;
-const unsigned satcat5::cfg::MultiSerial::REGADDR_DATA      = 3;
+const unsigned MultiSerial::REGADDR_IRQ       = 0;
+const unsigned MultiSerial::REGADDR_CFG       = 1;
+const unsigned MultiSerial::REGADDR_STATUS    = 2;
+const unsigned MultiSerial::REGADDR_DATA      = 3;
 
 // Status and command codes for the multiserial control registers.
 static const u32 MS_DVALID      = (1u << 8);
@@ -28,7 +29,7 @@ static const u32 MS_ERROR       = (1u << 3);
 static const unsigned HW_COPY_MAX =
     SATCAT5_CFGBUS_DIRECT ? 1 : 32;
 
-satcat5::cfg::MultiSerial::MultiSerial(
+MultiSerial::MultiSerial(
         ConfigBus* cfg, unsigned devaddr,
         unsigned maxpkt,
         u8* txbuff, unsigned txsize,
@@ -50,8 +51,7 @@ satcat5::cfg::MultiSerial::MultiSerial(
     m_rx.set_callback(this);
 }
 
-bool satcat5::cfg::MultiSerial::write_check(unsigned ncmd, unsigned nread)
-{
+bool MultiSerial::write_check(unsigned ncmd, unsigned nread) {
     // Sanity check: Can we accept this command at all?
     if (ncmd == 0) return false;                    // Invalid command
     if (m_cmd_queued >= m_cmd_max) return false;    // No room in Rx-buffer
@@ -71,8 +71,7 @@ bool satcat5::cfg::MultiSerial::write_check(unsigned ncmd, unsigned nread)
     return true;
 }
 
-unsigned satcat5::cfg::MultiSerial::write_finish()
-{
+unsigned MultiSerial::write_finish() {
     // Calculate index of the new command.
     unsigned idx = util::modulo_add_uns(m_cmd_cbidx + m_cmd_queued, m_cmd_max);
 
@@ -92,8 +91,7 @@ unsigned satcat5::cfg::MultiSerial::write_finish()
     return idx;
 }
 
-void satcat5::cfg::MultiSerial::data_rcvd(satcat5::io::Readable* src)
-{
+void MultiSerial::data_rcvd(satcat5::io::Readable* src) {
     // Handle any pending notifications...
     unsigned nread;
     while (nread = m_rx.get_read_ready(), nread) {
@@ -107,14 +105,12 @@ void satcat5::cfg::MultiSerial::data_rcvd(satcat5::io::Readable* src)
     }
 }
 
-void satcat5::cfg::MultiSerial::irq_event()
-{
+void MultiSerial::irq_event() {
     // Schedule follow-up, but no urgent action required.
     request_poll();
 }
 
-void satcat5::cfg::MultiSerial::poll_demand()
-{
+void MultiSerial::poll_demand() {
     // Read each reply byte from the hardware FIFO.
     while (m_irq_rdrem > 1) {
         u32 tmp = m_ctrl[REGADDR_DATA];

@@ -5,10 +5,13 @@
 
 #include <satcat5/log.h>
 #include <satcat5/ptp_header.h>
+#include <satcat5/utils.h>
 
 using satcat5::ptp::PortId;
 using satcat5::ptp::Header;
 using satcat5::ptp::ClockInfo;
+using satcat5::util::log2_ceil;
+using satcat5::util::min_u64;
 
 void PortId::log_to(satcat5::log::LogBuffer& wr) const
 {
@@ -138,4 +141,10 @@ void ClockInfo::write_to(satcat5::io::Writeable* wr) const
     wr->write_u64(grandmasterIdentity);
     wr->write_u16(stepsRemoved);
     wr->write_u8(timeSource);
+}
+
+u16 satcat5::ptp::calc_log_variance(u64 variance_ps) {
+    u64 log2_var = satcat5::util::log2_ceil<u64>(variance_ps);
+    u64 field = (log2_var << 8) + ClockInfo::VARIANCE_1PSEC;
+    return (u16) satcat5::util::min_u64(field, ClockInfo::VARIANCE_MAX);
 }

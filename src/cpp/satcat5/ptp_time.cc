@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2025 The Aerospace Corporation.
+// Copyright 2022-2026 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
@@ -81,17 +81,16 @@ void Time::write_to(satcat5::io::Writeable* dst) const {
 }
 
 void Time::log_to(satcat5::log::LogBuffer& wr) const {
-    wr.wr_str(" = 0x");
-    wr.wr_h32((u32)(m_secs >> 32), 4);          // MSBs of seconds
-    wr.wr_h32((u32)(m_secs >>  0), 8);          // LSBs of seconds
+    wr.wr_str(" = ");
+    wr.wr_s64(field_secs());
     wr.wr_str(".");
-    wr.wr_h32((u32)(m_subns >> 32), 4);         // MSBs of subns
-    wr.wr_h32((u32)(m_subns >>  0), 8);         // LSBs of subns
+    wr.wr_d64(round_nsec()); // subns truncated
 }
 
 // Offset (in milliseconds) from the PTP epoch (TAI @ 1970 Jan 1)
 // to the GPS epoch (1980 Jan 6 + 19 leap seconds).
-constexpr s64 GPS_EPOCH = satcat5::datetime::ONE_DAY * 3652LL
+// Ref: IEEE 1588-2019 Section B.3
+constexpr s64 GPS_EPOCH = satcat5::datetime::ONE_DAY * 3657LL
                         + satcat5::datetime::ONE_SECOND * 19LL;
 
 s64 Time::to_datetime() const {

@@ -261,7 +261,7 @@ namespace satcat5 {
             BytesToSpp(
                 satcat5::io::Readable* src,
                 satcat5::ccsds_spp::Dispatch* dst,
-                u16 apid, unsigned max_chunk = 256);
+                bool cmd, u16 apid, unsigned max_chunk = 256);
 
             //! Access the inner io::BufferedStream.
             inline satcat5::io::BufferedStream* strm()

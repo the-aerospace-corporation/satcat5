@@ -70,7 +70,10 @@ satcat5::io::Writeable* Dispatch::open_reply(
     const satcat5::net::Type& type, unsigned len)
 {
     satcat5::ip::Address addr(m_iface, PROTO_UDP);
-    addr.connect(m_iface->reply_ip(), m_iface->reply_mac());
+    addr.connect(
+        m_iface->reply_ip(),
+        m_iface->reply_mac(),
+        m_iface->reply_vtag());
 
     return open_write(addr,             // Destination IP + MAC
         m_reply_dst,                    // Source and destination ports
@@ -149,6 +152,6 @@ void Dispatch::frame_rcvd(satcat5::io::LimitedRead& src)
         wr.write_finalize();
         // Forward that data to the ICMP block.
         satcat5::io::ArrayRead rd(wr.buffer(), wr.written_len());
-        m_iface->m_icmp.send_error(satcat5::ip::ICMP_UNREACHABLE_PORT, &rd);
+        m_iface->icmp()->send_error(satcat5::ip::ICMP_UNREACHABLE_PORT, &rd);
     }
 }

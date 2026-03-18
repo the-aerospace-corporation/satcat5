@@ -73,7 +73,8 @@ entity cfgbus_fifo is
     rd_meta     : in  std_logic_vector(RD_MWIDTH-1 downto 0) := (others => '0');
     rd_last     : in  std_logic := '0';
     rd_valid    : in  std_logic := '0';
-    rd_ready    : out std_logic);
+    rd_ready    : out std_logic;
+    rd_early    : out std_logic);
 end cfgbus_fifo;
 
 architecture cfgbus_fifo of cfgbus_fifo is
@@ -191,6 +192,7 @@ gen_rd1 : if RD_ENABLE generate
         in_last     => rd_last,
         in_valid    => rd_valid,
         in_ready    => rd_ready,
+        in_early    => rd_early,
         out_clk     => cfg_cmd.clk,
         out_data    => cfg_rdata,
         out_meta    => cfg_rmeta,
@@ -202,6 +204,7 @@ end generate;
 
 gen_rd0 : if not RD_ENABLE generate
     rd_ready    <= '0';
+    rd_early    <= '0';
     cfg_rdata   <= (others => '0');
     cfg_rmeta   <= (others => '0');
     cfg_rlast   <= '0';

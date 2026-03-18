@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <satcat5/cfgbus_pps.h>
 #include <satcat5/list.h>
 #include <satcat5/polling.h>
 #include <satcat5/ptp_filters.h>
@@ -85,7 +86,9 @@ namespace satcat5 {
         //! from a raw series of measurements.  See also: "ptp_filters.h".
         //! The output is passed to a TrackingClock object.
         //! \see ptp_tracking.h
-        class TrackingController : public satcat5::ptp::Callback {
+        class TrackingController
+            : public satcat5::ptp::Callback
+            , public satcat5::cfg::PpsEventListener {
         public:
             //! Constructor links to a specific TrackingClock target.
             //! Note: It is safe to provide a null TrackingClock pointer.
@@ -124,10 +127,25 @@ namespace satcat5 {
             //! \param linear Disables nonlinear coarse acquisition.
             void reset(bool linear=false);
 
+            //! Indicate to the controller than an external event has happened
+            //! that should trigger a re-acquisition without fully resetting the
+            //! system, such as a short disruption of an external reference.
+            inline void reacquire() {
+                if (m_lock_state == LockState::TRACK) {
+                    m_lock_state = LockState::ACQUIRE;
+                }
+            }
+
             //! Update filter state with a new measurement from the PTP client.
             //! Specify the measured clock offset (delta = remote - local).
             //! (Call this directly or use the ptp::Callback event handler.)
             void update(const satcat5::ptp::Time& delta);
+
+            //! Check if the controller is currently locked. Note that in linear
+            //! mode, no lock detection exists and this always returns true.
+            inline bool is_locked() const
+                { return m_lock_state == LockState::TRACK ||
+                         m_lock_state == LockState::LINEAR; }
 
         protected:
             // Coarse acquisition and lock/unlock state.
@@ -140,6 +158,11 @@ namespace satcat5 {
             // The primary clock (first added) sets the return value.
             satcat5::ptp::Time clock_adjust(const satcat5::ptp::Time& amount);
             void clock_rate(s64 offset);
+
+            // PPS events immediately trigger an update from observed delta.
+            inline void pps_event(
+                satcat5::ptp::Time& ts, satcat5::ptp::Time& delta) override
+                { update(delta); }
 
             // Internal state for fast-acquisition mode.
             enum class LockState {RESET, ACQUIRE, TRACK, LINEAR};

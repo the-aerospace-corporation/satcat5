@@ -20,7 +20,7 @@ create_and_configure_core -core_vlnv {Actel:SgCore:PF_IO:2.0.104} \
 create_and_configure_core -core_vlnv {Actel:SgCore:PF_IO:2.0.104} \
 -component_name {ODDR_IOD} \
 -params {"DIFFERENTIAL:false" \
-"DIRECTION:1" \
+"DIRECTION:2" \
 "DYN_DELAY_LINE_EN:false" \
 "INPUT_MODE:2" \
 "LVDS_FAILSAFE_EN:false" \

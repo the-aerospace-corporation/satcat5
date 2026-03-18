@@ -52,9 +52,9 @@ namespace satcat5 {
         template <typename T>
         struct optional {
             //! Create an empty value.
-            optional() : val_(), has_val_(false) {}
+            constexpr optional() : val_(), has_val_(false) {}
             //! Create a filled value.
-            optional(const T& t) : val_(t), has_val_(true) {} // NOLINT
+            constexpr optional(const T& t) : val_(t), has_val_(true) {} // NOLINT
             //! Reset to the empty state.
             inline void reset() { has_val_ = false; }
             //! Assign a filled value.
@@ -78,6 +78,20 @@ namespace satcat5 {
             T tmp = ct;
             if (reset) ct = 0;
             return tmp;
+        }
+
+        //! Decrement a countdown timer, returning true if it reaches zero.
+        template<typename T>
+        bool countdown(T& timer, const T& decr) {
+            if (timer > decr) {
+                timer -= decr;
+                return false;   // Continue countdown...
+            } else if (timer) {
+                timer = 0;
+                return true;    // Countdown reached zero!
+            } else {
+                return false;   // Timer idle.
+            }
         }
 
         //! Min and max functions

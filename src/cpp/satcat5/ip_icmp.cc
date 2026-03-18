@@ -15,6 +15,11 @@
 #define SATCAT5_ICMP_DETAIL 1   // Level of detail (0/1/2)
 #endif
 
+// Default rate limit for ICMP error logging (in milliseconds).
+#ifndef SATCAT5_ICMP_LOG_COOLDOWN
+#define SATCAT5_ICMP_LOG_COOLDOWN 500
+#endif
+
 using satcat5::ip::ProtoIcmp;
 using satcat5::net::Type;
 namespace ip  = satcat5::ip;
@@ -100,7 +105,7 @@ static inline const char* code2msg(u16 code) {
 ProtoIcmp::ProtoIcmp(ip::Dispatch* iface)
     : satcat5::net::Protocol(TYPE_ICMP)
     , m_iface(iface)
-    , m_wait_msec(500)
+    , m_wait_msec(SATCAT5_ICMP_LOG_COOLDOWN)
 {
     m_iface->add(this);
 }
@@ -228,7 +233,7 @@ void ProtoIcmp::frame_rcvd(satcat5::io::LimitedRead& src)
         src.read_obj(gateway);              // First field is the new gateway
         src.read_consume(16);               // Skip ahead to the destination
         src.read_obj(dstaddr);              // Read DST from IPv4 header
-        m_iface->m_arp.gateway_change(dstaddr, gateway);
+        m_iface->arp()->gateway_change(dstaddr, gateway);
     } else if (code == ip::ICMP_TIME_REPLY && wlen >= 8) {
         // Timestamp response: Log but take no further action.
         src.read_consume(12);               // Skip unused information

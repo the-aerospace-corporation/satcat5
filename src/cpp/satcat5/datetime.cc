@@ -58,6 +58,10 @@ void Clock::set(s64 gps) {
 }
 
 void Clock::timer_event() {
+    // Sanity check if primary clock has changed.
+    // (Otherwise, may get stuck pointing to the null placeholder.)
+    if (m_tref.clk != SATCAT5_CLOCK) reset();
+
     // Elapsed time since the last update?
     unsigned incr = m_tref.increment_msec();
 

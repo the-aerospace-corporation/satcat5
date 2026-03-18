@@ -97,9 +97,6 @@ void ToCbor::log_event(s8 priority, unsigned nbytes, const char* msg) {
     // Ignore messages with priority below minimum level
     if (priority < m_min_priority) return;
 
-    // Before we do any work, check if the destination address is set.
-    if (!m_dst->ready()) return;
-
     // Allocate a fixed-size working buffer.
     u8 buff[SATCAT5_QCBOR_BUFFER];
 

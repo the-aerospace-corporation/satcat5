@@ -1,25 +1,37 @@
 --------------------------------------------------------------------------
--- Copyright 2019-2025 The Aerospace Corporation.
+-- Copyright 2019-2026 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
--- General-purpose logic for SGMII transceiver port
+-- General-purpose logic for SGMII transceiver port.
 --
--- This module implements basic, platform-independent functions for
--- interfacing an SGMII port to the switch fabric.  This includes
--- an 8b/10b encoder, an 8b/10b decoder, the state machine for
--- handling link-startup handshaking, preamble insertion, etc.
+-- This module implements basic, platform-independent functions for interfacing
+-- an SGMII port to the switch fabric.  This includes an 8b/10b encoder, an
+-- 8b/10b decoder, the state machine for handling link-startup handshaking,
+-- preamble insertion, etc. Generally, this block is instantiated inside a
+-- platform-specific module that instantiates and controls the external
+-- interfaces.
 --
--- Generally, this block is instantiated inside a platform-specific
--- module that instantiates and controls the external interfaces.
+-- 10/100/1000 Mbps modes are all supported through byte-repetition, per Cisco
+-- ENG-46158, SGMII Specification 1.8. By default, this rate is auto-detected
+-- from the number of SOF bytes (0xD5), though this will not work if a MAC
+-- address starting with 0xD5 is received (no such OUI is known at this time).
+-- This auto-detection (AUTO_RATE) supports an out-of-spec symmetric MAC-to-MAC
+-- mode, enabling direct connection of two link partners via SGMII without
+-- declaring one as a PHY. Transmit link rate is mirrors the detected rate in
+-- AUTO_RATE mode or is set via PHY configuration if disabled. It can be set to
+-- a default out of reset via TX_RATE_RST (useful in MAC-to-MAC mode).
+--
+-- If the link partner is a PHY, consider disabling AUTO_RATE mode, as the PHY
+-- will explicitly pass this core the rate as part of the 16-bit tx_config_reg
+-- word outlined in Table 1 of the spec. This core will also send a static
+-- config word, which defaults to the MAC-to-PHY pattern, but can be changed via
+-- the TX_CFG_REG option. Note that Bit 14 (auto-negotiation acknowledge) is
+-- expected to be set by the MAC, and while reserved this is typically '1' from
+-- PHYs as well.
 --
 -- The optional "port_test" flag replaces the SGMII output with an ITU
 -- compatible pseudorandom binary sequence (PRBS) for error-rate testing.
---
--- Note: 10/100/1000 Mbps modes are all supported.  SGMII handles
---       these modes through byte-repetition, which is detected
---       and removed by the "eth_preamble_rx" block.  The same
---       setting is then mirrored to any outgoing packets.
 --
 
 library ieee;
@@ -33,9 +45,12 @@ use     work.switch_types.all;
 
 entity port_sgmii_common is
     generic (
-    ASYNC_RESET : boolean := true;   -- Async reset for status signals?
-    MSB_FIRST   : boolean := true;   -- Bit order for tx_data, rx_data
-    SHAKE_WAIT  : boolean := false); -- Wait for MAC/PHY handshake?
+    ASYNC_RESET : boolean := true;  -- Async reset for status signals?
+    MSB_FIRST   : boolean := true;  -- Bit order for tx_data, rx_data
+    SHAKE_WAIT  : boolean := false; -- Wait for MAC/PHY handshake?
+    AUTO_RATE   : boolean := true;  -- Auto-detect rep rate for MAC-to-MAC mode?
+    TX_RATE_RST : port_rate_t := get_rate_word(1000);   -- TX rate out of reset.
+    TX_CFG_REG  : sgmii_aneg_t := SGMII_ANEG_MAC);      -- MAC-to-PHY config.
     port (
     -- Transmitter/Serializer interface.
     tx_clk      : in  std_logic;    -- 125 MHz typical
@@ -72,10 +87,10 @@ signal tx_amb_err   : std_logic;
 signal tx_cfg_xmit  : std_logic;
 signal tx_cfg_rcvd  : std_logic;
 signal tx_cfg_ack   : std_logic;
-signal tx_cfg_reg   : std_logic_vector(15 downto 0);
 signal tx_pwren     : std_logic;
 signal tx_pkten     : std_logic;
 signal tx_frmst     : std_logic;
+signal tx_rep_rate  : byte_u;
 signal tx_test      : std_logic;
 signal tx_reset_p   : std_logic;
 
@@ -117,12 +132,12 @@ begin
 -- Clock domain transitions for specific config-register bits.
 rx_cfg_ack <= rx_cfg_reg(14);
 
-hs_cfg_ack : sync_buffer
+hs_cfg_rcvd : sync_buffer
     port map(
     in_flag     => rx_cfg_rcvd,
     out_flag    => tx_cfg_rcvd,
     out_clk     => tx_clk);
-hs_cfg_rcvd : sync_buffer
+hs_cfg_ack : sync_buffer
     port map(
     in_flag     => rx_cfg_ack,
     out_flag    => tx_cfg_ack,
@@ -146,11 +161,8 @@ sync_reset_rx : sync_reset
     out_clk     => rx_clk);
 
 -- Set configuration register for auto-negotiate handshake.
--- Handshake defined by IEEE 802.3-2015, Section 37.2.1 (Config_Reg)
--- Bit assignments set by Cisco ENG-46158, SGMII Specification 1.8, Table 1.
 tx_pwren    <= not tx_reset_p;              -- Idle except during reset
 tx_cfg_xmit <= not tx_cfg_ack;              -- Transmit until acknowledged
-tx_cfg_reg  <= (14 => '1', 0 => '1', others => '0');    -- MAC to PHY
 
 -- Allow data transmission before MAC/PHY handshake is established?
 tx_pkten    <= (tx_cfg_rcvd and tx_cfg_ack) when SHAKE_WAIT else '1';
@@ -174,7 +186,7 @@ u_txamb : entity work.eth_preamble_tx
     tx_tfreq    => tx_tfreq,
     tx_data     => ptx_data,
     tx_ctrl     => ptx_ctrl,
-    rep_rate    => rx_rep_rate);
+    rep_rate    => tx_rep_rate);
 
 -- Transmit: 8b/10b encoder
 u_txenc : entity work.eth_enc8b10b
@@ -185,7 +197,7 @@ u_txenc : entity work.eth_enc8b10b
     in_cken     => tx_cken,
     in_frmst    => tx_frmst,
     cfg_xmit    => tx_cfg_xmit,
-    cfg_word    => tx_cfg_reg,
+    cfg_word    => TX_CFG_REG,
     out_data    => tx_data_msb,
     out_cken    => open,
     out_test    => tx_test,
@@ -226,7 +238,8 @@ u_rxdec : entity work.eth_dec8b10b
 -- Receive: Preamble detection and removal
 u_rxamb : entity work.eth_preamble_rx
     generic map(
-    REP_ENABLE  => true)
+    AUTO_REP    => AUTO_RATE,
+    RATE_TO_REP => true)
     port map(
     raw_clk     => rx_clk,
     raw_lock    => rx_dec_lock,
@@ -259,22 +272,55 @@ begin
         rate_100    <= '0';
         rate_1000   <= '0';
         rate_error  <= '0';
+        if (TX_RATE_RST = get_rate_word(10)) then
+            tx_rep_rate <= to_unsigned(99, 8);
+        elsif (TX_RATE_RST = get_rate_word(100)) then
+            tx_rep_rate <= to_unsigned(9, 8);
+        else
+            tx_rep_rate <= to_unsigned(0, 8); -- Default, assume 1000Mbps.
+        end if;
 
         -- Note: Each Tx/Rx byte repeated N+1 times.
-        if (rx_rep_valid = '0') then
-            rate_word   <= RATE_WORD_NULL;
-        elsif (rx_rep_rate = 0) then
-            rate_word   <= get_rate_word(1000);
-            rate_1000   <= '1'; -- 1x repeat = 1000 Mbps
-        elsif (rx_rep_rate = 9) then
-            rate_word   <= get_rate_word(100);
-            rate_100    <= '1'; -- 10x repeat = 100 Mbps
-        elsif (rx_rep_rate = 99) then
-            rate_word   <= get_rate_word(10);
-            rate_10     <= '1'; -- 100x repeat = 10 Mbps
+        if (AUTO_RATE) then
+            if (rx_rep_valid = '0') then
+                rate_word   <= RATE_WORD_NULL;
+            elsif (rx_rep_rate = 0) then
+                rate_word   <= get_rate_word(1000);
+                rate_1000   <= '1'; -- 1x repeat = 1000 Mbps
+                tx_rep_rate <= rx_rep_rate;
+            elsif (rx_rep_rate = 9) then
+                rate_word   <= get_rate_word(100);
+                rate_100    <= '1'; -- 10x repeat = 100 Mbps
+                tx_rep_rate <= rx_rep_rate;
+            elsif (rx_rep_rate = 99) then
+                rate_word   <= get_rate_word(10);
+                rate_10     <= '1'; -- 100x repeat = 10 Mbps
+                tx_rep_rate <= rx_rep_rate;
+            else
+                rate_word   <= get_rate_word(10);
+                rate_error  <= '1'; -- Unexpected rate
+            end if;
+
+        -- Note: Rate word passed from PHY in config reg.
         else
-            rate_word   <= get_rate_word(10);
-            rate_error  <= '1'; -- Unexpected rate
+            if (rx_cfg_rcvd = '0') then
+                rate_word   <= RATE_WORD_NULL;
+            elsif (rx_cfg_reg(11 downto 10) = "10") then
+                rate_word   <= get_rate_word(1000);
+                rate_1000   <= '1';
+                tx_rep_rate <= to_unsigned(0, 8);
+            elsif (rx_cfg_reg(11 downto 10) = "01") then
+                rate_word   <= get_rate_word(100);
+                rate_100    <= '1';
+                tx_rep_rate <= to_unsigned(9, 8);
+            elsif (rx_cfg_reg(11 downto 10) = "00") then
+                rate_word   <= get_rate_word(10);
+                rate_10     <= '1';
+                tx_rep_rate <= to_unsigned(99, 8);
+            else
+                rate_word   <= get_rate_word(10);
+                rate_error  <= '1'; -- Unexpected rate
+            end if;
         end if;
     end if;
 end process;

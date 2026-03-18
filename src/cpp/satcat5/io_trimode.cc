@@ -30,11 +30,11 @@ TriMode::TriMode(SwitchCore* sw, Readable* src, Writeable* dst, u16 apid_raw)
     , m_eth_slip(sw, src, dst)                      // SLIP-mode connection
     , m_spp_rx(&m_rx_mpdu, m_rx_buff.bypass())      // SPP dispatch (Rx path)
     // SPP header insert (Rx)
-    , m_spp_rxi(src, &m_spp_rx, apid_raw, SATCAT5_TRIMODE_SPPMAXSIZE)
+    , m_spp_rxi(src, &m_spp_rx, false, apid_raw, SATCAT5_TRIMODE_SPPMAXSIZE)
     , m_spp_rxr(&m_spp_rx, m_rx_buff.bypass(), apid_raw) // SPP header remove
     , m_spp_tx(&m_tx_buff, dst)                          // SPP dispatch (Tx path)
     // SPP header insert (Tx)
-    , m_spp_txi(&m_tx_buff, &m_spp_tx, apid_raw, SATCAT5_TRIMODE_SPPMAXSIZE)
+    , m_spp_txi(&m_tx_buff, &m_spp_tx, true, apid_raw, SATCAT5_TRIMODE_SPPMAXSIZE)
     , m_spp_txr(&m_spp_tx, dst, apid_raw)           // SPP header remove (Tx)
 {
     // Initial state is disabled.

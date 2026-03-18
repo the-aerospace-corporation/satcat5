@@ -31,10 +31,12 @@ cfg::Uart::Uart(cfg::ConfigBus* cfg, unsigned devaddr)
 
 void cfg::Uart::configure(
     unsigned clkref_hz,
-    unsigned baud_hz)
+    unsigned baud_hz,
+    bool ignore_cts)
 {
     // Note: Writing to Config register also resets hardware FIFOs.
-    m_ctrl[REGADDR_CFG] = util::div_round_u32(clkref_hz, baud_hz);
+    u32 clkdiv = util::div_round_u32(clkref_hz, baud_hz);
+    m_ctrl[REGADDR_CFG] = (ignore_cts << 31) | clkdiv;
 }
 
 void cfg::Uart::data_rcvd(satcat5::io::Readable* src)

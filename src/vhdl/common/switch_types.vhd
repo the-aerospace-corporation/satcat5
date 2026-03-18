@@ -251,6 +251,12 @@ package SWITCH_TYPES is
     constant SWITCH_ERROR_NONE : switch_error_t := (others => '0');
     type array_switch_error is array(natural range<>) of switch_error_t;
 
+    -- SGMII auto-negotiation configuration register type, per Cisco ENG-46158.
+    constant SGMII_ANEG_WIDTH : integer := 16;
+    subtype sgmii_aneg_t is std_logic_vector(SGMII_ANEG_WIDTH-1 downto 0);
+    constant SGMII_ANEG_MAC : sgmii_aneg_t :=
+        (14 => '1', 0 => '1', others => '0'); -- MAC-to-PHY config word
+
     -- For legacy compatibility, switch errors can be converted to raw vector.
     constant SWITCH_ERR_WIDTH : integer := 8;
     subtype switch_errvec_t is std_logic_vector(SWITCH_ERR_WIDTH-1 downto 0);

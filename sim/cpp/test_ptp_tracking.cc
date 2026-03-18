@@ -419,6 +419,24 @@ TEST_CASE("TrackingSimple") {
             timer.run(step);
         }
     }
+
+    SECTION("Reacquire") {
+        Time step(SUBNS_PER_SEC / 8);
+        for (unsigned a = 0 ; a < 10 ; ++a) {
+            uut.update(satcat5::ptp::ONE_NANOSECOND);
+            clk.run(step);
+            timer.run(step);
+        }
+        CHECK(uut.is_locked());
+        uut.reacquire();
+        CHECK_FALSE(uut.is_locked());
+        for (unsigned a = 0 ; a < 10 ; ++a) {
+            uut.update(satcat5::ptp::ONE_NANOSECOND);
+            clk.run(step);
+            timer.run(step);
+        }
+        CHECK(uut.is_locked());
+    }
 }
 
 TEST_CASE("TrackingCoarse") {

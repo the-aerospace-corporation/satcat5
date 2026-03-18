@@ -46,7 +46,7 @@ protected:
     void frame_rcvd(satcat5::io::LimitedRead& src) override {
         u16 typ = src.read_u16();               // Read request type
         u32 arg = src.read_u32();               // Read request argument
-        CHECK(m_iface->m_icmp.send_error(typ, &src, arg));
+        CHECK(m_iface->icmp()->send_error(typ, &src, arg));
     }
 
     // Pointer to the parent interface.
@@ -69,7 +69,7 @@ TEST_CASE("ICMP") {
     auto IP_PERIPHERAL(xlink.IP1);              // Peripheral IP addr (eth1)
 
     // Disable log timeouts for most tests.
-    ip_controller.m_icmp.set_log_cooldown(0);
+    ip_controller.icmp()->set_log_cooldown(0);
 
     // Specialized test infrastructure
     FakeProto fake_controller(&xlink.net0.m_ip);
@@ -85,14 +85,14 @@ TEST_CASE("ICMP") {
     // Issue ICMP requests from controller to peripheral.
     SECTION("ping") {
         satcat5::test::CountPingResponse event(&ip_controller);
-        ip_controller.m_icmp.send_ping(addr);
+        ip_controller.icmp()->send_ping(addr);
         CHECK(event.count() == 0);
         satcat5::poll::service_all();
         CHECK(event.count() == 1);
     }
 
     SECTION("time") {
-        ip_controller.m_icmp.send_timereq(addr);
+        ip_controller.icmp()->send_timereq(addr);
         log.suppress("Timestamp");
         satcat5::poll::service_all();
         CHECK(log.contains("Timestamp"));
@@ -139,7 +139,7 @@ TEST_CASE("ICMP") {
 
     // Test handling of the logging rate-limiter.
     SECTION("log-limit") {
-        ip_controller.m_icmp.set_log_cooldown(100);
+        ip_controller.icmp()->set_log_cooldown(100);
         log.suppress("Destination host unreachable");
         log.suppress("Destination port unreachable");
         // Trigger the first ICMP error.

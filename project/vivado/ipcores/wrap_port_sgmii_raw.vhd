@@ -22,6 +22,9 @@ entity wrap_port_sgmii_raw is
     MGT_TYPE    : string := "gtx";      -- "gtx", "gty", etc.
     REFCLK_SRC  : integer := 0;         -- 7-series only: REFCLK0 or REFCLK1?
     SHAKE_WAIT  : boolean := false;     -- Wait for MAC/PHY handshake?
+    AUTO_RATE   : boolean := true;      -- Auto-detect link partner rate?
+    TX_RATE_RST : integer := 1000;      -- TX rate out of reset
+    TX_CFG_REG  : std_logic_vector(15 downto 0) := x"4001";
     SHARED_EN   : boolean := true;      -- Does the IP-core include shared logic?
     PTP_ENABLE  : boolean := false;     -- Enable PTP timestamps?
     PTP_REF_HZ  : integer := 0;         -- Vernier reference frequency
@@ -131,6 +134,9 @@ u_wrap : entity work.port_sgmii_raw
     MGT_TYPE    => MGT_TYPE,
     REFCLK_SRC  => REFCLK_SRC,
     SHAKE_WAIT  => SHAKE_WAIT,
+    AUTO_RATE   => AUTO_RATE,
+    TX_RATE_RST => get_rate_word(TX_RATE_RST),
+    TX_CFG_REG  => TX_CFG_REG,
     SHARED_EN   => SHARED_EN,
     VCONFIG     => VCONFIG)
     port map(

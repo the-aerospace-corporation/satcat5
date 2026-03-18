@@ -39,7 +39,7 @@ namespace satcat5 {
 
             // Other accessors.
             inline satcat5::eth::ProtoArp* arp() const
-                { return &m_iface->m_arp; }
+                { return m_iface->arp(); }
             inline satcat5::eth::Dispatch* eth() const
                 { return m_iface->iface(); }
             inline satcat5::ip::Dispatch* iface() const

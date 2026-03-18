@@ -73,6 +73,7 @@ static constexpr char iso8601[] = {
     ':',
     __TIME__[6],
     __TIME__[7],
+    '\0'
 };
 
 const char* satcat5::get_sw_build_string()

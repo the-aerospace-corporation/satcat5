@@ -192,7 +192,7 @@ opt_uint SwitchCore::process_plugins(PluginPacket& meta) {
     // Stop early if any plugin drops or diverts the packet.
     SwitchPort* src = get_port(meta.src_port());
     if (src) src->plugin_ingress(meta);
-    auto result = pkt_has_dropped(meta);
+    auto result = pkt_has_dropped(meta, DEBUG_PLUGOUT);
     if (result) return result;
 
     // Query each switch plugin. This may affect packet data and metadata.
@@ -200,7 +200,7 @@ opt_uint SwitchCore::process_plugins(PluginPacket& meta) {
     PluginCore* plg = m_plugins.head();
     while (plg) {
         plg->query(meta);
-        result = pkt_has_dropped(meta);
+        result = pkt_has_dropped(meta, DEBUG_PLUGOUT);
         if (result) return result;
         plg = m_plugins.next(plg);
     }
@@ -230,10 +230,11 @@ opt_uint SwitchCore::process_plugins(PluginPacket& meta) {
     return opt_uint();
 }
 
-opt_uint SwitchCore::pkt_has_dropped(PluginPacket& meta) {
+opt_uint SwitchCore::pkt_has_dropped(PluginPacket& meta, unsigned mask) {
     if (meta.dst_mask == 0) {
         u8 reason = meta.reason()
             ? meta.reason() : SwitchLogMessage::DROP_UNKNOWN;
+        debug_if(meta, mask);   // Carbon-copy if logging is enabled
         debug_log(meta.pkt, reason);
         return opt_uint(0);     // Dropped
     } else if (meta.is_diverted()) {
@@ -320,7 +321,7 @@ void SwitchPort::plugin_egress(satcat5::eth::PluginPacket& meta) {
     PluginPort* plg = m_plugins.head();
     while (plg) {
         plg->egress(meta);
-        if (m_switch->pkt_has_dropped(meta)) return;
+        if (m_switch->pkt_has_dropped(meta, DEBUG_EGRESS)) return;
         plg = m_plugins.next(plg);
     }
 }

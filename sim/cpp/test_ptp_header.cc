@@ -13,6 +13,7 @@
 using satcat5::ptp::ClockInfo;
 using satcat5::ptp::Header;
 using satcat5::ptp::PortId;
+using satcat5::ptp::calc_log_variance;
 using satcat5::ptp::DEFAULT_CLOCK;
 using satcat5::ptp::VERY_GOOD_CLOCK;
 
@@ -103,6 +104,14 @@ TEST_CASE("ptp_header") {
         rd.read_obj(tmp);
         CHECK(equal(tmp, VERY_GOOD_CLOCK));
         CHECK(rd.get_read_ready() == 0);
+    }
+
+    SECTION("CalcOffsetLogVariance") {
+        // Only check powers of 2 due to rounding issue with current log2_ceil.
+        // Computed: hex(int(np.log2(x) * 2**8 + 0x8000)) for x in seconds^2.
+        CHECK(calc_log_variance(1*1) == 0x3046); // = VARIANCE_1PSEC
+        CHECK(calc_log_variance(256*256) == 0x4046);
+        CHECK(calc_log_variance(2048*2048) == 0x4646);
     }
 
     SECTION("ReadEmpty") {

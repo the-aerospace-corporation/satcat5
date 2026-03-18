@@ -172,6 +172,23 @@ TEST_CASE("router2_stack_software") {
         CHECK(satcat5::test::read(&sock3, "Message from 2 to 3."));
     }
 
+    // Test handling of an invalid packet.
+    SECTION("badpkt") {
+        // Bind socket to port 1231.
+        satcat5::udp::Socket sock2(nic2.udp());
+        sock2.bind(1231);
+        // Send a multicast UDP packet with an invalid header checksum.
+        constexpr u8 TESTPKT[] = {
+            0x45, 0x00, 0x00, 0x2b, 0x66, 0x05, 0x00, 0x00, 0x80, 0x11, 0xcd, 0xee,
+            0xc0, 0xa8, 0x01, 0x01, 0xe0, 0x01, 0x01, 0x01, 0x04, 0xcf, 0x04, 0xcf,
+            0x00, 0x17, 0x00, 0x00, 0x54, 0x65, 0x73, 0x74, 0x20, 0x6d, 0x65, 0x73,
+            0x73, 0x61, 0x67, 0x65, 0x20, 0x23, 0x31};
+        auto wr = nic1.eth()->open_write(MAC0, satcat5::eth::ETYPE_IPV4);
+        CHECK(satcat5::test::write(wr, sizeof(TESTPKT), TESTPKT));
+        satcat5::poll::service_all();
+        CHECK(sock2.get_read_ready() == 0);
+    }
+
     // Deferred packet forwarding test.
     SECTION("defer") {
         satcat5::udp::Socket sock1(nic1.udp());

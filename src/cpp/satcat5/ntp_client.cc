@@ -41,7 +41,7 @@ Client::Client(
     , m_refclk(refclk)
     , m_iface(iface)
     , m_reftime(0)
-    , m_leap(Header::LEAP_UNK)
+    , m_leap(Header::LEAP_NONE) // No awareness of upcoming leap-seconds.
     , m_stratum(0)
     , m_rate(0)
 {

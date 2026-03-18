@@ -29,7 +29,7 @@ namespace satcat5 {
         //!      Rx: Accept tagged frames with VID = 0, or untagged frames.
         //!      Tx: Always emit tagged frames with VID = 0.
         //!  MANDATORY: Recommended for crosslinks to another VLAN-aware switch.
-        //!      Rx: Accept tagged frames only, with any VID.
+        //!      Rx: Accept only tagged frames with VID > 0.
         //!      Tx: Always emit tagged frames with VID > 0.
         //!@{
         constexpr u32 VTAG_ADMIT_ALL    = 0x00000000u;
@@ -188,6 +188,9 @@ namespace satcat5 {
             //! found in cache) are sent to every port with this flag.
             void set_miss_bcast(unsigned port_idx, bool enable);
 
+            //! Enable or disable all "miss-as-broadcast" flags at once.
+            void set_miss_mask(u32 mask);
+
             //! Identify which ports are currently in "miss-as-broadcast" mode.
             u32 get_miss_mask();
 
@@ -248,17 +251,23 @@ namespace satcat5 {
             //! Read the maximum size of the MAC-address table.
             unsigned mactbl_size();
             //! Read the Nth entry from the MAC-address table.
+            //! \arg tbl_idx    Table index to be read
+            //! \arg port_idx   Resulting port index (output)
+            //! \arg mac_addr   Resulting MAC address (output)
             //! \return True if successful, false otherwise.
             bool mactbl_read(
-                unsigned tbl_idx,                       // Table index to be read
-                unsigned& port_idx,                     // Resulting port index
-                satcat5::eth::MacAddr& mac_addr);       // Resulting MAC address
+                unsigned tbl_idx,
+                unsigned& port_idx,
+                satcat5::eth::MacAddr& mac_addr);
             //! Write a new entry to the MAC-address table.
             //! Note: When writing, FPGA logic chooses the next available table
             //!       index; this parameter is not under software control.
+            //! \arg port_idx   Port index for the new MAC address
+            //! \arg mac_addr   New MAC address
+            //! \return True if write successful, false otherwise.
             bool mactbl_write(
-                unsigned port_idx,                      // New port index
-                const satcat5::eth::MacAddr& mac_addr); // New MAC address
+                unsigned port_idx,
+                const satcat5::eth::MacAddr& mac_addr);
             //! Clear MAC-address table contents.
             bool mactbl_clear();
             //! Enable automatic learning of new MAC addresses?
@@ -266,12 +275,41 @@ namespace satcat5 {
             //! Log the contents of the MAC-address table.
             void mactbl_log(const char* label);
 
-        protected:
-            bool mactbl_wait_idle();                    // Wait for MAC-table access
+            // Define ConfigBus register map (see also: switch_types.vhd)
+            static constexpr unsigned
+                REG_PORTCOUNT    = 0,   //!< Number of ports (read-only)
+                REG_DATAPATH     = 1,   //!< Datapath width, in bits (read-only)
+                REG_CORECLOCK    = 2,   //!< Core clock frequency, in Hz (read-only)
+                REG_MACCOUNT     = 3,   //!< MAC-address table size (read-only)
+                REG_PROMISC      = 4,   //!< Promisicuous port mask (read-write)
+                REG_PRIORITY     = 5,   //!< Packet prioritization (read-write, optional)
+                REG_PKTCOUNT     = 6,   //!< Packet-counting w/ filter (read-write)
+                REG_FRAMESIZE    = 7,   //!< Frame size limits (read-only)
+                REG_VLAN_PORT    = 8,   //!< VLAN port configuration (write-only)
+                REG_VLAN_VID     = 9,   //!< VLAN connections: set VID (read-write)
+                REG_VLAN_MASK    = 10,  //!< VLAN connections: set mask (read-write)
+                REG_MACTBL_LSB   = 11,  //!< MAC-table control (read-write)
+                REG_MACTBL_MSB   = 12,  //!< MAC-table control (read-write)
+                REG_MACTBL_CTRL  = 13,  //!< MAC-table control (read-write)
+                REG_MISS_BCAST   = 14,  //!< Miss-as-broadcast port mask (read-write)
+                REG_PTP_2STEP    = 15,  //!< PTP "twoStep" mode flag (read-write)
+                REG_VLAN_RATE    = 16,  //!< VLAN rate-control configuration (write-only)
+                REG_LOGGING      = 17;  //!< Packet logging diagnostics (read-only)
 
-            satcat5::cfg::Register m_reg;               // ConfigBus register space
-            u32 m_pri_wridx;                            // Next index in priority table
-            u16 m_stats_filter;                         // Filter stats by EtherType
+            // Additional ConfigBus registers for each port.
+            static constexpr unsigned REG_PORT(unsigned idx)
+                {return 512 + 16*idx;}          //!< Base address for per-port registers
+            static constexpr unsigned REG_PTP_RX(unsigned idx)
+                {return REG_PORT(idx) + 8;}     //!< Rx timestamp offset for Nth port
+            static constexpr unsigned REG_PTP_TX(unsigned idx)
+                {return REG_PORT(idx) + 9;}     //!< Tx timestamp offset for Nth port
+
+        protected:
+            bool mactbl_wait_idle();            //!< Wait for MAC-table access
+
+            satcat5::cfg::Register m_reg;       //!< ConfigBus register space
+            u32 m_pri_wridx;                    //!< Next index in priority table
+            u16 m_stats_filter;                 //!< Filter stats by EtherType
         };
     }
 }

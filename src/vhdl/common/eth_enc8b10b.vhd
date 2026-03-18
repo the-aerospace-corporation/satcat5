@@ -31,6 +31,7 @@ use     ieee.numeric_std.all;
 use     work.common_functions.all;
 use     work.eth_enc8b10b_table.all;
 use     work.prng_lfsr_common.all;
+use     work.switch_types.all;
 
 entity eth_enc8b10b is
     generic (
@@ -45,7 +46,7 @@ entity eth_enc8b10b is
 
     -- Link configuration mode.
     cfg_xmit    : in  std_logic := '0'; -- Transmit config?
-    cfg_word    : in  std_logic_vector(15 downto 0);
+    cfg_word    : in  sgmii_aneg_t;
 
     -- Output stream (MSB-first)
     out_data    : out std_logic_vector(9 downto 0);

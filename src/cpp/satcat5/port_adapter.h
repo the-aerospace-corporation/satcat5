@@ -141,12 +141,30 @@ namespace satcat5 {
         //! Minimalist port adapter with no VLAN conversion.
         //! Implementation of eth::SwitchPort without VLAN tag formatting or
         //! other interface conversions. Suitable for use with "ip::Stack".
+        //! Note: Network ports using this adapter bypass all plugin egress
+        //! processing. The SwitchPort::data_rcvd() method will not be called.
         class NullAdapter
             : public satcat5::eth::SwitchPort
-            , public satcat5::io::ReadableRedirect
-        {
+            , public satcat5::io::ReadableRedirect {
         public:
             explicit NullAdapter(satcat5::eth::SwitchCore* sw);
+        };
+
+        //! Minimalist port adapter with VLAN conversion.
+        //! Use of a secondary buffer allows normal egress processing.
+        //! This variant is recommended for use in most simulations.
+        template <unsigned SIZE = 4096>
+        class BufferAdapter
+            : public satcat5::port::VlanAdapter
+            , public satcat5::io::ReadableRedirect {
+        public:
+            explicit BufferAdapter(satcat5::eth::SwitchCore* sw)
+                : VlanAdapter(sw, &m_buff)
+                , ReadableRedirect(&m_buff)
+                , m_buff() {}
+
+        protected:
+            satcat5::io::PacketBufferStatic<SIZE> m_buff;
         };
 
         //! Back-to-back connection of one SwitchCore to another SwitchCore.

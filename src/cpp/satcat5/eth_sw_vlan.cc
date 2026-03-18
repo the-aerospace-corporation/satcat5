@@ -146,6 +146,11 @@ void SwitchVlanInner::vlan_set_mask(u16 vid, SATCAT5_PMASK_TYPE mask) {
     m_policy[vid-1].pmask = mask;
 }
 
+satcat5::eth::VtagPolicy SwitchVlanInner::vlan_get_port(unsigned pidx) const {
+    auto port = m_switch->get_port(pidx);
+    return port ? port->vlan_config() : satcat5::eth::VCFG_DEFAULT;
+}
+
 void SwitchVlanInner::vlan_set_port(const VtagPolicy& cfg) {
     auto port = m_switch->get_port(cfg.port());
     if (port) port->vlan_config(cfg);

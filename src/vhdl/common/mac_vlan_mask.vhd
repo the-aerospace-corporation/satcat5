@@ -215,7 +215,7 @@ end process;
 
 -- ConfigBus interface (reads, optional)
 cfg_rden    <= bool2bit(READBACK_EN and cfgbus_rdcmd(cfg_cmd, DEV_ADDR, REG_ADDR_M));
-cfg_rword   <= resize(not cfg_wmask, CFGBUS_WORD_SIZE);
+cfg_rword   <= resize(not cfg_rmask, CFGBUS_WORD_SIZE);
 cfg_ack     <= cfgbus_reply(cfg_rword) when (cfg_rden_d = '1') else cfgbus_idle;
 
 end mac_vlan_mask;

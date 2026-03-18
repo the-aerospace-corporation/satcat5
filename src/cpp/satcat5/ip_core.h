@@ -140,30 +140,35 @@ namespace satcat5 {
 
         //! Minimum and maximum IP header length parameters.
         //!@{
-        constexpr unsigned HDR_MIN_WORDS        = 5;
-        constexpr unsigned HDR_MIN_SHORTS       = 2 * HDR_MIN_WORDS;
-        constexpr unsigned HDR_MIN_BYTES        = 4 * HDR_MIN_WORDS;
-        constexpr unsigned HDR_MAX_WORDS        = 15;
-        constexpr unsigned HDR_MAX_SHORTS       = 2 * HDR_MAX_WORDS;
-        constexpr unsigned HDR_MAX_BYTES        = 4 * HDR_MAX_WORDS;
+        constexpr unsigned
+            HDR_MIN_WORDS        = 5,
+            HDR_MIN_SHORTS       = 2 * HDR_MIN_WORDS,
+            HDR_MIN_BYTES        = 4 * HDR_MIN_WORDS,
+            HDR_MAX_WORDS        = 15,
+            HDR_MAX_SHORTS       = 2 * HDR_MAX_WORDS,
+            HDR_MAX_BYTES        = 4 * HDR_MAX_WORDS;
         //!@}
 
         // Commonly used IP-addresses and other constants:
-        constexpr satcat5::ip::Addr ADDR_NONE   = 0;
-        constexpr satcat5::ip::Mask MASK_NONE   = 0;    //!< The entire Internet
-        constexpr satcat5::ip::Mask MASK_8      = 8;    //!< 192.*.*.*
-        constexpr satcat5::ip::Mask MASK_16     = 16;   //!< 192.168.*.*
-        constexpr satcat5::ip::Mask MASK_24     = 24;   //!< 192.168.0.*
-        constexpr satcat5::ip::Mask MASK_32     = 32;   //!< 192.168.0.123
-        constexpr satcat5::ip::Port PORT_NONE   = 0;
-        constexpr satcat5::ip::Addr ADDR_BROADCAST
-            = satcat5::ip::Addr(255, 255, 255, 255);
-        constexpr satcat5::ip::Addr ADDR_LOOPBACK
-            = satcat5::ip::Addr(127, 0, 0, 1);
-        constexpr satcat5::ip::Subnet DEFAULT_ROUTE
-            = {ADDR_NONE, MASK_NONE};
-        constexpr satcat5::ip::Subnet UDP_MULTICAST
-            = {Addr(224, 0, 0, 0), Mask(4)};
+        constexpr satcat5::ip::Mask
+            MASK_NONE   = 0,                        //!< The entire Internet
+            MASK_8      = 8,                        //!< 192.*.*.*
+            MASK_16     = 16,                       //!< 192.168.*.*
+            MASK_24     = 24,                       //!< 192.168.0.*
+            MASK_32     = 32;                       //!< 192.168.0.123
+        constexpr satcat5::ip::Port
+            PORT_NONE   = 0;                        //!< Null placeholder
+        constexpr satcat5::ip::Addr
+            ADDR_NONE(0, 0, 0, 0),                  //!< Null placeholder
+            ADDR_BROADCAST(255, 255, 255, 255),     //!< Broadcast to local subnet
+            ADDR_LOOPBACK(127, 0, 0, 1),            //!< Loopback address
+            ADDR_ALL_SYSTEMS(224, 0, 0, 1),         //!< Multicast to local endpoints
+            ADDR_ALL_ROUTERS(224, 0, 0, 2),         //!< Multicast to local routers
+            ADDR_PTP_PDELAY(224, 0, 0, 107),        //!< Multicast PTP (peer-to-peer delay)
+            ADDR_PTP_PRIMARY(224, 0, 1, 129);       //!< Multicast PTP (all other messages)
+        constexpr satcat5::ip::Subnet
+            DEFAULT_ROUTE = {ADDR_NONE, MASK_NONE},
+            UDP_MULTICAST = {Addr(224, 0, 0, 0), Mask(4)};
 
         constexpr u8 PROTO_ICMP                 = 0x01;
         constexpr u8 PROTO_IGMP                 = 0x02;
@@ -215,7 +220,11 @@ namespace satcat5 {
             void chk_incr32(u32 prev, u32 next);
             //!}
 
+            //! Append the "router alert" option (RFC-2113)
+            void option_alert();
+
             //! Write IPv4 header to the designated stream.
+            //! If the checksum has not already been calculated, update in-place.
             void write_to(satcat5::io::Writeable* wr) const;
 
             //! Read a partial IPv4 header from the designated stream.

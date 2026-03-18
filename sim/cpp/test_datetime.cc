@@ -1,5 +1,5 @@
 // //////////////////////////////////////////////////////////////////////////
-// Copyright 2021-2025 The Aerospace Corporation.
+// Copyright 2021-2026 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for real-time clock conversion functions
@@ -141,45 +141,59 @@ TEST_CASE("DateTime-Conversions") {
     SECTION("Convert 2020-11-11T17:00:00 (Wednesday)") {
         RtcTime rtc = make_rtc(3, 20, 11, 11, 17, 0, 0);
         GpsTime gps = {2131, 320400000};
+        PtpTime ptp = {1605114019, 0, 0};
         check_equivalent(rtc, gps);
         CHECK(rtc.days_since_epoch() == 7620);
         CHECK(rtc.msec_since_midnight() == 61200000);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
     SECTION("Convert 2000-01-02T05:00:00 (Sunday)") {
         RtcTime rtc = make_rtc(0, 0, 1, 2, 5, 0, 0);
         GpsTime gps = {1043, 18000000};
+        PtpTime ptp = {946789219, 0, 0};
         check_equivalent(rtc, gps);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
     SECTION("Convert 2001-01-02T02:00:00 (Tuesday)") {
         RtcTime rtc = make_rtc(2, 1, 1, 2, 2, 0, 0);
         GpsTime gps = {1095, 180000000};
+        PtpTime ptp = {978400819, 0, 0};
         check_equivalent(rtc, gps);
         CHECK(rtc.days_since_epoch() == 367);
         CHECK(rtc.msec_since_midnight() == 7200000);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
     SECTION("Convert 2000-02-29T05:00:00 (Tuesday)") {
         RtcTime rtc = make_rtc(2, 0, 2, 29, 5, 0, 0);
         GpsTime gps = {1051, 190800000};
+        PtpTime ptp = {951800419, 0, 0};
         check_equivalent(rtc, gps);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
     SECTION("Convert 2000-01-01T00:00:00 (Saturday)") {
         RtcTime rtc = make_rtc(6, 0, 1, 1, 0, 0, 0);
         GpsTime gps = {1042, 518400000};
+        PtpTime ptp = {946684819, 0, 0};
         check_equivalent(rtc, gps);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
     SECTION("Convert 2016-04-08T00:00:00 (Friday)") {
         RtcTime rtc = make_rtc(5, 16, 4, 8, 0, 0, 0);
         GpsTime gps = {1891, 432000000};
+        PtpTime ptp = {1460073619, 0, 0};
         check_equivalent(rtc, gps);
         CHECK(rtc.days_since_epoch() == 5942);
         CHECK(rtc.msec_since_midnight() == 0);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
     SECTION("Convert 2100-01-01T00:00:00 (Friday)") {
         RtcTime rtc = make_rtc(5, 0, 1, 1, 0, 0, 0, 0, 21);
         GpsTime gps = {6260, 432000000};
+        PtpTime ptp = {4102444819, 0, 0};
         check_equivalent(rtc, gps);
         CHECK(rtc.days_since_epoch() == 36525);
         CHECK(rtc.msec_since_midnight() == 0);
+        CHECK(ptp.to_datetime() == gps.convert());
     }
 
     // Check specific rollover events are calculated correctly.

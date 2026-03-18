@@ -80,9 +80,15 @@ u16 satcat5::ip::checksum(unsigned wcount, const u16* data, u16 prev) {
 }
 
 void Header::write_to(satcat5::io::Writeable* wr) const {
-    unsigned hdr = 2 * ihl();           // Header length (16-bit words)
-    for (unsigned a = 0 ; a < hdr ; ++a)
-        wr->write_u16(data[a]);         // Write each word in network order
+    // If the checksum is blank, calculate per RFC 1071 Section 4.1.
+    unsigned wcount = 2 * ihl();        // Header length (16-bit words)
+    u16 chk_tmp = data[5] ? data[5] : ip::checksum(wcount, data);
+    // Write each word in network order.
+    for (unsigned a = 0 ; a <= 4 ; ++a)
+        wr->write_u16(data[a]);         // First part of header
+    wr->write_u16(chk_tmp);             // Insert calculated checksum
+    for (unsigned a = 6 ; a < wcount ; ++a)
+        wr->write_u16(data[a]);         // Remainder of header + options
 }
 
 void Header::chk_incr16(u16 prev, u16 next) {
@@ -95,6 +101,15 @@ void Header::chk_incr32(u32 prev, u32 next) {
     // Apply the ~m + m' method of RFC1624 Section 3.
     u32 tmp[2] = {u32(~prev), next};
     data[5] = satcat5::ip::checksum(4, (u16*)tmp, chk());
+}
+
+void Header::option_alert() {
+    unsigned wrpos = 2 * ihl();     // Safe to append?
+    if (wrpos + 2 > HDR_MAX_SHORTS) return;
+    data[0] += 0x0100;              // Increment IHL
+    data[1] += 0x0004;              // Increment Length
+    data[wrpos++] = 0x9404;         // 1st word (type + len)
+    data[wrpos++] = 0x0000;         // 2nd word (arguments)
 }
 
 bool Header::read_core(satcat5::io::Readable* rd) {

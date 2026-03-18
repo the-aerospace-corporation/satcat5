@@ -18,21 +18,17 @@ namespace log   = satcat5::log;
 // Set verbosity level (0/1/2)
 static const unsigned DEBUG_VERBOSE = 0;
 
-// Time To Live (TTL) sets maximum number of hops.
-#ifndef SATCAT5_IP_TTL
-#define SATCAT5_IP_TTL 128
-#endif
-
 Dispatch::Dispatch(
         const ip::Addr& addr,
         satcat5::eth::Dispatch* iface,
         satcat5::ip::Table* route)
     : Protocol(Type(ETYPE_IPV4.value))
-    , m_arp(iface, addr)
-    , m_icmp(this)
     , m_iface(iface)
     , m_route(route)
     , m_addr(addr)
+    , m_arp(iface, addr)
+    , m_icmp(this)
+    , m_igmp(this)
     , m_reply_dst(ip::ADDR_NONE)
     , m_reply_src(ip::ADDR_NONE)
     , m_ident(0)
@@ -46,15 +42,13 @@ Dispatch::Dispatch(
 }
 
 #if SATCAT5_ALLOW_DELETION
-Dispatch::~Dispatch()
-{
+Dispatch::~Dispatch() {
     m_arp.remove(this);
     m_iface->remove(this);
 }
 #endif
 
-satcat5::io::Writeable* Dispatch::open_reply(const Type& type, unsigned len)
-{
+satcat5::io::Writeable* Dispatch::open_reply(const Type& type, unsigned len) {
     return open_write(m_iface->reply_mac(), m_iface->reply_vtag(), m_reply_src, type.as_u8(), len);
 }
 
@@ -77,17 +71,16 @@ satcat5::io::Writeable* Dispatch::open_write(
     return wr;                          // Ready for packet contents.
 }
 
-void Dispatch::set_addr(const ip::Addr& addr)
-{
+void Dispatch::set_addr(const ip::Addr& addr) {
     m_addr = addr;
     m_arp.set_ipaddr(addr);
 }
 
 Header Dispatch::next_header(
-    u8 protocol, const ip::Addr& dst, unsigned inner_bytes)
+    u8 protocol, const ip::Addr& dst, unsigned inner_bytes, u8 ttl)
 {
     // TTL + protocol word puts TTL in MSBs.
-    u16 ttl_word = 256 * SATCAT5_IP_TTL + protocol;
+    u16 ttl_word = 256 * u16(ttl) + protocol;
     u16 len_total = (u16)(inner_bytes + ip::HDR_MIN_BYTES);
 
     // Populate header fields so we can calculate checksum.
@@ -102,22 +95,15 @@ Header Dispatch::next_header(
     hdr.data[7] = (u16)(m_addr.value >> 0);
     hdr.data[8] = (u16)(dst.value >> 16);    // Destination IP (MSW then LSW)
     hdr.data[9] = (u16)(dst.value >> 0);
-
-    // Calculate checksum using method from RFC 1071 Section 4.1.
-    hdr.data[5] = ip::checksum(ip::HDR_MIN_SHORTS, hdr.data);
-    if (DEBUG_VERBOSE > 1)
-        log::Log(log::DEBUG, "IpDispatch: header chk").write(hdr.chk());
     return hdr;
 }
 
-void Dispatch::arp_event(const MacAddr& mac, const ip::Addr& ip)
-{
+void Dispatch::arp_event(const MacAddr& mac, const ip::Addr& ip) {
     // Cache this MAC address in the routing table.
     route_cache(ip, mac);
 }
 
-void Dispatch::frame_rcvd(satcat5::io::LimitedRead& rd)
-{
+void Dispatch::frame_rcvd(satcat5::io::LimitedRead& rd) {
     if (DEBUG_VERBOSE > 1)
         log::Log(log::DEBUG, "IpDispatch: frame_rcvd").write((u16)rd.get_read_ready());
 
@@ -149,5 +135,6 @@ void Dispatch::frame_rcvd(satcat5::io::LimitedRead& rd)
     ok = deliver(typ, &rd, len);
 
     // Send an ICMP "Protocol unreachable" error?
-    if (!ok) m_icmp.send_error(ICMP_UNREACHABLE_PROTO, &rd);
+    if (!ok && !m_reply_dst.is_multicast())
+        m_icmp.send_error(ICMP_UNREACHABLE_PROTO, &rd);
 }

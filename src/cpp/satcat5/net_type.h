@@ -51,6 +51,10 @@ namespace satcat5 {
             explicit constexpr Type(u16 val1, u16 val2)
                 : m_mask(0xFFFFFFFFu), m_value(65536ul * val1 + val2) {}
 
+            //! Construct a Type with a custom bitwise filter-mask.
+            explicit constexpr Type(u32 val, u32 mask)
+                : m_mask(mask), m_value(val) {}
+
             // Default copy operators.
             Type(const Type& t) = default;
             Type& operator=(const Type& t) = default;
@@ -72,7 +76,7 @@ namespace satcat5 {
             //! @}
 
             //! Is this Type actively filtering or is it TYPE_NONE?
-            inline bool bound() const {return (m_value != 0);}
+            inline bool bound() const {return m_value || !m_mask;}
 
             //! Check if this Type matches `other`.
             inline bool match(const Type& other) const
@@ -84,7 +88,12 @@ namespace satcat5 {
             u32 m_value;        //!< Underlying value to check for a match.
         };
 
-        //! Use the TYPE_NONE placeholder when no filtering is required.
-        constexpr satcat5::net::Type TYPE_NONE = Type((u32)0);
+        //! The TYPE_ANY mask accepts any incoming frame.
+        constexpr satcat5::net::Type TYPE_ANY = Type(u32(0), u32(0));
+
+        //! The TYPE_NONE mask blocks all incoming frames.
+        //! Note: Only applies to protocols where "0" is a reserved value.
+        //! (This includes CCSDS-AOS, CCSDS-SPP, Ethernet, IP, and UDP.)
+        constexpr satcat5::net::Type TYPE_NONE = Type(u32(0));
     }
 }

@@ -82,6 +82,8 @@ signal reg_data     : byte_t := (others => '0');
 signal reg_dv       : std_logic := '0';
 signal reg_ready    : std_logic := '0';
 signal reg_pstart   : std_logic := '0';
+signal reg_frmst    : std_logic;
+signal hold_frmst   : std_logic;
 
 begin
 
@@ -124,6 +126,7 @@ u_fifo : entity work.fifo_smol_sync
 -- Byte-repetition counters.
 rep_cken   <= tx_pwren and tx_cken and bool2bit(rep_ctr = 0);
 rep_read_i <= rep_cken and bool2bit(reg_ctr = COUNT_AMBLE);
+hold_frmst <= tx_frmst or reg_frmst;
 
 p_rep : process(tx_clk)
 begin
@@ -133,6 +136,8 @@ begin
             rep_ctr <= (others => '0');
         elsif (tx_cken = '0') then
             null;   -- No change
+        elsif (reg_ctr = COUNT_HOLD and hold_frmst = '0') then
+            rep_ctr <= rep_max; -- Extend to sync with 8b/10b encoder even/odd.
         elsif (rep_ctr > 0) then
             rep_ctr <= rep_ctr - 1;
         else
@@ -147,7 +152,7 @@ begin
         end if;
 
         -- Frame-start strobe with deterministic delay (see "ptp_egress.vhd").
-        reg_pstart <= tx_frmst and rep_read_i and not fifo_valid;
+        reg_pstart <= hold_frmst and rep_read_i and not fifo_valid;
     end if;
 end process;
 
@@ -199,7 +204,7 @@ begin
                 -- Hold frame preamble until accepted.
                 reg_data <= ETH_AMBLE_PRE;
                 reg_dv   <= '1';
-                if (tx_frmst = '1') then
+                if (hold_frmst = '1') then
                     reg_ctr <= reg_ctr + 1;
                 end if;
             elsif (reg_ctr < COUNT_START) then
@@ -220,6 +225,16 @@ begin
                     reg_ctr <= 0;
                 end if;
             end if;
+        end if;
+
+        -- The tx_frmst flag may go high when rep_cken = '0', latch this in to
+        -- know the frame should begin.
+        if (reg_ctr = COUNT_HOLD) then
+            if (tx_frmst = '1') then
+                reg_frmst <= '1';
+            end if;
+        else
+            reg_frmst <= '0';
         end if;
     end if;
 end process;

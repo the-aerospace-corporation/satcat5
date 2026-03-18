@@ -36,7 +36,7 @@ static const u32 MS_DVALID      = (1u << 8);
 // Simulate the HDLC interface.
 class MockHdlc : public cfg::ConfigBus {
 public:
-    MockHdlc() : m_cfg(0) {}
+    MockHdlc() : m_tx_eof(0), m_cfg(0) {}
 
     void check_baud(unsigned baud) {
         CHECK(m_cfg == satcat5::util::div_round_u32(HW_CLKREF, baud));
@@ -54,11 +54,15 @@ public:
     std::string buf_rd() {
         auto eof = find(m_tx.begin(), m_tx.end(), 0x0100);
         std::string str(m_tx.begin(), eof);
-        if (eof != m_tx.end()) ++eof;
+        if (eof != m_tx.end()) {
+            ++eof;
+            ++m_tx_eof;
+        }
         m_tx.erase(m_tx.begin(), eof);
         return str;
     }
 
+    unsigned m_tx_eof;
     std::deque<u16> m_tx, m_rx;
 
 protected:
@@ -115,11 +119,13 @@ protected:
 TEST_CASE("cfgbus_hdlc") {
     // Simulation infrastructure.
     SATCAT5_TEST_START;
+    satcat5::test::TimerSimulation timer;
 
     // Unit under test.
     MockHdlc mock;
     cfg::Hdlc uut(&mock, CFG_DEVADDR);
 
+    // Test the baud-rate configuration register.
     SECTION("configure") {
         uut.configure(HW_CLKREF, 921600);
         mock.check_baud(921600);
@@ -127,24 +133,31 @@ TEST_CASE("cfgbus_hdlc") {
         mock.check_baud(115200);
     }
 
+    // Transmit a single short packet.
     SECTION("Tx-short") {
         uut.write_str("Short test.");
         uut.write_finalize();
         satcat5::poll::service();
         CHECK(mock.buf_rd() == "Short test.");
+        CHECK(mock.m_tx_eof == 1);
     }
 
+    // Transmit a single long packet.
     SECTION("Tx-long") {
         uut.write_str("Longer test exceeds hardware queue size.");
         uut.write_finalize();
         satcat5::poll::service();
         CHECK(mock.buf_rd() == "Longer test exce");
+        CHECK(mock.m_tx_eof == 0);
         satcat5::poll::service();
         CHECK(mock.buf_rd() == "eds hardware que");
+        CHECK(mock.m_tx_eof == 0);
         satcat5::poll::service();
         CHECK(mock.buf_rd() == "ue size.");
+        CHECK(mock.m_tx_eof == 1);
     }
 
+    // Transmit several short packets.
     SECTION("Tx-multi") {
         uut.write_str("1st Packet");
         uut.write_finalize();
@@ -158,14 +171,30 @@ TEST_CASE("cfgbus_hdlc") {
         uut.write_finalize();
         satcat5::poll::service();
         CHECK(mock.buf_rd() == "3rd Packet");
+        CHECK(mock.m_tx_eof == 3);
     }
 
+    // Transmit packet that exactly fills the hardware FIFO.
+    // (Prior to 2025 Dec, this could result in a deadlock condition.)
+    SECTION("Tx-block") {
+        uut.write_str("16 bytes exactly");
+        uut.write_finalize();
+        satcat5::poll::service();
+        CHECK(mock.buf_rd() == "16 bytes exactly");
+        CHECK(mock.m_tx_eof == 0);
+        timer.sim_wait(10);
+        CHECK(mock.buf_rd() == "");
+        CHECK(mock.m_tx_eof == 1);
+    }
+
+    // Receive a single short packet.
     SECTION("Rx-short") {
         mock.buf_wr("Short test.");
         satcat5::poll::service();
         CHECK(read_str(&uut) == "Short test.");
     }
 
+    // Receive a single long packet.
     SECTION("Rx-long") {
         mock.buf_wr("Longer test exce");
         mock.buf_wr("eds hardware que");

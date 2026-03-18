@@ -40,8 +40,8 @@ namespace satcat5 {
         // Constants and conversion functions for specific fields.
         // (Refer to 732.0-B-4 Section 4.1 for details.)
         constexpr u16 VERSION_MASK  = 0xC000;   // Transfer Frame Version Number
-        constexpr u16 SVID_MASK     = 0x3FC0;   // Spacecraft ID
-        constexpr u16 VCID_MASK     = 0x003F;   // Virtual Channel ID
+        constexpr u16 SCID_MASK     = 0x3FC0;   // Spacecraft Identifier (SCID)
+        constexpr u16 VCID_MASK     = 0x003F;   // Virtual Channel ID (VCID)
         constexpr u8 REPLAY_MASK    = 0x80;     // Replay flag
         constexpr u8 FRCT_EXT_MASK  = 0x40;     // Extended frame-count enable?
         constexpr u8 RSVD_MASK      = 0x30;     // Reserved (zeros)
@@ -69,14 +69,14 @@ namespace satcat5 {
                 : id(0), signal(0), count(0) {}
             Header(const Header& t) = default;
             Header& operator=(const Header& t) = default;
-            //! Constructor with known SVID and VCID.
-            constexpr Header(u8 svid, u8 vcid)
-                : id(VERSION_2 | pack_svid(svid) | pack_vcid(vcid))
+            //! Constructor with known SCID and VCID.
+            constexpr Header(u8 scid, u8 vcid)
+                : id(VERSION_2 | pack_scid(scid) | pack_vcid(vcid))
                 , signal(FRCT_EXT_MASK), count(0) {}
 
-            //! Convert raw SVID to the internal packed format.
-            static constexpr u32 pack_svid(u8 svid)
-                { return (u16(svid) << 6) & SVID_MASK; }
+            //! Convert raw SCID to the internal packed format.
+            static constexpr u32 pack_scid(u8 scid)
+                { return (u16(scid) << 6) & SCID_MASK; }
             //! Convert raw VCID to the internal packed format.
             static constexpr u32 pack_vcid(u8 vcid)
                 { return u16(vcid) & VCID_MASK; }
@@ -84,8 +84,8 @@ namespace satcat5 {
             // Convenience accessors.
             u16 version() const     //!< Transfer frame version number
                 { return id & VERSION_MASK; }
-            u8 svid() const         //!< Spacecraft ID
-                { return u8((id & SVID_MASK) >> 6); }
+            u8 scid() const         //!< Spacecraft ID
+                { return u8((id & SCID_MASK) >> 6); }
             u8 vcid() const         //!< Virtual Channel ID
                 { return u8(id & VCID_MASK); }
             bool replay() const     //!< Replay flag?
@@ -116,7 +116,7 @@ namespace satcat5 {
                 satcat5::ccsds_aos::Dispatch* iface,    // Parent interface
                 satcat5::io::Readable* src,             // Outgoing data buffer
                 satcat5::io::Writeable* dst,            // Incoming data buffer
-                u8 svid, u8 vcid, bool pkt);            // ID and mode-select
+                u8 scid, u8 vcid, bool pkt);            // ID and mode-select
             ~Channel() SATCAT5_OPTIONAL_DTOR;
 
             //! Force resynchronization after an error.
@@ -124,6 +124,12 @@ namespace satcat5 {
 
             //! Process each received AOS frame.
             void frame_rcvd(satcat5::io::LimitedRead& src) override;
+
+            //! Enable wildcard mode, ignoring incoming SCID and VCID.
+            //! Do not call this method if the AOS link may contain more than
+            //! one virtual channel. Outgoing packets will continue to use the
+            //! SCID and VCID set by the constructor.
+            void set_wildcard();
 
         protected:
             // Required event handlers.

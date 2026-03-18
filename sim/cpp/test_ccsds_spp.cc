@@ -171,7 +171,7 @@ TEST_CASE("ccsds_spp") {
         pcap.set_passthrough(&wire);  // Capture outgoing packets
         satcat5::ccsds_spp::Dispatch spp_rx(&wire, nullptr);
         // Instantiate the transmitter and receiver.
-        satcat5::ccsds_spp::BytesToSpp uut_tx(&tx, &spp_tx, 1234, 16);
+        satcat5::ccsds_spp::BytesToSpp uut_tx(&tx, &spp_tx, false, 1234, 16);
         satcat5::ccsds_spp::SppToBytes uut_rx(&spp_rx, &rx, 1234);
         CHECK(uut_tx.strm());
         // Transmit some data.

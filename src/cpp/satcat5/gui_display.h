@@ -30,7 +30,7 @@
 namespace satcat5 {
     namespace gui {
         //! Cursor object tracks position and foreground/background colors.
-        struct Cursor {
+        struct Cursor { // GCOVR_EXCL_LINE
             u16 r;      //!< Row coordinate (0 = top)
             u16 c;      //!< Column coordinate (0 = left)
             u32 fg;     //!< Foreground color (format defined by display)

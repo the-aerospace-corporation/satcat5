@@ -37,19 +37,25 @@ Address::Address(Dispatch* iface, u8 proto)
 
 #if SATCAT5_ALLOW_DELETION
 Address::~Address() {
-    if (m_iface) m_iface->m_arp.remove(this);
+    if (m_iface) {
+        close();
+        m_iface->arp()->remove(this);
+    }
 }
 #endif
 
 void Address::init(Dispatch* iface) {
     if (iface && !m_iface) {
         m_iface = iface;
-        m_iface->m_arp.add(this);
+        m_iface->arp()->add(this);
     }
 }
 
 void Address::connect(const Addr& dstaddr, const VlanTag& vtag) {
     if (!m_iface) return;
+
+    // Cleanup existing connection, if any.
+    close();
 
     // Set destination MAC to a placeholder for now.
     auto route  = m_iface->route_lookup(dstaddr);
@@ -60,17 +66,23 @@ void Address::connect(const Addr& dstaddr, const VlanTag& vtag) {
     m_arp_tref  = SATCAT5_CLOCK->now();
 
     // Do we need to issue an ARP query?
-    if (m_gateway.is_multicast() || m_dstmac.is_unicast()) {
-        m_ready = 1;    // Cached or multicast MAC address = Ready
+    if (m_dstmac.is_unicast() || m_gateway.is_broadcast()) {
+        m_ready = 1;    // Cached MAC or broadcast = Ready
+    } else if (m_gateway.is_multicast()) {
+        m_ready = 1;    // Multicast IP address = Ready + Join
+        m_igmp.join(m_iface->igmp(), m_gateway);
     } else if (m_gateway.is_unicast()) {
         m_ready = 0;    // Unknown MAC = Start ARP query
-        m_iface->m_arp.send_query(m_gateway);
+        m_iface->arp()->send_query(m_gateway);
     } else {
         m_ready = 0;    // Invalid IP = Halt
     }
 }
 
 void Address::connect(const Addr& dstaddr, const MacAddr& dstmac, const VlanTag& vtag) {
+    // Cleanup existing connection, if any.
+    close();
+
     // User has provided all required parameters.
     // Note: DHCP requires dstaddr = 0 for some edge-cases.
     m_dstmac    = dstmac;
@@ -78,16 +90,28 @@ void Address::connect(const Addr& dstaddr, const MacAddr& dstmac, const VlanTag&
     m_gateway   = ip::ADDR_NONE;
     m_vtag      = vtag;
     m_ready     = (dstmac != MACADDR_NONE) ? 1 : 0;
+
+    // Are we joining a multicast group?
+    if (m_dstaddr.is_multicast()) {
+        m_gateway = m_dstaddr;
+        m_igmp.join(m_iface->igmp(), m_gateway);
+    }
 }
 
 void Address::retry() {
     // Retry ARP query (automatic address resolution only).
     if (m_iface && !m_ready) {
-        m_iface->m_arp.send_query(m_gateway, m_vtag);
+        m_iface->arp()->send_query(m_gateway, m_vtag);
     }
 }
 
 void Address::close() {
+    // If applicable, leave the multicast group.
+    if (m_iface && m_gateway.is_multicast()) {
+        m_igmp.leave(m_iface->igmp());
+    }
+
+    // Reset to the idle state.
     m_dstmac    = MACADDR_BROADCAST;
     m_dstaddr   = ip::ADDR_NONE;
     m_gateway   = ip::ADDR_NONE;
@@ -95,7 +119,7 @@ void Address::close() {
 }
 
 satcat5::net::Dispatch* Address::iface() const
-    {return m_iface;}
+    { return m_iface; }
 
 satcat5::io::Writeable* Address::open_write(unsigned len) {
     if (m_ready) {
@@ -103,7 +127,7 @@ satcat5::io::Writeable* Address::open_write(unsigned len) {
         return m_iface->open_write(m_dstmac, m_vtag, m_dstaddr, m_proto, len);
     } else if (m_iface && m_arp_tref.interval_msec(SATCAT5_ARP_RETRY_MSEC)) {
         // If we haven't gotten an ARP reply, try again subject to rate-limit.
-        m_iface->m_arp.send_query(m_gateway, m_vtag);
+        m_iface->arp()->send_query(m_gateway, m_vtag);
     }
     return 0;   // Unable to send.
 }
@@ -116,7 +140,8 @@ bool Address::matches_reply_address() const {
     if (!m_iface) return false;
     bool eth_match = m_dstmac.is_multicast() || m_dstmac == m_iface->reply_mac();
     bool ip_match  = m_dstaddr.is_multicast() || m_dstaddr == m_iface->reply_ip();
-    bool vid_match = m_iface->reply_vtag().vid() == m_vtag.vid();
+    bool vid_check = m_iface->reply_vtag().vid() && m_vtag.vid();
+    bool vid_match = (!vid_check) || (m_iface->reply_vtag().vid() == m_vtag.vid());
     return eth_match && ip_match && vid_match;
 }
 
@@ -150,7 +175,7 @@ void Address::gateway_change(const Addr& dstaddr, const Addr& gateway) {
         // Otherwise, initiate an ARP query.
         auto route = m_iface->route_lookup(dstaddr);
         if (route.dstmac.is_valid()) m_dstmac = route.dstmac;
-        else m_iface->m_arp.send_query(m_gateway);
+        else m_iface->arp()->send_query(m_gateway);
         // In either case, keep the socket open and ready. The previous
         // gateway can keep forwarding packets until we get an ARP response.
     }

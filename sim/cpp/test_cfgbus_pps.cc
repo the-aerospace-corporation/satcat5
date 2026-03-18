@@ -56,6 +56,7 @@ TEST_CASE("cfgbus_ppsi") {
         timer.sim_wait(1000);
         // Confirm the first pulse was processed.
         CHECK(dbg.prev() == -0x123456789ABll);
+        CHECK(uut.last_pps() == satcat5::ptp::Time(0x123456789ABll));
         // Write another pulse with offset = 999,999,999 nsec.
         regs[REG_PPSI].read_push(0x40000000u);
         regs[REG_PPSI].read_push(0x40000001u);
@@ -65,6 +66,8 @@ TEST_CASE("cfgbus_ppsi") {
         timer.sim_wait(1000);
         // Confirm the second pulse was processed.
         CHECK(dbg.prev() == 65536);
+        CHECK(uut.last_pps() == satcat5::ptp::Time(1, 0) +
+            satcat5::ptp::Time(0x3B9AC9FF0000ll));
     }
 
     // Change the edge-detection mode.

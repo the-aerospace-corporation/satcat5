@@ -54,6 +54,8 @@ namespace satcat5 {
             // Network interface accessors:
             inline satcat5::ip::Dispatch* iface() const
                 { return m_ip; }                // IP interface
+            inline satcat5::igmp::Client* igmp() const
+                { return m_ip->igmp(); }
             inline satcat5::eth::MacAddr macaddr() const
                 { return m_ip->macaddr(); }     // Source MAC address
 
@@ -95,7 +97,7 @@ namespace satcat5 {
             // Helper functions for assigning header parameters
             satcat5::eth::Header get_dst_eth(satcat5::ptp::DispatchTo addr) const;
             satcat5::udp::Port get_dst_port(u8 ptp_msg_type) const;
-            satcat5::ip::Addr get_dst_ip(satcat5::ptp::DispatchTo addr) const;
+            satcat5::ip::Addr get_dst_ip(u8 ptp_msg_type, satcat5::ptp::DispatchTo addr) const;
 
             // Pointers to interfaces and event handlers.
             satcat5::ptp::Interface* const m_iface;

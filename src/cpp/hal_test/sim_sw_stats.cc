@@ -6,12 +6,8 @@
 #include <hal_test/sim_sw_stats.h>
 
 using satcat5::cfg::IoStatus;
-using satcat5::cfg::REGS_PER_DEVICE;
 using satcat5::eth::SwitchLogStats;
 using satcat5::test::SimSwitchStats;
-
-static constexpr unsigned REGS_PER_PORT = 16;
-static constexpr unsigned MAX_PORTS = REGS_PER_DEVICE / REGS_PER_PORT;
 
 SimSwitchStats::SimSwitchStats(satcat5::eth::SwitchCore* sw)
     : SwitchLogStats(m_accum, MAX_PORTS)

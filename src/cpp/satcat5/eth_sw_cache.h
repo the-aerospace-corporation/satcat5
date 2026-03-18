@@ -62,6 +62,8 @@ namespace satcat5 {
                 { m_cache.clear(); return true; }
             inline bool mactbl_learn(bool enable)       // Enable automatic learning?
                 { m_learn = enable; return true; }
+            inline bool mactbl_learn() const            // Learning enabled?
+                { return m_learn; }
             //!@}
 
         protected:

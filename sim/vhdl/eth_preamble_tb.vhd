@@ -185,7 +185,7 @@ end process;
 uut_rx : entity work.eth_preamble_rx
     generic map(
     DV_XOR_ERR  => DV_XOR_ERR,
-    REP_ENABLE  => true)
+    AUTO_REP    => true)
     port map(
     raw_clk     => clk_100,
     raw_lock    => reset_n,

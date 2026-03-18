@@ -55,6 +55,8 @@ namespace satcat5 {
             SATCAT5_PMASK_TYPE vlan_get_mask(u16 vid);
             //! Limit the specified VID to the designated port(s).
             void vlan_set_mask(u16 vid, SATCAT5_PMASK_TYPE mask);
+            //! Query a port's tag policy and other VLAN settings.
+            VtagPolicy vlan_get_port(unsigned port) const;
             //! Set a port's tag policy and other VLAN settings.
             void vlan_set_port(const VtagPolicy& cfg);
             //! Port should join VLAN, updating #vlan_get_mask.

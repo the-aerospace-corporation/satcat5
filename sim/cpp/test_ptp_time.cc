@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2022-2024 The Aerospace Corporation.
+// Copyright 2022-2026 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Test cases for the "ptp::Time" class
@@ -128,20 +128,23 @@ TEST_CASE("ptp_time") {
 
     SECTION("Logging") {
         log.suppress("TimestampTest");
-        Time t(0x123456789ABCull, 0x11223344u);
-        satcat5::log::Log(satcat5::log::INFO, "TimestampTest").write_obj(t);
-        CHECK(log.contains("TimestampTest = 0x123456789ABC.112233440000"));
+        Time t1(12345678910ull, 11223344u);
+        satcat5::log::Log(satcat5::log::INFO, "TimestampTest").write_obj(t1);
+        CHECK(log.contains("TimestampTest = +12345678910.11223344"));
+        Time t2(-1ull, 55667788u);
+        satcat5::log::Log(satcat5::log::INFO, "TimestampTest").write_obj(t2);
+        CHECK(log.contains("TimestampTest = -1.55667788"));
     }
 
     SECTION("DateTime") {
-        Time t1(315532819, 0);          // GPS epoch
+        Time t1(315964819, 0);          // GPS epoch
         CHECK(t1.to_datetime() == 0);
         t1 += Time(SUBNS_PER_SEC);      // Add one second
         CHECK(t1.to_datetime() == 1000);
 
         Time t2 = from_datetime(2000);  // GPS epoch + 2 seconds
         CHECK(t2.to_datetime() == 2000);
-        CHECK(t2.field_secs() == 315532821);
+        CHECK(t2.field_secs() == 315964821);
     }
 
     SECTION("Abs") {

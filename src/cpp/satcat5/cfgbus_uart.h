@@ -26,10 +26,11 @@ namespace satcat5 {
             //! Initialize this UART and link to a specific register bank.
             Uart(satcat5::cfg::ConfigBus* cfg, unsigned devaddr);
 
-            //! Set baud rate.
+            //! Set baud rate and flow-control.
             void configure(
                 unsigned clkref_hz,     // ConfigBus clock rate
-                unsigned baud_hz);      // Desired UART baud rate
+                unsigned baud_hz,       // Desired UART baud rate
+                bool ignore_cts = true);
 
         private:
             // Event handlers.

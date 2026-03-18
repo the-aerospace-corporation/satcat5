@@ -12,6 +12,7 @@ Protocol (SPP), as defined in:
 """
 
 import crcmod.predefined
+import logging
 import satcat5_uart
 from struct import pack, unpack
 
@@ -21,6 +22,21 @@ CCSDS_IDLE_BYTE = b'\xA5'
 CCSDS_IDLE_APID = 0x7FF
 CCSDS_SPP_HDR_LEN = 6
 CCSDS_SPP_IDX_MASK = 0x7FF
+
+# If ScaPy is installed, define a very basic packet parser.
+# TODO: Something more feature-rich that understands BPDU/MPDU?
+try:
+    from scapy.all import BitField, Packet
+    from scapy.utils import PcapWriter
+    SCAPY_SUPPORTED = True
+    class AosPacket(Packet):
+        name = "AOS"
+        fields_desc = [
+            BitField('id',      0, 16),
+            BitField('count',   0, 24),
+            BitField('signal',  0,  8)]
+except:
+    SCAPY_SUPPORTED = False
 
 def get_ccsds_spp_hdr(bytes, ver = 0x0, packet_type = 0, sec_flg = 0, apid = CCSDS_IDLE_APID, seq_flg = 0x10, seq_num = 0):
     """
@@ -357,14 +373,15 @@ class AsyncCCSDSPort:
     """CCSDS port wrapper. Uses CCSDS Blue Book 131.0-B-5 Frame Synchronization Marker
     with CCSDS Blue Book 732.0-B-4 Transfer Frames to
     send/receive CCSDS Blue Book 133.0-B-2 Space Protocol Packets"""
-    def __init__(self, portname, logger, baudrate=921600, transfer_frame_size=-1, protocol_data_unit="M", verbose=False):
+    def __init__(self, portname, logger=None, baudrate=921600, transfer_frame_size=-1, protocol_data_unit="M", verbose=False):
         """
         Construct a new AsyncCCSDSPort object.
         Args:
             portname (str):
                 UART port name (see AsyncSerialPort, list_uart_interfaces)
-            logger (Logger):
-                Python logger object for error messages
+            logger (Logger or None):
+                Python logger object for error messages.
+                Default is None, which prints a message to the console.
             baudrate (int):
                 Baud rate for the underlying UART, in bits/sec.  Default 921,600.
             transfer_frame_size (int):
@@ -378,8 +395,11 @@ class AsyncCCSDSPort:
         """
         self.lbl = portname
         # All other initialization...
+        if logger is None:
+            logger = logging.getLogger(__name__)
         self._callback = None
         self._logger = logger
+        self._pcap = None
         self._verbose = verbose
         try:
             self._pdu = protocol_data_unit[0].upper()
@@ -412,6 +432,10 @@ class AsyncCCSDSPort:
         """Close this UART port."""
         if callable(getattr(self._serial, 'close', None)):
             self._serial.close()
+        if self._pcap is not None:
+            self._pcap.flush()
+            self._pcap.close()
+            self._pcap = None
 
     def set_callback(self, callback):
         """
@@ -425,6 +449,20 @@ class AsyncCCSDSPort:
             callback (function): The new callback function.
         """
         self._callback = callback
+
+    def set_pcap(self, filename):
+        """
+        Enable packet-capture on this interface, recording all incoming and
+        outgoing frames to the designated PCAP or PCAPNG file.  Use of this
+        method requires ScaPy to be installed.
+
+        Args:
+            filename (string): Location for the output file.
+        """
+        # Use linktype = 147 (user-defined) so it can load in Wireshark
+        # without attempting to parse each one as an Ethernet frame.
+        if SCAPY_SUPPORTED:
+            self._pcap = PcapWriter(filename, linktype=147)
 
     def msg_rcvd(self, aos_frame):
         """
@@ -469,6 +507,9 @@ class AsyncCCSDSPort:
         frm_bytes = aos_frame[:-2]
         rcv_crc   = aos_frame[-2:]
         ref_crc   = ccsds_crc(frm_bytes)
+        # If packet capture is enabled, log it now.
+        if self._pcap is not None:
+            self._pcap.write(AosPacket(frm_bytes))
         # discard frames and partial packets with failed CRC
         if ref_crc != rcv_crc:
             [rcv_int] = unpack('<H', rcv_crc)
@@ -535,3 +576,5 @@ class AsyncCCSDSPort:
                 self._logger.info('%s: CCSDS-Tx: %u/%u bytes (msg/marker+frame)'
                     % (self.lbl, len(msg), len(aos_frame)))
             self._serial.msg_send(aos_frame, blocking)
+            if self._pcap is not None:
+                self._pcap.write(AosPacket(aos_frame))

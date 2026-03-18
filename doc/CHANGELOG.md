@@ -4,6 +4,25 @@
 
 This log will be updated for each new release, but may not reflect the latest development branch(es).
 
+## v2.9.0 (2026 March)
+
+* Added a ConfigBus emulator for the eth::SwitchConfig driver.
+* Added an IGMP software client and server, with tweaks to gateware IGMP multicast handling.
+* Added GitHub Copilot Agent file to help onboard new developers to C++ software stack.
+* Added PCAP support to the Python APIs for CCSDS, Ethernet, and SLIP.
+* Added port::BufferAdapter is a drop-in replacement for NullAdapter, but with VLAN support.
+* Added support for SGMII rate auto-negotitation via TX_CFG_REG for PHYs as an alternative to auto-detection.
+* Fixed a bug in cfg::Hdlc that could deadlock data_rcvd() notifications.
+* Fixed an illegal use of IDELAYE3 on clock input signals.
+* Fixed issues with SGMII repetition (10M/100M modes).
+* Fixed GPS epoch conversion in PTP software stack.
+* Fixed MAC learning issue after switch reset.
+* Fixed NTP header leap-seconds value preventing usage by some client implementations.
+* Fixed Polarfire DDR I/O IP core generation.
+* Fixed software switch control when priority ethertypes are disabled.
+* Improved Polarfire SGMII clock distributed via shared-clock chaining mechanism.
+* Improved PTP ANNOUNCE message handling with log-variance estimation and clockIdentify fix.
+
 ## v2.8.0 (2025 October)
 
 * Added coarse options for PTP clock-crossing (less precise, more robust).

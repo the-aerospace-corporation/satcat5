@@ -21,9 +21,12 @@
 namespace satcat5 {
     namespace cfg {
         //! Interface driver for the cfgbus_hdlc block.
+        //! Note: This driver preserves packet boundaries in outgoing data,
+        //! but discards packet boundaries in incoming received data.
         class Hdlc
             : public    satcat5::io::BufferedIO
             , protected satcat5::cfg::Interrupt
+            , protected satcat5::poll::Timer
         {
         public:
             //! Initialize this HDLC and link to a specific register bank.
@@ -46,9 +49,13 @@ namespace satcat5 {
             // Event handlers.
             void data_rcvd(satcat5::io::Readable* src);
             void irq_event();
+            void timer_event();
 
             // Control registers
             satcat5::cfg::Register m_ctrl;
+
+            // Pending end-of-packet marker?
+            bool m_tx_eof;
 
             // Raw Tx/Rx working buffers are NOT publicly accessible.
             u8 m_txbuff[SATCAT5_HDLC_BUFFSIZE];

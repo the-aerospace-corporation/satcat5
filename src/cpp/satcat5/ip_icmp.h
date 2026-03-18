@@ -106,8 +106,8 @@ namespace satcat5 {
             //! Incoming ICMP errors (e.g., "Destination Unreachable...") are
             //! written to the SatCat5 log.  If log message forwarding fails
             //! with another ICMP error, this can produce an infinite loop.
-            //! Prevent this with a rate limit, default once per 500 msec.
-            //! An interval of zero disables this rate-limit.
+            //! Prevent this with a rate limit (SATCAT5_ICMP_LOG_COOLDOWN) or
+            //! override at runtime. A value of zero disables this rate-limit.
             inline void set_log_cooldown(unsigned wait_msec)
                 { m_wait_msec = wait_msec; }
 

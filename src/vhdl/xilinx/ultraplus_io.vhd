@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- Copyright 2022-2023 The Aerospace Corporation.
+-- Copyright 2022-2025 The Aerospace Corporation.
 -- This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 --------------------------------------------------------------------------
 --
@@ -59,6 +59,7 @@ use     ieee.numeric_std.all;
 use     ieee.std_logic_1164.all;
 library unisim;
 use     unisim.vcomponents.all;
+use     work.common_functions.real_max;
 
 entity clk_input is
     generic (
@@ -75,68 +76,40 @@ end clk_input;
 
 architecture xilinx of clk_input is
 
--- IDELAYE3 'TIME' format for DELAY_VALUE is in picoseconds
-constant DELAY_PSEC : integer :=
-    integer(round(DELAY_NSEC * 1000.0));
+-- If phase-shift is requested, use an MMCM.
+-- IDELAYE3 signals cannot be routed to clock buffers.
+constant MMCM_ENABLE : boolean := DESKEW_EN or (DELAY_NSEC >= 0.0);
 
 -- Choose multiplier ratio to put VCO ~1000 MHz (max range 600-1400 MHz).
-constant MMCM_RATIO : integer :=
-    integer(round(1000.0 / CLKIN_MHZ));
+constant MMCM_RATIO : real := 0.125 * round(8000.0 / CLKIN_MHZ);
+
+-- Convert requested delay to degrees of phase-shift.
+constant DELAY_PHASE : real := 0.360 * CLKIN_MHZ * real_max(0.0, DELAY_NSEC);
 
 -- Declare intermediate clock signals.
-signal clk_dly, clk_mmcm, clk_buf : std_logic;
+signal clk_fb, clk_mmcm, clk_buf : std_logic;
 
 begin
 
--- Optional input delay.
-gen_dly_en : if (DELAY_PSEC >= 0) generate
-    u_dly : IDELAYE3
-        generic map (
-        DELAY_TYPE              => "FIXED",
-        DELAY_FORMAT            => "TIME",
-        DELAY_VALUE             => DELAY_PSEC,
-        REFCLK_FREQUENCY        => 200.0)
-        port map (
-        CLK         => '0',
-        LOAD        => '0',
-        RST         => '0',
-        CE          => '0',
-        INC         => '0',
-        IDATAIN     => clk_pin,
-        DATAIN      => '0',
-        DATAOUT     => clk_dly,
-        CNTVALUEIN  => (others => '0'),
-        CNTVALUEOUT => open,
-        CASC_IN     => '0',
-        CASC_OUT    => open,
-        CASC_RETURN => '0',
-        EN_VTC      => '0'
-    );
-end generate;
-
-gen_dly_no : if (DELAY_PSEC < 0) generate
-    clk_dly <= clk_pin;
-end generate;
-
 -- Optional clock-deskew using MMCM.
-gen_deskew : if DESKEW_EN generate
-    -- Note: Use "BUF_IN" compensation mode, or Vivado will attempt to null
-    --       the IDELAYE3 propagation delay, which we don't want.
+gen_deskew : if MMCM_ENABLE generate
     u_mmcm : MMCME3_ADV
         generic map (
-        CLKFBOUT_MULT_F => real(MMCM_RATIO),
-        CLKIN1_PERIOD   => 1000.0 / CLKIN_MHZ,
-        COMPENSATION    => "BUF_IN")    -- ZHOLD, BUF_IN, EXTERNAL, INTERNAL
+        CLKFBOUT_MULT_F  => MMCM_RATIO,
+        CLKIN1_PERIOD    => 1000.0 / CLKIN_MHZ,
+        CLKOUT0_DIVIDE_F => MMCM_RATIO,
+        CLKOUT0_PHASE    => DELAY_PHASE,
+        COMPENSATION     => "INTERNAL")  -- ZHOLD, BUF_IN, EXTERNAL, INTERNAL
         port map (
         -- Clock feedback:
         RST             => reset_p,
         PWRDWN          => shdn_p,
         CLKINSEL        => '1', -- Select CLKIN1
-        CLKIN1          => clk_dly,
-        CLKFBOUT        => clk_mmcm,
-        CLKFBIN         => clk_buf,
+        CLKIN1          => clk_pin,
+        CLKFBOUT        => clk_fb,
+        CLKFBIN         => clk_fb,
         -- Unused outputs:
-        CLKOUT0         => open,
+        CLKOUT0         => clk_mmcm,
         CLKOUT0B        => open,
         CLKOUT1         => open,
         CLKOUT1B        => open,
@@ -168,8 +141,8 @@ gen_deskew : if DESKEW_EN generate
         CDDCREQ         => '0');
 end generate;
 
-gen_direct : if not DESKEW_EN generate
-    clk_mmcm <= clk_dly;
+gen_direct : if not MMCM_ENABLE generate
+    clk_mmcm <= clk_pin;
 end generate;
 
 -- Regional or global clock buffer.

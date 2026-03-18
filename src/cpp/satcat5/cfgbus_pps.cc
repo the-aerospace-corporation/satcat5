@@ -4,7 +4,6 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/cfgbus_pps.h>
-#include <satcat5/ptp_time.h>
 #include <satcat5/ptp_tracking.h>
 
 using satcat5::cfg::PpsInput;
@@ -15,6 +14,7 @@ using satcat5::cfg::Register;
 PpsInput::PpsInput(Register reg, PpsInput::Edge mode)
     : m_reg(reg)
     , m_callback(0)
+    , m_pps_time(0)
     , m_mode(mode)
     , m_offset(0)
     , m_period(0)
@@ -52,9 +52,14 @@ bool PpsInput::read_pulse() {
         // Is the pulse descriptor valid?
         ok = (reg1 & REG_VALID) && (reg2 & REG_VALID) && (reg3 & REG_LAST);
         if (ok) {
-            // Read the fractional-second component in reg2 and reg3.
-            // (Discard the whole-seconds component in reg0 and reg1.)
+            // Read the 48-bit whole-second component in reg0 and reg1 and the
+            // 48-bit fractional-second component in reg2 and reg3.
+            u64 secs = u64(reg0 & REG_DATA) << 24 | u64(reg1 & REG_DATA);
             u64 subns = u64(reg2 & REG_DATA) << 24 | u64(reg3 & REG_DATA);
+
+            // No ptp::Time constructor for 64-bit subns with seconds.
+            m_pps_time = satcat5::ptp::Time(secs, 0)
+                + satcat5::ptp::Time((s64) subns); // Safe cast of 48-bit value.
 
             // Calculate phase-difference from nominal.
             // PPS signal should be aligned to the GPS epoch + m_offset.
@@ -71,7 +76,7 @@ bool PpsInput::read_pulse() {
             // Timestamp of +0.1 sec means our local clock is running fast,
             // so slow it down by applying a negative control signal.
             satcat5::ptp::Time delta(-phase);
-            if (m_callback) m_callback->update(delta);
+            if (m_callback) m_callback->pps_event(m_pps_time, delta);
         }
     }
 

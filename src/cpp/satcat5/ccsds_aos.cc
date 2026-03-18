@@ -67,14 +67,14 @@ Header& Header::operator++() {
 
 Channel::Channel(
     Dispatch* iface, Readable* src, Writeable* dst,
-    u8 svid, u8 vcid, bool pkt)
+    u8 scid, u8 vcid, bool pkt)
     : Protocol(satcat5::net::TYPE_NONE)
     , m_iface(iface)
     , m_src(src)
     , m_dst(dst)
     , m_rx_spp(m_rx_tmp, sizeof(m_rx_tmp))
-    , m_rx_next(svid, vcid)
-    , m_tx_next(svid, vcid)
+    , m_rx_next(scid, vcid)
+    , m_tx_next(scid, vcid)
     , m_rx_state(pkt ? State::RESYNC : State::RAW)
     , m_rx_rem(0)
     , m_tx_busy(0)
@@ -105,6 +105,13 @@ void Channel::desync() {
         m_dst->write_abort();
         m_iface->error_incr();
     }
+}
+
+void Channel::set_wildcard() {
+    // Accept incoming packets from any SCID and VCID pair.
+    // Outgoing packets continue to use the constructor SCID and VCID.
+    // Set the filter to match only against the CCSDS header as a bypass.
+    m_filter = Type(u32(VERSION_2), u32(VERSION_MASK));
 }
 
 // Callback for each incoming AOS transfer frame.

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <satcat5/igmp_client.h>
 #include <satcat5/io_readable.h>
 #include <satcat5/list.h>
 #include <satcat5/polling.h>
@@ -203,6 +204,10 @@ namespace satcat5 {
 
             // PTP dispatch object.
             satcat5::ptp::Dispatch m_iface;
+
+            // Bind to required PTP multicast addresses.
+            satcat5::igmp::Address m_mcast_primary;
+            satcat5::igmp::Address m_mcast_pdelay;
 
             // List of registered TLV handlers (see "ptp_tlv.h").
             friend satcat5::ptp::TlvHandler;

@@ -82,12 +82,21 @@ ipcore_add_param SHAKE_WAIT bool false\
     {Block data transfer until MAC/PHY handshake completed?}
 ipcore_add_param SHARED_EN bool true\
     {Include shared logic? Required for first MGT in each quad.}
+ipcore_add_param AUTO_RATE bool true\
+    {Auto-detect link partner rate or read SGMII auto-negotiation register?}
+ipcore_add_param TX_RATE_RST long 1000\
+    {Transmit rate out of reset, in megabits per second.}
+ipcore_add_param TX_CFG_REG bitString 0x4001\
+    {SGMII auto-negotiation config register, see Cisco ENG-46158.}
 ipcore_add_param REFCLK_SRC long 0\
     {Select the MGT reference source (0 or 1).}
 ipcore_add_param MGT_TYPE string $sgmii_raw_mgt_type\
     {Transceiver type} false
 ipcore_add_param REFCLK_FREQ_HZ string $sgmii_raw_refclk_hz\
     {Frequency of MGT reference clock} false
+
+# Bitstring needs explicit length
+set_property value_bit_string_length 16 [ipx::get_user_parameters TX_CFG_REG -of_objects $ip]
 
 # Enable the shared_* ports based on SHARED_EN.
 set_property enablement_dependency {$SHARED_EN} [ipx::get_bus_interfaces GTREFCLK -of_objects $ip]

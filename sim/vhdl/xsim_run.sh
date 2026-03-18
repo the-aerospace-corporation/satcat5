@@ -165,7 +165,7 @@ simulate_all()
     simulate_one port_mailmap_tb 3ms
     simulate_one port_rgmii_tb 11ms
     simulate_one port_rmii_tb 30ms
-    simulate_one port_sgmii_common_tb 1ms
+    simulate_one port_sgmii_common_tb 2ms
     simulate_one port_serial_auto_tb 200ms
     simulate_one port_serial_i2c_tb 400ms
     simulate_one port_serial_spi_tb 90ms

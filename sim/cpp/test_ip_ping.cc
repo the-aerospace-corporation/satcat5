@@ -77,7 +77,7 @@ TEST_CASE("Ping") {
     SECTION("gateway_change") {
         // Simulate a gateway-change event during an ARPING.
         net_a.m_ping.arping(IP_B, 1);
-        net_a.m_ip.m_arp.gateway_change(IP_B, IP_C);
+        net_a.m_ip.arp()->gateway_change(IP_B, IP_C);
         // Confirm that we don't get any errors.
         CHECK(log.empty());
     }

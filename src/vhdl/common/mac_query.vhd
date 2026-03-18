@@ -226,8 +226,10 @@ begin
         -- Latch new command arguments, if valid.
         mac_clear_i <= cfg_start_i and bool2bit(cfg_opcode = OPCODE_CLEAR);
 
-        if (cfg_start_i = '1' and cfg_opcode = OPCODE_LEARN) then
-            mac_learn_i <= cfg_oparg(0);
+        if (ctrl_reset = '1') then
+            mac_learn_i <= '1';     -- Global reset
+        elsif (cfg_start_i = '1' and cfg_opcode = OPCODE_LEARN) then
+            mac_learn_i <= cfg_oparg(0); -- Update learning mode
         end if;
 
         if (cfg_start_i = '1' and cfg_oparg < TABLE_SIZE) then

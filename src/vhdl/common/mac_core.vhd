@@ -65,7 +65,7 @@ entity mac_core is
     SUPPORT_VPORT   : boolean;          -- Support virtual-LAN port control?
     SUPPORT_VRATE   : boolean;          -- Support virtual-LAN rate control?
     MISS_BCAST      : std_logic := '1'; -- Broadcast or drop unknown MAC?
-    IGMP_TIMEOUT    : positive := 63;   -- IGMP timeout (0 = disable)
+    IGMP_TIMEOUT    : natural := 0;     -- IGMP timeout (0 = disable)
     PTP_MIXED_STEP  : boolean := true;  -- Support PTP format conversion?
     CACHE_POLICY    : repl_policy := TCAM_REPL_PLRU);
     port (
@@ -512,7 +512,7 @@ gen_igmp : if (IGMP_TIMEOUT > 0) generate
 end generate;
 
 -- Packet-priority lookup by EtherType (optional)
-gen_priority : if (CFGBUS_ENABLE and PRI_TABLE_SIZE > 0) generate
+gen_priority1 : if (CFGBUS_ENABLE and PRI_TABLE_SIZE > 0) generate
     u_priority : entity work.mac_priority
         generic map(
         DEVADDR     => DEV_ADDR,
@@ -532,6 +532,17 @@ gen_priority : if (CFGBUS_ENABLE and PRI_TABLE_SIZE > 0) generate
         cfg_ack     => cfg_acks(10),
         clk         => clk,
         reset_p     => reset_p);
+end generate;
+
+gen_priority0 : if (CFGBUS_ENABLE and PRI_TABLE_SIZE = 0) generate
+    u_priority_disabled : cfgbus_readonly
+        generic map(
+        DEVADDR     => DEV_ADDR,
+        REGADDR     => SW_ADDR_PRIORITY)
+        port map(
+        cfg_cmd     => cfg_cmd,
+        cfg_ack     => cfg_acks(10),
+        reg_val     => (others => '0'));
 end generate;
 
 -- Virtual-LAN lookup (optional)

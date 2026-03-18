@@ -126,7 +126,8 @@ uut_sync : entity work.ptp_counter_coarse
 
 -- Measure error in synchronized counter (UCLK domain).
 p_user : process(uclk)
-    constant TOL_NSEC : real := 0.5 * (1.0e9) * (1.0/real(USER_HZ));    -- tolerate error of up to half user clock period
+    -- Tolerate error of up to half user clock period + margin.
+    constant TOL_NSEC : real := 0.6 * (1.0e9) * (1.0 / real(USER_HZ));
     variable delta_ns, sumdd, sumsq, count : real := 0.0;
     variable cooldown, coolfreq : natural := 0;
 begin

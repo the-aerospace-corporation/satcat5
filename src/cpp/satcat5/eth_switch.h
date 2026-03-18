@@ -15,7 +15,14 @@
 //! the classes defined in "port_adapter.h".
 //!
 //! An extensible plugin system directs packets to the appropriate
-//! destination(s). \see eth_sw_plugin.h.
+//! destination(s). \see eth_plugin.h.
+//!
+//! Typically a SwitchCore is instantiated along side SwitchCache:
+//! \code
+//! satcat5::eth::SwitchCore<16385> my_sw_switch;
+//! satcat5::eth::SwitchCache<64> cache(&my_sw_switch);
+//! \endcode
+//! If the SwitchCore be instantiated by itself, it will act like a hub.
 //!
 //! Precision Time Protocol (PTP) is not currently supported.
 
@@ -153,8 +160,10 @@ namespace satcat5 {
             //! Internal event-handlers called from deliver(...).
             //!@{
             void process_stats(const satcat5::eth::PluginPacket& pkt);
-            satcat5::util::optional<unsigned> process_plugins(satcat5::eth::PluginPacket& pkt);
-            satcat5::util::optional<unsigned> pkt_has_dropped(satcat5::eth::PluginPacket& pkt);
+            satcat5::util::optional<unsigned> process_plugins(
+                satcat5::eth::PluginPacket& pkt);
+            satcat5::util::optional<unsigned> pkt_has_dropped(
+                satcat5::eth::PluginPacket& pkt, unsigned mask);
             unsigned deliver_switch(const satcat5::eth::PluginPacket& pkt);
             //!@}
 

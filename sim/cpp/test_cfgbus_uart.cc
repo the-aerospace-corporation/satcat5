@@ -37,7 +37,7 @@ public:
     MockUart() : m_cfg(0) {}
 
     void check_baud(unsigned baud) {
-        CHECK(m_cfg == satcat5::util::div_round_u32(HW_CLKREF, baud));
+        CHECK((m_cfg & 0x7FFFFFFF) == satcat5::util::div_round_u32(HW_CLKREF, baud));
     }
 
     // Write a string of bytes to the UART receive buffer.

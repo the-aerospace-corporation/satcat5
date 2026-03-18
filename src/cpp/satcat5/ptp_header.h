@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-// Copyright 2023-2025 The Aerospace Corporation.
+// Copyright 2023-2026 The Aerospace Corporation.
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 // Shared message header for the Precision Time Protocol (PTP / IEEE-1588)
@@ -137,10 +137,16 @@ namespace satcat5 {
             //! ClockClass values from Section 7.6.2.5, Table 4.
             //! (Indicates whether a clock is traceable to NIST or similar.)
             static constexpr u8
-                CLASS_PRIMARY   = 6,        // Primary reference
-                CLASS_APP_SPEC  = 13,       // Application-specific reference
-                CLASS_DEFAULT   = 248,      // Any other clock
-                CLASS_SLAVE     = 255;      // Any slave-only clock
+                CLASS_PRIMARY           = 6,    // Primary reference
+                CLASS_PRIMARY_HOLDOVER  = 7,    // Primary (hold-over mode)
+                CLASS_APP_SPEC          = 13,   // Application-specific reference
+                CLASS_APP_SPEC_HOLDOVER = 14,   // App-specific (hold-over mode)
+                CLASS_PRIMARY_DEG_A     = 52,   // Primary (degraded)
+                CLASS_APP_SPEC_DEG_A    = 58,   // App-specific (degraded)
+                CLASS_PRIMARY_DEG_B     = 187,  // Primary (degraded)
+                CLASS_APP_SPEC_DEG_B    = 193,  // App-specific (degraded)
+                CLASS_DEFAULT           = 248,  // Any other clock
+                CLASS_SLAVE             = 255;  // Any slave-only clock
 
             //! Accuracy enumeration from Section 7.6.2.6, Table 5.
             static constexpr u8
@@ -177,7 +183,8 @@ namespace satcat5 {
             //! The stability heuristic defined in Section 7.6.3.3
             //! is a fixed-point representation of the Allan deviation:
             //!      round(512 * log2(adev_sec) + 32768)
-            //! The constants defined below are precalculated examples.
+            //! The constants defined below are precalculated examples for a
+            //! series of given standard deviations.
             static constexpr u16
                 VARIANCE_1PSEC      = 0x3046,
                 VARIANCE_10PSEC     = 0x36EB,
@@ -216,6 +223,11 @@ namespace satcat5 {
             //! Write clock information to the given sink.
             void write_to(satcat5::io::Writeable* wr) const;
         };
+
+        //! Compute the "offsetScaledLogVariance" metric (Section 7.6.3.3)
+        //! from a measurement of PPS variance, in picoseconds.
+        u16 calc_log_variance(u64 variance_ps);
+
 
         //! Default clock with extremely low priority on all metrics.
         constexpr satcat5::ptp::ClockInfo DEFAULT_CLOCK = {

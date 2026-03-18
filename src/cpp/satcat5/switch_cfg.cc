@@ -14,31 +14,6 @@ using satcat5::eth::SwitchConfig;
 using satcat5::eth::VlanRate;
 using satcat5::eth::VtagPolicy;
 
-// Define ConfigBus register map (see also: switch_types.vhd)
-constexpr unsigned REG_PORTCOUNT    = 0;    // Number of ports (read-only)
-constexpr unsigned REG_DATAPATH     = 1;    // Datapath width, in bits (read-only)
-constexpr unsigned REG_CORECLOCK    = 2;    // Core clock frequency, in Hz (read-only)
-constexpr unsigned REG_MACCOUNT     = 3;    // MAC-address table size (read-only)
-constexpr unsigned REG_PROMISC      = 4;    // Promisicuous port mask (read-write)
-constexpr unsigned REG_PRIORITY     = 5;    // Packet prioritization (read-write, optional)
-constexpr unsigned REG_PKTCOUNT     = 6;    // Packet-counting w/ filter (read-write)
-constexpr unsigned REG_FRAMESIZE    = 7;    // Frame size limits (read-only)
-constexpr unsigned REG_VLAN_PORT    = 8;    // VLAN port configuration (write-only)
-constexpr unsigned REG_VLAN_VID     = 9;    // VLAN connections: set VID (read-write)
-constexpr unsigned REG_VLAN_MASK    = 10;   // VLAN connections: set mask (read-write)
-constexpr unsigned REG_MACTBL_LSB   = 11;   // MAC-table control (read-write)
-constexpr unsigned REG_MACTBL_MSB   = 12;   // MAC-table control (read-write)
-constexpr unsigned REG_MACTBL_CTRL  = 13;   // MAC-table control (read-write)
-constexpr unsigned REG_MISS_BCAST   = 14;   // Miss-as-broadcast port mask (read-write)
-constexpr unsigned REG_PTP_2STEP    = 15;   // PTP "twoStep" mode flag (read-write)
-constexpr unsigned REG_VLAN_RATE    = 16;   // VLAN rate-control configuration (write-only)
-constexpr unsigned REG_LOGGING      = 17;   // Packet logging diagnostics (read-only)
-
-// Additional ConfigBus registers for each port.
-static constexpr unsigned REG_PORT(unsigned idx)       {return 512 + 16*idx;}
-static constexpr unsigned REG_PTP_RX(unsigned idx)     {return REG_PORT(idx) + 8;}
-static constexpr unsigned REG_PTP_TX(unsigned idx)     {return REG_PORT(idx) + 9;}
-
 // Define opcodes for REG_MACTBL_CTRL:
 constexpr u32 MACTBL_OPCODE_MASK                = 0xFF000000u;
 constexpr u32 MACTBL_ARGVAL_MASK                = 0x00FFFFFFu;
@@ -106,7 +81,11 @@ void SwitchConfig::set_miss_bcast(unsigned port_idx, bool enable) {
     u32 temp = m_reg[REG_MISS_BCAST];
     u32 mask = (1u << port_idx);
     util::set_mask_if(temp, mask, enable);
-    m_reg[REG_MISS_BCAST] = temp;
+    set_miss_mask(temp);
+}
+
+void SwitchConfig::set_miss_mask(u32 mask) {
+    m_reg[REG_MISS_BCAST] = mask;
 }
 
 u32 SwitchConfig::get_miss_mask() {

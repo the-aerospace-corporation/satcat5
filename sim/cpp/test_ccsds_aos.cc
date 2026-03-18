@@ -60,7 +60,7 @@ TEST_CASE("ccsds_aos") {
         satcat5::ccsds_aos::Header uut;
         CHECK(uut.read_from(&hdr));
         CHECK(uut.version() == satcat5::ccsds_aos::VERSION_2);
-        CHECK(uut.svid() == 1);
+        CHECK(uut.scid() == 1);
         CHECK(uut.vcid() == 2);
         CHECK(uut.count == 0x1234567);
         CHECK_FALSE(uut.replay());
@@ -211,5 +211,17 @@ TEST_CASE("ccsds_aos") {
         CHECK(satcat5::test::write(&phy_rx, sizeof(STRM), STRM));
         satcat5::poll::service_all();
         CHECK(satcat5::test::read(&dstp, make_spp(0, "Pkt")));
+    }
+
+    // Test wildcard-receive mode (i.e., ignore incoming SCID/VCID).
+    SECTION("wildcard") {
+        // Make a new Tx channel, then configure Rx in wildcard mode.
+        satcat5::io::StreamBufferHeap alt_src;
+        satcat5::ccsds_aos::Channel alt_ch(&link_src, &alt_src, 0, 123, 123, false);
+        ch_dstb.set_wildcard();
+        // Send from the new channel, receive through wildcard.
+        CHECK(satcat5::test::write(&alt_src, "Wildcard message!"));
+        satcat5::poll::service_all();
+        CHECK(satcat5::test::read(&dstb, "Wildcard message!"));
     }
 }

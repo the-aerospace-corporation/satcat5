@@ -43,6 +43,9 @@ entity port_sgmii_raw is
     MGT_TYPE    : string;               -- "gtx", "gty", "gty_plus", etc.
     REFCLK_SRC  : integer := 1;         -- 7-series only: REFCLK0 or REFCLK1?
     SHAKE_WAIT  : boolean := false;     -- Wait for MAC/PHY handshake?
+    AUTO_RATE   : boolean := true;      -- Auto-detect link partner rate?
+    TX_RATE_RST : port_rate_t := get_rate_word(1000);   -- TX rate out of reset
+    TX_CFG_REG  : sgmii_aneg_t := SGMII_ANEG_MAC;       -- See port_sgmii_common
     SHARED_EN   : boolean := true;      -- Does the IP-core include shared logic?
     VCONFIG     : vernier_config := VERNIER_DISABLED);
     port (
@@ -348,7 +351,10 @@ end generate;
 u_sgmii : entity work.port_sgmii_common
     generic map(
     MSB_FIRST   => false,
-    SHAKE_WAIT  => SHAKE_WAIT)
+    SHAKE_WAIT  => SHAKE_WAIT,
+    AUTO_RATE   => AUTO_RATE,
+    TX_RATE_RST => TX_RATE_RST,
+    TX_CFG_REG  => TX_CFG_REG)
     port map(
     tx_clk      => tx_clk125,
     tx_data     => tx_data10,

@@ -29,6 +29,7 @@
 
 #pragma once
 
+#include <satcat5/igmp_server.h>
 #include <satcat5/ip_stack.h>
 #include <satcat5/router2_deferfwd.h>
 #include <satcat5/router2_dispatch.h>
@@ -106,6 +107,8 @@ namespace satcat5 {
         //! Use this class to control an FPGA "router2_core.vhd" block,
         //! and optionally link additional software-defined ports.
         //! (i.e., A full-FPGA router or a hybrid FPGA/software router.)
+        //!
+        //! TODO: Add multicast support to the HDL router.
         template <unsigned BSIZE = 8192>
         class StackGateware : public satcat5::router2::StackCommon {
         public:
@@ -139,6 +142,8 @@ namespace satcat5 {
         //!
         //! Use this class for a pure-software router that does not use
         //! FPGA components (i.e., no integration with "router2_core.vhd").
+        //!
+        //! This variant supports multicast using IGMP.
         template <unsigned BSIZE = 16384>
         class StackSoftware : public satcat5::router2::StackCommon {
         public:
@@ -146,11 +151,16 @@ namespace satcat5 {
                 const satcat5::eth::MacAddr& local_mac, // Local MAC address
                 const satcat5::ip::Addr& local_ip)      // Local IP address
                 : StackCommon(local_mac, local_ip, &m_table, m_buff, BSIZE)
+                , m_igmp(&m_dispatch, &m_ip)
                 , m_table()
                 {}  // Nothing else to initialize.
 
+            inline satcat5::igmp::Server* igmp()
+                { return &m_igmp; }
+
         protected:
             // Internal variables.
+            satcat5::igmp::ServerStatic<64> m_igmp;
             satcat5::ip::Table m_table;
             u8 m_buff[BSIZE];
         };

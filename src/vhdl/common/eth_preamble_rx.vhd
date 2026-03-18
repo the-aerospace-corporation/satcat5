@@ -30,7 +30,8 @@ use     work.switch_types.all;
 entity eth_preamble_rx is
     generic (
     DV_XOR_ERR  : boolean := false;     -- RGMII mode (DV xor ERR)
-    REP_ENABLE  : boolean := false);    -- Enable repeat-detect?
+    AUTO_REP    : boolean := false;     -- Enable repeat-detect?
+    RATE_TO_REP : boolean := false);    -- Derive repeat from rate_word?
     port (
     -- Received data stream
     raw_clk     : in  std_logic;        -- Received clock
@@ -79,6 +80,7 @@ signal reg_err      : std_logic := '0';
 signal reg_ctr      : byte_u := (others => '0');    -- Working counter
 signal reg_rpt      : byte_u := (others => '0');    -- Reference repeat rate
 signal got_rpt      : std_logic := '0';
+signal err_rpt      : std_logic := '0';
 
 signal err_dlyct    : unsigned(2 downto 0) := (others => '0');
 
@@ -115,35 +117,62 @@ begin
         end if;
 
         -- Watch for start-of-frame delimiter and optionally count repeats.
-        -- Note: Repeat-counter will fail if first byte of frame constains
+        -- Note: Repeat-counter will fail if first byte of frame contains
         --       0xD5, but I believe that would be an illegal MAC address.
         if (raw_lock = '0') then
             reg_st  <= STATE_IDLE;          -- Port reset
             reg_ctr <= (others => '0');
             reg_rpt <= (others => '0');
             got_rpt <= '0';
+            err_rpt <= '0';
         elsif (raw_cken = '0') then
             null;                           -- No change
         elsif (raw_dv = '0') then
             reg_st  <= STATE_IDLE;          -- End of frame
             reg_ctr <= (others => '0');
+            err_rpt <= '0';                 -- Clear error
         elsif (reg_st = STATE_IDLE and raw_data = ETH_AMBLE_SOF) then
             reg_st  <= STATE_SOF;           -- SOF received (0xD5)
+            if (not AUTO_REP and RATE_TO_REP) then
+                -- If repeat-rate is given, latch in from rate word.
+                if (rate_word = get_rate_word(10)) then
+                    reg_rpt <= to_unsigned(99, 8);
+                elsif (rate_word = get_rate_word(100)) then
+                    reg_rpt <= to_unsigned(9, 8);
+                else
+                    reg_rpt <= to_unsigned(0, 8); -- Default, assume 1000Mbps.
+                end if;
+                got_rpt <= '1';
+            end if;
         elsif (reg_st = STATE_SOF) then
             -- If repeat-detect is enabled, count SOF tokens to determine
             -- the underlying repetition rate. (Allowed rates depend on
             -- standard; parent should check for unexpected values.)
-            if (REP_ENABLE and raw_data = ETH_AMBLE_SOF) then
-                reg_ctr <= reg_ctr + 1;     -- Count repeated SOF
+            if (AUTO_REP) then
+                if (raw_data = ETH_AMBLE_SOF) then
+                    reg_ctr <= reg_ctr + 1;     -- Count repeated SOF
+                else
+                    reg_st  <= STATE_DATA;      -- First data byte
+                    reg_rpt <= reg_ctr;         -- Latch repeat count
+                    got_rpt <= '1';
+                end if;
+
+            -- If repeat-detect is disabled, skip the appropriate number of SOF
+            -- tokens. If not all are ETH_AMBLE_SOF, mark the frame as errored.
             else
-                reg_st  <= STATE_DATA;      -- First data byte
-                reg_rpt <= reg_ctr;         -- Latch repeat count
-                got_rpt <= '1';
+                if (reg_ctr = reg_rpt) then
+                    reg_st <= STATE_DATA;
+                else
+                    reg_ctr <= reg_ctr + 1;
+                end if;
             end if;
-        elsif (reg_st = STATE_DATA and REP_ENABLE) then
+        elsif (reg_st = STATE_DATA) then
             -- If repeat-detect is enabled, run a cyclic countdown during
             -- data portion so we can keep exactly one of each repeated byte.
             if (reg_ctr > 0) then
+                if (reg_ctr < reg_rpt and reg_data /= raw_data) then
+                    err_rpt <= '1'; -- Error: not repeated as expected.
+                end if;
                 reg_ctr <= reg_ctr - 1;     -- Countdown to zero
             else
                 reg_ctr <= reg_rpt;         -- Counter wraparound
@@ -160,8 +189,8 @@ begin
                 -- RGMII mode: Only flag data-reception errors.
                 reg_err <= raw_dv and not raw_err;
             else
-                -- All others: Forward the error flag verbatim.
-                reg_err <= raw_err;
+                -- All others: Add local repeat error and forward others.
+                reg_err <= raw_err or err_rpt;
             end if;
         end if;
 

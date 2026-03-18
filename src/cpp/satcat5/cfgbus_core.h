@@ -88,10 +88,10 @@ namespace satcat5 {
         // Prefer the direct or indirect interface?
         #if SATCAT5_CFGBUS_DIRECT
             typedef volatile u32* Register;
-            #define SATCAT5_NULL_REGISTER   0
+            #define SATCAT5_NULL_REGISTER 0
         #else
             typedef satcat5::cfg::WrappedRegisterPtr Register;
-            #define SATCAT5_NULL_REGISTER   WrappedRegisterPtr(0,0)
+            #define SATCAT5_NULL_REGISTER satcat5::cfg::WrappedRegisterPtr(0,0)
         #endif
 
         //! Status codes for ConfigBus read/write operations.

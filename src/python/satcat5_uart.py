@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2021-2022 The Aerospace Corporation.
+# Copyright 2021-2025 The Aerospace Corporation.
 # This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 
 """
@@ -12,6 +12,7 @@ from random import randrange
 from struct import pack, unpack
 from time import sleep
 from zlib import crc32
+import logging
 import threading
 import traceback
 
@@ -103,13 +104,14 @@ def crc_self_test(verbose=False):
 
 class AsyncSerialPort:
     """Frame-based UART class with adjustable delimiter."""
-    def __init__(self, logger, callback, msg_delim=b'\n'):
+    def __init__(self, logger=None, callback=None, msg_delim=b'\n'):
         """
         Initialize member variables.
 
         Args:
-            logger (Logger):
+            logger (Logger or None):
                 Logger object, i.e., logging.getLogger(xx)
+                Default is None, which prints a message to the console.
             callback (function):
                 Function to be called for each received frame (or None).
                 See "set_callback" for additional details.
@@ -118,6 +120,8 @@ class AsyncSerialPort:
                 Use None or empty string for no delimiter and callback will
                 be called with any received bytes.
         """
+        if logger is None:
+            logger = logging.getLogger(__name__)
         self._baudrate = 0
         self._callback = None
         self._delim = msg_delim
@@ -313,7 +317,7 @@ def slipEncodeFCS(eth_usr, zeropad=False):
 
 class AsyncSLIPPort:
     """SLIP port wrapper. Same interface as ethernet_utils::AsyncEthernetPort."""
-    def __init__(self, portname, logger, baudrate=921600, eth_fcs=True, drop_fcs=True, zeropad=False, verbose=False):
+    def __init__(self, portname, logger=None, baudrate=921600, eth_fcs=True, drop_fcs=True, zeropad=False, verbose=False):
         """
         Construct a new AsncSLIPPort object.
         Args:
@@ -338,12 +342,15 @@ class AsyncSLIPPort:
         self.mac = generate_random_macaddr()
         self.lbl = portname
         # All other initialization...
+        if logger is None:
+            logger = logging.getLogger(__name__)
         self._callback = None
         self._eth_fcs = eth_fcs
         self._drop_fcs = drop_fcs
         self._logger = logger
-        self._zeropad = zeropad
+        self._pcap = None
         self._verbose = verbose
+        self._zeropad = zeropad
         self._serial = AsyncSerialPort(
             logger=logger,
             callback=self.msg_rcvd, # Thin-wrapper for callback
@@ -353,6 +360,10 @@ class AsyncSLIPPort:
     def close(self):
         """Close this UART port."""
         self._serial.close()
+        if self._pcap is not None:
+            self._pcap.flush()
+            self._pcap.close()
+            self._pcap = None
 
     def is_uart(self):
         """Is this object a UART or a true Ethernet port?"""
@@ -368,6 +379,18 @@ class AsyncSLIPPort:
             callback (function): The new callback function.
         """
         self._callback = callback
+
+    def set_pcap(self, filename):
+        """
+        Enable packet-capture on this interface, recording all incoming and
+        outgoing frames to the designated PCAP or PCAPNG file.  Use of this
+        method requires ScaPy to be installed.
+
+        Args:
+            filename (string): Location for the output file.
+        """
+        from scapy.utils import PcapWriter
+        self._pcap = PcapWriter(filename)
 
     def msg_rcvd(self, slip_frm):
         """
@@ -386,6 +409,9 @@ class AsyncSLIPPort:
         if self._verbose:
             self._logger.info('%s: SLIP-Rx: %u/%u bytes'
                 % (self.lbl, len(eth_frm), len(slip_frm)))
+        if self._pcap is not None:
+            from scapy.all import Ether
+            self._pcap.write(Ether(eth_frm))
         if self._callback is None:
             # No callback; discard this frame.
             return
@@ -430,6 +456,9 @@ class AsyncSLIPPort:
         if self._verbose:
             self._logger.info('%s: SLIP-Tx: %u/%u bytes'
                 % (self.lbl, len(eth_usr), len(slip_frm)))
+        if self._pcap is not None:
+            from scapy.all import Ether
+            self._pcap.write(Ether(slip_frm))
         self._serial.msg_send(slip_frm, blocking)
 
 class AsyncSLIPWriteOnly:

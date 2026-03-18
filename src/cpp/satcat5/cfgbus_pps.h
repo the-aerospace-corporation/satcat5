@@ -13,9 +13,23 @@
 #include <satcat5/cfgbus_core.h>
 #include <satcat5/polling.h>
 #include <satcat5/ptp_source.h>
+#include <satcat5/ptp_time.h>
 
 namespace satcat5 {
     namespace cfg {
+        //! Callback interface for cfg::PpsInput events.
+        //! \see cfg::PpsInput.
+        //! To use, inherit from this class and override the i2c_done() method.
+        class PpsEventListener {
+        public:
+            virtual void pps_event(
+                satcat5::ptp::Time& timestamp,  // PPS event timestamp.
+                satcat5::ptp::Time& delta)      // Unfiltered phase correction.
+                = 0;                            // Child MUST override this.
+        protected:
+            ~PpsEventListener() {}
+        };
+
         //! Driver for the PPS input block (ptp_pps_in.vhd).
         //! The VHDL input block accepts an incoming PPS signal and a PTP time
         //! reference, timestamps each PPS rising or falling edge, and writes
@@ -38,8 +52,11 @@ namespace satcat5 {
                 satcat5::cfg::PpsInput::Edge mode = Edge::RISING);
 
             //! Set recipient for phase-offset information.
-            inline void set_callback(satcat5::ptp::TrackingController* cb)
+            inline void set_callback(satcat5::cfg::PpsEventListener* cb)
                 { m_callback = cb; }
+
+            //! Return the time of the last observed PPS event.
+            inline satcat5::ptp::Time last_pps() const { return m_pps_time; }
 
             //! Get the current edge-detection mode.
             inline Edge get_mode() const        { return m_mode; }
@@ -63,7 +80,8 @@ namespace satcat5 {
 
             // Internal state.
             satcat5::cfg::Register m_reg;
-            satcat5::ptp::TrackingController* m_callback;
+            satcat5::cfg::PpsEventListener* m_callback;
+            satcat5::ptp::Time m_pps_time;
             Edge m_mode;
             s64 m_offset;
             s64 m_period;

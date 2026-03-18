@@ -36,7 +36,7 @@ void Ping::arping(const satcat5::ip::Addr& dstaddr, unsigned qty) {
         m_arp_remct = qty;          // How many ARP queries?
         m_icmp_remct = 0;           // No ICMP queries
         timer_every(1000);          // Timer for follow-up
-        m_iface->m_arp.add(this);   // Register for callback
+        m_iface->arp()->add(this);  // Register for callback
         // Send the first ARP query.
         send_arping();
     }
@@ -49,7 +49,7 @@ void Ping::ping(const satcat5::ip::Addr& dstaddr, unsigned qty) {
         m_arp_remct = 4;            // Additional ARP attempts?
         m_icmp_remct = qty;         // How many ICMP queries?
         timer_every(1000);          // Timer for follow-up
-        m_iface->m_icmp.add(this);  // Register for callback
+        m_iface->icmp()->add(this); // Register for callback
         // Start address resolution.
         m_addr.connect(dstaddr);
     }
@@ -61,8 +61,8 @@ void Ping::stop() {
     m_icmp_remct = 0;
     timer_stop();
     // Unregister callbacks (safe to remove even if not on list.)
-    m_iface->m_arp.remove(this);
-    m_iface->m_icmp.remove(this);
+    m_iface->arp()->remove(this);
+    m_iface->icmp()->remove(this);
 }
 
 void Ping::arp_event(
@@ -89,7 +89,7 @@ void Ping::send_arping() {
     // Send an ARP query to the stored address.
     m_reply_rcvd = false;
     m_arp_tref = SATCAT5_CLOCK->now();
-    m_iface->m_arp.send_query(m_addr.dstaddr());
+    m_iface->arp()->send_query(m_addr.dstaddr());
 
     // Decrement counter (unless unlimited).
     if (m_arp_remct != Ping::UNLIMITED) {--m_arp_remct;}
@@ -100,7 +100,7 @@ void Ping::send_ping() {
         // Send an ICMP query to the resolved address.
         m_reply_rcvd = false;
         m_arp_tref = SATCAT5_CLOCK->now();
-        m_iface->m_icmp.send_ping(m_addr);
+        m_iface->icmp()->send_ping(m_addr);
         // Decrement counter (unless unlimited).
         m_arp_remct = 0;
         if (m_icmp_remct != Ping::UNLIMITED) {--m_icmp_remct;}

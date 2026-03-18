@@ -4,10 +4,11 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <satcat5/cfgbus_hdlc.h>
+#include <satcat5/polling.h>
 #include <satcat5/utils.h>
 
-namespace cfg   = satcat5::cfg;
-namespace util  = satcat5::util;
+using satcat5::cfg::Hdlc;
+using satcat5::util::div_round_u32;
 
 // Define hardware register map.
 static const unsigned REGADDR_IRQ       = 0;
@@ -23,43 +24,49 @@ static const u32 MS_DVALID      = (1u << 8);
 static const u32 MS_RD_READY    = (1u << 0);
 static const u32 MS_CMD_FULL    = (1u << 1);
 
-cfg::Hdlc::Hdlc(cfg::ConfigBus* cfg, unsigned devaddr)
-    : io::BufferedIO(m_txbuff, SATCAT5_HDLC_BUFFSIZE, SATCAT5_HDLC_MAXPKT,
-                     m_rxbuff, SATCAT5_HDLC_BUFFSIZE, 0)
-    , cfg::Interrupt(cfg, devaddr, REGADDR_IRQ)
+Hdlc::Hdlc(satcat5::cfg::ConfigBus* cfg, unsigned devaddr)
+    : BufferedIO(m_txbuff, SATCAT5_HDLC_BUFFSIZE, SATCAT5_HDLC_MAXPKT,
+                 m_rxbuff, SATCAT5_HDLC_BUFFSIZE, 0)
+    , Interrupt(cfg, devaddr, REGADDR_IRQ)
     , m_ctrl(cfg->get_register(devaddr))
+    , m_tx_eof(false)
 {
     // No other initialization at this time.
 }
 
-void cfg::Hdlc::configure(unsigned clkref_hz,
-                          unsigned baud_hz,
-                          unsigned frame_bytes)
+void Hdlc::configure(
+    unsigned clkref_hz,
+    unsigned baud_hz,
+    unsigned frame_bytes)
 {
     // Note: Writing to Config register also resets hardware FIFOs.
-    u32 clkdiv = util::div_round_u32(clkref_hz, baud_hz);
+    u32 clkdiv = div_round_u32(clkref_hz, baud_hz);
     m_ctrl[REGADDR_CFG] = (frame_bytes << 16) | (clkdiv);
 }
 
-void cfg::Hdlc::data_rcvd(satcat5::io::Readable* src)
-{
+void Hdlc::data_rcvd(satcat5::io::Readable* src) {
     // Forward data from Tx-FIFO to hardware.
-    while (1) {
+    unsigned rdy = src->get_read_ready();
+    while (m_tx_eof || rdy) {
+        // Any space in the command FIFO?  If so, issue command (data or EOF).
         u32 status = m_ctrl[REGADDR_STATUS];
         if (status & MS_CMD_FULL) break;
-
-        if (m_tx.get_read_ready()) {
-            m_ctrl[REGADDR_DATA] = m_tx.read_u8();
-        } else {
+        if (m_tx_eof) {
             m_ctrl[REGADDR_DATA] = CMD_EOF;
-            m_tx.read_finalize();
-            break;
+            m_tx_eof = false;
+        } else {
+            m_ctrl[REGADDR_DATA] = src->read_u8();
+            if (--rdy == 0) { m_tx_eof = true; }
         }
     }
+    // End of data? Always finalize to avoid getting stuck in limbo.
+    if (!rdy) src->read_finalize();
+    // Do we need to schedule follow-up for trailing EOF?
+    // (The command FIFO may fill before we can write CMD_EOF.)
+    if (m_tx_eof) { timer_every(1); } else { timer_stop(); }
 }
 
-void cfg::Hdlc::irq_event()
-{
+void Hdlc::irq_event() {
     // Read any data waiting in the hardware FIFO.
     // (Let PacketBuffer object handle overflow, if it occurs.)
     unsigned nwrite = 0;
@@ -76,4 +83,10 @@ void cfg::Hdlc::irq_event()
 
     // Finalize new data to ensure downstream notifications.
     if (nwrite) m_rx.write_finalize();
+}
+
+void Hdlc::timer_event() {
+    // Trailing EOF: Write the command as soon as the FIFO has space.
+    // (We may not get another data_rcvd() notification.)
+    data_rcvd(&satcat5::io::null_read);
 }

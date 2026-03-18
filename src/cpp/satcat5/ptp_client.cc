@@ -135,9 +135,8 @@ Client::Client(
     , m_pdelay_id(0)
     , m_utc_offset(SATCAT5_UTC_OFFSET)
 {
-    // Clock-ID from MAC address using the IEEE 1588-2008 method.
-    // (Deprecated in IEEE 1588-2019 unless MAC/OUI is globally-unique.)
-    m_clock_local.grandmasterIdentity = 256ULL * m_iface.macaddr().to_u64();
+    // Set grandmaster clock identity from interface MAC address.
+    m_clock_local.grandmasterIdentity = m_iface.macaddr().to_ptp_clockid();
 
     // Link to the upstream interface.
     m_iface.ptp_callback(this);
@@ -165,6 +164,16 @@ void Client::set_mode(satcat5::ptp::ClientMode mode) {
     #endif
     case ClientMode::PASSIVE:       m_state = ClientState::PASSIVE; break;
     default:                        m_state = ClientState::DISABLED; break;
+    }
+
+    // L3 server only: Join PTP-related UDP multicast groups.
+    // See also: IEEE-1588-2019, Section C.3
+    if (mode == ClientMode::MASTER_L3) {
+        m_mcast_primary.join(m_iface.igmp(), satcat5::ip::ADDR_PTP_PRIMARY);
+        m_mcast_pdelay.join(m_iface.igmp(), satcat5::ip::ADDR_PTP_PDELAY);
+    } else {
+        m_mcast_primary.leave(m_iface.igmp());
+        m_mcast_pdelay.leave(m_iface.igmp());
     }
 
     // Configure or stop the timer based on the new state.

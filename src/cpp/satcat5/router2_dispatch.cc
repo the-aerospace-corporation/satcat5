@@ -3,6 +3,7 @@
 // This file is a part of SatCat5, licensed under CERN-OHL-W v2 or later.
 //////////////////////////////////////////////////////////////////////////
 
+#include <satcat5/eth_sw_log.h>
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/ip_icmp.h>
 #include <satcat5/ip_table.h>
@@ -14,9 +15,11 @@
 
 using satcat5::eth::MacAddr;
 using satcat5::eth::PluginPacket;
+using satcat5::eth::SwitchLogMessage;
 using satcat5::io::MultiPacket;
 using satcat5::ip::checksum;
 using satcat5::log::DEBUG;
+using satcat5::log::WARNING;
 using satcat5::log::Log;
 using satcat5::router2::Dispatch;
 using satcat5::util::clr_mask;
@@ -51,8 +54,22 @@ void Dispatch::set_ipaddr(const satcat5::ip::Addr& addr) {
 unsigned Dispatch::deliver(satcat5::io::MultiPacket* packet) {
     // Attempt to read the Ethernet and partial IPv4 headers.
     PluginPacket meta{};
-    if (!meta.read_from(packet)) return 0;
+    if (!meta.read_from(packet)) {
+        debug_log(packet, SwitchLogMessage::DROP_BADFRM);
+        return 0;
+    }
 
+    // If successful, attempt router processing and log errors.
+    unsigned result = deliver_pkt(meta);
+    if (!result) {
+        u8 reason = meta.reason()
+            ? meta.reason() : SwitchLogMessage::DROP_UNKNOWN;
+        debug_log(meta.pkt, reason);
+    }
+    return result;
+}
+
+unsigned Dispatch::deliver_pkt(satcat5::eth::PluginPacket& meta) {
     // Update statistics before additional rule checks.
     process_stats(meta);
 
@@ -168,9 +185,16 @@ unsigned Dispatch::process_gateway(PluginPacket& meta) {
     auto route = m_local_iface->route_lookup(meta.ip.dst());
     if (DEBUG_VERBOSE > 1) Log(DEBUG, "router.gateway.route\r\n  ").write_obj(route);
 
+    // Warn for packet at gateway with incorrect dst mac address
+    if(meta.hdr.dst != m_local_iface->macaddr()){
+       if (DEBUG_VERBOSE > 1) Log(WARNING, "Packet received at gateway with dest").write(meta.hdr.dst);
+    }
+
     // Update the destination mask if applicable.
-    // TODO: Proper multicast support including IGMP?
+    // Multicast support is provided by the igmp::Server plugin.
+    // Do not allow loopback of multicast or broadcast packets.
     if (route.is_unicast()) meta.dst_mask &= satcat5::eth::idx2mask(route.port);
+    else                    meta.dst_mask &= ~meta.src_mask();
 
     // Is this packet deliverable?
     if (!route.is_deliverable()) {
@@ -263,6 +287,9 @@ bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const PluginPacket& meta) {
     if (meta.ip.frg()) return false;
     if (meta.ip.dst().is_multicast()) return false;
 
+    // Make sure packet was intended for the gateway
+    if(meta.hdr.dst != m_local_iface->macaddr()) return false;
+
     // Read the full Eth+IPv4 header and the first 8 bytes of the datagram contents.
     MultiPacket::Reader rd(meta.pkt);
     if (!rd.read_obj(rx_eth)) return false;
@@ -271,6 +298,8 @@ bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const PluginPacket& meta) {
         tx_echo[a] = rd.read_u16();
 
     // Construct the ICMP header, including checksum.
+    // TODO: I think there is a checksum bug somewhere here,
+    // wireshark shows incorrect checksum on icmp redirects
     u16 chk_echo = checksum(ECHO_WORDS, tx_echo, rx_ip.chk());
     tx_icmp[0] = errtyp;            // Reply type + subtype
     tx_icmp[1] = 0;                 // Placeholder for checksum
@@ -279,8 +308,9 @@ bool Dispatch::icmp_reply(u16 errtyp, u32 arg, const PluginPacket& meta) {
     tx_icmp[1] = checksum(ICMP_WORDS, tx_icmp, chk_echo);
 
     // Is the reply interface ready to go?
+    // Injecting back into router stack up -> use router macaddr
     satcat5::io::Writeable* wr = m_local_iface->iface()
-        ->open_write(rx_eth.src, satcat5::eth::ETYPE_IPV4, rx_eth.vtag);
+        ->open_write(m_local_iface->macaddr(), satcat5::eth::ETYPE_IPV4, rx_eth.vtag);
     if (!wr) return false;
 
     // Construct the IPv4 header for the reply.

@@ -60,6 +60,7 @@ entity cfgbus_multiserial is
     cmd_ready   : in  std_logic;
     rx_data     : in  byte_t;
     rx_write    : in  std_logic;
+    rx_afull    : out std_logic;
 
     -- Configuration and status interface.
     cfg_reset   : out std_logic;
@@ -81,6 +82,8 @@ signal cfg_change   : std_logic;
 signal cfg_wr_full  : std_logic;
 signal cfg_rd_rdy   : std_logic;
 signal event_flag   : std_logic;
+
+signal rx_early : std_logic;
 
 begin
 
@@ -160,6 +163,9 @@ u_reg3 : entity work.cfgbus_fifo
     rd_data     => rx_data,
     rd_meta(0)  => '1',
     rd_valid    => rx_write,
-    rd_ready    => open);
+    rd_ready    => open,
+    rd_early    => rx_early);
+
+rx_afull <= not rx_early;
 
 end cfgbus_multiserial;

@@ -54,7 +54,7 @@ satcat5::io::Writeable* Dispatch::ptp_send(
 
     // Write IPv4 and UDP headers if this is a L3 PTP message
     if (eth_header.type == satcat5::eth::ETYPE_IPV4) {
-        satcat5::ip::Addr dst_ip = get_dst_ip(addr);
+        satcat5::ip::Addr dst_ip = get_dst_ip(ptp_msg_type, addr);
 
         // Write IPv4 Header
         unsigned udp_bytes = num_bytes + satcat5::udp::HEADER_BYTES;
@@ -159,10 +159,11 @@ satcat5::udp::Port Dispatch::get_dst_port(u8 ptp_msg_type) const {
     }
 }
 
-satcat5::ip::Addr Dispatch::get_dst_ip(DispatchTo addr) const {
+satcat5::ip::Addr Dispatch::get_dst_ip(u8 ptp_msg_type, DispatchTo addr) const {
     switch (addr) {
         case DispatchTo::REPLY:         return m_reply_ip;
         case DispatchTo::STORED:        return m_stored_ip;
-        default:                        return satcat5::ip::ADDR_BROADCAST;
+        default: return (ptp_msg_type == satcat5::ptp::Header::TYPE_PDELAY_REQ)
+            ? satcat5::ip::ADDR_PTP_PDELAY : satcat5::ip::ADDR_PTP_PRIMARY;
     }
 }

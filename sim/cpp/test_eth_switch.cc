@@ -102,7 +102,8 @@ TEST_CASE("eth_switch") {
         IP0(192, 168, 0, 0),
         IP1(192, 168, 0, 1),
         IP2(192, 168, 0, 2),
-        IP3(192, 168, 0, 3);
+        IP3(192, 168, 0, 3),
+        IP4(192, 168, 0, 4);
 
     // Buffers and an IP-stack for each simulated Ethernet endpoint.
     // (Two regular endpoints and one SLIP-encoded endpoint.)
@@ -277,16 +278,21 @@ TEST_CASE("eth_switch") {
         CHECK_FALSE(log_tx.ready());
     }
 
-    // Test the null-adapter.
+    // Test both null-adapter variants.
     SECTION("null-adapter") {
-        // Add a new port using the null-adapter.
+        // Add a new port using the plain and buffered null-adapter.
         satcat5::port::NullAdapter port3(&uut);
-        satcat5::ip::Stack stack(MAC3, IP3, &port3, &port3);
+        satcat5::port::BufferAdapter<> port4(&uut);
+        satcat5::ip::Stack stack3(MAC3, IP3, &port3, &port3);
+        satcat5::ip::Stack stack4(MAC4, IP4, &port4, &port4);
         // Try pinging one of the other ports.
         log.suppress("Ping:");
-        stack.m_ping.ping(IP0);
+        stack3.m_ping.ping(IP0, 1);
         timer.sim_wait(1000);
         CHECK(log.contains("Ping: Reply from = 192.168.0.0"));
+        stack4.m_ping.ping(IP1, 1);
+        timer.sim_wait(1000);
+        CHECK(log.contains("Ping: Reply from = 192.168.0.1"));
     }
 
     // Overflow the data buffer and the packet log.

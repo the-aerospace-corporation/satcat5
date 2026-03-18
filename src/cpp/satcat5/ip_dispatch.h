@@ -8,11 +8,18 @@
 
 #include <satcat5/eth_arp.h>
 #include <satcat5/eth_dispatch.h>
+#include <satcat5/igmp_client.h>
 #include <satcat5/ip_core.h>
 #include <satcat5/ip_icmp.h>
 #include <satcat5/ip_table.h>
 #include <satcat5/net_core.h>
 #include <satcat5/utils.h>
+
+// Time To Live (TTL) sets maximum number of router hops.
+// This parameter sets the default for outgoing packets.
+#ifndef SATCAT5_IP_TTL
+#define SATCAT5_IP_TTL 128
+#endif
 
 namespace satcat5 {
     namespace ip {
@@ -61,10 +68,15 @@ namespace satcat5 {
             void set_addr(const satcat5::ip::Addr& addr);
 
             //! Create a basic IPv4 header with the specified information.
+            //! \arg protocol       Packet type (ICMP/UDP/etc)
+            //! \arg dst            Destination IP address
+            //! \arg inner_bytes    Length of contained packet
+            //! \arg ttl            Time-to-live (optional)
             satcat5::ip::Header next_header(
-                u8 protocol,                    // Packet type (ICMP/UDP/etc)
-                const satcat5::ip::Addr& dst,   // Destination IP address
-                unsigned inner_bytes);          // Length of contained packet
+                u8 protocol,
+                const satcat5::ip::Addr& dst,
+                unsigned inner_bytes,
+                u8 ttl = SATCAT5_IP_TTL);
 
             //! Routing table shortcuts. \see ip_table.h
             //!@{
@@ -103,6 +115,8 @@ namespace satcat5 {
                 { return &m_arp; }
             inline satcat5::ip::ProtoIcmp* icmp()
                 { return &m_icmp; }
+            inline satcat5::igmp::Client* igmp()
+                { return &m_igmp; }
             inline satcat5::eth::Dispatch* iface() const
                 { return m_iface; }
             inline satcat5::ip::Addr ipaddr() const
@@ -131,10 +145,6 @@ namespace satcat5 {
             inline void set_ident(u16 ident)
                 { m_ident = ident; }
 
-            // ARP and ICMP handlers for this interface.
-            satcat5::eth::ProtoArp m_arp;   //!< DEPRECATED \see arp()
-            satcat5::ip::ProtoIcmp m_icmp;  //!< DEPRECATED \see icmp()
-
         protected:
             // Event handler for the ARP cache.
             void arp_event(
@@ -150,6 +160,11 @@ namespace satcat5 {
 
             // IP address for this interface.
             satcat5::ip::Addr m_addr;
+
+            // ARP, ICMP, and IGMP handlers for this interface.
+            satcat5::eth::ProtoArp m_arp;
+            satcat5::ip::ProtoIcmp m_icmp;
+            satcat5::igmp::Client m_igmp;
 
             // The current reply state (address + complete header).
             satcat5::ip::Addr m_reply_dst;

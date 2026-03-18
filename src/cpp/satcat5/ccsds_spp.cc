@@ -201,11 +201,12 @@ Protocol::~Protocol() {
 }
 #endif
 
-BytesToSpp::BytesToSpp(Readable* src, Dispatch* dst, u16 apid, unsigned max_chunk)
+BytesToSpp::BytesToSpp(Readable* src, Dispatch* dst,
+    bool cmd, u16 apid, unsigned max_chunk)
     : m_dst(dst)
     , m_strm(src, &m_dst, max_chunk)
 {
-    m_dst.connect(false, apid);
+    m_dst.connect(cmd, apid);
 }
 
 SppToBytes::SppToBytes(Dispatch* src, Writeable* dst, u16 apid)

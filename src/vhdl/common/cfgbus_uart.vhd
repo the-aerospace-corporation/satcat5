@@ -17,6 +17,8 @@
 --      Refer to cfgbus_common::cfgbus_interrupt
 --  * REGADDR = 1: Configuration
 --      Any write to this register resets the UART and clears all FIFOs.
+--      Bit    31: Ignore external flow-control (CTS)
+--      Bit 30-16: Reserved (zeros)
 --      Bit 15-00: Clock divider ratio (BAUD_HZ = REF_CLK / N)
 --  * REGADDR = 2: Status (Read only)
 --      Bit 02-02: Running / busy
@@ -31,10 +33,11 @@
 --
 
 library ieee;
-use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     ieee.std_logic_1164.all;
 use     work.cfgbus_common.all;
 use     work.common_functions.all;
+use     work.common_primitives.sync_buffer;
 use     work.eth_frame_common.all;
 
 entity cfgbus_uart is
@@ -45,6 +48,8 @@ entity cfgbus_uart is
     -- External UART signals.
     uart_txd    : out std_logic;
     uart_rxd    : in  std_logic;
+    uart_cts_n  : in  std_logic := '0';
+    uart_rts_n  : out std_logic;
 
     -- Command interface, including reference clock.
     cfg_cmd     : in  cfgbus_cmd;
@@ -54,14 +59,24 @@ end cfgbus_uart;
 architecture cfgbus_uart of cfgbus_uart is
 
 -- Transmit data
+signal cmd_tx_data  : byte_t;
+signal cmd_tx_valid : std_logic;
+signal cmd_tx_ready : std_logic;
+signal cmd_tx_busy  : std_logic;
+
 signal tx_data      : byte_t;
 signal tx_valid     : std_logic;
 signal tx_ready     : std_logic;
-signal tx_busy      : std_logic;
 
 -- Received data
 signal rx_data      : byte_t;
 signal rx_write     : std_logic;
+signal rx_afull     : std_logic;
+
+-- Flow control
+signal ignore_cts : std_logic;
+signal flow_en    : std_logic;
+signal cts_n      : std_logic;
 
 -- ConfigBus interface
 signal cfg_word     : cfgbus_word;
@@ -90,29 +105,44 @@ u_rx : entity work.io_uart_rx
     refclk      => cfg_cmd.clk,
     reset_p     => cfg_reset);
 
+-- Flow control
+u_cts : sync_buffer
+    port map (
+    in_flag     => uart_cts_n,
+    out_flag    => cts_n,
+    out_clk     => cfg_cmd.clk);
+
+flow_en      <= ignore_cts or not cts_n;
+tx_data      <= cmd_tx_data;
+tx_valid     <= cmd_tx_valid and flow_en;
+cmd_tx_ready <= tx_ready and flow_en;
+uart_rts_n   <= rx_afull or cfg_reset;
+
 -- Transmit in progress?
-tx_busy     <= tx_valid or not tx_ready;
+cmd_tx_busy <= cmd_tx_valid or not cmd_tx_ready;
 
 -- Extract configuration parameters:
 cfg_rate    <= unsigned(cfg_word(15 downto 0));
+ignore_cts  <= cfg_word(31);
 
 -- ConfigBus interface
 u_cfg : entity work.cfgbus_multiserial
     generic map(
     DEVADDR     => DEVADDR,
-    CFG_MASK    => x"0000FFFF",
-    CFG_RSTVAL  => x"0000FFFF",
+    CFG_MASK    => x"8000FFFF",
+    CFG_RSTVAL  => x"8000FFFF",
     IRQ_RXDATA  => true,
     FIFO_LOG2   => FIFO_LOG2)
     port map(
-    cmd_data    => tx_data,
-    cmd_valid   => tx_valid,
-    cmd_ready   => tx_ready,
+    cmd_data    => cmd_tx_data,
+    cmd_valid   => cmd_tx_valid,
+    cmd_ready   => cmd_tx_ready,
     rx_data     => rx_data,
     rx_write    => rx_write,
+    rx_afull    => rx_afull,
     cfg_reset   => cfg_reset,
     cfg_word    => cfg_word,
-    status_busy => tx_busy,
+    status_busy => cmd_tx_busy,
     cfg_cmd     => cfg_cmd,
     cfg_ack     => cfg_ack);
 

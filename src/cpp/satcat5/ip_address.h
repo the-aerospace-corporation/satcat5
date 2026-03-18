@@ -7,6 +7,7 @@
 #pragma once
 
 #include <satcat5/eth_arp.h>
+#include <satcat5/igmp_client.h>
 #include <satcat5/ip_dispatch.h>
 #include <satcat5/net_core.h>
 #include <satcat5/timeref.h>
@@ -49,6 +50,9 @@ namespace satcat5 {
             void init(satcat5::ip::Dispatch* iface);
 
             //! Automatic address resolution using routing table + ARP.
+            //! Connecting to a multicast address automatically initiates an
+            //! IGMP subscription for incoming and outgoing multicast packets.
+            //! \see igmp_client.h, igmp::Client.
             void connect(
                 const satcat5::ip::Addr& dstaddr,
                 const satcat5::eth::VlanTag& vtag = satcat5::eth::VTAG_NONE);
@@ -102,6 +106,7 @@ namespace satcat5 {
             satcat5::ip::Addr m_dstaddr;
             satcat5::ip::Addr m_gateway;
             satcat5::eth::VlanTag m_vtag;
+            satcat5::igmp::Address m_igmp;
         };
     }
 }

@@ -74,6 +74,7 @@ namespace satcat5 {
 
             // Override the SwitchCore::deliver() method.
             unsigned deliver(satcat5::io::MultiPacket* packet) override;
+            unsigned deliver_pkt(satcat5::eth::PluginPacket& meta);
 
             // Internal event-handlers called from deliver(...).
             void adjust_mac(

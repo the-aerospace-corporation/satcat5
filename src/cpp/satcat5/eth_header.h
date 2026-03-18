@@ -50,6 +50,19 @@ namespace satcat5 {
                      +             1ULL * addr[5];
             }
 
+            //! Convert to PTP Clock-ID (IEEE 1588-2008 7.5.2.2.2 Note 2).
+            //! Deprecated in IEEE 1588-2019 unless MAC/OUI is globally-unique.
+            constexpr u64 to_ptp_clockid() const {
+                return 72057594037927936ull * addr[0]
+                    +    281474976710656ull * addr[1]
+                    +      1099511627776ull * addr[2]
+                    +         4294967296ull * 0xFF
+                    +           16777216ull * 0xFE
+                    +              65536ull * addr[3]
+                    +                256ull * addr[4]
+                    +                  1ull * addr[5];
+            }
+
             //! Basic comparisons.
             //!@{
             bool operator==(const satcat5::eth::MacAddr& other) const;
